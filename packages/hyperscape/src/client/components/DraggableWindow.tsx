@@ -1,14 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-
-interface DraggableWindowProps {
-  children: React.ReactNode
-  initialPosition?: { x: number; y: number }
-  dragHandle?: React.ReactNode
-  onPositionChange?: (position: { x: number; y: number }) => void
-  className?: string
-  style?: React.CSSProperties
-  enabled?: boolean
-}
+import type { DraggableWindowProps } from '../../types/ui-types'
 
 export function DraggableWindow({
   children,

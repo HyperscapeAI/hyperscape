@@ -5,17 +5,7 @@
  * It handles JavaScript errors and unhandled promise rejections.
  */
 
-interface ErrorReport {
-  message: string;
-  stack: string;
-  url: string;
-  userAgent: string;
-  timestamp: string;
-  context: unknown;
-  componentStack: string;
-  userId: string;
-  sessionId: string;
-}
+import type { ErrorReport } from '../types/error-types'
 
 /**
  * Service for reporting frontend errors to the backend

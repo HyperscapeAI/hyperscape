@@ -1,14 +1,15 @@
 // import { ChevronDownIcon, UploadIcon } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { cls } from './cls'
-
-interface InputTextProps {
-  label?: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  disabled?: boolean;
-}
+import type { 
+  InputTextProps, 
+  InputTextareaProps, 
+  InputNumberProps, 
+  InputRangeProps, 
+  InputSwitchProps, 
+  InputDropdownProps, 
+  InputFileProps 
+} from '../../types/ui-component-types';
 
 export function InputText({ label, value, onChange, placeholder, disabled }: InputTextProps) {
   return (
@@ -35,14 +36,7 @@ export function InputText({ label, value, onChange, placeholder, disabled }: Inp
   )
 }
 
-interface InputTextareaProps {
-  label?: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  disabled?: boolean;
-  rows?: number;
-}
+
 
 export function InputTextarea({ label, value, onChange, placeholder, disabled, rows = 3 }: InputTextareaProps) {
   return (
@@ -71,15 +65,7 @@ export function InputTextarea({ label, value, onChange, placeholder, disabled, r
   )
 }
 
-interface InputNumberProps {
-  label?: string;
-  value: number;
-  onChange: (value: number) => void;
-  min?: number;
-  max?: number;
-  step?: number;
-  disabled?: boolean;
-}
+
 
 export function InputNumber({ label, value, onChange, min, max, step = 1, disabled }: InputNumberProps) {
   return (
@@ -108,15 +94,7 @@ export function InputNumber({ label, value, onChange, min, max, step = 1, disabl
   )
 }
 
-interface InputRangeProps {
-  label?: string;
-  value: number;
-  onChange: (value: number) => void;
-  min?: number;
-  max?: number;
-  step?: number;
-  disabled?: boolean;
-}
+
 
 export function InputRange({ label, value, onChange, min = 0, max = 100, step = 1, disabled }: InputRangeProps) {
   return (
@@ -168,12 +146,7 @@ export function InputRange({ label, value, onChange, min = 0, max = 100, step = 
   )
 }
 
-interface InputSwitchProps {
-  label?: string;
-  value: boolean;
-  onChange: (value: boolean) => void;
-  disabled?: boolean;
-}
+
 
 export function InputSwitch({ label, value, onChange, disabled }: InputSwitchProps) {
   return (
@@ -214,13 +187,7 @@ export function InputSwitch({ label, value, onChange, disabled }: InputSwitchPro
   )
 }
 
-interface InputDropdownProps {
-  label?: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: { value: string; label: string }[];
-  disabled?: boolean;
-}
+
 
 export function InputDropdown({ label, value, onChange, options, disabled }: InputDropdownProps) {
   const [isOpen, setIsOpen] = useState(false)
@@ -347,14 +314,7 @@ export const fileKinds = {
   },
 }
 
-interface InputFileProps {
-  label?: string;
-  value: File | null;
-  onChange: (file: File | null) => void;
-  accept?: string;
-  disabled?: boolean;
-  placeholder?: string;
-}
+
 
 export function InputFile({ label, value, onChange, accept, disabled, placeholder }: InputFileProps) {
   const fileRef = useRef<HTMLInputElement | null>(null)

@@ -1,5 +1,5 @@
-import * as THREE from '../core/extras/three';
-import { World } from '../core/World';
+import * as THREE from '../extras/three';
+import { World } from '../World';
 
 declare global {
   interface Window {

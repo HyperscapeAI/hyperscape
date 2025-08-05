@@ -7,8 +7,21 @@
 
 import { EventType } from './events';
 import * as Payloads from './event-payloads';
-import * as RPGPayloads from '../rpg/types/events';
-import { PlayerData, Position3D, EquipmentSlotName } from '../rpg/types/core';
+import { Player, EquipmentSlotName } from './core';
+import { Position3D } from './index';
+import type {
+  InventoryCanAddEvent,
+  InventoryRemoveCoinsEvent,
+  InventoryCheckEvent,
+  InventoryHasEquippedEvent,
+  BankDepositEvent,
+  BankWithdrawEvent,
+  BankDepositSuccessEvent,
+  UIMessageEvent,
+  StoreOpenEvent,
+  StoreCloseEvent,
+  StoreBuyEvent
+} from './events';
 
 /**
  * Complete mapping of all events to their payload types
@@ -67,10 +80,10 @@ export interface EventMap {
   [EventType.CLIENT_ENTITY_SYNC]: { entities: Array<{ id: string; data: Record<string, string | number | boolean> }> };
   [EventType.NETWORK_ENTITY_UPDATES]: { updates: Array<{ id: string; changes: Record<string, string | number | boolean> }> };
 
-  // RPG Events
-  [EventType.PLAYER_LEVEL_UP]: Payloads.PlayerLevelUpPayload;
+  // Events
+  [EventType.PLAYER_LEVEL_UP]: { playerId: string; skill: string; newLevel: number; previousLevel: number };
   [EventType.PLAYER_XP_GAINED]: Payloads.PlayerXPGainedPayload;
-  [EventType.PLAYER_DIED]: { playerId: string; killerId: string | null; deathLocation: { x: number; y: number; z: number } };
+  [EventType.PLAYER_DIED]: { playerId: string; killerId?: string | null; deathLocation: { x: number; y: number; z: number }; cause: string };
   [EventType.PLAYER_RESPAWNED]: { playerId: string; respawnLocation: { x: number; y: number; z: number } };
   [EventType.PLAYER_EQUIPMENT_CHANGED]: { playerId: string; slot: EquipmentSlotName; itemId: string | null };
   [EventType.AGGRO_PLAYER_LEFT]: { playerId: string; mobId: string };
@@ -86,11 +99,38 @@ export interface EventMap {
   [EventType.PLAYER_DATA_SAVED]: { playerId: string };
   [EventType.PLAYER_SESSION_STARTED]: { playerId: string; sessionId: string };
   [EventType.PLAYER_SESSION_ENDED]: { playerId: string; sessionId: string };
-  [EventType.PLAYER_CREATE]: { playerId: string; playerData: PlayerData };
+  [EventType.PLAYER_CREATE]: { playerId: string; playerData: Player };
   [EventType.PLAYER_SPAWN_COMPLETE]: { playerId: string; position: Position3D };
   [EventType.PLAYER_HEALTH_UPDATED]: { playerId: string; health: number; maxHealth: number };
   [EventType.PLAYER_TELEPORT_REQUEST]: { playerId: string; position: Position3D; rotationY: number };
   [EventType.PLAYER_DAMAGE]: { playerId: string; damage: number; source: 'combat' | 'fall' | 'drowning' | 'poison' | 'fire' | 'other' };
+  [EventType.PLAYER_UPDATED]: { 
+    playerId: string; 
+    component?: string; 
+    playerData?: {
+      id: string;
+      name: string; 
+      level: number;
+      health: number;
+      maxHealth: number;
+      alive: boolean;
+      position?: Position3D;
+    };
+    data?: {
+      id: string;
+      name: string; 
+      level: number;
+      health: number;
+      maxHealth: number;
+      alive: boolean;
+      position?: Position3D;
+    };
+  };
+  [EventType.PLAYER_RESPAWN_REQUEST]: { playerId: string };
+  [EventType.PLAYER_EQUIPMENT_UPDATED]: { 
+    playerId: string; 
+    equipment: Record<string, string | null>;
+  };
   [EventType.ATTACK_STYLE_CHANGED]: { playerId: string; newStyle: 'attack' | 'strength' | 'defense' | 'ranged' };
   [EventType.PLAYER_UNREGISTERED]: { playerId: string };
 
@@ -126,10 +166,10 @@ export interface EventMap {
   [EventType.INVENTORY_UPDATE_COINS]: { playerId: string; coins: number };
   [EventType.INVENTORY_MOVE]: { playerId: string; fromSlot: number; toSlot: number };
 
-  [EventType.INVENTORY_CAN_ADD]: RPGPayloads.RPGInventoryCanAddEvent;
-  [EventType.INVENTORY_REMOVE_COINS]: RPGPayloads.RPGInventoryRemoveCoinsEvent;
-  [EventType.INVENTORY_CHECK]: RPGPayloads.RPGInventoryCheckEvent;
-  [EventType.INVENTORY_HAS_EQUIPPED]: RPGPayloads.RPGInventoryHasEquippedEvent;
+  [EventType.INVENTORY_CAN_ADD]: InventoryCanAddEvent;
+  [EventType.INVENTORY_REMOVE_COINS]: InventoryRemoveCoinsEvent;
+  [EventType.INVENTORY_CHECK]: InventoryCheckEvent;
+  [EventType.INVENTORY_HAS_EQUIPPED]: InventoryHasEquippedEvent;
   [EventType.INVENTORY_INITIALIZED]: { playerId: string };
   [EventType.INVENTORY_COINS_UPDATED]: { playerId: string; oldAmount: number; newAmount: number };
   [EventType.INVENTORY_FULL]: { playerId: string };
@@ -146,6 +186,8 @@ export interface EventMap {
   [EventType.ITEM_RESPAWN_SHOPS]: void;
   [EventType.ITEM_SPAWN_LOOT]: { lootTable: string; position: { x: number; y: number; z: number } };
   [EventType.ITEM_SPAWN]: { itemType: string; position: { x: number; y: number; z: number } };
+  [EventType.ITEM_PICKUP]: { playerId: string; itemId: string; groundItemId?: string };
+  [EventType.INVENTORY_DROP_ALL]: { playerId: string; position: Position3D };
   [EventType.ITEM_USED]: { 
     playerId: string; 
     itemId: string; 
@@ -193,16 +235,16 @@ export interface EventMap {
   [EventType.MOB_DIED]: Payloads.MobDiedPayload;
 
   // Bank Events
-  [EventType.BANK_OPEN]: { playerId: string; bankId: string };
+  [EventType.BANK_OPEN]: { playerId: string; bankId: string; playerPosition?: Position3D };
   [EventType.BANK_CLOSE]: { playerId: string; bankId: string };
-  [EventType.BANK_DEPOSIT]: RPGPayloads.BankDepositEvent;
-  [EventType.BANK_WITHDRAW]: RPGPayloads.BankWithdrawEvent;
+  [EventType.BANK_DEPOSIT]: BankDepositEvent;
+  [EventType.BANK_WITHDRAW]: BankWithdrawEvent;
   [EventType.BANK_DEPOSIT_ALL]: { playerId: string; bankId: string };
-  [EventType.BANK_DEPOSIT_SUCCESS]: RPGPayloads.RPGBankDepositSuccessEvent;
+  [EventType.BANK_DEPOSIT_SUCCESS]: BankDepositSuccessEvent;
 
   // UI Events
   [EventType.UI_ATTACK_STYLE_GET]: { playerId: string; callbackId: string };
-  [EventType.UI_MESSAGE]: RPGPayloads.RPGUIMessageEvent;
+  [EventType.UI_MESSAGE]: UIMessageEvent;
 
   // Camera Events
   [EventType.CAMERA_FOLLOW_PLAYER]: { playerId: string; entity: { id: string; mesh: object }; camHeight: number };
@@ -251,9 +293,9 @@ export interface EventMap {
   [EventType.FIRE_CREATED]: { fireId: string; playerId: string };
 
   // Additional Store Events
-  [EventType.STORE_OPEN]: RPGPayloads.RPGStoreOpenEvent;
-  [EventType.STORE_CLOSE]: RPGPayloads.RPGStoreCloseEvent;
-  [EventType.STORE_BUY]: RPGPayloads.RPGStoreBuyEvent;
+  [EventType.STORE_OPEN]: StoreOpenEvent;
+  [EventType.STORE_CLOSE]: StoreCloseEvent;
+  [EventType.STORE_BUY]: StoreBuyEvent;
   [EventType.STORE_PLAYER_COINS]: { playerId: string; coins: number };
 
   // Additional UI Events

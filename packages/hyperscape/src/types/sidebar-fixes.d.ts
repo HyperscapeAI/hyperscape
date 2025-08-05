@@ -1,6 +1,6 @@
 // Type fixes for Sidebar.tsx
 
-import * as THREE from '../core/extras/three';
+import * as THREE from '../extras/three';
 
 // Extend THREE.js Euler to accept number array
 declare module 'three' {
@@ -10,7 +10,7 @@ declare module 'three' {
 }
 
 // Fix for storage module if not already fixed
-declare module '../../core/storage' {
+declare module '../../storage' {
   export const storage: {
     get(key: string, defaultValue?: unknown): unknown;
     set(key: string, value: unknown): void;

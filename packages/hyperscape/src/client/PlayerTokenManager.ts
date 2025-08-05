@@ -24,7 +24,7 @@ export interface PlayerSession {
 
 /**
  * Manages player tokens and sessions for client-side identity persistence
- * This is the client-side component that works with the server-side RPGAuthenticationSystem
+ * This is the client-side component that works with the server-side AuthenticationSystem
  */
 export class PlayerTokenManager extends EventEmitter {
   private static readonly STORAGE_KEY = 'hyperscape_rpg_player_token';

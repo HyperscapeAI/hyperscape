@@ -1,18 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import * as THREE from '../core/extras/three'
+import * as THREE from '../extras/three'
 
-import { createClientWorld } from '../core/createClientWorld'
-import { World } from '../core/World'
+import { createClientWorld } from '../createClientWorld'
+import { World } from '../World'
 import { EventType } from '../types/events'
 import { CoreUI } from './components/CoreUI'
 import { errorReporting } from './error-reporting'
+import type { ClientProps } from '../types/client-types'
 
-export { System } from '../core/systems/System'
-
-interface ClientProps {
-  wsUrl: string | (() => string | Promise<string>)
-  onSetup: (world: World, config: Record<string, unknown>) => void
-}
+export { System } from '../systems/System'
 
 export function Client({ wsUrl, onSetup }: ClientProps) {
   console.log('[Client Component] Rendering Client component')
@@ -52,12 +48,12 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
     const init = async () => {
       console.log('[Client] Starting initialization with viewport and UI...')
       
-      // Wait for plugins to load if they haven't already
-      const worldWithPlugins = world as World & { pluginsLoadedPromise?: Promise<void> }
-      if (worldWithPlugins.pluginsLoadedPromise) {
-        console.log('[Client] Waiting for plugins to load...')
-        await worldWithPlugins.pluginsLoadedPromise
-        console.log('[Client] Plugins loaded successfully')
+      // Wait for RPG systems to load if they haven't already
+      const worldWithSystems = world as World & { systemsLoadedPromise?: Promise<void> }
+      if (worldWithSystems.systemsLoadedPromise) {
+        console.log('[Client] Waiting for RPG systems to load...')
+        await worldWithSystems.systemsLoadedPromise
+        console.log('[Client] RPG systems loaded successfully')
       }
       
       const baseEnvironment = {

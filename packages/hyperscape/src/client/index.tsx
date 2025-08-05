@@ -4,8 +4,8 @@ import { Client } from './world-client'
 import { ErrorBoundary } from './ErrorBoundary'
 import { errorReporting } from './error-reporting'
 import { playerTokenManager } from './PlayerTokenManager'
-import * as THREE from '../core/extras/three'
-import { installThreeJSExtensions } from '../core/physics/vector-conversions'
+import * as THREE from '../extras/three'
+import { installThreeJSExtensions } from '../physics/vector-conversions'
 
 // Set global environment flags
 (globalThis as typeof globalThis & { isBrowser?: boolean; isServer?: boolean }).isBrowser = true;

@@ -1,22 +1,29 @@
 // import { ChevronLeftIcon, ChevronRightIcon, Loader2Icon, XIcon } from 'lucide-react'
 import { useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { Curve } from '../../core/extras/Curve'
-import { downloadFile } from '../../core/extras/downloadFile'
-import { hashFile } from '../../core/utils-client'
-import { World } from '../../core/World'
+import { Curve } from '../../extras/Curve'
+import { downloadFile } from '../../extras/downloadFile'
+import type { LoadingFile } from '../../types/client-types'
+import type {
+  FieldBtnProps,
+  FieldCurveProps,
+  FieldFileProps,
+  FieldNumberProps,
+  FieldRangeProps,
+  FieldSwitchProps,
+  FieldTextProps,
+  FieldTextareaProps,
+  FieldToggleProps,
+  FieldVec3Props,
+  SwitchOption
+} from '../../types/ui-types'
+import { hashFile } from '../../utils-client'
 import { CurvePane } from './CurvePane'
 import { CurvePreview } from './CurvePreview'
 import { HintContext } from './Hint'
 import { Portal } from './Portal'
 import { useUpdate } from './useUpdate'
 
-interface FieldTextProps {
-  label: string;
-  hint?: string;
-  placeholder?: string;
-  value: string;
-  onChange: (value: string) => void;
-}
+
 
 export function FieldText({ label, hint, placeholder, value, onChange }: FieldTextProps) {
   const hintContext = useContext(HintContext)
@@ -85,13 +92,7 @@ export function FieldText({ label, hint, placeholder, value, onChange }: FieldTe
   )
 }
 
-interface FieldTextareaProps {
-  label: string;
-  hint?: string;
-  placeholder?: string;
-  value: string;
-  onChange: (value: string) => void;
-}
+
 
 export function FieldTextarea({ label, hint, placeholder, value, onChange }: FieldTextareaProps) {
   const hintContext = useContext(HintContext)
@@ -177,18 +178,7 @@ export function FieldTextarea({ label, hint, placeholder, value, onChange }: Fie
   )
 }
 
-interface SwitchOption {
-  label: string;
-  value: unknown;
-}
 
-interface FieldSwitchProps {
-  label: string;
-  hint?: string;
-  options: SwitchOption[];
-  value: unknown;
-  onChange: (value: unknown) => void;
-}
 
 export function FieldSwitch({ label, hint, options, value, onChange }: FieldSwitchProps) {
   const hintContext = useContext(HintContext)
@@ -293,14 +283,7 @@ export function FieldSwitch({ label, hint, options, value, onChange }: FieldSwit
   )
 }
 
-interface FieldToggleProps {
-  label: string;
-  hint?: string;
-  trueLabel?: string;
-  falseLabel?: string;
-  value: boolean;
-  onChange: (value: boolean) => void;
-}
+
 
 export function FieldToggle({ label, hint, trueLabel = 'Yes', falseLabel = 'No', value, onChange }: FieldToggleProps) {
   return (
@@ -317,16 +300,7 @@ export function FieldToggle({ label, hint, trueLabel = 'Yes', falseLabel = 'No',
   )
 }
 
-interface FieldRangeProps {
-  label: string;
-  hint?: string;
-  min?: number;
-  max?: number;
-  step?: number;
-  instant?: boolean;
-  value: number;
-  onChange: (value: number) => void;
-}
+
 
 export function FieldRange({ label, hint, min = 0, max = 1, step = 0.05, instant, value, onChange }: FieldRangeProps) {
   const hintContext = useContext(HintContext)
@@ -505,20 +479,7 @@ export const fileKinds = {
   },
 }
 
-interface FieldFileProps {
-  world: World;
-  label: string;
-  hint?: string;
-  kind: keyof typeof fileKinds;
-  value: unknown;
-  onChange: (value: unknown) => void;
-}
 
-interface LoadingFile {
-  type: string;
-  name: string;
-  url: string;
-}
 
 export function FieldFile({ world, label, hint, kind: kindName, value, onChange }: FieldFileProps) {
   const hintContext = useContext(HintContext)
@@ -541,7 +502,7 @@ export function FieldFile({ world, label, hint, kind: kindName, value, onChange 
     // check ext
     const ext = file.name.split('.').pop().toLowerCase()
     if (!kind.exts.includes(ext)) {
-      return console.error(`attempted invalid file extension for ${kindName}: ${ext}`)
+      return console.error(`attempted invalid file extension for ${String(kindName)}: ${ext}`)
     }
     // immutable hash the file
     const hash = await hashFile(file)
@@ -658,17 +619,7 @@ export function FieldFile({ world, label, hint, kind: kindName, value, onChange 
   )
 }
 
-interface FieldNumberProps {
-  label: string;
-  hint?: string;
-  dp?: number;
-  min?: number;
-  max?: number;
-  step?: number;
-  bigStep?: number;
-  value: number;
-  onChange: (value: number) => void;
-}
+
 
 export function FieldNumber({
   label,
@@ -795,17 +746,7 @@ export function FieldNumber({
   )
 }
 
-interface FieldVec3Props {
-  label: string;
-  hint?: string;
-  dp?: number;
-  min?: number;
-  max?: number;
-  step?: number;
-  bigStep?: number;
-  value: number[];
-  onChange: (value: number[]) => void;
-}
+
 
 export function FieldVec3({
   label,
@@ -1046,17 +987,7 @@ export function FieldVec3({
   )
 }
 
-interface FieldCurveProps {
-  label: string;
-  hint?: string;
-  x: string;
-  xRange?: number;
-  y: string;
-  yMin: number;
-  yMax: number;
-  value: string;
-  onChange: (value: string) => void;
-}
+
 
 export function FieldCurve({ label, hint, x, xRange, y, yMin, yMax, value, onChange }: FieldCurveProps) {
   const hintContext = useContext(HintContext)
@@ -1140,13 +1071,7 @@ export function FieldCurve({ label, hint, x, xRange, y, yMin, yMax, value, onCha
   )
 }
 
-interface FieldBtnProps {
-  label: string;
-  note?: string;
-  hint?: string;
-  nav?: boolean;
-  onClick: () => void;
-}
+
 
 export function FieldBtn({ label, note, hint, nav, onClick }: FieldBtnProps) {
   const hintContext = useContext(HintContext)

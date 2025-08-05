@@ -1,17 +1,14 @@
 import { LoaderIcon, XIcon } from 'lucide-react'
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { Curve } from '../../core/extras/Curve'
-import { downloadFile } from '../../core/extras/downloadFile'
-import { hashFile } from '../../core/utils-client'
+import { Curve } from '../../extras/Curve'
+import { downloadFile } from '../../extras/downloadFile'
+import { hashFile } from '../../utils-client'
 import { CurvePane } from './CurvePane'
 import { CurvePreview } from './CurvePreview'
 import { ChevronLeftIcon, ChevronRightIcon } from './Icons'
 import { Portal } from './Portal'
 import { useUpdate } from './useUpdate'
-
-interface MenuContextType {
-  setHint: (hint: string | null) => void;
-}
+import type { MenuContextType } from '../../types/ui-component-types';
 
 const MenuContext = createContext<MenuContextType | undefined>(undefined)
 

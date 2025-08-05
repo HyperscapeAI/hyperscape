@@ -6,18 +6,18 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-export { createClientWorld } from './core/createClientWorld';
-export { createServerWorld } from './core/createServerWorld';
-export { createViewerWorld } from './core/createViewerWorld';
-export { World } from './core/World';
+export { createClientWorld } from './createClientWorld';
+export { createServerWorld } from './createServerWorld';
+export { createViewerWorld } from './createViewerWorld';
+export { World } from './World';
 
 // Export entity classes
-export { Entity } from './core/entities/Entity';
-export { PlayerLocal } from './core/entities/PlayerLocal';
-export { PlayerRemote } from './core/entities/PlayerRemote';
+export { Entity } from './entities/Entity';
+export { PlayerLocal } from './entities/PlayerLocal';
+export { PlayerRemote } from './entities/PlayerRemote';
 
 // Export System class from core systems
-export { System } from './core/systems/System';
+export { System } from './systems/System';
 
 // Export all types from types/index.ts
 export type {
@@ -48,25 +48,25 @@ export type {
 export { EventType } from './types/events';
 
 // Export node client components directly from their source modules
-export { createNodeClientWorld } from './core/createNodeClientWorld';
-export { ClientControls } from './core/systems/ClientControls';
-export { ClientNetwork } from './core/systems/ClientNetwork';
-export { ServerLoader } from './core/systems/ServerLoader';
-export { NodeClient } from './core/systems/NodeClient';
-export { NodeEnvironment } from './core/systems/NodeEnvironment';
-export { Node } from './core/nodes/Node';
-export { storage } from './core/storage';
-export { loadPhysX, waitForPhysX, getPhysX, isPhysXReady } from './core/PhysXManager';
-export { uuid } from './core/utils';
-export { ReactiveVector3 } from './core/extras/ReactiveVector3';
-export { createEmoteFactory } from './core/extras/createEmoteFactory';
-export { createNode } from './core/extras/createNode';
-export { glbToNodes } from './core/extras/glbToNodes';
-export { Emotes } from './core/extras/playerEmotes';
+export { createNodeClientWorld } from './createNodeClientWorld';
+export { ClientControls } from './systems/ClientControls';
+export { ClientNetwork } from './systems/ClientNetwork';
+export { ServerLoader } from './systems/ServerLoader';
+export { NodeClient } from './systems/NodeClient';
+export { NodeEnvironment } from './systems/NodeEnvironment';
+export { Node } from './nodes/Node';
+export { storage } from './storage';
+export { loadPhysX, waitForPhysX, getPhysX, isPhysXReady } from './PhysXManager';
+export { uuid } from './utils';
+export { ReactiveVector3 } from './extras/ReactiveVector3';
+export { createEmoteFactory } from './extras/createEmoteFactory';
+export { createNode } from './extras/createNode';
+export { glbToNodes } from './extras/glbToNodes';
+export { Emotes } from './extras/playerEmotes';
 // GLTFLoader export disabled due to TypeScript declaration generation issues
-// Users can import it directly: import { GLTFLoader } from './core/libs/gltfloader/GLTFLoader';
-export { CSM } from './core/libs/csm/CSM';
-export type { CSMOptions } from './core/libs/csm/CSM';
+// Users can import it directly: import { GLTFLoader } from './libs/gltfloader/GLTFLoader';
+export { CSM } from './libs/csm/CSM';
+export type { CSMOptions } from './libs/csm/CSM';
 
 // PhysX asset path helper function
 export function getPhysXAssetPath(assetName: string): string {
@@ -78,7 +78,7 @@ export function getPhysXAssetPath(assetName: string): string {
 }
 
 // Export THREE separately to avoid naming conflicts
-export * as THREE from './core/extras/three';
+export * as THREE from './extras/three';
 
 // Export Vector3 compatibility utilities for plugin use
 export { 
@@ -88,7 +88,7 @@ export {
   createVector3,
   toVector3Object,
   isVector3Like
-} from './core/extras/vector3-compatibility';
+} from './extras/vector3-compatibility';
 
 // Export PhysX types
 export type { PxVec3, PxTransform, PxQuat } from './types/physx';

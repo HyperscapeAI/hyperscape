@@ -2,7 +2,7 @@ import React from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Settings, Sun, User, Volume2, X } from 'lucide-react'
 
-import { hasRole } from '../../core/utils'
+import { hasRole } from '../../utils'
 import { InputDropdown, InputRange, InputSwitch, InputText } from './Inputs'
 // InputNumber available but unused
 import { usePane } from './usePane'

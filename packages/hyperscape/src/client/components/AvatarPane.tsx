@@ -2,18 +2,8 @@ import { XIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { AvatarPreview } from '../AvatarPreview'
-import type { World } from '../../core/World'
 import { EventType } from '../../types/events'
-
-interface AvatarPaneProps {
-  world: World
-  info: {
-    file: File
-    url: string
-    onEquip: () => void
-    onPlace: () => void
-  }
-}
+import type { AvatarPaneProps } from '../../types/avatar-types'
 
 export function AvatarPane({ world, info }: AvatarPaneProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null)

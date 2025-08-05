@@ -6,7 +6,7 @@
  */
 
 import type PhysX from '@hyperscape/physx-js-webidl'
-import * as THREE from '../core/extras/three'
+import * as THREE from '../extras/three'
 
 // Re-export the PhysX namespace for direct access
 export type { default as PhysX } from '@hyperscape/physx-js-webidl'

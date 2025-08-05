@@ -2,6 +2,13 @@
 // Provides specialized reporting for game engine testing metrics
 
 import type { File, Reporter, TaskResultPack, UserConsoleLog } from 'vitest'
+import type { PerformanceMetrics, VisualMetrics, SystemMetrics } from '../../types/metrics-types'
+
+// Extend GameplayMetrics for this reporter's specific needs
+export interface GameplayMetrics {
+  actionResponseTime?: number
+  entityInteractions?: number
+}
 
 // Game-specific metadata interfaces extending Vitest's TaskMeta
 export interface GameTaskMeta {
@@ -10,30 +17,6 @@ export interface GameTaskMeta {
   visual?: VisualMetrics
   gameplay?: GameplayMetrics
   system?: SystemMetrics
-}
-
-export interface PerformanceMetrics {
-  renderTime?: number
-  physicsTime?: number
-  networkLatency?: number
-  memoryUsage?: number
-}
-
-export interface VisualMetrics {
-  pixelAccuracy?: number
-  geometryValidation?: number
-  shaderCompliance?: number
-}
-
-export interface GameplayMetrics {
-  actionResponseTime?: number
-  entityInteractions?: number
-}
-
-export interface SystemMetrics {
-  entityCreation?: number
-  componentUpdates?: number
-  systemProcessing?: number
 }
 
 // Vitest TaskResultPack is [id: string, result: TaskResult | undefined, meta: TaskMeta]

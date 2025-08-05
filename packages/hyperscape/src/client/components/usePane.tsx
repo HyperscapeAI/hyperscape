@@ -1,14 +1,9 @@
 import React, { useEffect } from 'react'
 // cloneDeep from lodash-es available but unused
-import { storage } from '../../core/storage'
+import { storage } from '../../storage'
+import type { PaneInfo } from '../../types/ui-component-types';
 
 const STORAGE_KEY = 'panes'
-
-interface PaneInfo {
-  v: number;
-  count: number;
-  configs: Record<string, unknown>;
-}
 
 let info = storage?.get(STORAGE_KEY) as PaneInfo | undefined
 

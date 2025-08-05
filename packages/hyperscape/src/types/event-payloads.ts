@@ -1,11 +1,11 @@
-import { Entity } from '../core/entities/Entity';
-import { PlayerLocal } from '../core/entities/PlayerLocal';
+import { Entity } from '../entities/Entity';
+import { PlayerLocal } from '../entities/PlayerLocal';
 import {
-  PlayerSkills,
+  Skills,
   InventoryItem,
   Position3D
-} from '../rpg/types/core';
-import { RPGItem } from '../rpg/data/items';
+} from '../types/core';
+import type { Item } from '../types/core';
 
 // Core Event Payloads
 export interface PlayerJoinedPayload {
@@ -26,16 +26,16 @@ export interface EntityCreatedPayload {
   entity: Entity;
 }
 
-// RPG Event Payloads
+// Event Payloads
 export interface PlayerLevelUpPayload {
   playerId: string;
-  skill: keyof PlayerSkills;
+  skill: keyof Skills;
   newLevel: number;
 }
 
 export interface PlayerXPGainedPayload {
   playerId: string;
-  skill: keyof PlayerSkills;
+  skill: keyof Skills;
   amount: number;
 }
 
@@ -57,7 +57,7 @@ export interface MobDiedPayload {
 
 // Item System Event Payloads
 export interface ItemDropPayload {
-  item: RPGItem;
+  item: Item;
   position: Position3D;
   playerId: string;
 }
@@ -76,7 +76,7 @@ export interface ItemPickupRequestPayload {
 
 export interface ItemDroppedPayload {
   itemId: string;
-  item: RPGItem;
+  item: Item;
   position: Position3D;
   droppedBy: string;
   playerId: string;

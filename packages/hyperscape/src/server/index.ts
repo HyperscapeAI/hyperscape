@@ -7,21 +7,22 @@ import multipart from '@fastify/multipart'
 import statics from '@fastify/static'
 import ws from '@fastify/websocket'
 import dotenv from 'dotenv'
-import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from 'fastify'
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
 import fs from 'fs-extra'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { installThreeJSExtensions } from '../core/physics/vector-conversions'
+import { installThreeJSExtensions } from '../physics/vector-conversions'
 
 // Load environment variables from multiple possible locations
 dotenv.config({ path: '.env' })
 dotenv.config({ path: '../../../.env' }) // Root workspace .env
 dotenv.config({ path: '../../.env' }) // Parent directory .env
 
-import { createServerWorld } from '../core/createServerWorld'
-import type { Entity } from '../core/entities/Entity'
-import { hashFile } from '../core/utils-server'
+import { createServerWorld } from '../createServerWorld'
+import type { Entity } from '../entities/Entity'
 import type { Settings } from '../types'
+import type { NodeWebSocket } from '../types/network-types'
+import { hashFile } from '../utils-server'
 import { getDB } from './db'
 import { Storage } from './Storage'
 
@@ -37,11 +38,6 @@ interface WebSocketConnection {
 interface ActionRouteGenericInterface {
   Params: { name: string }
   Body: { context?: JSONValue, params?: JSONValue }
-}
-
-interface QueryRouteGenericInterface {
-  Params: { query: string }
-  Body: { context?: JSONValue }
 }
 
 // Wrap server initialization in async function to avoid top-level await
@@ -293,12 +289,12 @@ async function startServer() {
     throw error
   }
 
-  // Register RPG systems static serving if available
-  if (process.env.RPG_SYSTEMS_PATH) {
+  // Register systems static serving if available
+  if (process.env.SYSTEMS_PATH) {
     try {
       await fastify.register(statics, {
-        root: process.env.RPG_SYSTEMS_PATH,
-        prefix: '/rpg/dist/',
+        root: process.env.SYSTEMS_PATH,
+        prefix: '/dist/',
         decorateReply: false,
         setHeaders: res => {
           // Allow client to load JS modules
@@ -308,8 +304,8 @@ async function startServer() {
         },
       })
           } catch (error) {
-        console.error('[Server] Error registering static RPG systems:', error)
-      // Don't throw - RPG systems are optional
+        console.error('[Server] Error registering static systems:', error)
+      // Don't throw - systems are optional
     }
   }
 
@@ -330,7 +326,7 @@ async function startServer() {
         'onConnection' in worldWithNetwork.network &&
         worldWithNetwork.network.onConnection
       ) {
-        worldWithNetwork.network.onConnection(connection.socket, req.query || {})
+        worldWithNetwork.network.onConnection(connection.socket as NodeWebSocket, req.query || {})
       }
     })
   }
@@ -348,8 +344,8 @@ async function startServer() {
   }
 
   // Expose plugin paths to client for systems loading
-  if (process.env.RPG_SYSTEMS_PATH) {
-    publicEnvs['PLUGIN_PATH'] = process.env.RPG_SYSTEMS_PATH
+  if (process.env.SYSTEMS_PATH) {
+    publicEnvs['PLUGIN_PATH'] = process.env.SYSTEMS_PATH
   }
   if (process.env.PLUGIN_PATH) {
     publicEnvs['PLUGIN_PATH'] = process.env.PLUGIN_PATH
@@ -515,48 +511,6 @@ async function startServer() {
       return reply.code(400).send({
         success: false,
         error: error instanceof Error ? error.message : 'Action execution failed',
-      })
-    }
-  })
-
-  // State query endpoints
-  fastify.get<QueryRouteGenericInterface>('/api/state/:query', async (request, reply) => {
-    try {
-      const queryName = request.params.query
-      const query = request.query as Record<string, JSONValue>
-      const context = {
-        world,
-        playerId: query?.playerId,
-        ...query,
-      }
-
-      const result = world.queryState(queryName, context)
-      return reply.send({
-        success: true,
-        result,
-      })
-    } catch (error) {
-      return reply.code(404).send({
-        success: false,
-        error: error instanceof Error ? error.message : 'Query not found',
-      })
-    }
-  })
-
-  fastify.get('/api/state', async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const queries = world.getAllStateQueries()
-      return reply.send({
-        success: true,
-        queries: queries.map((queryName: string) => ({
-          name: queryName,
-          description: '', // No description available from string array
-        })),
-      })
-    } catch (error) {
-      return reply.code(500).send({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
       })
     }
   })

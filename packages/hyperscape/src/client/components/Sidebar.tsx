@@ -4,7 +4,7 @@ import React, { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { isTouch } from '../utils'
 import { cls } from './cls'
 
-import { World } from '../../core/World'
+import { World } from '../../World'
 import { EventType } from '../../types/events'
 import { DraggableWindow } from './DraggableWindow'
 import {
@@ -430,7 +430,7 @@ interface PrefsProps {
 
 function Prefs({ world, hidden: _hidden }: PrefsProps) {
   const player = world.entities.player
-  const [name, setName] = useState(() => player.data.name || '')
+  const [name, setName] = useState(() => player?.name || '')
   const [dpr, setDPR] = useState(world.prefs!.dpr)
   const [shadows, setShadows] = useState(world.prefs!.shadows)
   const [postprocessing, setPostprocessing] = useState(world.prefs!.postprocessing)

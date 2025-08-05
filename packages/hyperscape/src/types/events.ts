@@ -1,5 +1,233 @@
 import * as Payloads from './event-payloads'
 
+/**
+ * Event Types
+ * Defines all event types used in the system
+ */
+
+import type { Position3D } from './core';
+
+// Banking Events
+export interface BankDepositEvent {
+  playerId: string;
+  itemId: string;
+  quantity: number;
+}
+
+export interface BankWithdrawEvent {
+  playerId: string;
+  itemId: string;
+  quantity: number;
+  slotIndex: number;
+}
+
+export interface BankDepositSuccessEvent {
+  playerId: string;
+  itemId: string;
+  quantity: number;
+  bankId: string;
+}
+
+// Store Events
+export interface StoreTransactionEvent {
+  playerId: string;
+  storeId: string;
+  itemId: string;
+  quantity: number;
+  totalCost: number;
+  transactionType: 'buy' | 'sell';
+}
+
+export interface StoreOpenEvent {
+  playerId: string;
+  storeId: string;
+  playerPosition: Position3D;
+}
+
+export interface StoreCloseEvent {
+  playerId: string;
+  storeId: string;
+}
+
+export interface StoreBuyEvent {
+  playerId: string;
+  storeId: string;
+  itemId: string;
+  quantity: number;
+}
+
+export interface StoreSellEvent {
+  playerId: string;
+  storeId: string;
+  itemId: string;
+  quantity: number;
+}
+
+// Inventory Events
+export interface InventoryUpdateEvent {
+  playerId: string;
+  itemId: string;
+  previousQuantity: number;
+  newQuantity: number;
+  action: 'add' | 'remove' | 'update';
+}
+
+export interface InventoryAddEvent {
+  playerId: string;
+  itemId: string;
+  quantity: number;
+}
+
+export interface InventoryCanAddEvent {
+  playerId: string;
+  item: {
+    id: string;
+    name: string;
+    quantity: number;
+    stackable: boolean;
+  };
+  callback: (canAdd: boolean) => void;
+}
+
+export interface InventoryCheckEvent {
+  playerId: string;
+  itemId: string;
+  quantity: number;
+  callback: (hasItem: boolean, inventorySlot: InventoryItemInfo | null) => void;
+}
+export interface InventoryGetCoinsEvent {
+  playerId: string;
+  callback: (coins: number) => void;
+}
+
+export interface InventoryHasEquippedEvent {
+  playerId: string;
+  slot: string;
+  itemType: string;
+  callback: (hasEquipped: boolean) => void;
+}
+
+export interface InventoryRemoveCoinsEvent {
+  playerId: string;
+  amount: number;
+}
+
+export interface InventoryRemoveEvent {
+  playerId: string;
+  itemId: string;
+  quantity: number;
+}
+
+export interface InventoryItemInfo {
+  id: string;
+  name: string;
+  quantity: number;
+  stackable: boolean;
+  slot: string | null;
+}
+
+// Player Events
+export interface PlayerInitEvent {
+  playerId: string;
+  position: Position3D;
+  isNewPlayer: boolean;
+}
+
+export interface PlayerEnterEvent {
+  playerId: string;
+}
+
+export interface PlayerLeaveEvent {
+  playerId: string;
+}
+
+export interface PlayerLevelUpEvent {
+  playerId: string;
+  previousLevel: number;
+  newLevel: number;
+  skill: string;
+}
+
+export interface PlayerXPGainEvent {
+  playerId: string;
+  skill: string;
+  xpGained: number;
+  currentXP: number;
+  currentLevel: number;
+}
+
+export interface HealthUpdateEvent {
+  entityId: string;
+  previousHealth: number;
+  currentHealth: number;
+  maxHealth: number;
+}
+
+export interface PlayerDeathEvent {
+  playerId: string;
+  deathLocation: Position3D;
+  cause: string;
+}
+
+export interface PlayerRespawnRequestEvent {
+  playerId: string;
+  requestTime: number;
+}
+
+export interface PlayerRegisterEvent {
+  id: string;
+  playerId: string;
+  entity: import('../entities/PlayerLocal').PlayerLocal;
+}
+
+// UI Events
+export interface UIMessageEvent {
+  playerId: string;
+  message: string;
+  type: 'info' | 'warning' | 'error' | 'success';
+  duration: number; // 0 for permanent
+}
+
+// Player Events
+export interface AvatarReadyEvent {
+  playerId: string;
+  avatar: unknown; // THREE.Object3D - avoiding direct three.js dependency
+  camHeight: number;
+}
+
+export interface PlayerPositionUpdateEvent {
+  playerId: string;
+  position: { x: number; y: number; z: number };
+}
+
+// Combat Events  
+export interface CombatSessionEvent {
+  sessionId: string;
+  attackerId: string;
+  targetId: string;
+}
+
+export interface CombatHitEvent {
+  sessionId: string;
+  attackerId: string;
+  targetId: string;
+  damage: number;
+  hitType: string;
+}
+
+// Item Events
+export interface ItemSpawnedEvent {
+  itemId: string;
+  position: { x: number; y: number; z: number };
+}
+
+export interface EventData<T = Record<string, unknown>> {
+  type: EventType;
+  data: T;
+  timestamp: number;
+  source: string | null;
+}
+
 export enum EventType {
   // General System
   READY = 'ready',
@@ -293,7 +521,7 @@ export enum EventType {
   STORE_TRANSACTION = 'rpg:store:transaction',
   STORE_PLAYER_COINS = 'rpg:store:player_coins',
 
-  // RPG UI System
+  // UI System
   UI_ATTACK_STYLE_GET = 'rpg:ui:attack_style:get',
   UI_ATTACK_STYLE_UPDATE = 'rpg:ui:attack_style:update',
   UI_ATTACK_STYLE_CHANGED = 'rpg:ui:attack_style:changed',
@@ -515,7 +743,7 @@ export type EventPayloads = {
   [EventType.PLAYER_JOINED]: Payloads.PlayerJoinedPayload
   [EventType.ENTITY_CREATED]: Payloads.EntityCreatedPayload
 
-  // RPG Events
+  // Events
   [EventType.PLAYER_LEVEL_UP]: Payloads.PlayerLevelUpPayload
   [EventType.PLAYER_XP_GAINED]: Payloads.PlayerXPGainedPayload
   [EventType.COMBAT_STARTED]: Payloads.CombatStartedPayload

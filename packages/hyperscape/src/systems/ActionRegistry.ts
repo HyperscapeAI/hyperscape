@@ -1,0 +1,457 @@
+import type { ActionContext, ActionDefinition, World } from '../types';
+import { EventType } from '../types/events';
+import { SystemBase } from './SystemBase';
+
+/**
+ * Base ActionRegistry class for managing action definitions
+ */
+class BaseActionRegistry {
+  private actions = new Map<string, ActionDefinition>();
+  
+  register(action: ActionDefinition): void {
+    this.actions.set(action.name, action);
+  }
+  
+  unregister(name: string): boolean {
+    const removed = this.actions.delete(name);
+    if (removed) {
+      // Action successfully removed from registry
+    }
+    return removed;
+  }
+  
+  get(name: string): ActionDefinition | undefined {
+    return this.actions.get(name);
+  }
+  
+  getAll(): ActionDefinition[] {
+    return Array.from(this.actions.values());
+  }
+  
+  getAvailable(context: ActionContext): ActionDefinition[] {
+    return this.getAll().filter(action => {
+      if (!action.validate) return true;
+      try {
+        return action.validate(context);
+      } catch {
+        // If validation throws, exclude the action
+        return false;
+      }
+    });
+  }
+  
+  async execute(name: string, context: ActionContext, params: Record<string, unknown>): Promise<unknown> {
+    const action = this.actions.get(name);
+    if (!action) {
+      throw new Error(`Action not found: ${name}`);
+    }
+    
+    if (action.validate && !action.validate(context)) {
+      throw new Error(`Action validation failed: ${name}`);
+    }
+    
+    return await action.execute(context, params);
+  }
+}
+
+/**
+ * Action Registry System
+ * 
+ * This system creates and manages the world's actionRegistry,
+ * exposing all actions for agent discovery and execution.
+ */
+export class ActionRegistry extends SystemBase {
+  private actionRegistryInstance: BaseActionRegistry;
+
+  constructor(world: World) {
+    super(world, {
+      name: 'rpg-action-registry',
+      dependencies: {
+        required: [], // Action registry can work independently
+        optional: ['rpg-combat', 'rpg-inventory', 'rpg-skills', 'rpg-banking', 'rpg-store', 'rpg-movement'] // Better with all game systems
+      },
+      autoCleanup: true
+    });
+    this.actionRegistryInstance = new BaseActionRegistry();
+    
+    // Attach to world for discovery with compatible interface
+    world.actionRegistry = {
+      getAll: () => this.actionRegistryInstance.getAll().map(action => ({
+        name: action.name,
+        description: action.description,
+        parameters: action.parameters,
+        validate: action.validate,
+        execute: action.execute
+      })),
+      getAvailable: (context: Record<string, unknown>) => this.actionRegistryInstance.getAvailable(context as unknown as ActionContext).map(action => ({
+        name: action.name,
+        description: action.description,
+        parameters: action.parameters,
+        validate: action.validate,
+        execute: action.execute
+      })),
+      execute: (name: string, context: Record<string, unknown>, params: Record<string, unknown>) => 
+        this.actionRegistryInstance.execute(name, context as unknown as ActionContext, params)
+    };
+  }
+
+  async init(): Promise<void> {
+    // Register all actions
+    this.registerCombatActions();
+    this.registerInventoryActions();
+    this.registerSkillActions();
+    this.registerBankingActions();
+    this.registerStoreActions();
+    this.registerMovementActions();
+    
+    console.log(`[ActionRegistry] Registered ${this.actionRegistryInstance.getAll().length} actions`);
+  }
+
+  private registerCombatActions(): void {
+    this.actionRegistryInstance.register({
+      name: 'attack',
+      description: 'Attack a target mob or player',
+      parameters: [
+        { name: 'targetId', type: 'string', required: true, description: 'ID of the target to attack' }
+      ],
+      validate: (_context: ActionContext): boolean => {
+        // Check if player is in combat range, has weapon, etc.
+        return true;
+      },
+      execute: async (context: ActionContext, params: Record<string, unknown>) => {
+        const { world } = context;
+        const playerId = context.playerId || world.network.id;
+        
+        world.emit(EventType.COMBAT_START_ATTACK, { 
+          attackerId: playerId, 
+          targetId: params.targetId as string
+        });
+        
+        return { success: true, message: `Started attacking ${params.targetId}` };
+      }
+    });
+
+    this.actionRegistryInstance.register({
+      name: 'stop_attack',
+      description: 'Stop current combat',
+      parameters: [],
+      execute: async (context: ActionContext, _params: Record<string, unknown>) => {
+        const { world } = context;
+        const playerId = context.playerId || world.network.id;
+        
+        world.emit(EventType.COMBAT_STOP_ATTACK, { attackerId: playerId });
+        return { success: true, message: 'Stopped attacking' };
+      }
+    });
+  }
+
+  private registerInventoryActions(): void {
+    this.actionRegistryInstance.register({
+      name: 'use_item',
+      description: 'Use an item from inventory',
+      parameters: [
+        { name: 'itemId', type: 'string', required: true, description: 'ID of the item to use' },
+        { name: 'slot', type: 'number', required: true, description: 'Inventory slot number' }
+      ],
+      execute: async (context: ActionContext, params: Record<string, unknown>) => {
+        const { world } = context;
+        const playerId = context.playerId || world.network.id;
+        
+        // Validate slot parameter
+        const slot = params.slot as number;
+        if (typeof slot !== 'number' || slot < 0) {
+          return { success: false, message: 'Invalid slot number provided' };
+        }
+        
+        // Get item action system
+        const itemActionSystem = world.getSystem('rpg-item-actions');
+        if (itemActionSystem) {
+          // Trigger appropriate action based on item type
+          world.emit(EventType.INVENTORY_USE, { playerId, itemId: params.itemId as string, slot });
+        }
+        
+        return { success: true, message: `Using item ${params.itemId}` };
+      }
+    });
+
+    this.actionRegistryInstance.register({
+      name: 'drop_item',
+      description: 'Drop an item from inventory',
+      parameters: [
+        { name: 'itemId', type: 'string', required: true, description: 'ID of the item to drop' },
+        { name: 'quantity', type: 'number', required: false, description: 'Amount to drop' }
+      ],
+      execute: async (context: ActionContext, params: Record<string, unknown>) => {
+        const { world } = context;
+        const playerId = context.playerId || world.network.id;
+        
+        world.emit(EventType.ITEM_DROP, { 
+          playerId, 
+          itemId: params.itemId as string, 
+          quantity: (params.quantity as number) || 1 
+        });
+        
+        return { success: true, message: `Dropped item ${params.itemId}` };
+      }
+    });
+
+    this.actionRegistryInstance.register({
+      name: 'equip_item',
+      description: 'Equip an item',
+      parameters: [
+        { name: 'itemId', type: 'string', required: true, description: 'ID of the item to equip' },
+        { name: 'slot', type: 'string', required: false, description: 'Equipment slot (auto-detect if not provided)' }
+      ],
+      execute: async (context: ActionContext, params: Record<string, unknown>) => {
+        const { world } = context;
+        const playerId = context.playerId || world.network.id;
+        
+        world.emit(EventType.EQUIPMENT_TRY_EQUIP, { 
+          playerId, 
+          itemId: params.itemId as string, 
+          slot: params.slot as number
+        });
+        
+        return { success: true, message: `Equipping item ${params.itemId}` };
+      }
+    });
+
+    this.actionRegistryInstance.register({
+      name: 'pickup_item',
+      description: 'Pick up an item from the ground',
+      parameters: [
+        { name: 'itemId', type: 'string', required: true, description: 'ID of the ground item to pick up' }
+      ],
+      execute: async (context: ActionContext, params: Record<string, unknown>) => {
+        const { world } = context;
+        const playerId = context.playerId || world.network.id;
+        
+        world.emit(EventType.ITEM_PICKUP_REQUEST, { 
+          playerId, 
+          itemId: params.itemId as string
+        });
+        
+        return { success: true, message: `Picking up item ${params.itemId}` };
+      }
+    });
+  }
+
+  private registerSkillActions(): void {
+    this.actionRegistryInstance.register({
+      name: 'start_gathering',
+      description: 'Start gathering a resource',
+      parameters: [
+        { name: 'resourceId', type: 'string', required: true, description: 'ID of the resource to gather' }
+      ],
+      execute: async (context: ActionContext, params: Record<string, unknown>) => {
+        const { world } = context;
+        const playerId = context.playerId || world.network.id;
+        const player = world.entities.player;
+        
+        world.emit(EventType.RESOURCE_GATHERING_STARTED, { 
+          playerId, 
+          resourceId: params.resourceId,
+          playerPosition: player?.position 
+        });
+        
+        return { success: true, message: `Started gathering ${params.resourceId}` };
+      }
+    });
+
+    this.actionRegistryInstance.register({
+      name: 'stop_gathering',
+      description: 'Stop current gathering action',
+      parameters: [],
+      execute: async (context: ActionContext, _params: Record<string, unknown>) => {
+        const { world } = context;
+        const playerId = context.playerId || world.network.id;
+        
+        world.emit(EventType.RESOURCE_GATHERING_STOPPED, { playerId });
+        return { success: true, message: 'Stopped gathering' };
+      }
+    });
+  }
+
+  private registerBankingActions(): void {
+    this.actionRegistryInstance.register({
+      name: 'open_bank',
+      description: 'Open a bank interface',
+      parameters: [
+        { name: 'bankId', type: 'string', required: true, description: 'ID of the bank to open' }
+      ],
+      execute: async (context: ActionContext, params: Record<string, unknown>) => {
+        const { world } = context;
+        const playerId = context.playerId || world.network.id;
+        const player = world.entities.player;
+        
+        world.emit(EventType.BANK_OPEN, { 
+          playerId, 
+          bankId: params.bankId,
+          playerPosition: player?.position 
+        });
+        
+        return { success: true, message: `Opening bank ${params.bankId}` };
+      }
+    });
+
+    this.actionRegistryInstance.register({
+      name: 'deposit_item',
+      description: 'Deposit an item into the bank',
+      parameters: [
+        { name: 'bankId', type: 'string', required: true, description: 'ID of the bank' },
+        { name: 'itemId', type: 'string', required: true, description: 'ID of the item to deposit' },
+        { name: 'quantity', type: 'number', required: false, description: 'Amount to deposit' }
+      ],
+      execute: async (context: ActionContext, params: Record<string, unknown>) => {
+        const { world } = context;
+        const playerId = context.playerId || world.network.id;
+        
+        world.emit(EventType.BANK_DEPOSIT, { 
+          playerId, 
+          bankId: params.bankId as string,
+          itemId: params.itemId as string,
+          quantity: (params.quantity as number) || 1
+        });
+        
+        return { success: true, message: `Deposited ${(params.quantity as number) || 1} ${params.itemId}` };
+      }
+    });
+  }
+
+  private registerStoreActions(): void {
+    this.actionRegistryInstance.register({
+      name: 'open_store',
+      description: 'Open a store interface',
+      parameters: [
+        { name: 'storeId', type: 'string', required: true, description: 'ID of the store to open' }
+      ],
+      execute: async (context: ActionContext, params: Record<string, unknown>) => {
+        const { world } = context;
+        const playerId = context.playerId || world.network.id;
+        const player = world.entities.player;
+        
+        world.emit(EventType.STORE_OPEN, { 
+          playerId, 
+          storeId: params.storeId,
+          playerPosition: player?.position 
+        });
+        
+        return { success: true, message: `Opening store ${params.storeId}` };
+      }
+    });
+
+    this.actionRegistryInstance.register({
+      name: 'buy_item',
+      description: 'Buy an item from a store',
+      parameters: [
+        { name: 'storeId', type: 'string', required: true, description: 'ID of the store' },
+        { name: 'itemId', type: 'string', required: true, description: 'ID of the item to buy' },
+        { name: 'quantity', type: 'number', required: false, description: 'Amount to buy' }
+      ],
+      execute: async (context: ActionContext, params: Record<string, unknown>) => {
+        const { world } = context;
+        const playerId = context.playerId || world.network.id;
+        
+        world.emit(EventType.STORE_BUY, { 
+          playerId, 
+          storeId: params.storeId as string,
+          itemId: params.itemId as string,
+          quantity: (params.quantity as number) || 1
+        });
+        
+        return { success: true, message: `Buying ${(params.quantity as number) || 1} ${params.itemId}` };
+      }
+    });
+
+    this.actionRegistryInstance.register({
+      name: 'sell_item',
+      description: 'Sell an item to a store',
+      parameters: [
+        { name: 'storeId', type: 'string', required: true, description: 'ID of the store' },
+        { name: 'itemId', type: 'string', required: true, description: 'ID of the item to sell' },
+        { name: 'quantity', type: 'number', required: false, description: 'Amount to sell' }
+      ],
+      execute: async (context: ActionContext, params: Record<string, unknown>) => {
+        const { world } = context;
+        const playerId = context.playerId || world.network.id;
+        
+        world.emit(EventType.STORE_SELL, { 
+          playerId, 
+          storeId: params.storeId as string,
+          itemId: params.itemId as string,
+          quantity: (params.quantity as number) || 1
+        });
+        
+        return { success: true, message: `Selling ${(params.quantity as number) || 1} ${params.itemId}` };
+      }
+    });
+  }
+
+  private registerMovementActions(): void {
+    this.actionRegistryInstance.register({
+      name: 'move_to',
+      description: 'Move to a specific location',
+      parameters: [
+        { name: 'x', type: 'number', required: true, description: 'X coordinate' },
+        { name: 'y', type: 'number', required: false, description: 'Y coordinate' },
+        { name: 'z', type: 'number', required: true, description: 'Z coordinate' }
+      ],
+      execute: async (context: ActionContext, params: Record<string, unknown>) => {
+        const { world } = context;
+        const playerId = context.playerId || world.network.id;
+        
+        world.emit(EventType.MOVEMENT_CLICK_TO_MOVE, { 
+          playerId,
+          targetPosition: { x: params.x as number, y: (params.y as number) || 0, z: params.z as number }
+        });
+        
+        return { success: true, message: `Moving to (${params.x}, ${params.z})` };
+      }
+    });
+
+    this.actionRegistryInstance.register({
+      name: 'stop_moving',
+      description: 'Stop current movement',
+      parameters: [],
+      execute: async (context: ActionContext, _params: Record<string, unknown>) => {
+        const { world } = context;
+        const playerId = context.playerId || world.network.id;
+        
+        world.emit('movement:stop', { playerId });
+        return { success: true, message: 'Stopped moving' };
+      }
+    });
+  }
+
+  /**
+   * Get action registry for external access
+   */
+  getActionRegistry(): BaseActionRegistry {
+    return this.actionRegistryInstance;
+  }
+
+  /**
+   * Cleanup when system is destroyed
+   */
+  destroy(): void {
+    // Clear all registered actions by creating a new ActionRegistry
+    if (this.actionRegistryInstance) {
+      // Get all action names and unregister them
+      const allActions = this.actionRegistryInstance.getAll();
+      for (const action of allActions) {
+        this.actionRegistryInstance.unregister(action.name);
+      }
+    }
+    
+    // Clear from world
+    this.world.actionRegistry = undefined;
+    
+
+    
+    // Call parent cleanup
+    super.destroy();
+  }
+}
+
+// Export the base ActionRegistry for testing and other uses
+export { BaseActionRegistry };

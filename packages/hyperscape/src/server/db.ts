@@ -1,13 +1,8 @@
 import type { Knex } from 'knex';
 import knex from 'knex';
+import type { PluginMigration } from '../types/database';
 
 type Database = Knex
-
-interface PluginMigration {
-  name: string;
-  up: (knex: Knex) => Promise<void>;
-  down?: (knex: Knex) => Promise<void>;
-}
 
 // Global registry for plugin migrations
 const pluginMigrations: Record<string, PluginMigration[]> = {};
@@ -39,7 +34,7 @@ async function runPluginMigrations(knex: Knex): Promise<void> {
     for (const migration of migrations) {
       if (!executedNames.has(migration.name)) {
         console.log(`[DB] Running plugin migration: ${pluginName}.${migration.name}`);
-        await migration.up(knex);
+        await migration.up(knex as unknown);
         await knex(migrationTableName).insert({ name: migration.name });
       }
     }

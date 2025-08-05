@@ -1,10 +1,10 @@
 import { MessageSquareIcon, RefreshCwIcon } from 'lucide-react'
 import React, { useEffect, useRef, useState } from 'react'
 
-import { buttons, propToLabel } from '../../core/extras/buttons'
-import { ControlPriorities } from '../../core/extras/ControlPriorities'
-import { World } from '../../core/World'
-import { RPGInterface } from '../../rpg/components/RPGInterface'
+import { buttons, propToLabel } from '../../extras/buttons'
+import { ControlPriorities } from '../../extras/ControlPriorities'
+import { World } from '../../World'
+import { Interface } from '../../components/Interface'
 import type { ChatMessage, ControlAction, ControlBinding } from '../../types'
 import { EventType } from '../../types/events'
 import { cls, isTouch } from '../utils'
@@ -97,7 +97,7 @@ export function CoreUI({ world }: { world: World }) {
       {ready && <ActionsBlock world={world} />}
       {ready && <Sidebar world={world as unknown as Parameters<typeof Sidebar>[0]['world']} ui={ui || { active: false, pane: null }} />}
       {ready && <Chat world={world} />}
-      {ready && <RPGInterface world={world} />}
+      {ready && <Interface world={world} />}
       {avatar && <AvatarPane key={avatar?.hash} world={world} info={avatar} />}
       {!ready && <LoadingOverlay world={world} />}
       {kicked && <KickedOverlay code={kicked} />}

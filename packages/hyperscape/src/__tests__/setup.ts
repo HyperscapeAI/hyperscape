@@ -4,7 +4,7 @@
 
 
 import { vi } from 'vitest'
-import * as THREE from '../core/extras/three'
+import * as THREE from '../extras/three'
 
 // Verify Three.js is on globalThis
 if (!globalThis.THREE) {

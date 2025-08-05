@@ -5,12 +5,11 @@
  */
 
 import PhysX from '@hyperscape/physx-js-webidl'
-import * as THREE from '../core/extras/three'
-import type { CombatData } from '../rpg/systems/RPGCombatSystem'
-import type { RPGItem, PlayerData, Town } from '../rpg/types/core'
+import * as THREE from '../extras/three'
+import type { CombatData } from '../systems/CombatSystem'
+import type { Item, Town } from '../types/core'
 import type { Player, System, World } from './index'
-import { RPGEntity } from '../rpg'
-import { Settings as _Settings } from '../core/systems/Settings'
+import { Entity } from '../entities/Entity'
 
 // Core System Interfaces
 
@@ -93,24 +92,24 @@ export interface XRSystem extends System {
   enter(): void
 }
 
-// RPG System Interfaces
+// System Interfaces
 
-export interface RPGPlayerSystem extends System {
+export interface PlayerSystem extends System {
   initializePlayer(playerId: string): void
   savePlayerToDatabase(playerId: string): void
   onPlayerEnter(event: { playerId: string }): void
-  getPlayer(playerId: string): PlayerData | null
+  getPlayer(playerId: string): Player | null
 }
 
-export interface RPGMobSystem extends System {
-  getMob(mobId: string): RPGEntity | null
+export interface MobSystem extends System {
+  getMob(mobId: string): Entity | null
   spawnMob(config: unknown): Promise<unknown>
   getMobCount(): number
-  getActiveMobs(): RPGEntity[]
+  getActiveMobs(): Entity[]
   getSpawnedMobs(): Map<string, unknown>
 }
 
-export interface RPGCombatSystem extends System {
+export interface CombatSystem extends System {
   startCombat(attackerId: string, targetId: string, options?: unknown): boolean
   isInCombat(entityId: string): boolean
   getCombatData(entityId: string): CombatData | null
@@ -118,7 +117,7 @@ export interface RPGCombatSystem extends System {
   getActiveCombats(): Map<string, CombatData>
 }
 
-export interface RPGInventorySystem extends System {
+export interface InventorySystem extends System {
   addItem(playerId: string, itemId: string, quantity: number): boolean
   removeItem(playerId: string, itemId: string, quantity: number): boolean
   getPlayerInventory(playerId: string): unknown[]
@@ -126,50 +125,50 @@ export interface RPGInventorySystem extends System {
   playerInventories: Map<string, unknown>
 }
 
-export interface RPGEquipmentSystem extends System {
+export interface EquipmentSystem extends System {
   equipItem(data: { playerId: string; itemId: string | number; slot: string; inventorySlot?: number }): void
   unequipItem(data: { playerId: string; slot: string }): void
   consumeArrow(playerId: string): boolean
   playerEquipment: Map<string, unknown>
 }
 
-export interface RPGStoreSystem extends System {
+export interface StoreSystem extends System {
   purchaseItem(playerId: string, itemId: string, quantity: number, expectedPrice: number): Promise<boolean>
   sellItem(playerId: string, itemId: string, quantity: number, expectedPrice: number): Promise<boolean>
   stores: Map<string, unknown>
 }
 
-export interface RPGBankingSystem extends System {
+export interface BankingSystem extends System {
   playerBanks: Map<string, unknown>
 }
 
-export interface RPGXPSystem extends System {
+export interface XPSystem extends System {
   getSkillLevel(playerId: string, skill: string): number
   getSkillData(playerId: string, skill: string): unknown
   getCombatLevel(playerId: string): number
 }
 
-export interface RPGMovementSystem extends System {
+export interface MovementSystem extends System {
   startPlayerMovement(playerId: string, target: unknown): void
   teleportPlayer(playerId: string, position: unknown): void
   movePlayer(playerId: string, destination: unknown, options?: unknown): void
 }
 
-export interface RPGPathfindingSystem extends System {
+export interface PathfindingSystem extends System {
   findPath(start: unknown, end: unknown): unknown[]
 }
 
-export interface RPGWorldGenerationSystem extends System {
+export interface WorldGenerationSystem extends System {
   getTowns(): Town[]
 }
 
-export interface RPGEntityManager extends System {
-  getEntity(entityId: string): RPGEntity | undefined
+export interface EntityManager extends System {
+  getEntity(entityId: string): Entity | undefined
   getEntityCounts(): Record<string, number>
 }
 
-export interface RPGItemRegistrySystem extends System {
-  get(itemId: string): RPGItem | null
+export interface ItemRegistrySystem extends System {
+  get(itemId: string): Item | null
 }
 
 // Augment the World interface to include typed system retrieval
@@ -190,21 +189,21 @@ export interface RPGItemRegistrySystem extends System {
 //     xr?: XRSystem
 //     terrain?: TerrainSystem
 //     
-//     // RPG systems
+//     // systems
 //     rpg?: {
-//       player?: RPGPlayerSystem
-//       mob?: RPGMobSystem
-//       combat?: RPGCombatSystem
-//       inventory?: RPGInventorySystem
-//       equipment?: RPGEquipmentSystem
-//       store?: RPGStoreSystem
-//       banking?: RPGBankingSystem
-//       xp?: RPGXPSystem
-//       movement?: RPGMovementSystem
-//       pathfinding?: RPGPathfindingSystem
-//       worldGeneration?: RPGWorldGenerationSystem
-//       entityManager?: RPGEntityManager
-//       itemRegistry?: RPGItemRegistrySystem
+//       player?: PlayerSystem
+//       mob?: MobSystem
+//       combat?: CombatSystem
+//       inventory?: InventorySystem
+//       equipment?: EquipmentSystem
+//       store?: StoreSystem
+//       banking?: BankingSystem
+//       xp?: XPSystem
+//       movement?: MovementSystem
+//       pathfinding?: PathfindingSystem
+//       worldGeneration?: WorldGenerationSystem
+//       entityManager?: EntityManager
+//       itemRegistry?: ItemRegistrySystem
 //     }
 //     
 //     // Typed system retrieval
@@ -218,7 +217,7 @@ export function isPhysicsSystem(system: System): system is PhysicsSystem {
   return 'scene' in system && 'createLayerMask' in system
 }
 
-export function isRPGMobSystem(system: System): system is RPGMobSystem {
+export function isMobSystem(system: System): system is MobSystem {
   return 'getMob' in system && 'spawnMob' in system
 }
 

@@ -1,23 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import * as THREE from '../../core/extras/three';
-import type { World } from '../../core/World';
+import { Entity } from '../../entities/Entity';
+import * as THREE from '../../extras/three';
 import type { Player } from '../../types';
-
-interface MinimapProps {
-  world: World
-  width?: number
-  height?: number
-  zoom?: number
-  className?: string
-  style?: React.CSSProperties
-}
-
-interface EntityPip {
-  id: string
-  type: 'player' | 'enemy' | 'building' | 'item'
-  position: THREE.Vector3
-  color: string
-}
+import type { EntityPip, MinimapProps } from '../../types/ui-component-types';
 
 export function Minimap({ 
   world, 
@@ -31,7 +16,6 @@ export function Minimap({
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
   const cameraRef = useRef<THREE.OrthographicCamera | null>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
-  const _terrainMeshRef = useRef<THREE.Mesh | null>(null)
   const [entityPips, setEntityPips] = useState<EntityPip[]>([])
 
   // Initialize minimap renderer and camera
@@ -93,8 +77,8 @@ export function Minimap({
     if (!world.entities.player || !cameraRef.current) return
 
     const updateCameraPosition = () => {
-      const player = world.entities.player
-      if (cameraRef.current) {
+      const player = world.entities.player as Entity
+      if (cameraRef.current && player) {
         cameraRef.current.position.x = player.node.position.x
         cameraRef.current.position.z = player.node.position.z
         cameraRef.current.lookAt(
@@ -144,10 +128,10 @@ export function Minimap({
         })
       }
 
-      // Add enemies - check RPG entities or stage entities
+      // Add enemies - check entities or stage entities
       if (world.stage.scene) {
         world.stage.scene.traverse((object) => {
-          // Look for RPG mob entities with certain naming patterns
+          // Look for mob entities with certain naming patterns
           if (object.name && (
             object.name.includes('Goblin') || 
             object.name.includes('Bandit') || 
@@ -190,10 +174,8 @@ export function Minimap({
         })
       }
 
-      // Check for RPG-specific entities via systems
-      if (world.systems) {
         world.systems.forEach((_system) => {
-          // Look for RPG systems that might have entity data
+          // Look for systems that might have entity data
           Object.values(world.entities).forEach((entity) => {
             let color = '#ffffff'
             let type: EntityPip['type'] = 'item'
@@ -224,7 +206,6 @@ export function Minimap({
             })
           })
         })
-      }
 
       setEntityPips(pips)
     }

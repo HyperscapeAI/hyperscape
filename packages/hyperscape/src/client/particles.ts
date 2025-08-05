@@ -1,7 +1,7 @@
 const emitters: { [key: string]: ParticleEmitter | null } = {}
 
-import { DEG2RAD } from '../core/extras/general'
-import { Vector3, Quaternion, Matrix4, Color } from '../core/extras/three'
+import { DEG2RAD } from '../extras/general'
+import { Vector3, Quaternion, Matrix4, Color } from '../extras/three'
 
 const v1 = new Vector3()
 const v2 = new Vector3()

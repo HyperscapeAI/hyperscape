@@ -11,26 +11,7 @@ import {
 } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { cls } from './cls';
-
-// THREE.js-like node interface
-interface HierarchyNode {
-  id?: string;
-  name?: string;
-  constructor?: { name: string };
-  children?: HierarchyNode[];
-  position?: { x: number; y: number; z: number } | { getHexString?: () => string };
-  rotation?: { x: number; y: number; z: number };
-  scale?: { x: number; y: number; z: number };
-  material?: {
-    type?: string;
-    color?: {
-      getHexString?: () => string;
-    };
-  };
-  geometry?: {
-    type?: string;
-  };
-}
+import type { HierarchyNode } from '../../types/ui-component-types';
 
 export function NodeHierarchy({ app }) {
   const [selectedNode, setSelectedNode] = useState<HierarchyNode | null>(null)

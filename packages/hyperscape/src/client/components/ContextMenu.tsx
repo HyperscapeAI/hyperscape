@@ -1,20 +1,5 @@
 import React, { useEffect, useRef } from 'react'
-
-interface ContextMenuAction {
-  id: string
-  label: string
-  icon?: string
-  enabled: boolean
-  onClick: () => void
-}
-
-interface ContextMenuProps {
-  visible: boolean
-  position: { x: number; y: number }
-  actions: ContextMenuAction[]
-  onClose: () => void
-  title?: string
-}
+import type { ContextMenuProps } from '../../types/ui-types'
 
 export function ContextMenu({ visible, position, actions, onClose, title }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)

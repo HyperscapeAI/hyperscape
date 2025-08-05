@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { hasRole } from '../../core/utils'
+import { hasRole } from '../../utils'
 
 export function usePermissions(world) {
   const [perms, setPerms] = useState(() => {

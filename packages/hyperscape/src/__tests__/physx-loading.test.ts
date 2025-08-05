@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest'
-import { loadPhysX, isPhysXReady, getPhysX } from '../core/PhysXManager'
+import { loadPhysX, isPhysXReady, getPhysX } from '../PhysXManager'
 import type PhysX from '@hyperscape/physx-js-webidl'
 
 describe('PhysX Loading', () => {

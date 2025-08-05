@@ -4,11 +4,7 @@
  * Supports basic arithmetic operations: +, -, *, /, (), decimal numbers
  */
 
-interface ParseResult {
-  success: boolean;
-  value: number;
-  error?: string;
-}
+import type { ParseResult } from '../../types/ui-component-types';
 
 export class SafeMathParser {
   private static readonly OPERATORS = ['+', '-', '*', '/', '(', ')'];

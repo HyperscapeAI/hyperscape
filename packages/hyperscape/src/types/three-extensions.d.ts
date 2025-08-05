@@ -1,4 +1,4 @@
-import * as THREE from '../core/extras/three';
+import * as THREE from '../extras/three';
 import type PhysX from '@hyperscape/physx-js-webidl';
 
 declare module 'three' {

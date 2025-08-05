@@ -2,8 +2,10 @@
  * Physics-related type definitions (non-PhysX specific)
  */
 
-import * as THREE from '../core/extras/three';
-import type { System } from '../core/systems/System';
+import * as THREE from '../extras/three';
+import type { System } from '../systems/System';
+import type PhysX from '@hyperscape/physx-js-webidl'
+import type { Entity, Collider } from './index'
 
 // Geometry to PhysX mesh conversion interfaces
 export interface GeometryPhysXMesh {
@@ -199,38 +201,71 @@ export interface CurveManagerOptions {
 // Camera interpolation interfaces
 export interface CameraTarget {
   position: THREE.Vector3;
-  quaternion?: THREE.Quaternion;
-  fov?: number;
+  quaternion: THREE.Quaternion;
+  zoom: number;
 }
 
 export interface Camera {
   position: THREE.Vector3;
   quaternion: THREE.Quaternion;
-  fov?: number;
+  zoom: number;
 }
 
 // BufferedLerpQuaternion interfaces
 export interface Sample {
   time: number;
-  quaternion: THREE.Quaternion;
+  value: THREE.Quaternion;
 }
 
 // Layers interfaces
 export interface Layer {
-  id: number;
-  name: string;
+  group: number;
+  mask: number;
 }
 
 export interface LayersType {
-  [key: string]: Layer;
+  camera?: Layer;
+  player?: Layer;
+  environment?: Layer;
+  prop?: Layer;
+  tool?: Layer;
+  [key: string]: Layer | undefined;
 }
 
 // LooseOctree interfaces
 export interface OctreeItem {
-  id: string;
-  position: THREE.Vector3;
-  radius: number;
-  object?: unknown;
+  sphere?: THREE.Sphere;
+  geometry: THREE.BufferGeometry;
+  material: THREE.Material | THREE.Material[];
+  matrix: THREE.Matrix4;
+  getEntity: () => unknown;
+  node?: unknown;
+  _node?: {
+    canContain?: (item: OctreeItem) => boolean;
+    checkCollapse?: () => void;
+    remove?: (item: OctreeItem) => void;
+  };
+}
+
+export interface RenderHelperItem {
+  idx: number;
+  matrix: THREE.Matrix4;
+}
+
+export interface OctreeHelper {
+  init: () => void;
+  insert: (node: unknown) => void;
+  remove: (node: unknown) => void;
+  destroy: () => void;
+}
+
+export interface ExtendedIntersection extends THREE.Intersection {
+  getEntity?: () => unknown;
+  node?: unknown;
+}
+
+export interface ShaderModifier {
+  vertexShader: string;
 }
 
 export interface LooseOctreeOptions {
@@ -247,20 +282,22 @@ export interface HelperItem {
 
 // Player proxy interfaces
 export interface PlayerEffect {
-  type: string;
+  anchorId?: string;
+  emote?: string;
+  snare?: number;
+  freeze?: boolean;
+  turn?: boolean;
   duration?: number;
-  intensity?: number;
-  color?: string | number;
-  [key: string]: unknown;
+  cancellable?: boolean;
 }
 
 export interface EffectOptions {
+  anchor?: { anchorId: string };
+  emote?: string;
+  snare?: number;
+  freeze?: boolean;
+  turn?: boolean;
   duration?: number;
-  intensity?: number;
-  color?: string | number;
-  fadeIn?: number;
-  fadeOut?: number;
-  loop?: boolean;
   cancellable?: boolean;
   onEnd?: () => void;
 }
@@ -268,19 +305,22 @@ export interface EffectOptions {
 // Player touch interfaces
 export interface PlayerTouch {
   id: number;
-  startX: number;
-  startY: number;
-  currentX: number;
-  currentY: number;
-  deltaX: number;
-  deltaY: number;
-  startTime: number;
+  x: number;
+  y: number;
+  pressure: number;
+  position?: { x: number; y: number };
+  delta?: { x: number; y: number };
 }
 
 export interface StickState {
   active: boolean;
   angle: number;
   distance: number;
+}
+
+export interface PlayerStickState {
+  touch: PlayerTouch;
+  center: { x: number; y: number };
 }
 
 export interface NodeDataFromGLB {
@@ -290,4 +330,210 @@ export interface NodeDataFromGLB {
   rotation?: [number, number, number];
   scale?: [number, number, number];
   [key: string]: unknown;
+}
+
+// Physics system types from Physics.ts
+// PhysX type aliases
+export type PxActor = PhysX.PxActor
+export type PxRigidDynamic = PhysX.PxRigidDynamic
+export type PxRigidStatic = PhysX.PxRigidStatic
+export type PxTransform = PhysX.PxTransform
+export type PxShape = PhysX.PxShape
+export type PxMaterial = PhysX.PxMaterial
+export type PxScene = PhysX.PxScene
+export type PxController = PhysX.PxController
+export type PxControllerManager = PhysX.PxControllerManager
+export type PxPhysics = PhysX.PxPhysics
+export type PxGeometry = PhysX.PxGeometry
+export type PxSphereGeometry = PhysX.PxSphereGeometry
+export type PxFoundation = PhysX.PxFoundation
+export type PxTolerancesScale = PhysX.PxTolerancesScale
+export type PxCookingParams = PhysX.PxCookingParams
+export type PxControllerFilters = PhysX.PxControllerFilters
+export type PxQueryFilterData = PhysX.PxQueryFilterData
+export type PxRaycastResult = PhysX.PxRaycastResult
+export type PxSweepResult = PhysX.PxSweepResult
+export type PxOverlapResult = PhysX.PxOverlapResult
+export type PxVec3 = PhysX.PxVec3
+
+// Contact/Trigger events
+export interface ContactEvent {
+  tag: string | null;
+  playerId: string | null;
+  contacts?: Array<{
+    position: THREE.Vector3;
+    normal: THREE.Vector3;
+    impulse: THREE.Vector3;
+  }>;
+}
+
+export interface TriggerEvent {
+  tag: string | null;
+  playerId: string | null;
+}
+
+// Physics handles
+export interface InterpolationData {
+  prev: { position: THREE.Vector3; quaternion: THREE.Quaternion };
+  next: { position: THREE.Vector3; quaternion: THREE.Quaternion };
+  curr: { position: THREE.Vector3; quaternion: THREE.Quaternion };
+  skip?: boolean;
+}
+
+export interface BasePhysicsHandle {
+  actor?: PxActor | PxRigidDynamic;
+  tag?: string;
+  playerId?: string;
+  controller?: boolean;
+  node?: unknown;
+  onContactStart?: (event: ContactEvent) => void;
+  onContactEnd?: (event: ContactEvent) => void;
+  onTriggerEnter?: (event: TriggerEvent) => void;
+  onTriggerLeave?: (event: TriggerEvent) => void;
+  contactedHandles: Set<PhysicsHandle>;
+  triggeredHandles: Set<PhysicsHandle>;
+}
+
+export interface InterpolatedPhysicsHandle extends BasePhysicsHandle {
+  onInterpolate: (position: THREE.Vector3, quaternion: THREE.Quaternion) => void;
+  interpolation: InterpolationData;
+}
+
+export interface NonInterpolatedPhysicsHandle extends BasePhysicsHandle {
+  onInterpolate?: undefined;
+  interpolation?: undefined;
+}
+
+export type PhysicsHandle = InterpolatedPhysicsHandle | NonInterpolatedPhysicsHandle;
+
+// Raycast/Sweep hits
+export interface PhysicsRaycastHit {
+  handle?: PhysicsHandle;
+  point: THREE.Vector3;
+  normal: THREE.Vector3;
+  distance: number;
+  collider: Collider;
+  entity?: Entity;
+}
+
+export interface PhysicsSweepHit {
+  actor: PxActor | PxRigidDynamic;
+  point: THREE.Vector3;
+  normal: THREE.Vector3;
+  distance: number;
+  collider: Collider;
+  entity?: Entity;
+  handle?: unknown;
+}
+
+export interface PhysicsOverlapHit {
+  actor: PxActor | PxRigidDynamic;
+  handle: PhysicsHandle | null;
+  proxy?: {
+    get tag(): string | null;
+    get playerId(): string | null;
+  };
+}
+
+// Actor handle
+export interface ActorHandle {
+  move: (matrix: THREE.Matrix4) => void;
+  snap: (pose: PxTransform) => void;
+  destroy: () => void;
+}
+
+// Contact/Trigger info
+export interface ContactInfo {
+  handle0: PhysicsHandle;
+  handle1: PhysicsHandle;
+  positions: THREE.Vector3[];
+  normals: THREE.Vector3[];
+  impulses: number[];
+}
+
+export interface TriggerInfo {
+  handle0: PhysicsHandle;
+  handle1: PhysicsHandle;
+}
+
+// Additional ground checking interfaces for GroundCheckingSystem
+export interface GroundCheckingSystemResult {
+  groundHeight: number
+  isValid: boolean
+  correction: THREE.Vector3
+}
+
+export interface GroundCheckingSystemEntity {
+  id: string
+  position: THREE.Vector3
+  needsGroundCheck: boolean
+  lastGroundCheck: number
+  groundOffset: number
+}
+
+// Utility interfaces for polymorphic THREE.js objects
+export interface Vector3Like {
+  x: number;
+  y: number;
+  z: number;
+  copy?(v: THREE.Vector3): void;
+}
+
+export interface QuaternionLike {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+  copy?(q: THREE.Quaternion): void;
+}
+
+// System capability interfaces
+export interface HotReloadable {
+  hotReload?(): void;
+}
+
+export interface CameraSystem {
+  target?: unknown;
+  setTarget(player: unknown): void;
+  removeTarget(player: unknown): void;
+  getCamera(): THREE.PerspectiveCamera;
+  update(delta: number): void;
+}
+
+export interface XRSystem {
+  session?: unknown;
+  camera?: THREE.Camera;
+}
+
+// VRM factory interfaces
+export interface VRMHooks {
+  scene: THREE.Scene;
+  octree?: {
+    insert: (item: unknown) => void;
+    move?: (item: unknown) => void;
+    remove?: (item: unknown) => void;
+  };
+  camera?: unknown;
+  loader?: unknown;
+}
+
+// Global THREE.js interface
+export interface GlobalWithTHREE {
+  THREE?: typeof THREE;
+  __THREE_DEVTOOLS__?: unknown;
+}
+
+// Material extensions for texture access
+export interface MaterialWithTextures extends THREE.Material {
+  alphaMap?: THREE.Texture;
+  aoMap?: THREE.Texture;
+  bumpMap?: THREE.Texture;
+  displacementMap?: THREE.Texture;
+  emissiveMap?: THREE.Texture;
+  envMap?: THREE.Texture;
+  lightMap?: THREE.Texture;
+  map?: THREE.Texture;
+  metalnessMap?: THREE.Texture;
+  normalMap?: THREE.Texture;
+  roughnessMap?: THREE.Texture;
 }

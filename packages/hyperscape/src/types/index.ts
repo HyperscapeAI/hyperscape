@@ -1,12 +1,235 @@
-import { Avatar } from '../core/nodes';
-import { Component } from '../core/components/Component';
-import { Entity } from '../core/entities/Entity';
-import * as THREE from '../core/extras/three';
-import { System } from '../core/systems/System';
-import { World } from '../core/World';
-import { RPGSystemBase, RPGSystemConfig } from '../rpg/types';
+import { Component } from '../components/Component';
+import { Entity } from '../entities/Entity';
+import * as THREE from '../extras/three';
+import { Avatar } from '../nodes';
+import { System } from '../systems/System';
+import { World } from '../World';
+import type { EntityData, Position2D, Position3D } from './base-types';
 import type { PxTransform } from './physx';
-import { Inventory, PlayerEquipment, PlayerHealth } from '../rpg/types/core';
+
+// Re-enable core imports - circular dependency should be resolved
+import type {
+  Inventory,
+  PlayerEquipmentItems,
+  PlayerHealth,
+  SystemConfig
+} from './core';
+
+// Position3D, Position2D, and EntityData are exported from base-types.ts
+
+/**
+ * Central Types Export
+ * Single source of truth for all type definitions
+ * 
+ * This file consolidates all types to eliminate import inconsistencies.
+ * Avoid duplicating types that exist in other files - import and re-export instead.
+ * Use strongly typed interfaces without optional properties or unknown types.
+ */
+
+// Re-export core Hyperscape types
+export { SystemBase } from '../systems/SystemBase';
+
+// Import types needed from other modules
+export type { World } from '../World';
+
+// Re-export base types first to establish fundamental types
+export * from './base-types';
+
+// Re-export core types that are commonly used
+// Export base types (already available from base-types export but also explicit for convenience)
+export type { EntityData, Position2D, Position3D } from './base-types';
+
+// Export core types that were imported above
+export type {
+  AggroTarget,
+  ClickToMoveEvent,
+  Inventory,
+  MobAIStateData,
+  MovementComponent,
+  PlayerHealth,
+  SystemConfig
+} from './core';
+
+// Re-export additional core types that are needed by many modules
+export {
+  AttackType, CombatStyle, ItemType,
+  WeaponType
+} from './core';
+
+export type {
+  AnimationTask, BankData, BankEntityData, CombatBonuses, CombatTarget, DialogueNode,
+  DialogueSession, EquipmentComponent, EquipmentSlot, InteractionAction, InventoryItem, LootTable, MeshUserData, MobEntityData, PrayerComponent, RespawnTask, SkillData, Spawner, SpawnPoint, StatsComponent
+} from './core';
+
+export type PlayerEquipment = PlayerEquipmentItems;
+
+// Export additional types needed by combat and other systems
+export { EquipmentSlotName } from './core';
+
+// Re-export other types (using specific exports to avoid circular dependencies)
+export * from './database';
+export * from './entities';
+export * from './events';
+export * from './identifiers';
+export * from './systems';
+
+export type Player = PlayerEntity
+
+// Re-export test types (specific exports to avoid conflicts)
+export type {
+  ActionTestData, AggroTestData, BankingTestData, CookingTestData, CorpseTestData, DeathTestData, EquipmentTestData, FiremakingTestData, FishingTestData, InventoryTestData, LootTestData, PersistenceTestData, ResourceTestData, StoreTestData, SystemValidationData,
+  SystemValidationResult, TestAction, TestItem, TestStationConfig, UITestData, ValidationResults, WoodcuttingTestSession, XPTestData
+} from './test';
+
+// Re-export test skill type with alias to avoid conflict
+export type { SkillName } from './test';
+
+// Re-export system-specific types
+export type {
+  ClientControlsSystem,
+  ClientUISystem, ItemRegistrySystem
+} from './system-interfaces';
+
+// Re-export data types (specific exports to avoid conflicts)
+export { ITEMS } from '../data/items';
+export * from '../data/mobs';
+export * from '../data/world-areas';
+
+// Types are now re-exported above in the main export block
+
+// World type is already exported as 'World' above - use that instead of creating alias
+
+// Common interfaces that are used across multiple systems
+// Note: Use Position3D from core.ts instead of creating duplicates
+export interface EntityWithPosition {
+  position: Position3D;
+  rotation: Position3D;
+}
+
+export interface EntityWithId {
+  id: string;
+}
+
+// Event data interfaces - strongly typed versions
+export interface BaseEventData {
+  timestamp: number;
+  source: string;
+}
+
+export interface PlayerEventData extends BaseEventData {
+  playerId: string;
+}
+
+export interface ItemEventData extends BaseEventData {
+  itemId: string;
+  quantity: number;
+}
+
+export interface CombatEventData extends BaseEventData {
+  attackerId: string;
+  targetId: string;
+  damage: number;
+  attackType: 'melee' | 'ranged' | 'magic';
+}
+
+// System state interfaces
+export interface SystemState {
+  isInitialized: boolean;
+  isActive: boolean;
+  lastUpdate: number;
+  errorCount: number;
+}
+
+export interface TestSystemState extends SystemState {
+  testsRun: number;
+  testsPassed: number;
+  testsFailed: number;
+  currentTest: string | null;
+}
+
+// Utility types
+export type Callback<T = void> = (result: T) => void;
+export type AsyncCallback<T = void> = (result: T) => Promise<void>;
+export type EventCallback<T extends BaseEventData = BaseEventData> = (data: T) => void;
+
+// Constants
+export const CONSTANTS = {
+  MAX_INVENTORY_SLOTS: 28,
+  MAX_BANK_SLOTS: 500,
+  DEFAULT_HEALTH: 100,
+  DEFAULT_STAMINA: 100,
+  COMBAT_TIMEOUT_MS: 10000,
+  RESPAWN_TIME_MS: 30000,
+  SAVE_INTERVAL_MS: 60000
+} as const;
+
+// Error codes for type safety
+export const ERROR_CODES = {
+  SYSTEM_ERROR: 'SYSTEM_ERROR',
+  PLAYER_ERROR: 'PLAYER_ERROR',
+  ITEM_ERROR: 'ITEM_ERROR',
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
+  NETWORK_ERROR: 'NETWORK_ERROR',
+  DATABASE_ERROR: 'DATABASE_ERROR'
+} as const;
+
+export type ErrorCode = typeof ERROR_CODES[keyof typeof ERROR_CODES];
+
+// Error types
+export class HyperscapeError extends Error {
+  constructor(
+    message: string,
+    public readonly code: ErrorCode,
+    public readonly context: Record<string, string | number | boolean> = {}
+  ) {
+    super(message);
+    this.name = 'HyperscapeError';
+  }
+}
+
+export class SystemError extends HyperscapeError {
+  constructor(
+    systemName: string,
+    message: string,
+    context: Record<string, string | number | boolean> = {}
+  ) {
+    super(`[${systemName}] ${message}`, ERROR_CODES.SYSTEM_ERROR, { system: systemName, ...context });
+    this.name = 'SystemError';
+  }
+}
+
+export class PlayerError extends HyperscapeError {
+  constructor(
+    playerId: string,
+    message: string,
+    context: Record<string, string | number | boolean> = {}
+  ) {
+    super(`Player ${playerId}: ${message}`, ERROR_CODES.PLAYER_ERROR, { playerId, ...context });
+    this.name = 'PlayerError';
+  }
+}
+
+export class ItemError extends HyperscapeError {
+  constructor(
+    itemId: string,
+    message: string,
+    context: Record<string, string | number | boolean> = {}
+  ) {
+    super(`Item ${itemId}: ${message}`, ERROR_CODES.ITEM_ERROR, { itemId, ...context });
+    this.name = 'ItemError';
+  }
+}
+
+// Logger interface
+export interface Logger {
+  debug(message: string, context?: Record<string, string | number | boolean>): void;
+  info(message: string, context?: Record<string, string | number | boolean>): void;
+  warn(message: string, context?: Record<string, string | number | boolean>): void;
+  error(message: string, error?: Error, context?: Record<string, string | number | boolean>): void;
+  system(systemName: string, message: string, context?: Record<string, string | number | boolean>): void;
+  player(playerId: string, message: string, context?: Record<string, string | number | boolean>): void;
+  test(testName: string, message: string, context?: Record<string, string | number | boolean>): void;
+}
 
 // Export core types that are being imported by other files
 export type { Component, Entity, System };
@@ -43,6 +266,35 @@ export interface ActionContext {
   entity?: Entity;
 }
 
+// Action parameter interface for registry actions
+export interface ActionParams {
+  // Combat parameters
+  targetId?: string;
+  attackStyle?: string;
+  
+  // Item parameters
+  itemId?: string;
+  slot?: number;
+  quantity?: number;
+  
+  // Movement parameters
+  destination?: Position3D;
+  x?: number;
+  y?: number;
+  z?: number;
+  
+  // Banking/Store parameters
+  bankId?: string;
+  storeId?: string;
+  
+  // Skill parameters
+  skill?: string;
+  resourceId?: string;
+  
+  // Generic parameters
+  [key: string]: string | number | boolean | Position3D | undefined;
+}
+
 export interface Entities extends System {
   get(id: string): Entity | null;
   add(data: EntityData, local?: boolean): Entity;
@@ -61,9 +313,9 @@ export interface Entities extends System {
   destroyEntity?(id: string): boolean;
   
   // Player-specific methods
-  getPlayer?(id: string): Player | null;
-  getLocalPlayer?(): Player | null;
-  getPlayers?(): Player[];
+  getPlayer?(id: string): PlayerEntity | null;
+  getLocalPlayer?(): PlayerEntity | null;
+  getPlayers?(): PlayerEntity[];
 }
 
 // Chat message interface - unified ChatMessage with all required properties
@@ -89,28 +341,28 @@ export interface ChatMessage {
 export type ExtendedChatMessage = ChatMessage;
 
 // Import actual system classes
-export { Chat } from '../core/systems/Chat';
-export { ClientActions } from '../core/systems/ClientActions';
-export { ClientAudio } from '../core/systems/ClientAudio';
-export { ClientControls } from '../core/systems/ClientControls';
-export { ClientEnvironment } from '../core/systems/ClientEnvironment';
-export { ClientGraphics } from '../core/systems/ClientGraphics';
-export { ClientLiveKit } from '../core/systems/ClientLiveKit';
-export { ClientLoader } from '../core/systems/ClientLoader';
-export { ClientNetwork } from '../core/systems/ClientNetwork';
-export { ClientPrefs } from '../core/systems/ClientPrefs';
-export { ClientStats } from '../core/systems/ClientStats';
-export { ClientUI } from '../core/systems/ClientUI';
-export { Server as ServerServer } from '../core/systems/Server';
+export { Chat } from '../systems/Chat';
+export { ClientActions } from '../systems/ClientActions';
+export { ClientAudio } from '../systems/ClientAudio';
+export { ClientControls } from '../systems/ClientControls';
+export { ClientEnvironment } from '../systems/ClientEnvironment';
+export { ClientGraphics } from '../systems/ClientGraphics';
+export { ClientLiveKit } from '../systems/ClientLiveKit';
+export { ClientLoader } from '../systems/ClientLoader';
+export { ClientNetwork } from '../systems/ClientNetwork';
+export { ClientPrefs } from '../systems/ClientPrefs';
+export { ClientStats } from '../systems/ClientStats';
+export { ClientUI } from '../systems/ClientUI';
+export { Server as ServerServer } from '../systems/Server';
 // ServerNetwork is server-only and should not be exported for client use
-// Use type-only import if needed: import type { ServerNetwork } from '../core/systems/ServerNetwork';
-export { Settings } from '../core/systems/Settings';
-export { XR as XRSystem } from '../core/systems/XR';
+// Use type-only import if needed: import type { ServerNetwork } from '../systems/ServerNetwork';
+export { Settings } from '../systems/Settings';
+export { XR as XRSystem } from '../systems/XR';
 
 // Export missing core system types
-export { Anchors } from '../core/systems/Anchors';
-export { Events } from '../core/systems/Events';
-export { Stage } from '../core/systems/Stage';
+export { Anchors } from '../systems/Anchors';
+export { Events } from '../systems/Events';
+export { Stage } from '../systems/Stage';
 
 // Basic input types
 export interface InputState {
@@ -127,38 +379,7 @@ export interface MouseInput extends InputState {
 
 // Control and ClientControls interfaces are defined later in the file with full definitions
 
-// Core entity data types
-export interface EntityData {
-  id: string;
-  type: string;
-  name?: string;
-  owner?: string;
-  active?: boolean;
-  visible?: boolean;
-  // Player-specific properties
-  userId?: string;
-  emote?: string;
-  avatar?: string;
-  sessionAvatar?: string;
-  roles?: string[];
-  // Effect data for any entity
-  effect?: {
-    anchorId?: string;
-    snare?: number;
-    freeze?: boolean;
-    turn?: boolean;
-    emote?: string;
-    duration?: number;
-    cancellable?: boolean;
-  };
-  // Allow additional properties
-  [key: string]: unknown;
-}
-
-export interface ComponentData {
-  type: string;
-  data: unknown;
-}
+// EntityData and ComponentData are now exported from base-types.ts
 
 // Core World Types
 export interface WorldOptions {
@@ -170,11 +391,11 @@ export interface WorldOptions {
   networkRate?: number;
   maxDeltaTime?: number;
   fixedDeltaTime?: number;
-  db?: unknown;
+  db?: import('./database-types').SystemDatabase;
 }
 
 // Use the actual World class from core/World.ts
-export { World } from '../core/World';
+// World is already exported as a type above
 
 // Client System Types - Now imported from actual system classes
 
@@ -220,11 +441,7 @@ export interface ClientMonitor extends System {
 // System is now a class - already exported at the top
 
 export interface SystemConstructor {
-  new (world: World): System;
-}
-
-export interface RPGSystemConstructor {
-  new (world: World, config: RPGSystemConfig): RPGSystemBase;
+  new (world: World, config?: SystemConfig): System;
 }
 
 // Entity and Component are now classes - already exported at the top
@@ -418,23 +635,7 @@ export type Vector2 = THREE.Vector2;
 export type Euler = THREE.Euler;
 
 // Position interfaces for serialization/deserialization
-// These are plain objects, unlike THREE.Vector3 which has methods
-export interface Position3D {
-  x: number;
-  y: number;
-  z: number;
-}
-
-export interface Position2D {
-  x: number;
-  y: number;
-}
-
-// Deprecated: Use Position3D instead
-export type Vector3D = Position3D;
-
-// Deprecated: Use Position2D instead  
-export type Vector2D = Position2D;
+// Position3D, Position2D, Vector3D, Vector2D are now exported from base-types.ts
 
 // Rotation types
 export interface Rotation3D {
@@ -634,8 +835,8 @@ export interface PlayerStamina {
   regenerating: boolean;
 }
 
-// Player Types
-export type Player = Entity & {
+// Player Entity Types (ECS)
+export type PlayerEntity = Entity & {
   connection?: NetworkConnection;
   input: PlayerInput;
   stats: PlayerStats;
@@ -1013,9 +1214,9 @@ export interface RaycastHit {
 
 
 
-// RPG types have been moved to packages/hyperscape/src/rpg/types/
+// types have been moved to packages/hyperscape/src/types/
 
 
 
-// Note: World type is now imported directly from '../core/World'
+// Note: World type is now imported directly from '../World'
 // This avoids conflicts between interface and class definitions 

@@ -1,15 +1,5 @@
-import React from 'react'
 import { useEffect, useRef } from 'react'
-import { Curve } from '../../core/extras/Curve'
-
-interface CurvePreviewProps {
-  curve: Curve;
-  width?: number;
-  height?: number;
-  xRange?: [number, number];
-  yMin?: number;
-  yMax?: number;
-}
+import type { CurvePreviewProps } from '../../types/ui-types'
 
 export function CurvePreview({ curve, width = 200, height = 100, xRange = [0, 1], yMin = 0, yMax = 1 }: CurvePreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)

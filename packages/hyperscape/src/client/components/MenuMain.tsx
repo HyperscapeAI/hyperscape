@@ -57,7 +57,6 @@ function MenuMainIndex({ world, _pop, push }) {
 }
 
 function MenuMainUI({ world, _pop, _push }) {
-  const _player = world.entities.player
   const documentRef = useRef(document.documentElement)
   const [_canFullscreen, isFullscreen, toggleFullscreen] = useFullscreen(documentRef)
   const [ui, setUI] = useState(world.prefs.ui)
@@ -124,8 +123,6 @@ function MenuMainGraphics({ world, _pop, _push }) {
   const [postprocessing, setPostprocessing] = useState(world.prefs.postprocessing)
   const [bloom, setBloom] = useState(world.prefs.bloom)
   const dprOptions = useMemo(() => {
-    const _width = world.graphics.width
-    const _height = world.graphics.height
     const dpr = window.devicePixelRatio
     interface DprOption {
       label: string;
@@ -247,7 +244,6 @@ function MenuMainAudio({ world, _pop, _push }) {
 }
 
 function MenuMainWorld({ world, _pop, _push }) {
-  const _player = world.entities.player
   const { isAdmin } = usePermissions(world)
   const [title, setTitle] = useState(world.settings.title)
   const [desc, setDesc] = useState(world.settings.desc)

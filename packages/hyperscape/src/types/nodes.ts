@@ -3,10 +3,42 @@
  */
 
 import type { NodeData, HotReloadable, Entity } from './index';
-import type { Node } from '../core/nodes/Node';
-import * as THREE from '../core/extras/three';
+import type { Node } from '../nodes/Node';
+import * as THREE from '../extras/three';
 import type * as YogaTypes from 'yoga-layout';
 import type { PxTransform, PxShape, PxRigidBodyFlagEnum } from './physx';
+
+// Custom pointer event for internal use (to avoid conflicts with browser PointerEvent)
+export interface CustomPointerEvent {
+  type: string | null;
+  _propagationStopped: boolean;
+  set(type: string): void;
+  stopPropagation(): void;
+}
+
+// Pointer interfaces
+export interface PointerNode {
+  onPointerEnter?: (event: CustomPointerEvent) => void;
+  onPointerLeave?: (event: CustomPointerEvent) => void;
+  onPointerDown?: (event: CustomPointerEvent) => void;
+  onPointerUp?: (event: CustomPointerEvent) => void;
+  cursor?: string;
+  parent?: PointerNode;
+  getPath?: () => PointerNode[];
+  resolveHit?: (hit: unknown) => PointerNode;
+}
+
+// Camera system interfaces
+export interface PlayerTarget {
+  position: THREE.Vector3;
+  playerId: string;
+  data: { id: string };
+  base: THREE.Object3D;
+}
+
+export interface RendererWithDomElement {
+  domElement: HTMLCanvasElement;
+}
 
 // Avatar interfaces
 export interface NodeStats {
@@ -37,11 +69,7 @@ export interface LoadedAvatar {
   factory: AvatarFactory;
 }
 
-export interface AvatarData extends NodeData {
-  src?: string;
-  skeleton?: string;
-  emotes?: string[];
-}
+
 
 // Image interfaces
 export interface ImageSceneItem {
@@ -52,15 +80,7 @@ export interface ImageSceneItem {
   node: Node;
 }
 
-export interface ImageData extends NodeData {
-  src?: string;
-  color?: string | number;
-  emissive?: string | number;
-  emissiveIntensity?: number;
-  opacity?: number;
-  transparent?: boolean;
-  alphaTest?: number;
-}
+
 
 // Nametag interfaces
 export interface NametagHandle {
@@ -72,12 +92,7 @@ export interface NametagHandle {
   destroy: () => void;
 }
 
-export interface NametagData extends NodeData {
-  text?: string;
-  subtext?: string;
-  subtextColor?: string;
-  offset?: number;
-}
+
 
 // Joint interfaces
 export interface PxSpring {
@@ -143,6 +158,10 @@ export interface PhysXJoint {
   setDrivePosition?: (position: THREE.Vector3) => void;
   setDriveVelocity?: (velocity: THREE.Vector3) => void;
   setDistanceJointFlag?: (flag: number, value: boolean) => void;
+  setMinDistance?: (distance: number | null) => void;
+  setMaxDistance?: (distance: number | null) => void;
+  setStiffness?: (stiffness: number) => void;
+  setDamping?: (damping: number) => void;
   setLimit?: (limit: PxJointAngularLimitPair) => void;
   setLimitCone?: (limit: PxJointLimitCone) => void;
   setLinearLimit?: (axis: number, limit: PxJointAngularLimitPair) => void;
@@ -390,8 +409,8 @@ export interface MeshData extends NodeData {
   height?: number;
   depth?: number;
   radius?: number;
-  geometry?: THREE.BufferGeometry | string;
-  material?: THREE.Material | string;
+  geometry?: THREE.BufferGeometry | string | null;
+  material?: THREE.Material | string | null;
   linked?: boolean;
   castShadow?: boolean;
   receiveShadow?: boolean;
@@ -432,39 +451,281 @@ export interface ControllerData extends NodeData {
   onContactEnd?: ((event: PhysicsContactEvent) => void) | null;
 }
 
-// SkinnedMesh interfaces
-export interface SkinnedMeshData extends NodeData {
-  geometry?: string;
-  material?: string;
-  skeleton?: string;
-  castShadow?: boolean;
-  receiveShadow?: boolean;
-  frustumCulled?: boolean;
+
+
+// Action interfaces
+export interface ActionData extends NodeData {
+  label?: string | number;
+  distance?: number;
+  duration?: number;
+  onStart?: () => void;
+  onTrigger?: () => void;
+  onCancel?: () => void;
 }
 
-// Audio interfaces
+// Audio type enums
+export type DistanceModelType = 'linear' | 'inverse' | 'exponential';
+export type GroupType = 'music' | 'sfx';
+
+// Enhanced Audio interfaces
 export interface AudioData extends NodeData {
-  src?: string;
+  src?: string | null;
   volume?: number;
   loop?: boolean;
-  autoplay?: boolean;
+  group?: GroupType;
   spatial?: boolean;
+  distanceModel?: DistanceModelType;
   refDistance?: number;
-  rolloffFactor?: number;
   maxDistance?: number;
+  rolloffFactor?: number;
   coneInnerAngle?: number;
   coneOuterAngle?: number;
   coneOuterGain?: number;
 }
 
+// Enhanced Avatar interfaces
+export interface VRMAvatarInstance {
+  height: number;
+  headToHeight: number;
+  setEmote: (emote: string | null) => void;
+  move: (matrix: THREE.Matrix4) => void;
+  disableRateCheck: () => void;
+  destroy: () => void;
+  getBoneTransform: (boneName: string) => THREE.Matrix4 | null;
+  update?: (deltaTime: number) => void;
+  raw?: {
+    scene?: THREE.Object3D;
+    userData?: {
+      vrm?: {
+        humanoid?: {
+          getRawBone?: (boneName: string) => { node: THREE.Object3D } | null;
+        };
+      };
+    };
+  };
+}
+
+export interface AvatarData extends NodeData {
+  src?: string | null;
+  emote?: string | null;
+  onLoad?: Function | null;
+  factory?: AvatarFactory;
+  hooks?: AvatarHooks;
+}
+
+// Collider interfaces
+export interface ColliderData extends NodeData {
+  type?: string;
+  width?: number;
+  height?: number;
+  depth?: number;
+  radius?: number;
+  geometry?: THREE.BufferGeometry;
+  convex?: boolean;
+  trigger?: boolean;
+  layer?: string;
+  staticFriction?: number;
+  dynamicFriction?: number;
+  restitution?: number;
+}
+
+// Enhanced Image interfaces  
+export interface ImageData extends NodeData {
+  src?: string | null;
+  width?: number | null;
+  height?: number | null;
+  fit?: string;
+  color?: string | number;
+  pivot?: string;
+  lit?: boolean;
+  doubleside?: boolean;
+  castShadow?: boolean;
+  receiveShadow?: boolean;
+  emissive?: string | number;
+  emissiveIntensity?: number;
+  opacity?: number;
+  transparent?: boolean;
+  alphaTest?: number;
+}
+
+// Enhanced Nametag interfaces
+export interface NametagData extends NodeData {
+  label?: string | number;
+  health?: number;
+}
+
 // Particles interfaces
 export interface ParticleEmitter {
-  // ... particle emitter properties
-  [key: string]: unknown;
+  destroy?: () => void;
+  setEmitting?: (emitting: boolean) => void;
 }
 
 export interface ParticlesData extends NodeData {
-  emitters?: ParticleEmitter[];
+  emitting?: boolean;
+  shape?: unknown[];
+  direction?: number;
+  rate?: number;
+  bursts?: Array<{ time: number; count: number }>;
+  duration?: number;
+  loop?: boolean;
+  max?: number;
+  timescale?: number;
+  life?: string;
+  speed?: string;
+  size?: string;
+  rotate?: string;
+  color?: string;
+  alpha?: string;
+  emissive?: string;
+  image?: string;
+  spritesheet?: [number, number, number, number] | null;
+  blending?: string;
+  lit?: boolean;
+  billboard?: string;
+  space?: string;
+  force?: [number, number, number] | null;
+  velocityLinear?: [number, number, number] | null;
+  velocityOrbital?: [number, number, number] | null;
+  velocityRadial?: number | null;
+  rateOverDistance?: number;
+  sizeOverLife?: string | null;
+  rotateOverLife?: string | null;
+  colorOverLife?: string | null;
+  alphaOverLife?: string | null;
+  emissiveOverLife?: string | null;
+  onEnd?: (() => void) | null;
+}
+
+// Enhanced SkinnedMesh interfaces
+export interface SkinnedMeshData extends NodeData {
+  object3d?: THREE.Object3D | null;
+  animations?: THREE.AnimationClip[];
+  castShadow?: boolean;
+  receiveShadow?: boolean;
+}
+
+// Sky interfaces
+export interface SkyData extends NodeData {
+  bg?: string | null;
+  hdr?: string | null;
+  sunDirection?: [number, number, number] | null;
+  sunIntensity?: number | null;
+  sunColor?: string | null;
+  fogNear?: number | null;
+  fogFar?: number | null;
+  fogColor?: string | null;
+}
+
+// UI Text type definitions
+export type DisplayType = 'flex' | 'none';
+export type TextAlign = 'left' | 'center' | 'right';
+export type FontWeight = string | number;
+export type FlexBasis = number | 'auto' | `${number}%`;
+export type EdgeValue = number | [number, number, number, number];
+
+// Enhanced UI Text interfaces
+export interface UITextData extends NodeData {
+  display?: DisplayType;
+  absolute?: boolean;
+  top?: number | null;
+  right?: number | null;
+  bottom?: number | null;
+  left?: number | null;
+  backgroundColor?: string | null;
+  borderRadius?: number;
+  margin?: EdgeValue;
+  padding?: EdgeValue;
+  value?: string;
+  fontSize?: number;
+  color?: string;
+  lineHeight?: number;
+  textAlign?: TextAlign;
+  fontFamily?: string;
+  fontWeight?: FontWeight;
+  flexBasis?: FlexBasis;
+  flexGrow?: number;
+  flexShrink?: number;
+}
+
+// Enhanced UI View interfaces
+export interface UIViewData extends NodeData {
+  display?: DisplayType;
+  width?: number | null;
+  height?: number | null;
+  absolute?: boolean;
+  top?: number | null;
+  right?: number | null;
+  bottom?: number | null;
+  left?: number | null;
+  backgroundColor?: string | null;
+  borderWidth?: number;
+  borderColor?: string | null;
+  borderRadius?: number;
+  margin?: EdgeValue;
+  padding?: EdgeValue;
+  flexDirection?: string;
+  justifyContent?: string;
+  alignItems?: string;
+  alignContent?: string;
+  flexWrap?: string;
+  gap?: number;
+  flexBasis?: FlexBasis;
+  flexGrow?: number;
+  flexShrink?: number;
+}
+
+// Enhanced UI Image interfaces
+export interface UIImageData extends NodeData {
+  display?: string;
+  src?: string | null;
+  width?: number | string | null;
+  height?: number | string | null;
+  absolute?: boolean;
+  top?: number | null;
+  right?: number | null;
+  bottom?: number | null;
+  left?: number | null;
+  objectFit?: 'fill' | 'contain' | 'cover' | 'none' | 'scale-down' | string;
+  backgroundColor?: string | null;
+  borderRadius?: number | null;
+  margin?: number | number[] | null;
+}
+
+// UI component interfaces shared across UI nodes
+export interface UIYogaNodeContext {
+  calculateLayout(width?: number, height?: number, direction?: number): void;
+  getComputedLeft(): number;
+  getComputedTop(): number;
+  getComputedWidth(): number;
+  getComputedHeight(): number;
+  setDisplay(display: number): void;
+  setPositionType(positionType: number): void;
+  setPosition(edge: number, value: number): void;
+  setWidth(width: number): void;
+  setHeight(height: number): void;
+  setMargin(edge: number, value: number): void;
+  insertChild(child: UIYogaNodeContext, index: number): void;
+  removeChild(child: UIYogaNodeContext): void;
+  getChildCount(): number;
+  markDirty(): void;
+  free(): void;
+}
+
+export interface UIContext {
+  redraw: () => void;
+  _res: number;
+}
+
+export interface UIImageNodeContext {
+  width: number;
+  height: number;
+  complete?: boolean;
+  src?: string;
+  [key: string]: unknown;
+}
+
+export interface UIBoxNodeContext {
+  [key: string]: unknown;
 }
 
 // UIImage interfaces
@@ -492,9 +753,4 @@ export interface UIBoxNode {
   color: string;
 }
 
-export interface UIImageData extends NodeData {
-  src?: string;
-  width?: number | string;
-  height?: number | string;
-  objectFit?: 'fill' | 'contain' | 'cover' | 'none' | 'scale-down';
-}
+

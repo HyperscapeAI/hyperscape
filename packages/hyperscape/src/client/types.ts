@@ -1,8 +1,8 @@
 // Type definitions for Hyperscape client components
 
-import * as THREE from '../core/extras/three'
+import * as THREE from '../extras/three'
 import type { EntityData as CoreEntityData, ControlBinding } from '../types/index'
-import type { World } from '../core/World'
+import type { World } from '../World'
 
 // Export the actual World class instead of defining a separate interface
 export { World }

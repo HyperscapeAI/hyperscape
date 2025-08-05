@@ -1,27 +1,8 @@
-import * as THREE from '../core/extras/three'
-import { Emotes } from '../core/extras/playerEmotes'
-import type { World } from '../core/World'
-import type { LoadedAvatar, Node } from '../types'
-
-// Avatar node interface for AvatarPreview
-interface AvatarNode extends Node {
-  activate(ctx?: World | null): void;
-  deactivate(): void;
-  setEmote(emote: string): void;
-  instance?: {
-    update?: (deltaTime: number) => void;
-    raw?: {
-      userData?: {
-        vrm?: {
-          humanoid?: {
-            getRawBone(boneName: string): { node: THREE.Object3D };
-          };
-        };
-      };
-      scene?: THREE.Object3D;
-    };
-  };
-}
+import * as THREE from '../extras/three'
+import { Emotes } from '../extras/playerEmotes'
+import type { World } from '../World'
+import type { LoadedAvatar } from '../types'
+import type { AvatarNode, AvatarInfo, BoundsSpec } from '../types/avatar-types'
 
 const MAX_UPLOAD_SIZE = 1000000000000 // TODO
 const MAX_UPLOAD_SIZE_LABEL = '1LOLS'
@@ -47,24 +28,7 @@ function getRenderer() {
   return renderer
 }
 
-interface AvatarInfo {
-  rank: number;
-  stats: {
-    [key: string]: {
-      value: number | number[];
-      rank: number;
-    };
-  };
-}
 
-interface BoundsSpec {
-  rank: number;
-  fileSize: number;
-  triangles: number;
-  draws: number;
-  bones: number;
-  bounds: number[];
-}
 
 export class AvatarPreview {
   world: World

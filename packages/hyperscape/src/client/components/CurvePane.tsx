@@ -1,19 +1,9 @@
 import React from 'react'
 import { useEffect, useRef } from 'react'
-import { Curve } from '../../core/extras/Curve'
+import { Curve } from '../../extras/Curve'
 import { usePane } from './usePane'
+import type { CurvePaneProps } from '../../types/ui-types'
 // import { X } from 'lucide-react'
-
-interface CurvePaneProps {
-  curve: Curve;
-  xLabel: string;
-  xRange?: [number, number];
-  yLabel: string;
-  yMin: number;
-  yMax: number;
-  onCommit: () => void;
-  onCancel: () => void;
-}
 
 export function CurvePane({ curve, xLabel, xRange, yLabel, yMin, yMax, onCommit, onCancel }: CurvePaneProps) {
   const paneRef = useRef<HTMLDivElement | null>(null)
