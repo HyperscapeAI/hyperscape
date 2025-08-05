@@ -1,0 +1,1121 @@
+/**
+ * RPG Visual Test Framework System
+ * Provides infrastructure for visual testing of all gameplay systems
+ * - Creates visible test stations around the world with floating names
+ * - Manages test lifecycle (setup, execution, validation, cleanup, restart)
+ * - Provides fake players, mobs, and items for testing
+ * - Automatic timeout and error handling
+ * - Visual status indicators and logging
+ */
+
+import * as THREE from '../../core/extras/three'
+import { waitForPhysX } from '../../core/PhysXManager'
+import { fixPositionIfAtGroundLevel } from '../../core/utils/GroundPositioningUtils'
+import type { InventoryItem, PlayerEquipment, PlayerSkills, RPGItem } from '../types/core'
+import type { Player } from '../types/test'
+import { calculateDistance } from '../utils/EntityUtils'
+
+export interface TestStation {
+  id: string
+  name: string
+  position: { x: number; y: number; z: number }
+  status: 'idle' | 'running' | 'passed' | 'failed'
+  lastRunTime: number
+  totalRuns: number
+  successCount: number
+  failureCount: number
+  currentError: string // Always exists, empty string when no error
+  timeoutMs: number
+  ui: Record<string, unknown> // Always created
+  testZone: Record<string, unknown> // Always created
+}
+
+export interface TestResult {
+  success: boolean
+  error?: string
+  duration: number
+  details?: Record<string, unknown>
+}
+
+// Shared fake player registry across all test framework instances
+// Using a module-level constant instead of globals
+const SHARED_FAKE_PLAYERS = new Map<string, Player>()
+
+import { getSystem } from '../../core/utils/SystemUtils'
+import type { Entity, World } from '../../types'
+import { EventType } from '../../types/events'
+import { RPGEntityManager } from './RPGEntityManager'
+import { RPGSystemBase } from './RPGSystemBase'
+import { RPGLogger } from '../utils/RPGLogger'
+
+export abstract class RPGVisualTestFramework extends RPGSystemBase {
+  protected testStations = new Map<string, TestStation>()
+  protected fakePlayers = SHARED_FAKE_PLAYERS // Use shared registry
+  private updateInterval: NodeJS.Timeout | null = null
+  private playerPositions = new Map<string, { x: number; y: number; z: number }>()
+  private mobPositions = new Map<string, { x: number; y: number; z: number }>()
+  private playerEquipment = new Map<string, Record<string, unknown>>()
+  private playerStats = new Map<string, Record<string, unknown>>()
+  private testColors = {
+    idle: '#888888', // Gray
+    running: '#ffaa00', // Orange
+    passed: '#00ff00', // Green
+    failed: '#ff0000', // Red
+  }
+  protected testStationsCreated = false
+  
+  // Console capture functionality for test systems
+  protected consoleCaptures = new Map<string, string[]>()
+  protected originalConsoleWarn: typeof console.warn
+  protected originalConsoleError: typeof console.error
+
+  constructor(world: World, config?: Partial<{ name: string; dependencies: { required: string[]; optional: string[] }; autoCleanup?: boolean }>) {
+    super(world, {
+      name: config?.name || 'rpg-visual-test-framework',
+      dependencies: config?.dependencies || {
+        required: [], // Test framework can work independently
+        optional: [], // No dependencies needed for testing
+      },
+      autoCleanup: config?.autoCleanup ?? true
+    })
+    
+    // Store original console methods for restoration
+    this.originalConsoleWarn = console.warn
+    this.originalConsoleError = console.error
+  }
+
+  /**
+   * Optional method that subclasses can override to create their test stations
+   * Called automatically during start() if implemented
+   */
+  protected createTestStations?(): void
+
+  async init(): Promise<void> {
+    // Wait for PhysX to be ready before creating fake players with physics components
+    await waitForPhysX('RPGVisualTestFramework', 30000) // 30 second timeout
+            RPGLogger.system('RPGVisualTestFramework', 'PhysX is ready, proceeding with initialization')
+
+    // Listen to position updates for reactive patterns
+    this.world.on(EventType.PLAYER_POSITION_UPDATED, (data: { playerId: string; position: { x: number; y: number; z: number } }) => {
+      this.playerPositions.set(data.playerId, data.position)
+    })
+    this.world.on(EventType.MOB_POSITION_UPDATED, (data: { mobId: string; position: { x: number; y: number; z: number } }) => {
+      this.mobPositions.set(data.mobId, data.position)
+    })
+
+    // Listen to equipment changes for reactive patterns
+    this.world.on(EventType.PLAYER_EQUIPMENT_CHANGED, (data: { playerId: string; slot: string; itemId: string | null }) => {
+      if (!this.playerEquipment.has(data.playerId)) {
+        this.playerEquipment.set(data.playerId, {})
+      }
+      const equipment = this.playerEquipment.get(data.playerId)!
+      equipment[data.slot] = data.itemId
+    })
+
+    // Listen to stats updates for reactive patterns
+    this.world.on(EventType.PLAYER_STATS_EQUIPMENT_UPDATED, (data: { playerId: string; stats: unknown }) => {
+      this.playerStats.set(data.playerId, data.stats as Record<string, unknown>)
+    })
+
+    // Listen for equipment changes to keep fake player equipment up to date
+    this.world.on(EventType.EQUIPMENT_EQUIP, this.handleEquipmentChange.bind(this))
+    this.world.on(EventType.EQUIPMENT_UNEQUIP, this.handleEquipmentChange.bind(this))
+
+    // Only run test station management on server
+    if (!this.world.isServer) {
+      return
+    }
+
+    // Listen for world events (server only)
+    this.world.on(EventType.TEST_STATION_CREATED, this.onTestStationCreated.bind(this))
+    this.world.on(EventType.TEST_RESULT, this.onTestResult.bind(this))
+  }
+
+  start(): void {
+    // Create test stations if child class has implemented createTestStations
+    if (!this.testStationsCreated && this.createTestStations) {
+                RPGLogger.system(this.constructor.name, 'Creating test stations in start()')
+      try {
+        this.createTestStations()
+        this.testStationsCreated = true
+      } catch (error) {
+                  RPGLogger.systemError(this.constructor.name, 'Failed to create test stations', error instanceof Error ? error : new Error(String(error)))
+      }
+    }
+
+    // Start test monitoring loop with optimized interval
+    this.updateInterval = setInterval(() => {
+      this.updateTestStations()
+    }, 2000) // Update every 2 seconds for better performance
+  }
+
+  /**
+   * Creates a new test station at the specified position
+   */
+  protected createTestStation(config: {
+    id: string
+    name: string
+    position: { x: number; y: number; z: number }
+    timeoutMs?: number
+  }): TestStation {
+    // Fix position if it's at ground level (y=0) using proper terrain positioning
+    const fixedPosition = fixPositionIfAtGroundLevel(this.world, config.position, 'player')
+
+    const station: TestStation = {
+      id: config.id,
+      name: config.name,
+      position: Object.freeze({
+        x: fixedPosition.x,
+        y: fixedPosition.y,
+        z: fixedPosition.z,
+      }),
+      status: 'idle',
+      lastRunTime: 0,
+      totalRuns: 0,
+      successCount: 0,
+      failureCount: 0,
+      currentError: '', // Always exists, empty when no error
+      timeoutMs: config.timeoutMs || 30000, // 30 seconds default
+      ui: {}, // Will be populated in createStationVisuals
+      testZone: {}, // Will be populated in createStationVisuals
+    }
+
+    // Create visual indicators
+    this.createStationVisuals(station)
+
+    this.testStations.set(config.id, station)
+
+    // Notify world
+    this.world.emit(EventType.TEST_STATION_CREATED, { station })
+
+    return station
+  }
+
+  /**
+   * Creates visual indicators for a test station
+   */
+  private createStationVisuals(station: TestStation): void {
+    // Create floating name UI
+    const ui = this.createFloatingNameUI(station)
+    station.ui = ui
+
+    // Create colored zone indicator (cube at ground level)
+    station.testZone = this.createTestZoneIndicator(station)
+
+    this.updateStationVisuals(station)
+  }
+
+  /**
+   * Creates floating name UI above test station
+   */
+  private createFloatingNameUI(
+    station: TestStation
+  ): { position: { x: number; y: number; z: number }; text: string; status: string } {
+    // Create UI container for floating name
+    const ui = {
+      position: { ...station.position, y: station.position.y + 3 },
+      text: station.name,
+      status: station.status,
+    }
+
+    // Emit event for visual creation
+    this.world.emit(EventType.UI_CREATE, {
+      id: `test_ui_${station.id}`,
+      type: 'floating_name',
+      position: ui.position,
+      text: ui.text,
+      color: this.testColors[station.status],
+    })
+
+    return ui
+  }
+
+  /**
+   * Creates a colored cube indicator on the ground
+   */
+  private createTestZoneIndicator(station: TestStation): {
+    position: { x: number; y: number; z: number }
+    color: string
+    size: { x: number; y: number; z: number }
+  } {
+    const indicator = {
+      position: { ...station.position, y: station.position.y + 0.5 },
+      color: this.testColors[station.status],
+      size: { x: 2, y: 1, z: 2 },
+    }
+
+    // Emit event for visual creation
+    this.world.emit(EventType.UI_CREATE, {
+      id: `test_zone_${station.id}`,
+      position: indicator.position,
+      color: indicator.color,
+      size: indicator.size,
+    })
+
+    return indicator
+  }
+
+  /**
+   * Updates visual indicators for a station
+   */
+  private updateStationVisuals(station: TestStation): void {
+    const color = this.testColors[station.status]
+
+    // Update floating name
+    const statusText = this.getStatusText(station)
+    this.world.emit(EventType.UI_UPDATE, {
+      id: `test_ui_${station.id}`,
+      text: `${station.name}\n${statusText}`,
+      color: color,
+    })
+
+    // Update zone indicator
+    this.world.emit(EventType.UI_UPDATE, {
+      id: `test_zone_${station.id}`,
+      color: color,
+    })
+  }
+
+  /**
+   * Gets status text for display
+   */
+  private getStatusText(station: TestStation): string {
+    const successRate = station.totalRuns > 0 ? ((station.successCount / station.totalRuns) * 100).toFixed(1) : '0.0'
+
+    let statusText = `${station.status.toUpperCase()}`
+    statusText += `\nRuns: ${station.totalRuns} | Success: ${successRate}%`
+
+    if (station.status === 'failed' && station.currentError !== '') {
+      statusText += `\nError: ${station.currentError.substring(0, 30)}...`
+    }
+
+    return statusText
+  }
+
+  /**
+   * Extracts PlayerSkills from Player stats (which already includes SkillData objects)
+   */
+  private convertPlayerStatsToRPGStats(playerSkills: PlayerSkills): PlayerSkills {
+    return {
+      attack: playerSkills.attack,
+      strength: playerSkills.strength,
+      defense: playerSkills.defense,
+      ranged: playerSkills.ranged,
+      constitution: playerSkills.constitution,
+      woodcutting: playerSkills.woodcutting,
+      fishing: playerSkills.fishing,
+      firemaking: playerSkills.firemaking,
+      cooking: playerSkills.cooking,
+    }
+  }
+
+  /**
+   * Creates a fake player for testing
+   */
+  protected createPlayer(config: {
+    id: string
+    name: string
+    position: { x: number; y: number; z: number }
+    stats?: Partial<{
+      attack: number
+      strength: number
+      defense: number
+      ranged: number
+      constitution: number
+      health: number
+      maxHealth: number
+      woodcutting: number
+      fishing: number
+      firemaking: number
+      cooking: number
+      stamina: number
+      maxStamina: number
+    }>
+    initialInventory?: InventoryItem[]
+  }): Player {
+    // Fix position if it's at ground level (y=0) using proper terrain positioning
+    const fixedPosition = fixPositionIfAtGroundLevel(this.world, config.position, 'player')
+
+    // Create base player using the proper type structure
+    const rpgPlayerSkills: PlayerSkills = {
+      // Combat Skills
+      attack: { level: config.stats?.attack ?? 10, xp: 0 },
+      strength: { level: config.stats?.strength ?? 10, xp: 0 },
+      defense: { level: config.stats?.defense ?? 10, xp: 0 },
+      ranged: { level: config.stats?.ranged ?? 10, xp: 0 },
+      constitution: { level: config.stats?.constitution ?? 10, xp: 0 },
+      // Gathering Skills
+      woodcutting: { level: config.stats?.woodcutting ?? 1, xp: 0 },
+      fishing: { level: config.stats?.fishing ?? 1, xp: 0 },
+      firemaking: { level: config.stats?.firemaking ?? 1, xp: 0 },
+      cooking: { level: config.stats?.cooking ?? 1, xp: 0 },
+    };
+
+    // Create base player entity
+    const player = this.world.entities.add({
+      id: config.id,
+      type: 'player',
+      name: config.name,
+      position: [fixedPosition.x, fixedPosition.y, fixedPosition.z],
+      rotation: [0, 0, 0, 1],
+      scale: [1, 1, 1],
+      components: {
+        physics: { enabled: false }
+      }
+    }) as Player;
+    
+    // Add position getter for compatibility with RPGCombatSystem
+    Object.defineProperty(player, 'position', {
+      get() {
+        return player.node.position;
+      },
+      enumerable: true,
+      configurable: true
+    });
+    
+    // Add getPosition method for RPGEntity compatibility
+    (player as unknown as { getPosition: () => { x: number; y: number; z: number } }).getPosition = () => ({
+      x: player.node.position.x,
+      y: player.node.position.y,
+      z: player.node.position.z
+    });
+    
+    // Set RPG-specific properties
+    player.health = {
+      current: config.stats?.health ?? 100,
+      max: config.stats?.maxHealth ?? 100,
+    };
+    player.inventory = {
+      items: [],
+      capacity: 28,
+      coins: 0,
+    };
+    player.equipment = {
+      weapon: null,
+      shield: null,
+      helmet: null,
+      body: null,
+      legs: null,
+      arrows: null,
+    };
+
+    // Store skills separately for RPG systems to access
+    (player as unknown as { rpgSkills: PlayerSkills }).rpgSkills = rpgPlayerSkills;
+
+    // Add stats component to the actual player entity for getEntityStats compatibility
+    const statsComponent = {
+      // Combat skills using the playerSkills we created
+      attack: rpgPlayerSkills.attack,
+      strength: rpgPlayerSkills.strength,
+      defense: rpgPlayerSkills.defense,
+      constitution: rpgPlayerSkills.constitution,
+      ranged: rpgPlayerSkills.ranged,
+      // Non-combat skills
+      woodcutting: rpgPlayerSkills.woodcutting,
+      fishing: rpgPlayerSkills.fishing,
+      firemaking: rpgPlayerSkills.firemaking,
+      cooking: rpgPlayerSkills.cooking,
+      // Additional stats
+      combatLevel: Math.floor((rpgPlayerSkills.attack.level + rpgPlayerSkills.strength.level + rpgPlayerSkills.defense.level) / 3),
+      totalLevel: 9,
+      health: player.health.current,
+      maxHealth: player.health.max,
+      level: 1,
+      // HP stats
+      hitpoints: { level: 10, xp: 0, current: player.health.current, max: player.health.max },
+      prayer: { level: 1, points: 1 },
+      magic: { level: 1, xp: 0 }
+    };
+    
+    player.addComponent('stats', statsComponent);
+
+    // Initialize inventory with items from config if provided
+    if (config.initialInventory && config.initialInventory.length > 0) {
+      if (player.inventory) {
+        player.inventory.items = [...config.initialInventory]
+      }
+    }
+
+    // Create visual proxy (colored cube)
+    this.createPlayerVisual(player)
+
+    // Use the skills we already created above
+    const playerSkills = rpgPlayerSkills;
+
+    // Create a mock player entity for testing that doesn't require physics
+    const mockPlayerEntity = {
+      id: config.id,
+      type: 'player',
+      name: config.name,
+      isPlayer: true,
+      node: {
+        position: new THREE.Vector3(player.node.position.x, player.node.position.y, player.node.position.z),
+        quaternion: { x: 0, y: 0, z: 0, w: 1 },
+        scale: { x: 1, y: 1, z: 1 }
+      },
+      stats: {
+        health: player.health.current,
+        maxHealth: player.health.max,
+        score: 0,
+        kills: 0,
+        deaths: 0
+      },
+      addComponent: (name: string, data?: Record<string, unknown>) => {
+        // Mock addComponent method for compatibility
+        const componentData = data || {};
+        (mockPlayerEntity as Record<string, unknown>)[name] = componentData;
+        return componentData;
+      },
+      getComponent: (name: string) => {
+        // Mock getComponent method for compatibility
+        return (mockPlayerEntity as Record<string, unknown>)[name];
+      }
+    };
+
+    // Add stats component to the mock entity
+    mockPlayerEntity.addComponent('stats', {
+      // Combat skills using the playerSkills we created
+      attack: playerSkills.attack,
+      strength: playerSkills.strength,
+      defense: playerSkills.defense,
+      constitution: playerSkills.constitution,
+      ranged: playerSkills.ranged,
+      // Non-combat skills
+      woodcutting: playerSkills.woodcutting,
+      fishing: playerSkills.fishing,
+      firemaking: playerSkills.firemaking,
+      cooking: playerSkills.cooking,
+      // Additional stats
+      combatLevel: Math.floor((playerSkills.attack.level + playerSkills.strength.level + playerSkills.defense.level) / 3),
+      totalLevel: 9,
+      health: player.health.current,
+      maxHealth: player.health.max,
+      level: 1,
+      // HP stats
+      hitpoints: { level: 10, xp: 0, current: player.health.current, max: player.health.max },
+      prayer: { level: 1, points: 1 },
+      magic: { level: 1, xp: 0 }
+    });
+    
+    // Register the mock entity in both the entities items map and players map
+    this.world.entities.items.set(config.id, mockPlayerEntity as unknown as Entity);
+    this.world.entities.players.set(config.id, mockPlayerEntity as unknown as Player);
+    
+          RPGLogger.system(this.constructor.name, `Created mock test player ${config.id} with stats component`)
+          RPGLogger.system(this.constructor.name, `Player ${config.id} registered in players Map`)
+
+    // CRITICAL: Register fake player with RPGPlayerSystem for healing to work
+    // Add a small delay to ensure the player is fully registered before emitting events
+    setTimeout(() => {
+      this.world.emit(EventType.PLAYER_JOINED, {
+        playerId: config.id,
+        isInitialConnection: true
+      })
+    }, 10)
+    
+    // Then emit PLAYER_REGISTERED for any other systems that need it
+    this.world.emit(EventType.PLAYER_REGISTERED, {
+      id: config.id,
+      name: config.name,
+      health: player.health.current,
+      maxHealth: player.health.max,
+      position: { x: player.node.position.x, y: player.node.position.y, z: player.node.position.z },
+      stats: playerSkills,
+      isAlive: true,
+    })
+
+    // Register fake player with entity manager for combat system to find them
+    const entityManager = this.world.getSystem<RPGEntityManager>('rpg-entity-manager')
+    if (!entityManager) {
+      throw new Error(`Entity manager not found - fake player ${config.id} won't be found by combat system`)
+    }
+    
+    // Note: entityManager needs to implement registerPlayer method
+    // For now, we'll skip this registration until the method exists
+            RPGLogger.system(this.constructor.name, `Entity manager registration skipped for fake player ${config.id}`)
+
+    // CRITICAL: Also register fake player with XP system for aggro system to work
+
+    // Initialize fake player inventory
+    this.world.emit(EventType.PLAYER_INIT, { id: config.id })
+            RPGLogger.system(this.constructor.name, `Triggered inventory initialization for fake player ${config.id}`)
+
+    // Add any items that were set in the fake player's inventory using proper event system
+    if (player.inventory && player.inventory.items && player.inventory.items.length > 0) {
+      // Add each inventory item using the proper RPG inventory event
+      player.inventory.items.forEach(invSlot => {
+        // Use inventory add event instead of direct method call
+        this.world.emit(EventType.INVENTORY_ITEM_ADDED, {
+          playerId: config.id,
+          item: {
+            id: `${config.id}_${invSlot.itemId}_${Date.now()}`,
+            itemId: invSlot.itemId,
+            quantity: invSlot.quantity || 1,
+            slot: invSlot.slot || 0,
+            metadata: invSlot.metadata || null
+          }
+        })
+      })
+    }
+
+    // Also initialize XP skills if stats were provided
+    if (config.stats) {
+      this.world.emit(EventType.SKILLS_XP_GAINED, {
+        playerId: config.id,
+        skills: playerSkills,
+      })
+    }
+
+    // Stats are now properly set via the stats component on the entity
+
+    this.fakePlayers.set(config.id, player)
+
+    // Ensure systems are ready before registering fake players
+
+    // Register the fake player with all RPG systems
+    this.world.emit(EventType.PLAYER_REGISTERED, {
+      playerId: player.id,
+      playerData: {
+        id: player.id,
+        name: player.name,
+        position: { x: player.node.position.x, y: player.node.position.y, z: player.node.position.z },
+        combatLevel: 3, // Starting combat level
+        isAlive: true,
+        stats: this.convertPlayerStatsToRPGStats(playerSkills),
+        equipment: player.equipment || {
+          weapon: null,
+          shield: null,
+          helmet: null,
+          body: null,
+          legs: null,
+          arrows: null
+        },
+      },
+    })
+
+    // Set skill levels if specified in fake player stats
+    const skillLevels: Record<string, number> = {}
+    const _stats = player.stats
+
+    // Get the RPG skills from the player
+    const rpgSkills = (player as unknown as { rpgSkills: PlayerSkills }).rpgSkills;
+    if (rpgSkills) {
+      // Map fake player stats to skill levels
+      if (rpgSkills.cooking.level > 1) skillLevels.cooking = rpgSkills.cooking.level
+      if (rpgSkills.fishing.level > 1) skillLevels.fishing = rpgSkills.fishing.level
+      if (rpgSkills.woodcutting.level > 1) skillLevels.woodcutting = rpgSkills.woodcutting.level
+      if (rpgSkills.firemaking.level > 1) skillLevels.firemaking = rpgSkills.firemaking.level
+      if (rpgSkills.attack.level > 1) skillLevels.attack = rpgSkills.attack.level
+      if (rpgSkills.strength.level > 1) skillLevels.strength = rpgSkills.strength.level
+      if (rpgSkills.defense.level > 1) skillLevels.defense = rpgSkills.defense.level
+      if (rpgSkills.ranged.level > 1) skillLevels.ranged = rpgSkills.ranged.level
+      if (rpgSkills.constitution.level > 10) skillLevels.constitution = rpgSkills.constitution.level
+    }
+
+    // Set skill levels if any were specified
+    if (Object.keys(skillLevels).length > 0) {
+      this.world.emit(EventType.SKILLS_XP_GAINED, {
+        playerId: config.id,
+        skills: skillLevels,
+      })
+    }
+
+    // Emit initial position update for aggro system
+    this.world.emit(EventType.PLAYER_POSITION_UPDATED, {
+      playerId: config.id,
+      entityId: config.id,
+      position: { x: player.node.position.x, y: player.node.position.y, z: player.node.position.z },
+    })
+
+    // Emit initial equipment state for reactive pattern
+    if (player.equipment) {
+      for (const [slot, item] of Object.entries(player.equipment)) {
+        if (item && typeof item === 'object' && 'id' in item) {
+          this.world.emit(EventType.PLAYER_EQUIPMENT_CHANGED, {
+            playerId: config.id,
+            slot,
+            itemId: (item as RPGItem).id,
+            item: item as RPGItem
+          })
+        }
+      }
+    }
+
+    // Emit initial stats for reactive pattern
+    this.world.emit(EventType.PLAYER_STATS_EQUIPMENT_UPDATED, {
+      playerId: config.id,
+      stats: this.convertPlayerStatsToRPGStats(playerSkills)
+    })
+    
+    // Also add to world.entities.players for combat system compatibility
+    if (this.world.entities.players) {
+      this.world.entities.players.set(player.id, player);
+      RPGLogger.system('RPGVisualTestFramework', `Player ${player.id} registered in world.entities.players`);
+    } else {
+      RPGLogger.systemError('RPGVisualTestFramework', `world.entities.players not available for player ${player.id}`);
+    }
+
+    return player
+  }
+
+  /**
+   * Creates visual representation of fake player
+   */
+  private createPlayerVisual(player: Player): void {
+    this.world.emit(EventType.PLAYER_CREATE, {
+      id: `fake_player_${player.id}`,
+      position: { x: player.node.position.x, y: player.node.position.y + 1, z: player.node.position.z },
+      color: '#0088ff', // Blue for fake players
+      size: { x: 0.8, y: 1.8, z: 0.8 },
+      name: player.name,
+    })
+  }
+
+  /**
+   * Moves a fake player to a new position
+   */
+  protected movePlayer(playerId: string, newPosition: { x: number; y: number; z: number }): void {
+    const player = this.fakePlayers.get(playerId)
+    if (!player) return
+
+    // Fix position if it's at ground level (y=0) using proper terrain positioning
+    const fixedPosition = fixPositionIfAtGroundLevel(this.world, newPosition, 'player')
+
+    // Update position - since position is readonly, we need to update the reference
+    Object.defineProperty(player, 'position', {
+      value: Object.freeze({
+        x: fixedPosition.x,
+        y: fixedPosition.y,
+        z: fixedPosition.z,
+      }),
+      writable: false,
+      configurable: true
+    })
+
+    // Update the mock entity's node.position (THREE.Vector3)
+    const mockEntity = this.world.entities.get(playerId);
+    if (mockEntity && mockEntity.node && mockEntity.node.position && typeof mockEntity.node.position.set === 'function') {
+      mockEntity.node.position.set(fixedPosition.x, fixedPosition.y, fixedPosition.z);
+    }
+
+    // Update visual
+    this.world.emit(EventType.PLAYER_POSITION_UPDATED, {
+      id: `fake_player_${playerId}`,
+      position: { ...fixedPosition, y: fixedPosition.y + 1 },
+    })
+
+    // Emit position update event for aggro system
+    this.world.emit(EventType.PLAYER_POSITION_UPDATED, {
+      playerId: playerId,
+      entityId: playerId,
+      position: fixedPosition,
+    })
+  }
+
+  /**
+   * Starts a test for a specific station
+   */
+  protected startTest(stationId: string): void {
+    const station = this.testStations.get(stationId)
+    if (!station) return
+
+    station.status = 'running'
+    station.lastRunTime = Date.now()
+    station.totalRuns++
+    station.currentError = ''
+
+    this.updateStationVisuals(station)
+
+    // Set timeout with detailed failure reporting
+    setTimeout(() => {
+      if (station.status === 'running') {
+        // FAIL FAST: Collect comprehensive state before failing
+        const debugInfo = this.collectTimeoutDebugInfo(stationId)
+        this.failTest(stationId, `Test timeout exceeded (${station.timeoutMs}ms) - ${debugInfo}`)
+      }
+    }, station.timeoutMs)
+  }
+
+  /**
+   * Collects comprehensive debug information when a test times out
+   * FAIL FAST: Provides detailed state to help identify root cause
+   */
+  private collectTimeoutDebugInfo(stationId: string): string {
+    const station = this.testStations.get(stationId)
+    if (!station) return 'station not found'
+
+    const debugInfo: string[] = []
+
+    try {
+      // Basic station info
+      debugInfo.push(`station=${station.name}`)
+      debugInfo.push(`status=${station.status}`)
+      debugInfo.push(`runs=${station.totalRuns}`)
+      debugInfo.push(`success=${station.successCount}`)
+
+      // Timing info
+      const elapsed = Date.now() - station.lastRunTime
+      debugInfo.push(`elapsed=${elapsed}ms`)
+      debugInfo.push(`limit=${station.timeoutMs}ms`)
+
+      // System availability - CRITICAL for debugging
+      const systemChecks = [
+        ['rpg-combat', getSystem(this.world, 'rpg-combat')],
+        ['rpg-mob', getSystem(this.world, 'rpg-mob')],
+        ['rpg-equipment', getSystem(this.world, 'rpg-equipment')],
+        ['rpg-inventory', getSystem(this.world, 'rpg-inventory')],
+        ['rpg-skills', getSystem(this.world, 'rpg-skills')],
+        ['rpg-entity-manager', getSystem(this.world, 'rpg-entity-manager')],
+      ]
+
+      const missingSystems = systemChecks.filter(([_name, system]) => !system).map(([name]) => name)
+
+      if (missingSystems.length > 0) {
+        debugInfo.push(`missing_systems=[${missingSystems.join(',')}]`)
+      }
+
+      // Add system availability info from earlier checks
+      debugInfo.push(`available_systems=${systemChecks.filter(([_name, system]) => system).length}/${systemChecks.length}`)
+    } catch (error) {
+      debugInfo.push(`debug_error=${error instanceof Error ? error.message : String(error)}`)
+    }
+
+    return debugInfo.join(' ')
+  }
+
+  /**
+   * Marks a test as passed
+   */
+  protected passTest(stationId: string, details?: Record<string, unknown>): void {
+    const station = this.testStations.get(stationId)
+    if (!station) return
+
+    // CRITICAL FIX: Prevent multiple passTest calls for same test run
+    // If already passed or failed, ignore duplicate calls
+    if (station.status === 'passed' || station.status === 'failed') {
+      return
+    }
+
+    station.status = 'passed'
+    station.successCount++
+
+    this.updateStationVisuals(station)
+
+    const duration = Date.now() - station.lastRunTime
+
+    // Emit result
+    this.world.emit(EventType.TEST_RESULT, {
+      stationId,
+      result: { success: true, duration, details },
+    })
+
+    // Schedule restart after 5 seconds
+    setTimeout(() => {
+      this.restartTest(stationId)
+    }, 5000)
+  }
+
+  /**
+   * Marks a test as failed
+   */
+  protected failTest(stationId: string, error: string): void {
+    const station = this.testStations.get(stationId)
+    if (!station) return
+
+    // CRITICAL FIX: Prevent multiple failTest calls for same test run
+    // If already passed or failed, ignore duplicate calls
+    if (station.status === 'passed' || station.status === 'failed') {
+      return
+    }
+
+    station.status = 'failed'
+    station.failureCount++
+    station.currentError = error
+
+    this.updateStationVisuals(station)
+
+    const duration = Date.now() - station.lastRunTime
+          RPGLogger.systemError('RPGVisualTestFramework', `Test failed: ${station.name} - ${error} (${duration}ms)`)
+
+    // Emit result
+    this.world.emit(EventType.TEST_RESULT, {
+      stationId,
+      result: { success: false, error, duration },
+    })
+
+    // Schedule restart after 10 seconds (longer for failed tests)
+    setTimeout(() => {
+      this.restartTest(stationId)
+    }, 10000)
+  }
+
+  /**
+   * Restarts a test
+   */
+  protected restartTest(stationId: string): void {
+    const station = this.testStations.get(stationId)
+    if (!station) return
+
+    station.status = 'idle'
+    station.currentError = ''
+
+    this.updateStationVisuals(station)
+
+    // Clean up any test state
+    this.cleanupTest(stationId)
+
+    // Start the test again after a brief delay
+    // Schedule next test run
+    this.scheduleTestRun(stationId, 2000)
+  }
+
+  /**
+   * Updates all test stations
+   */
+  private updateTestStations(): void {
+    for (const [stationId, station] of this.testStations) {
+      // Auto-start idle tests
+      if (station.status === 'idle') {
+        this.scheduleTestRun(stationId, 0)
+      }
+
+      // Check for hanging tests
+      if (station.status === 'running') {
+        const elapsed = Date.now() - station.lastRunTime
+        if (elapsed > station.timeoutMs) {
+          // FAIL FAST: Collect comprehensive state before failing
+          const debugInfo = this.collectTimeoutDebugInfo(stationId)
+          this.failTest(
+            stationId,
+            `Test timeout exceeded (${elapsed}ms elapsed, ${station.timeoutMs}ms limit) - ${debugInfo}`
+          )
+        }
+      }
+    }
+  }
+
+  private scheduleTestRun(stationId: string, delayMs: number): void {
+    setTimeout(async () => {
+      try {
+        await this.runTest(stationId)
+      } catch (error) {
+        RPGLogger.systemError('RPGVisualTestFramework', `Error in runTest for ${stationId}`, error instanceof Error ? error : new Error(String(error)))
+        this.failTest(stationId, `Test execution error: ${error}`)
+      }
+    }, delayMs)
+  }
+
+  /**
+   * Event handlers
+   */
+  private onTestStationCreated(_data: { station: TestStation }): void {
+    // Event is already logged in createTestStation method
+  }
+
+  private onTestResult(data: { stationId: string; result: TestResult }): void {
+    const station = this.testStations.get(data.stationId)
+    if (station) {
+      // Test result processed successfully
+    }
+  }
+
+  /**
+   * Abstract methods that must be implemented by test systems
+   */
+  protected abstract runTest(stationId: string): void | Promise<void>
+  protected abstract cleanupTest(stationId: string): void
+
+  /**
+   * Utility methods for tests
+   */
+  protected async waitForCondition(
+    condition: () => boolean,
+    timeoutMs: number = 5000,
+    checkIntervalMs: number = 100
+  ): Promise<boolean> {
+    return new Promise(resolve => {
+      const startTime = Date.now()
+
+      const check = () => {
+        if (condition()) {
+          resolve(true)
+          return
+        }
+
+        if (Date.now() - startTime > timeoutMs) {
+          resolve(false)
+          return
+        }
+
+        setTimeout(check, checkIntervalMs)
+      }
+
+      check()
+    })
+  }
+
+  /**
+   * Helper method to create properly structured inventory slots
+   * Converts legacy {item, quantity} format to correct {slot, itemId, quantity, item} format
+   */
+  protected createInventorySlot(slot: number, item: RPGItem, quantity: number): InventoryItem {
+    return {
+      id: `${item.id}_${Date.now()}_${slot}`, // Unique instance ID
+      itemId: item.id,
+      quantity: quantity,
+      slot: slot,
+      metadata: {}, // Required field for InventoryItem
+    }
+  }
+
+  protected getDistance(pos1: { x: number; y: number; z: number }, pos2: { x: number; y: number; z: number }): number {
+    return calculateDistance(pos1, pos2)
+  }
+
+  protected generateRandomPosition(
+    center: { x: number; y: number; z: number },
+    radius: number
+  ): { x: number; y: number; z: number } {
+    const angle = Math.random() * Math.PI * 2
+    const distance = Math.random() * radius
+
+    return {
+      x: center.x + Math.cos(angle) * distance,
+      y: center.y,
+      z: center.z + Math.sin(angle) * distance,
+    }
+  }
+
+  // Removed GET event handlers - now using reactive patterns with cached data
+
+  // Handler for equipment changes to keep fake player equipment in sync
+  private handleEquipmentChange(data: {
+    playerId: string
+    slot: string
+    itemId: string | null
+    item: RPGItem | null
+  }): void {
+    const player = this.fakePlayers.get(data.playerId)
+    if (!player) return
+
+    // Update fake player's equipment to match the equipment system
+    const equipmentSlot = data.slot as keyof PlayerEquipment
+    if (data.itemId && data.item) {
+      // Equipment added - store the item data
+      if (!player.equipment) {
+        player.equipment = {
+          weapon: null,
+          shield: null,
+          helmet: null,
+          body: null,
+          legs: null,
+          arrows: null
+        };
+      }
+      (player.equipment as PlayerEquipment)[equipmentSlot as keyof PlayerEquipment] = data.item
+    } else {
+      // Equipment removed
+      if (!player.equipment) {
+        player.equipment = {
+          weapon: null,
+          shield: null,
+          helmet: null,
+          body: null,
+          legs: null,
+          arrows: null
+        };
+      }
+      (player.equipment as PlayerEquipment)[equipmentSlot as keyof PlayerEquipment] = null
+    }
+  }
+
+
+
+  destroy(): void {
+    if (this.updateInterval !== null) {
+      clearInterval(this.updateInterval)
+    }
+
+    // Clean up all test stations
+    for (const stationId of this.testStations.keys()) {
+      this.cleanupTest(stationId)
+    }
+
+    this.testStations.clear()
+    this.fakePlayers.clear()
+    
+    // Restore original console methods
+    console.warn = this.originalConsoleWarn
+    console.error = this.originalConsoleError
+    
+    super.destroy()
+  }
+
+  // Required System lifecycle methods
+  preTick(): void {
+    // Base implementation - can be overridden by test systems
+  }
+
+  preFixedUpdate(): void {
+    // Base implementation - can be overridden by test systems
+  }
+
+  fixedUpdate(_dt: number): void {
+    // Base implementation - can be overridden by test systems
+  }
+
+  postFixedUpdate(): void {
+    // Base implementation - can be overridden by test systems
+  }
+
+  preUpdate(): void {
+    // Base implementation - can be overridden by test systems
+  }
+
+  update(_dt: number): void {
+    // Base implementation - can be overridden by test systems
+  }
+
+  postUpdate(): void {
+    // Base implementation - can be overridden by test systems
+  }
+
+  lateUpdate(): void {
+    // Base implementation - can be overridden by test systems
+  }
+
+  postLateUpdate(): void {
+    // Base implementation - can be overridden by test systems
+  }
+
+  /**
+   * Start capturing console output for a specific test
+   */
+  protected startConsoleCapture(testId: string): void {
+    this.consoleCaptures.set(testId, [])
+  }
+
+  /**
+   * Get captured console output for a test
+   */
+  protected getConsoleCaptures(testId: string): string[] {
+    return this.consoleCaptures.get(testId) || []
+  }
+
+  /**
+   * Stop capturing console output for a test
+   */
+  protected stopConsoleCapture(testId: string): void {
+    this.consoleCaptures.delete(testId)
+  }
+
+
+
+  commit(): void {
+    // Base implementation - can be overridden by test systems
+  }
+
+  postTick(): void {
+    // Base implementation - can be overridden by test systems
+  }
+}

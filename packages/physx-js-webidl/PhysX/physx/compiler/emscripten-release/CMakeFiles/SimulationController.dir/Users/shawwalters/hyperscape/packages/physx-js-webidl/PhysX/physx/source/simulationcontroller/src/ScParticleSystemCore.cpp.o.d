@@ -1,0 +1,21 @@
+CMakeFiles/SimulationController.dir/Users/shawwalters/hyperscape/packages/physx-js-webidl/PhysX/physx/source/simulationcontroller/src/ScParticleSystemCore.cpp.o: \
+  /Users/shawwalters/hyperscape/packages/physx-js-webidl/PhysX/physx/source/simulationcontroller/src/ScParticleSystemCore.cpp \
+  /Users/shawwalters/hyperscape/packages/physx-js-webidl/PhysX/physx/include/foundation/PxPreprocessor.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/c++/v1/stddef.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/c++/v1/__config \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/c++/v1/__config_site \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/c++/v1/__configuration/abi.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/c++/v1/__configuration/compiler.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/c++/v1/__configuration/platform.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/c++/v1/__configuration/availability.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/c++/v1/__configuration/language.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/llvm/lib/clang/22/include/stddef.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/stddef.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/llvm/lib/clang/22/include/__stddef_header_macro.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/llvm/lib/clang/22/include/__stddef_ptrdiff_t.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/llvm/lib/clang/22/include/__stddef_size_t.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/llvm/lib/clang/22/include/__stddef_wchar_t.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/llvm/lib/clang/22/include/__stddef_null.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/llvm/lib/clang/22/include/__stddef_nullptr_t.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/llvm/lib/clang/22/include/__stddef_max_align_t.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/llvm/lib/clang/22/include/__stddef_offsetof.h

@@ -1,0 +1,883 @@
+ 
+/**
+ * RPG Mob AI System
+ * Handles mob artificial intelligence, spawning, and combat behavior
+ */
+
+import * as THREE from '../../core/extras/three';
+import type { Player } from '../../types';
+import { EventType } from '../../types/events';
+import type { World } from '../../types/index';
+import type { CombatTarget, MobAIStateData, PlayerData, MobAIStateType } from '../types/core';
+import type { RPGMobData } from '../types/core';
+import { MobEntity } from '../entities/MobEntity';
+import { MobType } from '../types/entities';
+import { MobAISystemInfo as SystemInfo } from '../types/rpg-system-types';
+import type { RPGPlayerSystem } from './RPGPlayerSystem';
+import { RPGSystemBase } from './RPGSystemBase';
+import { RPGLogger } from '../utils/RPGLogger';
+
+// Type for mobs that may come from different sources
+type MobReference = MobEntity;
+
+export class RPGMobAISystem extends RPGSystemBase {
+  private mobStates: Map<string, MobAIStateData> = new Map();
+  private activeMobs: Map<string, MobReference> = new Map(); // Store mob references
+  private combatTargets: Map<string, CombatTarget[]> = new Map(); // mobId -> targets[]
+  private playerSystem?: RPGPlayerSystem;
+  
+  // AI Constants
+  private readonly UPDATE_INTERVAL = 1000; // Update AI every second
+  private readonly AGGRO_CHECK_INTERVAL = 500; // Check for players every 0.5s
+  private readonly ATTACK_COOLDOWN = 3000; // 3 second attack cooldown
+  private readonly CHASE_TIMEOUT = 30000; // 30 second chase timeout
+  private readonly PATROL_CHANGE_INTERVAL = 10000; // Change patrol direction every 10s
+  
+  private lastUpdate = 0;
+  private lastAggroCheck = 0;
+
+  constructor(world: World) {
+    super(world, {
+      name: 'rpg-mob-ai',
+      dependencies: {
+        optional: ['rpg-player', 'rpg-combat', 'rpg-world-generation', 'client-graphics']
+      },
+      autoCleanup: true
+    });
+  }
+
+  async init(): Promise<void> {
+    // Get player system reference
+    this.playerSystem = this.world.getSystem('rpg-player') as RPGPlayerSystem | undefined;
+    
+    // Subscribe to mob-related events using type-safe event system
+    this.subscribe<{ id: string; type: string; level: number; position: { x: number; y: number; z: number } }>(EventType.MOB_SPAWNED, (event) => this.handleMobSpawned(event.data));
+    this.subscribe<{ mobId: string; damage: number; attackerId: string }>(EventType.MOB_DAMAGED, (event) => this.handleMobDamaged(event.data));
+    this.subscribe<{ mobId: string; killerId: string }>(EventType.MOB_DIED, (event) => this.handleMobKilled(event.data));
+    this.subscribe<{ playerId: string; targetId: string; damage: number }>(EventType.COMBAT_ATTACK, (event) => this.handlePlayerAttack(event.data));
+  }
+
+  /**
+   * Handle mob spawning
+   */
+  private handleMobSpawned(data: { id: string; type: string; level: number; position: { x: number; y: number; z: number } }): void {
+    // Handle the actual event structure from RPGMobSystem
+    const mobId = data.id;
+    
+    // Defer the processing to allow EntityManager to create the entity first
+    setTimeout(() => {
+      const mobEntity = this.world.entities.get(mobId) as MobEntity;
+      
+      if (!mobEntity) {
+        RPGLogger.system('RPGMobAISystem', `Mob entity not available for ${mobId} after timeout, retrying...`);
+        // Try one more time after another delay
+        setTimeout(() => {
+          const retryEntity = this.world.entities.get(mobId) as MobEntity;
+          if (retryEntity) {
+            this.registerMobWithAI(mobId, retryEntity);
+          } else {
+            RPGLogger.systemError('RPGMobAISystem', `Failed to find mob entity ${mobId} after retries`);
+          }
+        }, 100);
+        return;
+      }
+      
+      this.registerMobWithAI(mobId, mobEntity);
+    }, 10);
+  }
+  
+  /**
+   * Register mob with AI system after entity is confirmed to exist
+   */
+  private registerMobWithAI(mobId: string, mobEntity: MobEntity): void {
+    this.activeMobs.set(mobId, mobEntity);
+    
+    // Get mob configuration data
+    const mobData = this.getMobData(mobEntity);
+    const mobType = mobData.type;
+    const aggroRange = mobData.aggroRange;
+    
+    const aiState: MobAIStateData = {
+      mobId: mobId,
+      type: mobType,
+      state: 'idle',
+      behavior: 'aggressive', // Most mobs are aggressive by default
+      lastStateChange: Date.now(),
+      lastAction: Date.now(),
+      isInCombat: false,
+      currentTarget: null,
+      aggroTargets: new Map(),
+      combatCooldown: 0,
+      lastAttack: 0,
+      homePosition: this.getMobHomePosition(mobEntity),
+      currentPosition: this.getMobHomePosition(mobEntity),
+      isPatrolling: false,
+      isChasing: false,
+      detectionRange: aggroRange,
+      leashRange: 20,
+      chaseSpeed: 3.0,
+      patrolRadius: 5.0,
+      levelIgnore: 0, // Add missing property - level to ignore aggro from lower level players
+      targetId: null,
+      patrolPath: [],
+      patrolIndex: 0,
+      patrolTarget: null,
+      combatTarget: null
+    };
+    
+    this.mobStates.set(mobId, aiState);
+    this.combatTargets.set(mobId, []);
+    
+    RPGLogger.system('RPGMobAISystem', `Registered mob ${mobId} with AI state`);
+  }
+
+  /**
+   * Handle mob taking damage
+   */
+  private handleMobDamaged(data: { mobId: string; damage: number; attackerId: string }): void {
+    const { mobId, damage, attackerId } = data;
+    const mob = this.activeMobs.get(mobId);
+    const aiState = this.mobStates.get(mobId);
+    
+    if (!mob || !aiState) return;
+    
+    // Check if mob is already dead
+    const currentHealth = this.getMobCurrentHealth(mob);
+    if (currentHealth <= 0) return; // Already dead
+    
+    // Check if mob has takeDamage method (is a MobEntity instance)
+    if (mob instanceof MobEntity) {
+      // Use the takeDamage method
+      mob.takeDamage(damage, attackerId);
+    } else {
+      // Handle plain mob objects from RPGWorldContentSystem
+      // Apply damage directly to the mob data
+      const mobData = this.getMobData(mob);
+      const newHealth = Math.max(0, currentHealth - damage);
+      mobData.health = newHealth;
+      if ('currentHealth' in mob) {
+        (mob as { currentHealth: number }).currentHealth = newHealth;
+      }
+      
+      // Emit damage event for visual feedback
+      this.world.emit(EventType.COMBAT_DAMAGE_DEALT, {
+        targetId: mobId,
+        damage,
+        position: this.getMobHomePosition(mob)
+      });
+      
+      // Check if mob died
+      if (newHealth <= 0) {
+        this.killMob(mobId, attackerId);
+        return;
+      }
+    }
+    
+    // Add attacker as combat target  
+    this.addCombatTarget(mobId, attackerId, 100); // High threat for attacker
+    
+    // Enter combat state if not already
+    if (aiState.state !== 'combat' && aiState.state !== 'chase') {
+      this.setMobState(aiState, 'chase');
+    }
+  }
+
+  /**
+   * Handle mob death
+   */
+  private handleMobKilled(data: { mobId: string, killerId: string }): void {
+    const { mobId, killerId } = data;
+    const mob = this.activeMobs.get(mobId);
+    const aiState = this.mobStates.get(mobId);
+    
+    if (!mob || !aiState) return;
+    
+    this.killMob(mobId, killerId);
+  }
+
+  /**
+   * Handle player attacking
+   */
+  private handlePlayerAttack(data: { playerId: string, targetId: string, damage: number }): void {
+    const { playerId, targetId, damage } = data;
+    
+    // If target is a mob, handle damage
+    if (this.activeMobs.has(targetId)) {
+      this.handleMobDamaged({ mobId: targetId, damage, attackerId: playerId });
+    }
+  }
+
+  /**
+   * Kill a mob
+   */
+  private killMob(mobId: string, _killerId: string): void {
+    const mob = this.activeMobs.get(mobId);
+    const aiState = this.mobStates.get(mobId);
+    
+    if (!mob || !aiState) return;
+
+    // Remove from world
+    this.world.stage.scene.remove(mob.mesh!);
+    
+    // Set AI state to dead
+    this.setMobState(aiState, 'dead');
+    
+    // Clear combat targets
+    this.combatTargets.set(mobId, []);
+    
+    // Emit death event for loot system
+    // Disabled - RPGMobSystem handles MOB_DIED events
+    // this.emitTypedEvent(EventType.MOB_DIED, {
+    //   mobId,
+    //   killerId,
+    //   mobData: mobData,
+    //   position: position
+    // });
+  }
+
+  /**
+   * Add a combat target for a mob
+   */
+  private addCombatTarget(mobId: string, attackerId: string, threat: number): void {
+    const targets = this.combatTargets.get(mobId) || [];
+    const mob = this.activeMobs.get(mobId);
+    
+    if (!mob) return;
+    
+    // Try to get player entity
+    let player: Player | null = null;
+    try {
+      player = this.world.getPlayer(attackerId) as Player | null;
+    } catch (_error) {
+      // Handle test scenarios where attacker ID is not a real player
+
+    }
+    
+    // For test entities or non-player attackers, create a minimal target data
+    let position: { x: number; y: number; z: number };
+    
+        if (player?.node?.position) {
+        position = { x: player.node.position.x, y: player.node.position.y, z: player.node.position.z };
+    } else {
+      // For test entities, use mob's current position as a fallback
+      position = { x: mob.mesh!.position.x, y: mob.mesh!.position.y, z: mob.mesh!.position.z };
+    }
+    
+    // Check if target already exists
+    const existingIndex = targets.findIndex(t => t.playerId === attackerId);
+    
+    const targetData: CombatTarget = {
+      entityId: attackerId,
+      entityType: 'player' as const,
+      playerId: attackerId,
+      position: position,
+              distance: mob.mesh!.position.distanceTo(new THREE.Vector3(position.x, position.y, position.z)),
+      lastSeen: Date.now(),
+      threat: existingIndex >= 0 ? targets[existingIndex].threat + threat : threat
+    };
+    
+    if (existingIndex >= 0) {
+      targets[existingIndex] = targetData;
+    } else {
+      targets.push(targetData);
+    }
+    
+    // Sort by threat level (highest first)
+    targets.sort((a, b) => b.threat - a.threat);
+    
+    this.combatTargets.set(mobId, targets);
+  }
+
+  /**
+   * Set mob AI state
+   */
+  private setMobState(aiState: MobAIStateData, newState: MobAIStateType): void {
+    if (aiState.state === newState) return;
+    
+    const _oldState = aiState.state;
+    aiState.state = newState;
+    aiState.lastStateChange = Date.now();
+    
+  }
+
+  /**
+   * Update mob AI system
+   */
+  update(deltaTime: number): void {
+    const now = Date.now();
+    
+    // Update AI states
+    if (now - this.lastUpdate >= this.UPDATE_INTERVAL) {
+      this.updateAIStates(deltaTime);
+      this.lastUpdate = now;
+    }
+    
+    // Check for player aggro
+    if (now - this.lastAggroCheck >= this.AGGRO_CHECK_INTERVAL) {
+      this.checkPlayerAggro();
+      this.lastAggroCheck = now;
+    }
+    
+    // Update mob positions and animations
+    this.updateMobMovement(deltaTime);
+  }
+
+  /**
+   * Update AI states for all mobs
+   */
+  private updateAIStates(_deltaTime: number): void {
+    const _now = Date.now();
+    
+    for (const [mobId, aiState] of this.mobStates) {
+      const mob = this.activeMobs.get(mobId);
+      if (!mob) continue;
+      
+      if (this.getMobCurrentHealth(mob) <= 0 && aiState.state !== 'dead') {
+        this.setMobState(aiState, 'dead');
+        continue;
+      }
+      
+      // Update combat cooldown
+      if (aiState.combatCooldown > 0) {
+        aiState.combatCooldown -= _deltaTime * 1000;
+      }
+      
+      switch (aiState.state) {
+        case 'idle':
+          this.updateIdleState(mob, aiState);
+          break;
+        case 'patrol':
+          this.updatePatrolState(mob, aiState);
+          break;
+        case 'chase':
+          this.updateChaseState(mob, aiState);
+          break;
+        case 'combat':
+          this.updateCombatState(mob, aiState);
+          break;
+        case 'returning':
+          this.updateReturningState(mob, aiState);
+          break;
+        case 'dead':
+          this.updateDeadState(mob, aiState);
+          break;
+      }
+    }
+  }
+
+  /**
+   * Update idle state
+   */
+  private updateIdleState(mob: MobReference, aiState: MobAIStateData): void {
+    const now = Date.now();
+    
+    // Check for nearby targets
+    const targets = this.combatTargets.get(mob.id) || [];
+    if (targets.length > 0) {
+      this.setMobState(aiState, 'chase');
+      return;
+    }
+    
+    // Enter patrol state after being idle for a while
+    if (now - aiState.lastStateChange > 5000) {
+      this.setMobState(aiState, 'patrol');
+    }
+  }
+
+  /**
+   * Update patrol state
+   */
+  private updatePatrolState(mob: MobReference, aiState: MobAIStateData): void {
+    const now = Date.now();
+    
+    // Check for nearby targets
+    const targets = this.combatTargets.get(mob.id) || [];
+    if (targets.length > 0) {
+      this.setMobState(aiState, 'chase');
+      return;
+    }
+    
+    // Generate new patrol target if needed
+    if (!aiState.patrolTarget || now - aiState.lastStateChange > this.PATROL_CHANGE_INTERVAL) {
+      this.generatePatrolTarget(mob, aiState);
+    }
+    
+    // Check if reached patrol target
+    if (aiState.patrolTarget) {
+      const distance = mob.mesh!.position.distanceTo(aiState.patrolTarget);
+      if (distance < 1.0) {
+        this.setMobState(aiState, 'idle');
+      }
+    }
+  }
+
+  /**
+   * Update chase state
+   */
+  private updateChaseState(mob: MobReference, aiState: MobAIStateData): void {
+    const _now = Date.now();
+    const targets = this.combatTargets.get(mob.id) || [];
+    
+    if (targets.length === 0) {
+      this.setMobState(aiState, 'returning');
+      return;
+    }
+    
+    // Find primary target
+    const primaryTarget = targets.reduce((a, b) => a.threat > b.threat ? a : b);
+    
+    // Try to get player entity (might not exist for test entities)
+    let player: Player | null = null;
+    try {
+      player = this.world.getPlayer(primaryTarget.playerId) as Player | null;
+    } catch (_error) {
+      // Test entity - use stored position
+    }
+    
+    // Use player position if available, otherwise use stored position
+    const targetPosition = player?.position || primaryTarget.position;
+    
+    if (!targetPosition) {
+      this.setMobState(aiState, 'idle');
+      return;
+    }
+    
+    const distance = mob.mesh!.position.distanceTo(primaryTarget.position);
+    
+    // Check if we're close enough to attack
+    if (distance <= 2.0) { // Attack range
+      aiState.combatTarget = primaryTarget;
+      this.setMobState(aiState, 'combat');
+      return;
+    }
+    
+    // Check if target is too far (leashed)
+    const homeDistance = mob.mesh!.position.distanceTo(new THREE.Vector3(
+      aiState.homePosition.x,
+      aiState.homePosition.y,
+      aiState.homePosition.z
+    ));
+    
+    if (homeDistance > 50) { // Max leash distance
+      targets.length = 0; // Clear targets
+      this.setMobState(aiState, 'returning');
+    }
+  }
+
+  /**
+   * Update combat state
+   */
+  private updateCombatState(mob: MobReference, aiState: MobAIStateData): void {
+    const now = Date.now();
+    const targets = this.combatTargets.get(mob.id) || [];
+    
+    if (targets.length === 0 || !aiState.combatTarget) {
+      this.setMobState(aiState, 'returning');
+      return;
+    }
+    
+    // Try to get player entity (might not exist for test entities)
+    let player: Player | null = null;
+    try {
+      player = this.world.getPlayer(aiState.combatTarget.playerId) as Player | null;
+    } catch (_error) {
+      // Test entity - use stored position
+    }
+    
+    // Use player position if available, otherwise use stored position
+    const targetPosition = player?.position || aiState.combatTarget.position;
+    
+    if (!targetPosition || !mob.mesh) {
+      this.setMobState(aiState, 'chase');
+      return;
+    }
+    
+    const distance = mob.mesh!.position.distanceTo(new THREE.Vector3(targetPosition.x, targetPosition.y, targetPosition.z));
+    
+    // Too far for combat, chase
+    if (distance > 3.0) {
+      this.setMobState(aiState, 'chase');
+      return;
+    }
+    
+    // Attack if cooldown is ready
+    if (aiState.combatCooldown <= 0) {
+      this.performMobAttack(mob, aiState, aiState.combatTarget);
+      aiState.combatCooldown = this.ATTACK_COOLDOWN;
+      aiState.lastAttack = now;
+    }
+  }
+
+  /**
+   * Update returning state
+   */
+  private updateReturningState(mob: MobReference, aiState: MobAIStateData): void {
+
+    
+    const homePos = new THREE.Vector3(
+      aiState.homePosition.x,
+      aiState.homePosition.y,
+      aiState.homePosition.z
+    );
+    const distance = mob.mesh!.position.distanceTo(homePos);
+    
+    if (distance < 1.0) {
+      this.setMobState(aiState, 'idle');
+    }
+  }
+
+  /**
+   * Update dead state
+   */
+  private updateDeadState(mob: MobReference, aiState: MobAIStateData): void {
+    const now = Date.now();
+    
+    // Check if ready to respawn (30 second respawn time)
+    if (now - aiState.lastStateChange >= 30000) {
+      this.respawnMob(mob, aiState);
+    }
+  }
+
+  /**
+   * Generate a patrol target within spawn radius
+   */
+  private generatePatrolTarget(mob: MobReference, aiState: MobAIStateData): void {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = Math.random() * aiState.patrolRadius * 0.8;
+    
+    aiState.patrolTarget = new THREE.Vector3(
+      aiState.homePosition.x + Math.cos(angle) * distance,
+      aiState.homePosition.y,
+      aiState.homePosition.z + Math.sin(angle) * distance
+    );
+  }
+
+  /**
+   * Perform mob attack
+   */
+  private performMobAttack(mob: MobReference, aiState: MobAIStateData, target: CombatTarget): void {
+    const mobData = this.getMobData(mob);
+    const rpgMobData = mobData;
+    const stats = rpgMobData.stats || { attack: 1, strength: 1, defense: 1, constitution: 1, ranged: 1 };
+    
+    // Calculate damage
+    const damage = Math.floor((stats.attack || 1) * (0.8 + Math.random() * 0.4));
+    
+    // Emit attack event
+    this.emitTypedEvent(EventType.MOB_ATTACKED, {
+      mobId: mob.id,
+      targetId: target.entityId,
+      damage,
+      mobData: this.getMobData(mob)
+    });
+    
+  }
+
+  /**
+   * Calculate mob damage
+   */
+  private calculateMobDamage(mob: MobReference): number {
+    const mobData = this.getMobData(mob);
+    const baseDamage = mobData.stats?.strength || 1;
+    const variance = Math.random() * 0.4 + 0.8; // 80-120% of base damage
+    
+    return Math.floor(baseDamage * variance);
+  }
+
+  /**
+   * Check for player aggro
+   */
+  private checkPlayerAggro(): void {
+    const players = this.world.getPlayers() || [];
+    
+    for (const [mobId, mob] of this.activeMobs) {
+      
+      
+      const aiState = this.mobStates.get(mobId);
+      if (!aiState || aiState.state === 'dead') continue;
+      
+      // Skip if mob is not aggressive
+      const mobData = this.getMobData(mob);
+      if (!mobData.isAggressive) continue;
+      
+      for (const player of players) {
+        
+        const distance = mob.mesh!.position.distanceTo(player.node.position);
+        
+        // Check aggro range
+        const mobData = this.getMobData(mob);
+        const aggroRange = mobData.aggroRange || 10;
+        if (distance <= aggroRange) {
+          // Get RPG player data
+          const rpgPlayer = this.playerSystem?.getPlayer(player.id);
+          if (rpgPlayer) {
+            // Check level-based aggro rules
+            const shouldAttack = this.shouldMobAttackPlayer(mob, rpgPlayer);
+            if (shouldAttack) {
+              this.addCombatTarget(mobId, player.id, 50);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Check if mob should attack player based on level rules
+   */
+  private shouldMobAttackPlayer(mob: MobReference, _player: PlayerData): boolean {
+    // Non-aggressive mobs don't attack
+    const mobData = this.getMobData(mob);
+    if (!mobData.isAggressive) {
+      return false;
+    }
+    
+    // For now, all aggressive mobs attack everyone
+    // TODO: Implement level-based aggro rules if needed
+    
+    return true;
+  }
+
+  /**
+   * Respawn a mob
+   */
+  private respawnMob(mob: MobReference, aiState: MobAIStateData): void {
+    
+    // Reset mob state
+    aiState.state = 'idle';
+    aiState.lastStateChange = Date.now();
+    
+    // Reset position to home
+    mob.mesh!.position.set(
+      aiState.homePosition.x,
+      aiState.homePosition.y,
+      aiState.homePosition.z
+    );
+    this.world.stage.scene.add(mob.mesh!);
+    
+    // Clear targets
+    this.combatTargets.set(mob.id, []);
+    aiState.currentTarget = null;
+    aiState.combatTarget = null;
+    
+  }
+
+  /**
+   * Update mob positions and animations
+   */
+  private updateMobMovement(_deltaTime: number): void {
+    const time = Date.now() * 0.001;
+    
+    for (const [mobId, mob] of this.activeMobs) {
+      const aiState = this.mobStates.get(mobId);
+      
+      if (!mob) continue;
+      
+      const currentHealth = this.getMobCurrentHealth(mob);
+      if (currentHealth <= 0) continue; // Skip dead mobs
+      
+      // Update position based on state
+      let targetPosition: THREE.Vector3 | null = null;
+      
+      switch (aiState?.state) {
+        case 'patrol':
+          targetPosition = aiState.patrolTarget ? new THREE.Vector3(
+            aiState.patrolTarget.x,
+            aiState.patrolTarget.y,
+            aiState.patrolTarget.z
+          ) : null;
+          break;
+        case 'chase':
+        case 'combat':
+          if (aiState.combatTarget && aiState.combatTarget.position) {
+            targetPosition = new THREE.Vector3(
+              aiState.combatTarget.position.x,
+              aiState.combatTarget.position.y,
+              aiState.combatTarget.position.z
+            );
+          }
+          break;
+        case 'returning':
+          targetPosition = new THREE.Vector3(
+            aiState.homePosition.x,
+            aiState.homePosition.y,
+            aiState.homePosition.z
+          );
+          break;
+      }
+      
+      // Move towards target if we have one
+      if (targetPosition && aiState) {
+        this.moveMobTowards(mob, targetPosition, aiState.chaseSpeed);
+      }
+      
+      // Add idle animation (bobbing)
+      if (aiState?.state === 'idle') {
+        const bobOffset = Math.sin(time * 2 + aiState.homePosition.x) * 0.02;
+        mob.mesh!.position.y = aiState.homePosition.y + 0.9 + bobOffset;
+      }
+    }
+  }
+
+  /**
+   * Move mob towards target
+   */
+  private moveMobTowards(mob: MobReference, targetPosition: THREE.Vector3, speed: number): void {
+
+    
+    const _mobData = this.getMobData(mob);
+    const direction = new THREE.Vector3().subVectors(targetPosition, mob.mesh!.position);
+    direction.y = 0; // Keep on ground
+    
+    // Only move if there's a horizontal distance to cover
+    if (direction.lengthSq() > 0.0001) { // Small epsilon to handle floating point errors
+      direction.normalize();
+      
+      // Move mob
+      mob.mesh!.position.add(direction.multiplyScalar(speed * 0.016)); // Assume 60fps
+    }
+    
+    const lookAtPos = new THREE.Vector3(targetPosition.x, targetPosition.y, targetPosition.z);
+    mob.mesh!.lookAt(lookAtPos);
+  }
+
+  /**
+   * Helper method to get mob data from mob entity
+   */
+  private getMobData(mob: MobReference): RPGMobData {
+    // Handle MobEntity instances
+    if (mob instanceof MobEntity) {
+      const data = mob.getMobData();
+      // Convert MobEntityData to RPGMobData format
+      return {
+        id: data.id,
+        type: data.type as RPGMobData['type'],
+        name: data.name,
+        level: data.level,
+        health: data.health,
+        maxHealth: data.maxHealth,
+        position: data.position,
+        isAlive: data.health > 0,
+        isAggressive: true, // Default to true for most mobs
+        aggroRange: 10, // Default aggro range
+        wanderRadius: 5, // Default wander radius
+        respawnTime: 300,
+        spawnLocation: data.spawnPoint,
+        stats: {
+          attack: Math.floor(data.attackPower / 10),
+          strength: Math.floor(data.attackPower / 10),
+          defense: Math.floor(data.defense / 10),
+          constitution: data.level,
+          ranged: 1
+        },
+        equipment: {
+          weapon: null,
+          armor: null
+        },
+        lootTable: '',
+        aiState: data.aiState as RPGMobData['aiState'],
+        target: data.targetPlayerId,
+        lastAI: Date.now(),
+        homePosition: data.spawnPoint
+      };
+    }
+    
+    // Handle plain mob objects - return mock data for now
+    // This shouldn't happen in normal operation
+          RPGLogger.systemWarn('RPGMobAISystem', 'getMobData called with non-MobEntity object');
+    return {
+      id: 'unknown',
+      type: MobType.GOBLIN,
+      name: 'Unknown',
+      level: 1,
+      health: 0,
+      maxHealth: 10,
+      position: { x: 0, y: 0, z: 0 },
+      isAlive: false,
+      isAggressive: false,
+      aggroRange: 10,
+      wanderRadius: 5,
+      respawnTime: 300,
+      spawnLocation: { x: 0, y: 0, z: 0 },
+      stats: {
+        attack: 1,
+        strength: 1,
+        defense: 1,
+        constitution: 1,
+        ranged: 1
+      },
+      equipment: {
+        weapon: null,
+        armor: null
+      },
+      lootTable: '',
+      aiState: 'idle',
+      target: null,
+      lastAI: Date.now(),
+      homePosition: { x: 0, y: 0, z: 0 }
+    };
+  }
+
+  /**
+   * Helper method to get current health from mob entity
+   */
+  private getMobCurrentHealth(mob: MobReference): number {
+    if (mob instanceof MobEntity) {
+      return mob.getMobData().health;
+    }
+          RPGLogger.systemWarn('RPGMobAISystem', 'getMobCurrentHealth called with non-MobEntity object');
+    return 0;
+  }
+
+  /**
+   * Helper method to get home position from mob entity
+   */
+  private getMobHomePosition(mob: MobReference): { x: number; y: number; z: number } {
+    const data = mob.getMobData();
+    return data.spawnPoint;
+  }
+
+  /**
+   * Get system info for debugging
+   */
+  getSystemInfo(): SystemInfo {
+    const stateDistribution: Record<MobAIStateType, number> = {
+      idle: 0,
+      patrol: 0,
+      chase: 0,
+      attack: 0,
+      flee: 0,
+      dead: 0,
+      combat: 0,
+      returning: 0
+    };
+    
+    for (const aiState of this.mobStates.values()) {
+      const state = aiState.state;
+      stateDistribution[state] = (stateDistribution[state] || 0) + 1;
+    }
+    
+    return {
+      activeMobs: this.activeMobs.size,
+      mobStates: this.mobStates.size,
+      stateDistribution,
+      totalCombatTargets: Array.from(this.combatTargets.values()).reduce((sum, targets) => sum + targets.length, 0)
+    };
+  }
+
+
+
+  destroy(): void {
+    // Clear all AI state
+    this.mobStates.clear();
+    this.activeMobs.clear();
+    this.combatTargets.clear();
+    
+    // Reset timing state
+    this.lastUpdate = 0;
+    this.lastAggroCheck = 0;
+    
+    // Call parent cleanup (handles event listeners and managed timers)
+    super.destroy();
+  }
+}

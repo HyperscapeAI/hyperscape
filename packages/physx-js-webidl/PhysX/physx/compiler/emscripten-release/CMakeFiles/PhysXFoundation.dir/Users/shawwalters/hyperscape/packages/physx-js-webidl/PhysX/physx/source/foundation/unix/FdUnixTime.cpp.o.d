@@ -1,0 +1,36 @@
+CMakeFiles/PhysXFoundation.dir/Users/shawwalters/hyperscape/packages/physx-js-webidl/PhysX/physx/source/foundation/unix/FdUnixTime.cpp.o: \
+  /Users/shawwalters/hyperscape/packages/physx-js-webidl/PhysX/physx/source/foundation/unix/FdUnixTime.cpp \
+  /Users/shawwalters/hyperscape/packages/physx-js-webidl/PhysX/physx/include/foundation/PxTime.h \
+  /Users/shawwalters/hyperscape/packages/physx-js-webidl/PhysX/physx/include/foundation/PxSimpleTypes.h \
+  /Users/shawwalters/hyperscape/packages/physx-js-webidl/PhysX/physx/include/foundation/PxPreprocessor.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/c++/v1/stddef.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/c++/v1/__config \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/c++/v1/__config_site \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/c++/v1/__configuration/abi.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/c++/v1/__configuration/compiler.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/c++/v1/__configuration/platform.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/c++/v1/__configuration/availability.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/c++/v1/__configuration/language.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/llvm/lib/clang/22/include/stddef.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/stddef.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/llvm/lib/clang/22/include/__stddef_header_macro.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/llvm/lib/clang/22/include/__stddef_ptrdiff_t.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/llvm/lib/clang/22/include/__stddef_size_t.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/llvm/lib/clang/22/include/__stddef_wchar_t.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/llvm/lib/clang/22/include/__stddef_null.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/llvm/lib/clang/22/include/__stddef_nullptr_t.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/llvm/lib/clang/22/include/__stddef_max_align_t.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/llvm/lib/clang/22/include/__stddef_offsetof.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/llvm/lib/clang/22/include/stdint.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/stdint.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/bits/alltypes.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/bits/stdint.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/c++/v1/inttypes.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/llvm/lib/clang/22/include/inttypes.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/inttypes.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/features.h \
+  /Users/shawwalters/hyperscape/packages/physx-js-webidl/PhysX/physx/include/foundation/PxFoundationConfig.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/compat/time.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/time.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/sys/time.h \
+  /opt/homebrew/Cellar/emscripten/4.0.12/libexec/cache/sysroot/include/sys/select.h

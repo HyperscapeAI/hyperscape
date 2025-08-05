@@ -1,0 +1,777 @@
+/**
+ * RPGInventorySystem - Manages player inventories
+ */
+
+import { getSystem } from '../../core/utils/SystemUtils';
+import type { World } from '../../types';
+import type { InventoryItemAddedPayload } from '../../types/event-payloads';
+import { EventType } from '../../types/events';
+import { getItem } from '../data/items';
+import type {
+  RPGPlayerInventory
+} from '../types/core';
+import type {
+  RPGInventoryCanAddEvent,
+  RPGInventoryHasEquippedEvent,
+  RPGInventoryRemoveCoinsEvent
+} from '../types/events';
+import {
+  PlayerID,
+} from '../types/identifiers';
+import type { InventoryData } from '../types/rpg-systems';
+import {
+  createItemID,
+  createPlayerID,
+  isValidItemID,
+  isValidPlayerID,
+  toPlayerID
+} from '../utils/IdentifierUtils';
+import { RPGEntityManager } from './RPGEntityManager';
+import { RPGSystemBase } from './RPGSystemBase';
+import { RPGLogger } from '../utils/RPGLogger';
+
+
+
+
+
+export class RPGInventorySystem extends RPGSystemBase {
+  protected playerInventories = new Map<PlayerID, RPGPlayerInventory>();
+  private readonly MAX_INVENTORY_SLOTS = 28;
+
+  constructor(world: World) {
+    super(world, {
+      name: 'rpg-inventory',
+      dependencies: {
+        required: [],
+        optional: ['rpg-ui', 'rpg-equipment', 'rpg-player']
+      },
+      autoCleanup: true
+    });
+  }
+
+  async init(): Promise<void> {
+    // Subscribe to inventory events
+    this.subscribe(EventType.PLAYER_REGISTERED, (event) => {
+      this.initializeInventory(event.data as { id: string });
+    });
+    this.subscribe(EventType.PLAYER_CLEANUP, (event) => {
+      this.cleanupInventory(event.data as { id: string });
+    });
+    this.subscribe(EventType.INVENTORY_ITEM_REMOVED, (event) => {
+      this.removeItem(event.data as { playerId: string; itemId: string | number; quantity: number; slot?: number });
+    });
+    this.subscribe(EventType.ITEM_DROP, (event) => {
+      this.dropItem(event.data as { playerId: string; itemId: string; quantity: number; slot?: number });
+    });
+    this.subscribe(EventType.INVENTORY_USE, (event) => {
+      this.useItem(event.data as { playerId: string; itemId: string; slot: number });
+    });
+    this.subscribe(EventType.ITEM_PICKUP, (event) => {
+      this.pickupItem(event.data as { playerId: string; entityId: string });
+    });
+    this.subscribe(EventType.INVENTORY_UPDATE_COINS, (event) => {
+      this.updateCoins(event.data as { playerId: string; amount: number });
+    });
+    this.subscribe(EventType.INVENTORY_MOVE, (event) => {
+      this.moveItem(event.data as { playerId: string; fromSlot?: number; toSlot?: number; sourceSlot?: number; targetSlot?: number });
+    });
+    this.subscribe(EventType.INVENTORY_DROP_ALL, (event) => {
+      this.dropAllItems(event.data as { playerId: string; position: { x: number; y: number; z: number } });
+    });
+    
+    // Subscribe to store system events
+    this.subscribe(EventType.INVENTORY_CAN_ADD, (event) => {
+      this.handleCanAdd(event.data as unknown as RPGInventoryCanAddEvent);
+    });
+    this.subscribe(EventType.INVENTORY_REMOVE_COINS, (event) => {
+      this.handleRemoveCoins(event.data as unknown as RPGInventoryRemoveCoinsEvent);
+    });
+    this.subscribe(EventType.INVENTORY_ITEM_ADDED, (event) => {
+      this.handleInventoryAdd(event.data as unknown as InventoryItemAddedPayload);
+    });
+    
+    // Subscribe to inventory check events
+    this.subscribe(EventType.INVENTORY_CHECK, (event) => {
+      this.handleInventoryCheck(event.data as { playerId: string; itemId: string | number; quantity: number; callback: (hasItem: boolean, item?: unknown) => void });
+    });
+    this.subscribe(EventType.INVENTORY_HAS_EQUIPPED, (event) => {
+      this.handleHasEquipped(event.data as unknown as RPGInventoryHasEquippedEvent);
+    });
+  }
+
+  private initializeInventory(playerData: { id: string }): void {
+    // Validate and create PlayerID
+    if (!isValidPlayerID(playerData.id)) {
+      RPGLogger.systemError('RPGInventorySystem', `Invalid player ID: "${playerData.id}"`);
+      return;
+    }
+    
+    const playerId = createPlayerID(playerData.id);
+    
+    const inventory: RPGPlayerInventory = {
+      playerId: playerId,
+      items: [],
+      coins: 100 // Starting coins per GDD
+    };
+    
+    this.playerInventories.set(playerId, inventory);
+    
+    // Give starter equipment - per GDD, players start with bronze gear
+    this.addStarterEquipment(playerId);
+    
+    const inventoryData = this.getInventoryData(playerData.id);
+    this.emitTypedEvent(EventType.INVENTORY_INITIALIZED, {
+      playerId: playerData.id, // Keep original for compatibility
+      inventory: {
+        items: inventoryData.items.map(item => ({
+          slot: item.slot,
+          itemId: item.itemId,
+          quantity: item.quantity,
+          item: {
+            id: item.item.id,
+            name: item.item.name,
+            type: item.item.type,
+            stackable: item.item.stackable,
+            weight: item.item.weight
+          }
+        })),
+        coins: inventoryData.coins,
+        maxSlots: inventoryData.maxSlots
+      }
+    });
+  }
+
+  private addStarterEquipment(playerId: PlayerID): void {
+    const starterItems = [
+      { itemId: 'bronze_sword', quantity: 1 },
+      { itemId: 'bronze_shield', quantity: 1 },
+      { itemId: 'bronze_helmet', quantity: 1 },
+      { itemId: 'bronze_body', quantity: 1 },
+      { itemId: 'bronze_legs', quantity: 1 },
+      { itemId: 'wood_bow', quantity: 1 },
+      { itemId: 'arrows', quantity: 100 },
+      { itemId: 'tinderbox', quantity: 1 },
+      { itemId: 'bronze_hatchet', quantity: 1 },
+      { itemId: 'fishing_rod', quantity: 1 }
+    ];
+    
+    starterItems.forEach(({ itemId, quantity }) => {
+      this.addItem({ playerId, itemId: createItemID(itemId), quantity });
+    });
+  }
+
+  private cleanupInventory(data: { id: string }): void {
+    const playerId = toPlayerID(data.id);
+    if (!playerId) {
+      RPGLogger.systemError('RPGInventorySystem', `Cannot cleanup inventory: invalid player ID "${data.id}"`);
+      return;
+    }
+    this.playerInventories.delete(playerId);
+  }
+
+  protected addItem(data: { playerId: string; itemId: string; quantity: number; slot?: number }): boolean {
+    if (!data.playerId) {
+      RPGLogger.systemError('RPGInventorySystem', 'Cannot add item: playerId is undefined');
+      return false;
+    }
+    
+    if (!data.itemId) {
+      RPGLogger.systemError('RPGInventorySystem', 'Cannot add item: itemId is undefined');
+      return false;
+    }
+    
+    // Validate IDs
+    if (!isValidPlayerID(data.playerId) || !isValidItemID(data.itemId)) {
+      RPGLogger.systemError('RPGInventorySystem', 'Cannot add item: invalid ID format');
+      return false;
+    }
+    
+    const playerId = data.playerId;
+    const itemId = data.itemId;
+    
+    const inventory = this.getOrCreateInventory(playerId);
+    
+    const itemData = getItem(itemId);
+    if (!itemData) {
+      RPGLogger.systemError('RPGInventorySystem', `Item not found: ${itemId}`);
+      return false;
+    }
+    
+    // Special handling for coins
+    if (itemId === 'coins') {
+      inventory.coins += data.quantity;
+      this.emitTypedEvent(EventType.INVENTORY_COINS_UPDATED, {
+        playerId: playerId,
+        coins: inventory.coins
+      });
+      return true;
+    }
+    
+    // Check if item is stackable
+    if (itemData.stackable) {
+      // Find existing stack
+      const existingItem = inventory.items.find(item => item.itemId === itemId);
+      if (existingItem) {
+        existingItem.quantity += data.quantity;
+        const playerIdKey = toPlayerID(playerId);
+        if (playerIdKey) {
+          this.emitInventoryUpdate(playerIdKey);
+        }
+        return true;
+      }
+    }
+    
+    // Find empty slot
+    const emptySlot = this.findEmptySlot(inventory);
+    if (emptySlot === -1) {
+      this.emitTypedEvent(EventType.INVENTORY_FULL, { playerId: playerId });
+      return false;
+    }
+    
+    // Add new item
+    inventory.items.push({
+      slot: emptySlot,
+      itemId: itemId,
+      quantity: data.quantity,
+      item: itemData
+    });
+    
+    const playerIdKey = toPlayerID(playerId);
+    if (playerIdKey) {
+      this.emitInventoryUpdate(playerIdKey);
+    }
+    return true;
+  }
+
+  private removeItem(data: { playerId: string; itemId: string | number; quantity: number; slot?: number }): boolean {
+    if (!data.playerId) {
+      RPGLogger.systemError('RPGInventorySystem', 'Cannot remove item: playerId is undefined');
+      return false;
+    }
+    
+    if (!data.itemId && data.itemId !== 0) {
+      RPGLogger.systemError('RPGInventorySystem', 'Cannot remove item: itemId is undefined');
+      return false;
+    }
+    
+    // Validate IDs
+    if (!isValidPlayerID(data.playerId) || !isValidItemID(String(data.itemId))) {
+      RPGLogger.systemError('RPGInventorySystem', 'Cannot remove item: invalid ID format');
+      return false;
+    }
+    
+    const playerId = data.playerId;
+    const itemId = String(data.itemId);
+    
+    const inventory = this.getOrCreateInventory(playerId);
+    
+    // Handle coins
+    if (itemId === 'coins') {
+      if (inventory.coins >= data.quantity) {
+        inventory.coins -= data.quantity;
+        this.emitTypedEvent(EventType.INVENTORY_COINS_UPDATED, {
+          playerId: data.playerId,
+          coins: inventory.coins
+        });
+        return true;
+      }
+      return false;
+    }
+    
+    // Find item
+    const itemIndex = data.slot !== undefined 
+      ? inventory.items.findIndex(item => item.slot === data.slot)
+      : inventory.items.findIndex(item => item.itemId === itemId);
+    
+    if (itemIndex === -1) return false;
+    
+    const item = inventory.items[itemIndex];
+    
+    if (item.quantity > data.quantity) {
+      item.quantity -= data.quantity;
+    } else {
+      inventory.items.splice(itemIndex, 1);
+    }
+    
+    const playerIdKey = toPlayerID(playerId);
+    if (playerIdKey) {
+      this.emitInventoryUpdate(playerIdKey);
+    }
+    return true;
+  }
+
+  private dropItem(data: { playerId: string; itemId: string; quantity: number; slot?: number }): void {
+    if (!data.playerId) {
+      RPGLogger.systemError('RPGInventorySystem', 'Cannot drop item: playerId is undefined');
+      return;
+    }
+    
+    const removed = this.removeItem(data);
+    
+    if (removed) {
+      const player = this.world.getPlayer(data.playerId);
+      if (!player) {
+        throw new Error(`[RPGInventorySystem] Player not found: ${data.playerId}`);
+      }
+      const position = player.node.position;
+      
+      // Spawn item in world
+      this.emitTypedEvent(EventType.ITEM_SPAWN, {
+        itemId: data.itemId,
+        quantity: data.quantity,
+        position: {
+          x: position.x + (Math.random() - 0.5) * 2,
+          y: position.y,
+          z: position.z + (Math.random() - 0.5) * 2
+        }
+      });
+      
+    }
+  }
+
+  private dropAllItems(data: { playerId: string; position: { x: number; y: number; z: number } }): void {
+    if (!data.playerId) {
+      RPGLogger.systemError('RPGInventorySystem', 'Cannot drop all items: playerId is undefined');
+      return;
+    }
+    
+    const playerID = createPlayerID(data.playerId);
+    const inventory = this.getOrCreateInventory(playerID);
+    
+    // Get all items that will be dropped
+    const droppedItems = inventory.items.map(item => ({
+      item: { 
+        id: item.itemId,
+        quantity: item.quantity,
+        slot: item.slot
+      },
+      quantity: item.quantity
+    }));
+    
+    // Clear the inventory
+    inventory.items = [];
+    
+    // Emit event for death test system to track items dropped
+    this.emitTypedEvent(EventType.ITEM_DROPPED, {
+      playerId: data.playerId,
+      items: droppedItems,
+      location: data.position
+    });
+    
+    // Spawn each item in the world at the death location
+    for (let i = 0; i < droppedItems.length; i++) {
+      const droppedItem = droppedItems[i];
+      
+      // Spread items around the drop position to avoid stacking
+      const offsetX = (Math.random() - 0.5) * 3; // -1.5 to 1.5 meter spread
+      const offsetZ = (Math.random() - 0.5) * 3;
+      
+      this.emitTypedEvent(EventType.ITEM_SPAWN, {
+        itemId: droppedItem.item.id,
+        quantity: droppedItem.quantity,
+        position: {
+          x: data.position.x + offsetX,
+          y: data.position.y,
+          z: data.position.z + offsetZ
+        }
+      });
+    }
+    
+          RPGLogger.system('RPGInventorySystem', `Dropped ${droppedItems.length} items for player ${data.playerId} at death location`);
+  }
+
+  private useItem(data: { playerId: string; itemId: string; slot: number }): void {
+    
+    const playerID = data.playerId;
+    const inventory = this.getOrCreateInventory(playerID);
+    
+    const item = inventory.items.find(i => i.slot === data.slot);
+    if (!item) {
+      throw new Error(`[RPGInventorySystem] No item found in slot ${data.slot}`);
+    }
+    
+    
+    // Emit item used event for other systems to react to (different from INVENTORY_USE to avoid recursion)
+    this.emitTypedEvent(EventType.ITEM_USED, {
+      playerId: data.playerId,
+      itemId: data.itemId,
+      slot: data.slot,
+      itemData: {
+        id: item.item.id,
+        name: item.item.name,
+        type: item.item.type,
+        stackable: item.item.stackable,
+        weight: item.item.weight
+      }
+    });
+    
+    // Remove consumables after use
+    if (item.item?.type === 'consumable') {
+      this.removeItem({ playerId: data.playerId, itemId: data.itemId, quantity: 1, slot: data.slot });
+    }
+  }
+
+  private pickupItem(data: { playerId: string; entityId: string }): void {
+    // Get item entity data from entity manager
+    const entityManager = getSystem(this.world, 'rpg-entity-manager') as RPGEntityManager;
+    if (!entityManager) {
+      throw new Error('[RPGInventorySystem] RPGEntityManager system not found');
+    }
+    if (!entityManager) {
+      throw new Error('[RPGInventorySystem] RPGEntityManager not found');
+    }
+    
+    const entity = entityManager.getEntity(data.entityId);
+    if (!entity) {
+      throw new Error(`[RPGInventorySystem] Entity not found: ${data.entityId}`);
+    }
+    
+    const itemId = entity.getProperty('itemId') as string;
+    const quantity = entity.getProperty('quantity') as number;
+    
+    // Try to add to inventory
+    const added = this.addItem({
+      playerId: data.playerId,
+      itemId,
+      quantity
+    });
+    
+    if (added) {
+      // Destroy item entity
+      this.emitTypedEvent(EventType.ENTITY_DEATH, { entityId: data.entityId });
+      
+    }
+  }
+
+  private updateCoins(data: { playerId: string; amount: number }): void {
+    if (!data.playerId) {
+      RPGLogger.systemError('RPGInventorySystem', 'Cannot update coins: playerId is undefined');
+      return;
+    }
+    
+    const inventory = this.getOrCreateInventory(data.playerId);
+    
+    if (data.amount > 0) {
+      inventory.coins += data.amount;
+    } else {
+      inventory.coins = Math.max(0, inventory.coins + data.amount);
+    }
+    
+    this.emitTypedEvent(EventType.INVENTORY_COINS_UPDATED, {
+      playerId: data.playerId,
+      coins: inventory.coins
+    });
+  }
+
+  private moveItem(data: { playerId: string; fromSlot?: number; toSlot?: number; sourceSlot?: number; targetSlot?: number }): void {
+    if (!data.playerId) {
+      RPGLogger.systemError('RPGInventorySystem', 'Cannot move item: playerId is undefined');
+      return;
+    }
+    
+    // Handle parameter name variations
+    const fromSlot = data.fromSlot ?? data.sourceSlot;
+    const toSlot = data.toSlot ?? data.targetSlot;
+    
+    if (fromSlot === undefined || toSlot === undefined) {
+      RPGLogger.systemError('RPGInventorySystem', 'Cannot move item: slot numbers are undefined', undefined, { data });
+      return;
+    }
+    
+    const inventory = this.getOrCreateInventory(data.playerId);
+    
+    const fromItem = inventory.items.find(item => item.slot === fromSlot);
+    const toItem = inventory.items.find(item => item.slot === toSlot);
+    
+    // Simple swap
+    if (fromItem && toItem) {
+      fromItem.slot = toSlot;
+      toItem.slot = fromSlot;
+    } else if (fromItem) {
+      fromItem.slot = toSlot;
+    }
+    
+    const playerIdKey = toPlayerID(data.playerId);
+    if (playerIdKey) {
+      this.emitInventoryUpdate(playerIdKey);
+    }
+  }
+
+  private findEmptySlot(inventory: RPGPlayerInventory): number {
+    const usedSlots = new Set(inventory.items.map(item => item.slot));
+    
+    for (let i = 0; i < this.MAX_INVENTORY_SLOTS; i++) {
+      if (!usedSlots.has(i)) {
+        return i;
+      }
+    }
+    
+    return -1;
+  }
+
+  private emitInventoryUpdate(playerId: PlayerID): void {
+    const inventoryData = this.getInventoryData(playerId);
+    this.emitTypedEvent(EventType.INVENTORY_UPDATED, {
+      playerId,
+      inventory: {
+        items: inventoryData.items.map(item => ({
+          slot: item.slot,
+          itemId: item.itemId,
+          quantity: item.quantity,
+          item: {
+            id: item.item.id,
+            name: item.item.name,
+            type: item.item.type,
+            stackable: item.item.stackable,
+            weight: item.item.weight
+          }
+        })),
+        coins: inventoryData.coins,
+        maxSlots: inventoryData.maxSlots
+      }
+    });
+  }
+
+  // Public API
+  getInventory(playerId: string): RPGPlayerInventory | undefined {
+    const playerIdKey = toPlayerID(playerId);
+    if (!playerIdKey) {
+      RPGLogger.systemError('RPGInventorySystem', `Invalid player ID in getInventory: "${playerId}"`);
+      return undefined;
+    }
+    return this.playerInventories.get(playerIdKey);
+  }
+
+  getInventoryData(playerId: string): InventoryData {
+    const playerIdKey = toPlayerID(playerId);
+    if (!playerIdKey) {
+      RPGLogger.systemError('RPGInventorySystem', `Invalid player ID in getInventoryData: "${playerId}"`);
+      return { items: [], coins: 0, maxSlots: this.MAX_INVENTORY_SLOTS };
+    }
+    
+    const inventory = this.playerInventories.get(playerIdKey);
+    if (!inventory) {
+      return { items: [], coins: 0, maxSlots: this.MAX_INVENTORY_SLOTS };
+    }
+    
+    return {
+      items: inventory.items.map(item => ({
+        slot: item.slot,
+        itemId: item.itemId,
+        quantity: item.quantity,
+        item: {
+          id: item.item.id,
+          name: item.item.name,
+          type: item.item.type,
+          stackable: item.item.stackable,
+          weight: item.item.weight
+        }
+      })),
+      coins: inventory.coins,
+      maxSlots: this.MAX_INVENTORY_SLOTS
+    };
+  }
+
+  hasItem(playerId: string, itemId: string, quantity: number = 1): boolean {
+    // Validate IDs
+    const playerIdKey = toPlayerID(playerId);
+    if (!playerIdKey || !isValidItemID(itemId)) {
+      return false;
+    }
+    
+    const inventory = this.playerInventories.get(playerIdKey);
+    if (!inventory) return false;
+    
+    // Check coins
+    if (itemId === 'coins') {
+      return inventory.coins >= quantity;
+    }
+    
+    const totalQuantity = inventory.items
+      .filter(item => item.itemId === itemId)
+      .reduce((sum, item) => sum + item.quantity, 0);
+    
+    return totalQuantity >= quantity;
+  }
+
+  getItemQuantity(playerId: string, itemId: string): number {
+    // Validate IDs
+    const playerIdKey = toPlayerID(playerId);
+    if (!playerIdKey || !isValidItemID(itemId)) {
+      return 0;
+    }
+    
+    const inventory = this.playerInventories.get(playerIdKey);
+    if (!inventory) return 0;
+    
+    if (itemId === 'coins') {
+      return inventory.coins;
+    }
+    
+    return inventory.items
+      .filter(item => item.itemId === itemId)
+      .reduce((sum, item) => sum + item.quantity, 0);
+  }
+
+  getCoins(playerId: string): number {
+    const playerIdKey = toPlayerID(playerId);
+    if (!playerIdKey) return 0;
+    const inventory = this.playerInventories.get(playerIdKey);
+    return inventory?.coins || 0;
+  }
+
+  getTotalWeight(playerId: string): number {
+    const playerIdKey = toPlayerID(playerId);
+    if (!playerIdKey) return 0;
+    const inventory = this.playerInventories.get(playerIdKey);
+    if (!inventory) return 0;
+    
+    return inventory.items.reduce((total, item) => {
+      const itemData = getItem(item.itemId);
+      return total + (itemData?.weight || 0) * item.quantity;
+    }, 0);
+  }
+
+  isFull(playerId: string): boolean {
+    const playerIdKey = toPlayerID(playerId);
+    if (!playerIdKey) return false;
+    const inventory = this.playerInventories.get(playerIdKey);
+    if (!inventory) return false;
+    
+    return inventory.items.length >= this.MAX_INVENTORY_SLOTS;
+  }
+
+  // Store system event handlers
+  protected getOrCreateInventory(playerId: string): RPGPlayerInventory {
+    if (!playerId) {
+      throw new Error('[RPGInventorySystem] Cannot create inventory for undefined playerId');
+    }
+    
+    const playerIdKey = toPlayerID(playerId);
+    if (!playerIdKey) {
+      throw new Error(`[RPGInventorySystem] Invalid player ID: ${playerId}`);
+    }
+    
+    let inventory = this.playerInventories.get(playerIdKey);
+    if (!inventory) {
+      RPGLogger.system('RPGInventorySystem', `Auto-initializing inventory for player ${playerId}`);
+      // Auto-initialize inventory if it doesn't exist
+      inventory = {
+        playerId,
+        items: [],
+        coins: 100 // Starting coins per GDD
+      };
+      this.playerInventories.set(playerIdKey, inventory);
+      
+      // Add starter equipment for auto-initialized players
+      this.addStarterEquipment(playerIdKey);
+    }
+    return inventory;
+  }
+
+  private handleCanAdd(data: RPGInventoryCanAddEvent): void {
+    RPGLogger.system('RPGInventorySystem', `Checking if player ${data.playerId} can add item`, { item: data.item });
+    const inventory = this.getOrCreateInventory(data.playerId);
+
+    // Check if inventory has space
+    const hasSpace = inventory.items.length < this.MAX_INVENTORY_SLOTS;
+    
+    // If stackable, check if we can stack with existing item
+    if (data.item.stackable) {
+      const existingItem = inventory.items.find(item => item.itemId === data.item.id);
+      if (existingItem) {
+        RPGLogger.system('RPGInventorySystem', 'Can stack with existing item, space available: true');
+        data.callback(true);
+        return;
+      }
+    }
+    
+    RPGLogger.system('RPGInventorySystem', `Has space: ${hasSpace}, slots used: ${inventory.items.length}/${this.MAX_INVENTORY_SLOTS}`);
+    data.callback(hasSpace);
+  }
+
+  private handleRemoveCoins(data: RPGInventoryRemoveCoinsEvent): void {
+    RPGLogger.system('RPGInventorySystem', `Removing ${data.amount} coins from player ${data.playerId}`);
+    const inventory = this.getOrCreateInventory(data.playerId);
+
+    inventory.coins = Math.max(0, inventory.coins - data.amount);
+          RPGLogger.system('RPGInventorySystem', `Player ${data.playerId} now has ${inventory.coins} coins`);
+    
+    this.emitTypedEvent(EventType.INVENTORY_COINS_UPDATED, {
+      playerId: data.playerId,
+      coins: inventory.coins
+    });
+  }
+
+  private handleInventoryCheck(data: { playerId: string; itemId: string | number; quantity: number; callback: (hasItem: boolean, item?: unknown) => void }): void {
+    RPGLogger.system('RPGInventorySystem', `Checking inventory for player ${data.playerId}, item ${data.itemId}, quantity ${data.quantity}`);
+    
+    const itemId = String(data.itemId);
+    const item = getItem(itemId);
+    
+    if (!item) {
+      RPGLogger.system('RPGInventorySystem', `Item ${itemId} not found in item database`);
+      data.callback(false);
+      return;
+    }
+    
+    const hasItem = this.hasItem(data.playerId, itemId, data.quantity);
+    RPGLogger.system('RPGInventorySystem', `Player has item: ${hasItem}`);
+    
+    data.callback(hasItem, item);
+  }
+
+  private handleHasEquipped(data: RPGInventoryHasEquippedEvent): void {
+    // Check if the player has the specified item type in their inventory
+    const inventory = this.getOrCreateInventory(data.playerId);
+    
+    const hasItem = inventory.items.some(item => {
+      const itemData = getItem(item.itemId);
+      return itemData && itemData.type === data.itemType;
+    });
+    
+    data.callback(hasItem);
+  }
+  
+  private handleInventoryAdd(data: InventoryItemAddedPayload): void {
+    // Validate the event data exists
+    if (!data) {
+      RPGLogger.systemError('RPGInventorySystem', 'handleInventoryAdd: data is undefined');
+      return;
+    }
+    
+    if (!data.item) {
+      RPGLogger.systemError('RPGInventorySystem', 'handleInventoryAdd: data.item is undefined');
+      return;
+    }
+    
+    const playerId = data.playerId;
+    const itemId = data.item.itemId;
+    const quantity = data.item.quantity;
+    
+    // Validate the event data before processing
+    if (!playerId) {
+      RPGLogger.systemError('RPGInventorySystem', 'handleInventoryAdd: playerId is missing');
+      return;
+    }
+    
+    if (!itemId) {
+      RPGLogger.systemError('RPGInventorySystem', 'handleInventoryAdd: itemId is missing');
+      return;
+    }
+    
+    if (typeof quantity !== 'number' || quantity <= 0) {
+      RPGLogger.systemError('RPGInventorySystem', 'handleInventoryAdd: invalid quantity');
+      return;
+    }
+    
+    this.addItem({ playerId, itemId, quantity });
+  }
+
+  destroy(): void {
+    this.playerInventories.clear();
+    // Call parent cleanup (handles event listeners, timers, etc.)
+    super.destroy();
+  }
+
+}
