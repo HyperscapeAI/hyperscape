@@ -9,8 +9,7 @@
  * 3. Use these utilities when converting between different vector representations
  */
 
-import * as THREE from './three'
-import { toTHREEVector3 } from './three'
+import THREE, { toTHREEVector3 } from './three'
 
 // Re-export for convenience
 export { toTHREEVector3 }
@@ -64,7 +63,7 @@ export function assignVector3(
  * Usage Guide:
  * 
  * 1. Import THREE.js directly:
- *    import * as THREE from './three'
+ *    import THREE from './three'
  * 
  * 2. For reactive updates (e.g., in Node transforms):
  *    - Use ReactiveVector3 wrapper

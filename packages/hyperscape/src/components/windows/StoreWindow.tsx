@@ -4,7 +4,7 @@ import { InventorySystem } from '../../systems/InventorySystem'
 import { StoreSystem } from '../../systems/StoreSystem'
 import { EventType } from '../../types/events'
 import type { StoreItem } from '../../types/core'
-import type { StoreWindowProps } from '../../types/ui-component-types';
+import type { StoreWindowProps } from '../../types/ui-types';
 
 
 export function StoreWindow({ world, visible, onClose, storeId = 'general_store' }: StoreWindowProps) {

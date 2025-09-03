@@ -5,8 +5,7 @@
  * Much cheaper than full A* while still handling most terrain obstacles
  */
 
-import * as THREE from '../extras/three';
-import { toTHREEVector3 } from '../extras/three';
+import THREE, { toTHREEVector3 } from '../extras/three';
 import type { World } from '../types/index';
 import { EventType } from '../types/events';
 import { PathRequest } from '../types/core';
@@ -38,7 +37,7 @@ export class PathfindingSystem extends SystemBase {
 
   async init(): Promise<void> {
     // Subscribe to pathfinding requests using type-safe event system
-    this.subscribe<{ playerId: string; start: { x: number; y: number; z: number }; end: { x: number; y: number; z: number }; callback: (path: THREE.Vector3[]) => void }>(EventType.PATHFINDING_REQUEST, (event) => this.requestPath(event.data));
+    this.subscribe(EventType.PATHFINDING_REQUEST, (data: { playerId: string; start: { x: number; y: number; z: number }; end: { x: number; y: number; z: number }; callback: (path: THREE.Vector3[]) => void }) => this.requestPath(data));
   }
 
   /**
@@ -91,6 +90,10 @@ export class PathfindingSystem extends SystemBase {
     // If no direct path, use waypoint generation
     const waypoints = this.generateWaypoints(startVec, endVec);
     const path = this.optimizePath([startVec, ...waypoints, endVec]);
+    // Ensure returned path's last point is EXACTLY the requested end to avoid drift/backtracking
+    if (path.length > 0) {
+      path[path.length - 1].copy(endVec);
+    }
     
     return path;
   }
@@ -122,22 +125,15 @@ export class PathfindingSystem extends SystemBase {
     
     direction.normalize();
     
-    const fromVector = toTHREEVector3(fromRay);
-    const dirVector = toTHREEVector3(direction);
+    const fromVector = fromRay.clone();
+    const dirVector = direction.clone();
      
-    this.raycaster.set(fromVector, dirVector);
-    this.raycaster.far = distance;
-    
-    const intersects = this.raycaster.intersectObjects(obstacles, true);
-    
-    // Check if any intersections block the path
-    for (const hit of intersects) {
-      if (hit.distance < distance - 0.1) {
-        // Check if this is a walkable slope
-        const point = hit.point;
-        if (!this.isWalkable(point, hit.face?.normal as THREE.Vector3)) {
-          return false;
-        }
+    // Prefer physics raycast for robust obstruction checks
+    const hit = this.world.raycast(fromVector, dirVector, distance, this.world.createLayerMask('environment'));
+    if (hit && hit.distance < distance - 0.1) {
+      const point = hit.point;
+      if (!this.isWalkable(point)) {
+        return false;
       }
     }
     
@@ -254,57 +250,28 @@ export class PathfindingSystem extends SystemBase {
    * Check if a point is walkable
    */
   private isPointWalkable(point: THREE.Vector3): boolean {
-    const obstacles = this.getObstacles();
-    
-    // Cast ray downward to check if there's ground
-    const rayStart = point.clone();
-    rayStart.y += 2; // Start above expected terrain
-    
-    const startVector = toTHREEVector3(rayStart);
-     
-    this.raycaster.set(startVector, toTHREEVector3(new THREE.Vector3(0, -1, 0)));
-    this.raycaster.far = 5;
-    
-    const hits = this.raycaster.intersectObjects(obstacles, true);
-    
-    if (hits.length === 0) return false; // No ground
-    
-    const ground = hits[0];
-    const groundPoint = toTHREEVector3(ground.point);
+    // Use PhysX raycast downward to validate ground existence and slope
+    const origin = point.clone();
+    origin.y += 2;
+    const dir = new THREE.Vector3(0, -1, 0);
+    const hit = this.world.raycast(origin, dir, 5, this.world.createLayerMask('environment'));
+    if (!hit) return false;
+    const groundPoint = toTHREEVector3(hit.point);
     const groundHeight = groundPoint.y;
-    
-    // Check if the height difference is walkable
-    if (Math.abs(groundHeight - point.y) > this.STEP_HEIGHT) {
-      return false;
-    }
-    
-    // Check if the surface is too steep
-    const faceNormal = ground.face?.normal ? toTHREEVector3(ground.face.normal) : undefined;
-    return this.isWalkable(groundPoint, faceNormal);
+    if (Math.abs(groundHeight - point.y) > this.STEP_HEIGHT) return false;
+    return this.isWalkable(groundPoint, hit.normal ? toTHREEVector3(hit.normal) : undefined);
   }
 
   /**
    * Get terrain height at a position
    */
   private getTerrainHeight(position: { x: number; y: number; z: number }): number {
-    const obstacles = this.getObstacles();
-    
-    const rayStart = new THREE.Vector3(position.x, position.y, position.z);
-    rayStart.y = 100; // Start high above terrain
-    
-    const startVector = toTHREEVector3(rayStart);
-     
-    this.raycaster.set(startVector, toTHREEVector3(new THREE.Vector3(0, -1, 0)));
-    this.raycaster.far = 200;
-    
-    const hits = this.raycaster.intersectObjects(obstacles, true);
-    
-    if (hits.length > 0) {
-      const hitPoint = toTHREEVector3(hits[0].point);
-      return hitPoint.y;
-    }
-    
-    return position.y; // Fallback to input height
+    // Use PhysX raycast to query ground height
+    const origin = new THREE.Vector3(position.x, 100, position.z);
+    const dir = new THREE.Vector3(0, -1, 0);
+    const hit = this.world.raycast(origin, dir, 200, this.world.createLayerMask('environment'));
+    if (hit) return hit.point.y;
+    return position.y;
   }
 
   /**
@@ -358,12 +325,11 @@ export class PathfindingSystem extends SystemBase {
     line.userData.debugPath = true;
     
     // Remove old debug paths
-     
     const oldPaths = scene.children.filter(
-      (child) => child.userData.debugPath
-    );
-     
-    oldPaths.forEach((path) => safeSceneRemove(this.world, path as THREE.Object3D));
+      (child) => (child as unknown as THREE.Object3D).userData.debugPath
+    ) as unknown as THREE.Object3D[];
+    
+    oldPaths.forEach((path) => safeSceneRemove(this.world, path as unknown as THREE.Object3D));
     
     // Add new path
     safeSceneAdd(this.world, line as unknown as THREE.Object3D);

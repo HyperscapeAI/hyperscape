@@ -89,13 +89,14 @@ export function CoreUI({ world }: { world: World }) {
       style={{
         position: 'absolute',
         inset: '0',
-        overflow: 'hidden'
+        overflow: 'hidden',
+        pointerEvents: 'none'
       }}
     >
       {disconnected && <Disconnected />}
       {<Toast world={world} />}
       {ready && <ActionsBlock world={world} />}
-      {ready && <Sidebar world={world as unknown as Parameters<typeof Sidebar>[0]['world']} ui={ui || { active: false, pane: null }} />}
+      {ready && <Sidebar world={world} ui={ui || { active: false, pane: null }} />}
       {ready && <Chat world={world} />}
       {ready && <Interface world={world} />}
       {avatar && <AvatarPane key={avatar?.hash} world={world} info={avatar} />}
@@ -722,6 +723,60 @@ function LoadingOverlay({ world }: { world: World }) {
             transform: scale(1);
           }
         }
+        @keyframes swordCross {
+          0% {
+            transform: rotate(45deg) translateY(20px);
+            opacity: 0;
+          }
+          20% {
+            opacity: 1;
+          }
+          50% {
+            transform: rotate(45deg) translateY(0);
+          }
+          100% {
+            transform: rotate(45deg) translateY(0);
+          }
+        }
+        @keyframes swordCrossReverse {
+          0% {
+            transform: rotate(-45deg) translateY(20px);
+            opacity: 0;
+          }
+          20% {
+            opacity: 1;
+          }
+          50% {
+            transform: rotate(-45deg) translateY(0);
+          }
+          100% {
+            transform: rotate(-45deg) translateY(0);
+          }
+        }
+        @keyframes swordSpin {
+          0% {
+            transform: rotate(0deg);
+          }
+          100% {
+            transform: rotate(360deg);
+          }
+        }
+        @keyframes swordGlow {
+          0%, 100% {
+            filter: drop-shadow(0 0 10px rgba(100, 150, 255, 0.4));
+          }
+          50% {
+            filter: drop-shadow(0 0 20px rgba(100, 150, 255, 0.8)) drop-shadow(0 0 30px rgba(100, 150, 255, 0.6));
+          }
+        }
+        @keyframes swordFloat {
+          0%, 100% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-10px);
+          }
+        }
         .loading-image {
           position: absolute;
           inset: 0;
@@ -736,6 +791,30 @@ function LoadingOverlay({ world }: { world: World }) {
           inset: 0;
           background: rgba(0, 0, 0, 0.4);
           backdrop-filter: blur(15px);
+        }
+        .loading-swords {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          width: 200px;
+          height: 200px;
+          margin-top: -80px;
+        }
+        .loading-swords svg {
+          position: absolute;
+          width: 100%;
+          height: 100%;
+        }
+        .sword-left {
+          animation: swordCross 1.5s ease-out forwards, swordGlow 2s ease-in-out infinite 1.5s;
+        }
+        .sword-right {
+          animation: swordCrossReverse 1.5s ease-out forwards, swordGlow 2s ease-in-out infinite 1.5s;
+        }
+        .sword-center {
+          animation: swordFloat 3s ease-in-out infinite, swordSpin 20s linear infinite;
+          opacity: 0.3;
         }
         .loading-info {
           position: absolute;
@@ -767,13 +846,103 @@ function LoadingOverlay({ world }: { world: World }) {
           left: 0;
           bottom: 0;
           width: ${progress}%;
-          background: white;
+          background: linear-gradient(90deg, #4a90e2, #6496ff, #4a90e2);
+          background-size: 200% 100%;
+          animation: shimmer 1.5s infinite;
           border-radius: 3px;
           transition: width 0.2s ease-out;
+          box-shadow: 0 0 10px rgba(100, 150, 255, 0.5);
+        }
+        @keyframes shimmer {
+          0% {
+            background-position: 200% 0;
+          }
+          100% {
+            background-position: -200% 0;
+          }
         }
       `}</style>
       <div className='loading-image' />
       <div className='loading-shade' />
+      
+      {/* Animated Training Swords */}
+      <div className='loading-swords'>
+        {/* Left Sword */}
+        <svg className='sword-left' viewBox='0 0 200 200' fill='none' xmlns='http://www.w3.org/2000/svg'>
+          <defs>
+            <linearGradient id='swordGradient1' x1='0%' y1='0%' x2='100%' y2='100%'>
+              <stop offset='0%' stopColor='#8b9dc3' />
+              <stop offset='50%' stopColor='#c0c0c0' />
+              <stop offset='100%' stopColor='#8b9dc3' />
+            </linearGradient>
+            <linearGradient id='handleGradient1' x1='0%' y1='0%' x2='100%' y2='100%'>
+              <stop offset='0%' stopColor='#6b4423' />
+              <stop offset='50%' stopColor='#8b5a2b' />
+              <stop offset='100%' stopColor='#6b4423' />
+            </linearGradient>
+          </defs>
+          <g transform='translate(100, 100)'>
+            {/* Blade */}
+            <rect x='-4' y='-80' width='8' height='100' fill='url(#swordGradient1)' rx='2' />
+            <rect x='-2' y='-80' width='4' height='100' fill='rgba(255,255,255,0.3)' rx='1' />
+            {/* Guard */}
+            <rect x='-25' y='20' width='50' height='6' fill='url(#swordGradient1)' rx='3' />
+            {/* Handle */}
+            <rect x='-5' y='26' width='10' height='30' fill='url(#handleGradient1)' rx='2' />
+            {/* Pommel */}
+            <circle cx='0' cy='60' r='8' fill='url(#swordGradient1)' />
+          </g>
+        </svg>
+
+        {/* Right Sword */}
+        <svg className='sword-right' viewBox='0 0 200 200' fill='none' xmlns='http://www.w3.org/2000/svg'>
+          <defs>
+            <linearGradient id='swordGradient2' x1='0%' y1='0%' x2='100%' y2='100%'>
+              <stop offset='0%' stopColor='#8b9dc3' />
+              <stop offset='50%' stopColor='#c0c0c0' />
+              <stop offset='100%' stopColor='#8b9dc3' />
+            </linearGradient>
+            <linearGradient id='handleGradient2' x1='0%' y1='0%' x2='100%' y2='100%'>
+              <stop offset='0%' stopColor='#6b4423' />
+              <stop offset='50%' stopColor='#8b5a2b' />
+              <stop offset='100%' stopColor='#6b4423' />
+            </linearGradient>
+          </defs>
+          <g transform='translate(100, 100)'>
+            {/* Blade */}
+            <rect x='-4' y='-80' width='8' height='100' fill='url(#swordGradient2)' rx='2' />
+            <rect x='-2' y='-80' width='4' height='100' fill='rgba(255,255,255,0.3)' rx='1' />
+            {/* Guard */}
+            <rect x='-25' y='20' width='50' height='6' fill='url(#swordGradient2)' rx='3' />
+            {/* Handle */}
+            <rect x='-5' y='26' width='10' height='30' fill='url(#handleGradient2)' rx='2' />
+            {/* Pommel */}
+            <circle cx='0' cy='60' r='8' fill='url(#swordGradient2)' />
+          </g>
+        </svg>
+
+        {/* Center Background Sword */}
+        <svg className='sword-center' viewBox='0 0 200 200' fill='none' xmlns='http://www.w3.org/2000/svg'>
+          <defs>
+            <linearGradient id='swordGradient3' x1='0%' y1='0%' x2='100%' y2='100%'>
+              <stop offset='0%' stopColor='#4a5568' />
+              <stop offset='50%' stopColor='#718096' />
+              <stop offset='100%' stopColor='#4a5568' />
+            </linearGradient>
+          </defs>
+          <g transform='translate(100, 100)'>
+            {/* Blade */}
+            <rect x='-3' y='-70' width='6' height='85' fill='url(#swordGradient3)' rx='2' />
+            {/* Guard */}
+            <rect x='-20' y='15' width='40' height='5' fill='url(#swordGradient3)' rx='2' />
+            {/* Handle */}
+            <rect x='-4' y='20' width='8' height='25' fill='#2d3748' rx='2' />
+            {/* Pommel */}
+            <circle cx='0' cy='48' r='6' fill='url(#swordGradient3)' />
+          </g>
+        </svg>
+      </div>
+
       <div className='loading-info'>
         {title && <div className='loading-title'>{title}</div>}
         {desc && <div className='loading-desc'>{desc}</div>}

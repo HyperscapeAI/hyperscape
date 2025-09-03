@@ -51,6 +51,16 @@ export class ResourceSystem extends SystemBase {
         stackable: true
       }
     ]],
+    ['herb_patch_normal', [
+      {
+        itemId: '202', // Herbs
+        itemName: 'Herbs',
+        quantity: 1,
+        chance: 1.0, // Always get herbs
+        xpAmount: 20, // Herbalism XP per herb
+        stackable: true
+      }
+    ]],
     ['fishing_spot_normal', [
       {
         itemId: '201', // Raw Fish
@@ -77,20 +87,28 @@ export class ResourceSystem extends SystemBase {
   async init(): Promise<void> {
     
     // Set up type-safe event subscriptions for resource management
-    this.subscribe<{ spawnPoints: TerrainResourceSpawnPoint[] }>(EventType.RESOURCE_SPAWN_POINTS_REGISTERED, (event) => this.registerTerrainResources(event.data));
+    this.subscribe<{ spawnPoints: TerrainResourceSpawnPoint[] }>(EventType.RESOURCE_SPAWN_POINTS_REGISTERED, (data) => this.registerTerrainResources(data));
+    // Bridge gather click -> start gathering with player position
+    this.subscribe<{ playerId: string; resourceId: string }>(EventType.RESOURCE_GATHER, (data) => {
+      const player = this.world.getPlayer?.(data.playerId);
+      const playerPosition = player && (player as { position?: { x: number; y: number; z: number } }).position
+        ? (player as { position: { x: number; y: number; z: number } }).position
+        : { x: 0, y: 0, z: 0 };
+      this.startGathering({ playerId: data.playerId, resourceId: data.resourceId, playerPosition });
+    });
     
     // Set up player gathering event subscriptions
-    this.subscribe<{ playerId: string; resourceId: string; playerPosition: { x: number; y: number; z: number } }>(EventType.RESOURCE_GATHERING_STARTED, (event) => this.startGathering(event.data));
-    this.subscribe<{ playerId: string; resourceId: string }>(EventType.RESOURCE_GATHERING_STOPPED, (event) => this.stopGathering(event.data));
-    this.subscribe<{ id: string }>(EventType.PLAYER_UNREGISTERED, (event) => this.cleanupPlayerGathering(event.data.id));
+    this.subscribe<{ playerId: string; resourceId: string; playerPosition: { x: number; y: number; z: number } }>(EventType.RESOURCE_GATHERING_STARTED, (data) => this.startGathering(data));
+    this.subscribe<{ playerId: string; resourceId: string }>(EventType.RESOURCE_GATHERING_STOPPED, (data) => this.stopGathering(data));
+    this.subscribe<{ id: string }>(EventType.PLAYER_UNREGISTERED, (data) => this.cleanupPlayerGathering(data.id));
     
     // Set up terrain system event subscriptions for resource generation
-    this.subscribe<TerrainTileData>(EventType.TERRAIN_TILE_GENERATED, (event) => this.onTerrainTileGenerated(event.data));
-    this.subscribe<{ tileId: string }>('terrain:tile:unloaded', (event) => this.onTerrainTileUnloaded(event.data));
+    this.subscribe<TerrainTileData>(EventType.TERRAIN_TILE_GENERATED, (data) => this.onTerrainTileGenerated(data));
+    this.subscribe<{ tileId: string }>('terrain:tile:unloaded', (data) => this.onTerrainTileUnloaded(data));
 
     // Listen to skills updates for reactive patterns
-    this.subscribe<{ playerId: string; skills: Record<string, { level: number; xp: number }> }>(EventType.SKILLS_UPDATED, (event) => {
-      this.playerSkills.set(event.data.playerId, event.data.skills);
+    this.subscribe<{ playerId: string; skills: Record<string, { level: number; xp: number }> }>(EventType.SKILLS_UPDATED, (data) => {
+      this.playerSkills.set(data.playerId, data.skills);
     });
     
   }
@@ -114,6 +132,8 @@ export class ResourceSystem extends SystemBase {
       const resource = this.createResourceFromSpawnPoint(spawnPoint);
       if (resource) {
         this.resources.set(createResourceID(resource.id), resource);
+        // Emit spawn event so visual test or interaction layers can render cubes
+        this.emitTypedEvent(EventType.RESOURCE_SPAWNED, resource);
       }
     }
   }
@@ -191,6 +211,8 @@ export class ResourceSystem extends SystemBase {
         const resource = this.createResourceFromTerrainResource(terrainResource);
         if (resource) {
           this.resources.set(createResourceID(resource.id), resource);
+          // Emit spawn event for each resource to show cubes
+          this.emitTypedEvent(EventType.RESOURCE_SPAWNED, resource);
         }
       }
     }
@@ -259,8 +281,16 @@ export class ResourceSystem extends SystemBase {
         respawnTime = 30000; // 30 second respawn
         break;
         
+      case 'herb':
+        skillRequired = 'herbalism';
+        toolRequired = 'none'; // No tool required for herbs
+        respawnTime = 45000; // 45 second respawn
+        break;
+        
       case 'rock':
       case 'ore':
+      case 'gem':
+      case 'rare_ore':
         // Future expansion for mining
         return undefined; // Skip for now
         
@@ -269,14 +299,18 @@ export class ResourceSystem extends SystemBase {
     }
     
     // Map terrain types to resource types
-    const resourceType: 'tree' | 'fishing_spot' | 'ore' = 
+    const resourceType: 'tree' | 'fishing_spot' | 'ore' | 'herb_patch' | 'mine' = 
       (type === 'fish') ? 'fishing_spot' : 
-      'tree'; // Only tree and fishing_spot are currently supported
+      (type === 'herb') ? 'herb_patch' :
+      'tree'; // Default to tree for now
       
     const resource: Resource = {
       id: id || `resource_${position.x}_${position.y}_${position.z}_${Date.now()}`,
       type: resourceType,
-      name: type === 'fish' ? 'Fishing Spot' : type === 'tree' ? 'Tree' : 'Rock',
+      name: type === 'fish' ? 'Fishing Spot' : 
+            type === 'tree' ? 'Tree' : 
+            type === 'herb' ? 'Herb Patch' : 
+            'Rock',
       position: {
         x: position.x,
         y: position.y,

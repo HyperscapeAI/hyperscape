@@ -51,6 +51,7 @@ function MenuMainIndex({ world, _pop, push }) {
       <MenuItemBtn label='UI' hint='Change your interface settings' onClick={() => push('ui')} nav />
       <MenuItemBtn label='Graphics' hint='Change your device graphics settings' onClick={() => push('graphics')} nav />
       <MenuItemBtn label='Audio' hint='Change your audio volume' onClick={() => push('audio')} nav />
+      <MenuItemBtn label='Combat' hint='Open combat actions' onClick={() => world.emit('ui:combat:toggle', true)} nav={false} />
       {isBuilder && <MenuItemBtn label='World' hint='Modify world settings' onClick={() => push('world')} nav />}
     </Menu>
   )

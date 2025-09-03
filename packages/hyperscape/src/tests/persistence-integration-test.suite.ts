@@ -8,12 +8,12 @@
  */
 
 import { PlayerTokenManager } from '../client/PlayerTokenManager'
-import type { World } from '../types/index'
 import { DatabaseSystem } from '../systems/DatabaseSystem'
 import { PersistenceSystem } from '../systems/PersistenceSystem'
 import { PlayerSystem } from '../systems/PlayerSystem'
-import type { PlayerRow, WorldChunkData } from '../types/database'
-import { ItemType, ItemRarity, type Player, type Item } from '../types/index'
+import type { PlayerRow, WorldChunkData, ClientPlayerToken } from '../types/database'
+import type { World } from '../types/index'
+import { ItemRarity, ItemType, type Item } from '../types/index'
 import { MockWorld, TestResult } from './test-utils'
 
 // Helper function to create complete Item objects for testing
@@ -48,7 +48,7 @@ function createTestItem(overrides: Partial<Item>): Item {
 interface TestClient {
   id: number
   tokenManager: PlayerTokenManager
-  token: import('../client/PlayerTokenManager').ClientPlayerToken
+  token: ClientPlayerToken
   session: unknown
   playerId: string
   expectedAttack?: number
@@ -360,15 +360,14 @@ export class PersistenceIntegrationTestSuite {
             }
             break
           case 'updateHealth':
-            if (this.playerSystem && 'health' in gameAction.data && 'maxHealth' in gameAction.data) {
-              await (
-                this.playerSystem as unknown as {
-                  updateHealth: (data: { playerId: string; health: number; maxHealth: number }) => Promise<void>
-                }
-              ).updateHealth({
-                playerId: testPlayerId,
-                health: gameAction.data.health as number,
-                maxHealth: gameAction.data.maxHealth as number,
+            if (this.playerSystem && typeof (this.playerSystem as { updateHealth?: Function }).updateHealth === 'function') {
+              await (this.playerSystem as {
+                updateHealth: (data: import('../types/events').HealthUpdateEvent) => Promise<void>
+              }).updateHealth({
+                entityId: testPlayerId,
+                previousHealth: 0,
+                currentHealth: (gameAction.data as { health: number }).health,
+                maxHealth: (gameAction.data as { maxHealth: number }).maxHealth,
               })
             }
             break
@@ -417,8 +416,8 @@ export class PersistenceIntegrationTestSuite {
         { check: 'Attack stat', expected: 15, actual: finalStats.attack.level },
         { check: 'Strength stat', expected: 12, actual: finalStats.strength.level },
         { check: 'Defense stat', expected: 8, actual: finalStats.defense.level },
-        { check: 'Current health', expected: 75, actual: finalHealth.health },
-        { check: 'Max health', expected: 120, actual: finalHealth.maxHealth },
+        { check: 'Current health', expected: 75, actual: finalHealth.current },
+        { check: 'Max health', expected: 120, actual: finalHealth.max },
         { check: 'Position X', expected: 150, actual: finalPlayer.position.x },
         { check: 'Position Z', expected: -200, actual: finalPlayer.position.z },
         { check: 'Weapon name', expected: 'Mithril sword', actual: finalEquipment.weapon?.name },
@@ -703,41 +702,50 @@ export class PersistenceIntegrationTestSuite {
       const concurrentPlayers: unknown[] = []
       for (let i = 0; i < 10; i++) {
         const playerId = `integrity_test_${i}`
-        const playerData: Partial<Player> = {
+        const playerRow: Partial<PlayerRow> = {
           name: `IntegrityTest${i}`,
-          skills: {
-            attack: { level: 1 + i, xp: i * 100 },
-            strength: { level: 1, xp: 0 },
-            defense: { level: 1, xp: 0 },
-            ranged: { level: 1, xp: 0 },
-            woodcutting: { level: 1, xp: 0 },
-            fishing: { level: 1, xp: 0 },
-            firemaking: { level: 1, xp: 0 },
-            cooking: { level: 1, xp: 0 },
-            constitution: { level: 10, xp: 1154 },
-          },
-          health: { current: 100, max: 100 },
-          position: { x: i * 10, y: 2, z: i * 10 },
-          alive: true,
-        } as Partial<Player>
+          attackLevel: 1 + i,
+          attackXp: i * 100,
+          strengthLevel: 1,
+          strengthXp: 0,
+          defenseLevel: 1,
+          defenseXp: 0,
+          rangedLevel: 1,
+          rangedXp: 0,
+          woodcuttingLevel: 1,
+          woodcuttingXp: 0,
+          fishingLevel: 1,
+          fishingXp: 0,
+          firemakingLevel: 1,
+          firemakingXp: 0,
+          cookingLevel: 1,
+          cookingXp: 0,
+          constitutionLevel: 10,
+          constitutionXp: 1154,
+          health: 100,
+          maxHealth: 100,
+          positionX: i * 10,
+          positionY: 2,
+          positionZ: i * 10,
+        }
 
-        concurrentPlayers.push({ playerId, playerData })
+        concurrentPlayers.push({ playerId, playerRow })
       }
 
       // Write all players concurrently
       await Promise.all(
         concurrentPlayers.map(player => {
-          const p = player as { playerId: string; playerData: Partial<Player> }
-          return this.databaseSystem!.savePlayer(p.playerId, p.playerData as Partial<PlayerRow>)
+          const p = player as { playerId: string; playerRow: Partial<PlayerRow> }
+          return this.databaseSystem!.savePlayer(p.playerId, p.playerRow)
         })
       )
 
       // Verify all players can be loaded
       let playersLoaded = 0
       for (const player of concurrentPlayers) {
-        const p = player as { playerId: string; playerData: { name: string } }
+        const p = player as { playerId: string; playerRow: { name: string } }
         const loadedPlayer = this.databaseSystem.getPlayer(p.playerId)
-        if (loadedPlayer && loadedPlayer.name === p.playerData.name) {
+        if (loadedPlayer && loadedPlayer.name === p.playerRow.name) {
           playersLoaded++
         }
       }
@@ -795,25 +803,34 @@ export class PersistenceIntegrationTestSuite {
         // Create save operation
         operations.push(async () => {
           if (this.databaseSystem) {
-            const playerData: Partial<Player> = {
+            const playerRow: Partial<PlayerRow> = {
               name: `PerfTest${i}`,
-              skills: {
-                attack: { level: Math.floor(Math.random() * 20) + 1, xp: Math.floor(Math.random() * 1000) },
-                strength: { level: 1, xp: 0 },
-                defense: { level: 1, xp: 0 },
-                ranged: { level: 1, xp: 0 },
-                woodcutting: { level: 1, xp: 0 },
-                fishing: { level: 1, xp: 0 },
-                firemaking: { level: 1, xp: 0 },
-                cooking: { level: 1, xp: 0 },
-                constitution: { level: 10, xp: 1154 },
-              },
-              health: { current: 100, max: 100 },
-              position: { x: Math.random() * 1000, y: 2, z: Math.random() * 1000 },
-              alive: true,
-            } as Partial<Player>
+              attackLevel: Math.floor(Math.random() * 20) + 1,
+              attackXp: Math.floor(Math.random() * 1000),
+              strengthLevel: 1,
+              strengthXp: 0,
+              defenseLevel: 1,
+              defenseXp: 0,
+              rangedLevel: 1,
+              rangedXp: 0,
+              woodcuttingLevel: 1,
+              woodcuttingXp: 0,
+              fishingLevel: 1,
+              fishingXp: 0,
+              firemakingLevel: 1,
+              firemakingXp: 0,
+              cookingLevel: 1,
+              cookingXp: 0,
+              constitutionLevel: 10,
+              constitutionXp: 1154,
+              health: 100,
+              maxHealth: 100,
+              positionX: Math.random() * 1000,
+              positionY: 2,
+              positionZ: Math.random() * 1000,
+            }
 
-            this.databaseSystem.savePlayer(playerId, playerData as Partial<PlayerRow>)
+            this.databaseSystem.savePlayer(playerId, playerRow)
             operationCounts.saves++
           }
         })
@@ -923,37 +940,23 @@ export class PersistenceIntegrationTestSuite {
 
   private async simulatePlayerEnter(playerId: string, playerName: string, clientToken?: string): Promise<void> {
     if (this.playerSystem && 'onPlayerEnter' in this.playerSystem) {
-      const onPlayerEnter = (
-        this.playerSystem as unknown as {
+      if (typeof (this.playerSystem as { onPlayerEnter?: Function }).onPlayerEnter === 'function') {
+        await (this.playerSystem as {
           onPlayerEnter: (data: {
             playerId: string
-            player: {
-              name: string
-              clientToken: string
-            }
+            player: { name: string; clientToken: string }
           }) => Promise<void> | void
-        }
-      ).onPlayerEnter
-
-      await onPlayerEnter({
-        playerId,
-        player: {
-          name: playerName,
-          clientToken: clientToken || 'default_token',
-        },
-      })
+        }).onPlayerEnter({
+          playerId,
+          player: { name: playerName, clientToken: clientToken || 'default_token' },
+        })
+      }
     }
   }
 
   private async simulatePlayerLeave(playerId: string): Promise<void> {
-    if (this.playerSystem && 'onPlayerLeave' in this.playerSystem) {
-      const onPlayerLeave = (
-        this.playerSystem as unknown as {
-          onPlayerLeave: (data: { playerId: string }) => Promise<void>
-        }
-      ).onPlayerLeave
-
-      await onPlayerLeave({ playerId })
+    if (this.playerSystem && typeof (this.playerSystem as { onPlayerLeave?: Function }).onPlayerLeave === 'function') {
+      await (this.playerSystem as { onPlayerLeave: (data: { playerId: string }) => Promise<void> }).onPlayerLeave({ playerId })
     }
   }
 

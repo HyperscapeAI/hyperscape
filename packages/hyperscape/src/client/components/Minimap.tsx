@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Entity } from '../../entities/Entity';
-import * as THREE from '../../extras/three';
-import type { Player } from '../../types';
-import type { EntityPip, MinimapProps } from '../../types/ui-component-types';
+import THREE from '../../extras/three';
+import type { EntityPip, MinimapProps } from '../../types/ui-types';
 
 export function Minimap({ 
   world, 
@@ -12,7 +11,8 @@ export function Minimap({
   className = '',
   style = {}
 }: MinimapProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const webglCanvasRef = useRef<HTMLCanvasElement>(null)
+  const overlayCanvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
   const cameraRef = useRef<THREE.OrthographicCamera | null>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
@@ -20,15 +20,9 @@ export function Minimap({
 
   // Initialize minimap renderer and camera
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    // Check if canvas already has a context
-    const existingContext = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('2d')
-    if (existingContext) {
-      console.warn('[Minimap] Canvas already has a context, skipping WebGL renderer creation')
-      return
-    }
+    const webglCanvas = webglCanvasRef.current
+    const overlayCanvas = overlayCanvasRef.current
+    if (!webglCanvas || !overlayCanvas) return
 
     // Create orthographic camera for overhead view - much higher up
     const camera = new THREE.OrthographicCamera(
@@ -42,7 +36,7 @@ export function Minimap({
     try {
       // Create renderer
       const renderer = new THREE.WebGLRenderer({ 
-        canvas,
+        canvas: webglCanvas,
         alpha: true,
         antialias: false
       })
@@ -54,6 +48,12 @@ export function Minimap({
       // Fall back to 2D canvas rendering only
       rendererRef.current = null
     }
+
+    // Ensure both canvases have the correct backing size
+    webglCanvas.width = width
+    webglCanvas.height = height
+    overlayCanvas.width = width
+    overlayCanvas.height = height
 
     return () => {
       if (rendererRef.current) {
@@ -104,26 +104,32 @@ export function Minimap({
     const updateEntityPips = () => {
       const pips: EntityPip[] = []
       
-      // Add player pip
-      const player = world.entities.player
-      pips.push({
-        id: 'local-player',
-        type: 'player',
-        position: player.node.position,
-        color: '#00ff00' // Green for local player
-      })
+      // Add player pip (guard against undefined during early init)
+      const player = world.entities.player as Entity | undefined
+      if (player && player.node && player.node.position) {
+        pips.push({
+          id: 'local-player',
+          type: 'player',
+          position: player.node.position,
+          color: '#00ff00' // Green for local player
+        })
+      }
 
-      // Add other players
-      if (world.getPlayers) {
-        const players = world.getPlayers()
-        players.forEach((otherPlayer: Player) => {
-          if (otherPlayer.id !== player.id) {
-            pips.push({
-              id: otherPlayer.id,
-              type: 'player',
-              position: new THREE.Vector3(otherPlayer.position.x, 0, otherPlayer.position.z),
-              color: '#0088ff' // Blue for other players
-            })
+      // Add other players using entities system for reliable positions
+      if (world.entities && typeof world.entities.getAllPlayers === 'function') {
+        const players = world.entities.getAllPlayers()
+        players.forEach((otherPlayer) => {
+          // Find the actual entity to read its THREE position
+          if (!player || otherPlayer.id !== player.id) {
+            const otherEntity = world.entities.get(otherPlayer.id)
+            if (otherEntity && otherEntity.node && otherEntity.node.position) {
+              pips.push({
+                id: otherPlayer.id,
+                type: 'player',
+                position: new THREE.Vector3(otherEntity.node.position.x, 0, otherEntity.node.position.z),
+                color: '#0088ff' // Blue for other players
+              })
+            }
           }
         })
       }
@@ -173,39 +179,50 @@ export function Minimap({
           }
         })
       }
+      // Add pips for all known entities safely
+      if (world.entities && typeof world.entities.getAll === 'function') {
+        const allEntities = world.entities.getAll()
+        allEntities.forEach((entity) => {
+          // Skip if no valid position
+          const pos = entity?.position
+          if (!pos) return
 
-        world.systems.forEach((_system) => {
-          // Look for systems that might have entity data
-          Object.values(world.entities).forEach((entity) => {
-            let color = '#ffffff'
-            let type: EntityPip['type'] = 'item'
-            
-            switch (entity.type) {
-              case 'mob':
-              case 'enemy':
-                color = '#ff4444'
-                type = 'enemy'
-                break
-              case 'building':
-              case 'structure':
-                color = '#ffaa00'
-                type = 'building'
-                break
-              case 'item':
-              case 'loot':
-                color = '#ffff44'
-                type = 'item'
-                break
-            }
-            
-            pips.push({
-              id: entity.id,
-              type,
-              position: new THREE.Vector3(entity.position.x, 0, entity.position.z),
-              color
-            })
+          let color = '#ffffff'
+          let type: EntityPip['type'] = 'item'
+
+          switch (entity.type) {
+            case 'player':
+              // Already handled above; skip to avoid duplicates
+              return
+            case 'mob':
+            case 'enemy':
+              color = '#ff4444'
+              type = 'enemy'
+              break
+            case 'building':
+            case 'structure':
+              color = '#ffaa00'
+              type = 'building'
+              break
+            case 'item':
+            case 'loot':
+              color = '#ffff44'
+              type = 'item'
+              break
+            default:
+              // Treat unknown as items for now
+              color = '#cccccc'
+              type = 'item'
+          }
+
+          pips.push({
+            id: entity.id,
+            type,
+            position: new THREE.Vector3(pos.x, 0, pos.z),
+            color
           })
         })
+      }
 
       setEntityPips(pips)
     }
@@ -218,8 +235,8 @@ export function Minimap({
 
   // Render pips on canvas
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
+    const overlayCanvas = overlayCanvasRef.current
+    if (!overlayCanvas) return
 
     const render = () => {
       // Try WebGL rendering first if available
@@ -231,13 +248,15 @@ export function Minimap({
         }
       }
       
-      // Always draw 2D pips on canvas
-      const ctx = canvas.getContext('2d')
+      // Always draw 2D pips on overlay canvas
+      const ctx = overlayCanvas.getContext('2d')
       if (ctx) {
-        // Clear the canvas for 2D fallback
+        // Clear the overlay each frame
+        ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height)
+        // If no WebGL renderer, fill background on overlay
         if (!rendererRef.current) {
           ctx.fillStyle = '#1a1a2e'
-          ctx.fillRect(0, 0, canvas.width, canvas.height)
+          ctx.fillRect(0, 0, overlayCanvas.width, overlayCanvas.height)
         }
         
         // Draw entity pips
@@ -318,19 +337,37 @@ export function Minimap({
     borderRadius: '8px',
     overflow: 'hidden',
     background: 'rgba(0, 0, 0, 0.8)',
+    position: 'relative',
     ...style
   }
 
   return (
     <div className={`minimap ${className}`} style={containerStyle}>
+      {/* WebGL canvas */}
       <canvas
-        ref={canvasRef}
+        ref={webglCanvasRef}
         width={width}
         height={height}
         style={{
+          position: 'absolute',
+          inset: 0,
           display: 'block',
           width: '100%',
           height: '100%'
+        }}
+      />
+      {/* 2D overlay for pips */}
+      <canvas
+        ref={overlayCanvasRef}
+        width={width}
+        height={height}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'block',
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none'
         }}
       />
       <div style={{

@@ -1,7 +1,7 @@
 import { System } from './System';
 import type { World } from '../World';
 import type { Entity } from '../entities/Entity';
-import { Vector3 } from '../extras/three';
+import THREE from '../extras/three';
 import type { SpatialCell, SpatialQuery } from '../types/spatial-types';
 
 export class SpatialIndex extends System {
@@ -13,7 +13,7 @@ export class SpatialIndex extends System {
   private dirtyEntities: Set<Entity>;
   private updateInterval: number;
   private lastUpdate: number;
-  private tempVec3 = new Vector3();
+  private tempVec3 = new THREE.Vector3();
   
   constructor(world: World, cellSize: number = 10) {
     super(world);
@@ -147,7 +147,7 @@ export class SpatialIndex extends System {
         
         // Distance check
         if (entity.node) {
-          const entityPos = entity.node.getWorldPosition(new Vector3());
+          const entityPos = entity.node.getWorldPosition(new THREE.Vector3());
           const distSquared = query.position.distanceToSquared(entityPos);
           
           if (distSquared <= radiusSquared) {
@@ -185,7 +185,7 @@ export class SpatialIndex extends System {
   }
   
   // Get cell coordinates from position
-  private getCellCoords(position: Vector3): { x: number; y: number; z: number } {
+  private getCellCoords(position: THREE.Vector3): { x: number; y: number; z: number } {
     return {
       x: Math.floor(position.x / this.cellSize),
       y: Math.floor(position.y / this.cellSize),
@@ -194,13 +194,13 @@ export class SpatialIndex extends System {
   }
   
   // Get all cell keys that an entity at position should be in
-  private getCellKeysForPosition(position: Vector3): string[] {
+  private getCellKeysForPosition(position: THREE.Vector3): string[] {
     const coords = this.getCellCoords(position);
     return [this.getCellKey(coords.x, coords.y, coords.z)];
   }
   
   // Get all cells within radius of position
-  private getCellsInRadius(position: Vector3, radius: number): string[] {
+  private getCellsInRadius(position: THREE.Vector3, radius: number): string[] {
     const cells: string[] = [];
     const cellRadius = Math.ceil(radius / this.cellSize);
     const centerCoords = this.getCellCoords(position);

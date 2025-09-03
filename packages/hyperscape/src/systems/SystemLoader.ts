@@ -3,70 +3,64 @@
  * Entry point for Hyperscape to dynamically load all systems
  */
 import { Component, ComponentConstructor } from '../components'
-import { registerComponent } from '../components/index'
-import { Entity } from '../entities/Entity'
-import * as THREE from '../extras/three'
-import { getSystem } from '../utils/SystemUtils'
-import type { World } from '../World'
-import { EventType } from '../types/events'
 import { CombatComponent } from '../components/CombatComponent'
 import { DataComponent } from '../components/DataComponent'
+import { registerComponent } from '../components/index'
 import { InteractionComponent } from '../components/InteractionComponent'
+import { StatsComponent } from '../components/StatsComponent'
 import { UsageComponent } from '../components/UsageComponent'
 import { VisualComponent } from '../components/VisualComponent'
-import { StatsComponent } from '../components/StatsComponent'
 import { dataManager } from '../data/DataManager'
+import { Entity } from '../entities/Entity'
+import THREE from '../extras/three'
 import type {
   Inventory,
-  ItemAction,
-  Skills,
-  Position3D,
   InventorySlotItem,
-  Item
+  Item,
+  ItemAction,
+  Position3D,
+  Skills
 } from '../types/core'
 import type { PlayerRow } from '../types/database'
 import type { EntityConfig } from '../types/entities'
+import { EventType } from '../types/events'
 import type { AppConfig, TerrainConfig } from '../types/settings-types'
+import { getSystem } from '../utils/SystemUtils'
+import type { World } from '../World'
 
 
 // Import systems
-import { BankingSystem } from './BankingSystem'
-import { CombatSystem } from './CombatSystem'
-// DatabaseSystem will be imported dynamically on server only
-import type { DatabaseSystem } from './DatabaseSystem'
-import { InventorySystem } from './InventorySystem'
-import { MobSystem } from './MobSystem'
-import { PlayerSystem } from './PlayerSystem'
-import { ResourceSystem } from './ResourceSystem'
-import { StoreSystem } from './StoreSystem'
-// Movement and camera now handled by core systems (ClientMovementSystem and ClientCameraSystem)
-import { PathfindingSystem } from './PathfindingSystem'
-import { PersistenceSystem } from './PersistenceSystem'
-import { WorldGenerationSystem } from './WorldGenerationSystem'
-// UNIFIED TERRAIN SYSTEMS - USING PROCEDURAL TERRAIN
-// DYNAMIC WORLD CONTENT SYSTEMS - FULL THREE.JS ACCESS
-// import { DefaultWorldSystem } from './DefaultWorldSystem'
-import { ItemSpawnerSystem } from './ItemSpawnerSystem'
-import { MobSpawnerSystem } from './MobSpawnerSystem'
-import { TestPhysicsCube } from './TestPhysicsCube'
-import { TestUISystem } from './TestUISystem'
-// ClientInteractionSystem removed - functionality merged into InteractionSystem
-import { EntityCullingSystem } from './EntityCullingSystem'
 import { AggroSystem } from './AggroSystem'
 import { AttackStyleSystem } from './AttackStyleSystem'
+import { BankingSystem } from './BankingSystem'
+import { CombatSystem } from './CombatSystem'
+import type { DatabaseSystem } from './DatabaseSystem'
 import { DeathSystem } from './DeathSystem'
+import { EntityCullingSystem } from './EntityCullingSystem'
 import { EntityManager } from './EntityManager'
 import { EquipmentSystem } from './EquipmentSystem'
 import { InventoryInteractionSystem } from './InventoryInteractionSystem'
+import { InventorySystem } from './InventorySystem'
 import { ItemActionSystem } from './ItemActionSystem'
 import { ItemPickupSystem } from './ItemPickupSystem'
+import { ItemSpawnerSystem } from './ItemSpawnerSystem'
+import { MobSpawnerSystem } from './MobSpawnerSystem'
+import { MobSystem } from './MobSystem'
+import { PathfindingSystem } from './PathfindingSystem'
+import { PersistenceSystem } from './PersistenceSystem'
 import { PlayerSpawnSystem } from './PlayerSpawnSystem'
+import { PlayerSystem } from './PlayerSystem'
 import { ProcessingSystem } from './ProcessingSystem'
+import { ResourceSystem } from './ResourceSystem'
+import { StoreSystem } from './StoreSystem'
+import { TestPhysicsCube } from './TestPhysicsCube'
+import { WorldGenerationSystem } from './WorldGenerationSystem'
+import { MovementValidationSystem } from './MovementValidationSystem'
 
 // New MMO-style Systems
 import { InteractionSystem } from './InteractionSystem'
 import { LootSystem } from './LootSystem'
-import { MovementSystem } from './MovementSystem'
+// Movement now handled by physics in PlayerLocal
 // CameraSystem moved to core ClientCameraSystem
 // Removed UIComponents - replaced with React components
 
@@ -80,7 +74,6 @@ import { AggroTestSystem } from './AggroTestSystem'
 import { BankingTestSystem } from './BankingTestSystem'
 import { EquipmentTestSystem } from './EquipmentTestSystem'
 import { InventoryTestSystem } from './InventoryTestSystem'
-import { MovementTestSystem } from './MovementTestSystem'
 import { PhysicsTestSystem } from './PhysicsTestSystem'
 import { ResourceGatheringTestSystem } from './ResourceGatheringTestSystem'
 import { StoreTestSystem } from './StoreTestSystem'
@@ -98,7 +91,6 @@ import { ItemActionTestSystem } from './ItemActionTestSystem'
 import { PersistenceTestSystem } from './PersistenceTestSystem'
 import { PlayerTestSystem } from './PlayerTestSystem'
 import { SkillsTestSystem } from './SkillsTestSystem'
-import { SystemValidationTestSystem } from './SystemValidationTestSystem'
 import { UITestSystem } from './UITestSystem'
 import { WoodcuttingTestSystem } from './WoodcuttingTestSystem'
 
@@ -108,9 +100,8 @@ import { PrecisionPhysicsTestSystem } from './PrecisionPhysicsTestSystem'
 import { TerrainNaNTestSystem } from './TerrainNaNTestSystem'
 
 // PERFORMANCE MONITORING
-import { PerformanceMonitor } from './PerformanceMonitor'
 
-import { CameraSystem } from '../systems/CameraSystem'
+import type { CameraSystem as CameraSystemInterface } from '../types/physics'
 import { ActionRegistry } from './ActionRegistry'
 import { CombatTestSystem } from './CombatTestSystem'
 import { LootDropTestSystem } from './LootDropTestSystem'
@@ -146,8 +137,8 @@ export interface Systems {
   death?: DeathSystem
   inventoryInteraction?: InventoryInteractionSystem
   loot?: LootSystem
-  cameraSystem?: CameraSystem
-  movementSystem?: MovementSystem
+    cameraSystem?: CameraSystemInterface
+  movementSystem?: unknown
   worldContent?: WorldContentSystem
   npc?: NPCSystem
   mobAI?: MobAISystem
@@ -159,7 +150,6 @@ export interface Systems {
   testStore?: StoreTestSystem
   testResourceGathering?: ResourceGatheringTestSystem
   testEquipment?: EquipmentTestSystem
-  testMovement?: MovementTestSystem
   testPhysics?: PhysicsTestSystem
   testLootDrop?: LootDropTestSystem
   testCorpse?: CorpseTestSystem
@@ -191,6 +181,22 @@ export interface Systems {
 export async function registerSystems(world: World): Promise<void> {
   const testsEnabled = process.env.NODE_ENV !== 'production';
   
+  // Allow disabling all RPG registrations via env flag to debug core systems only
+  // Supports both server-side (process.env) and client-side (globalThis.env) flags
+  const isTruthy = (value: string | undefined): boolean => {
+    if (!value) return false;
+    const normalized = value.toLowerCase();
+    return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
+  };
+  const disableRPGViaProcess = (typeof process !== 'undefined' && typeof process.env !== 'undefined')
+    ? isTruthy(process.env.DISABLE_RPG)
+    : false;
+  const globalEnv = (typeof globalThis !== 'undefined'
+    ? (globalThis as unknown as { env?: Record<string, string> }).env
+    : undefined);
+  const disableRPGViaGlobal = globalEnv ? (isTruthy(globalEnv.DISABLE_RPG) || isTruthy(globalEnv.PUBLIC_DISABLE_RPG)) : false;
+  const disableRPG = disableRPGViaProcess || disableRPGViaGlobal;
+  
   // Register -specific components FIRST, before any systems
   registerComponent(
     'combat',
@@ -207,7 +213,16 @@ export async function registerSystems(world: World): Promise<void> {
   registerComponent('usage', UsageComponent as ComponentConstructor)
 
   // Register data components using the generic DataComponent class
-  const dataComponents = ['stats', 'inventory', 'equipment', 'movement', 'stamina']
+  // Include commonly used pure-data components so entity construction never fails
+  const dataComponents = [
+    'stats',
+    'inventory',
+    'equipment',
+    'movement',
+    'stamina',
+    'ai',
+    'respawn'
+  ]
   for (const componentType of dataComponents) {
     registerComponent(
       componentType,
@@ -248,6 +263,34 @@ export async function registerSystems(world: World): Promise<void> {
 
   // 5. Player system - Core player management (depends on database & persistence)
   world.register('rpg-player', PlayerSystem)
+
+  // 22. Pathfinding system - AI movement (depends on mob system)
+  world.register('rpg-pathfinding', PathfindingSystem)
+
+  // 23. Player spawn system - Player spawning logic (depends on player & world systems)
+  world.register('rpg-player-spawn', PlayerSpawnSystem)
+  
+  systems.player = getSystem(world, 'rpg-player') as PlayerSystem
+  systems.playerSpawn = getSystem(world, 'rpg-player-spawn') as PlayerSpawnSystem
+  systems.pathfinding = getSystem(world, 'rpg-pathfinding') as PathfindingSystem
+  systems.entityManager = getSystem(world, 'rpg-entity-manager') as EntityManager
+
+  if (world.isClient) {
+    world.register('rpg-interaction', InteractionSystem)
+    // CameraSystem moved to core ClientCameraSystem
+    // Removed UIComponents - replaced with React components
+    systems.interaction = getSystem(world, 'rpg-interaction') as InteractionSystem
+    systems.cameraSystem = getSystem(world, 'client-camera-system') as unknown as CameraSystemInterface
+    systems.movementSystem = getSystem(world, 'client-movement-system') as unknown
+    
+    // Register movement validation system for runtime testing
+    world.register('movement-validation', MovementValidationSystem)
+  }
+
+  if (disableRPG) {
+    // Skip registering any RPG systems/components/APIs
+    return;
+  }
 
   // 6. Mob system - Core mob management
   world.register('rpg-mob', MobSystem)
@@ -306,15 +349,7 @@ export async function registerSystems(world: World): Promise<void> {
     // 21. Aggro system - AI aggression management (depends on mob & combat systems)
     world.register('rpg-aggro', AggroSystem)
 
-    // 22. Pathfinding system - AI movement (depends on mob system)
-    world.register('rpg-pathfinding', PathfindingSystem)
-
-    // 23. Player spawn system - Player spawning logic (depends on player & world systems)
-    world.register('rpg-player-spawn', PlayerSpawnSystem)
-
-    // 24. Movement system - Player movement and click-to-move (depends on player system)
-    // Note: Previously moved to core ClientMovementSystem, but we need -specific movement
-    world.register('rpg-movement', MovementSystem)
+    // 24. Movement system - unified client movement handles movement; remove server RPG movement
 
     // Performance optimization systems
     world.register('entity-culling', EntityCullingSystem)
@@ -326,11 +361,6 @@ export async function registerSystems(world: World): Promise<void> {
 
     // New MMO-style Systems
     world.register('rpg-loot', LootSystem)
-    if (world.isClient) {
-      world.register('rpg-interaction', InteractionSystem)
-      // CameraSystem moved to core ClientCameraSystem
-      // Removed UIComponents - replaced with React components
-    }
 
     // World Content Systems (server only for world management)
     if (world.isServer) {
@@ -341,19 +371,19 @@ export async function registerSystems(world: World): Promise<void> {
 
     // VISUAL TEST SYSTEMS - Register for comprehensive testing (only when tests enabled)
     if (testsEnabled) {
-      world.register('rpg-visual-test', VisualTestSystem)
-      world.register('rpg-performance-monitor', PerformanceMonitor)
+      // DISABLED: Visual tests cause continuous spawning and memory leaks
+      // world.register('rpg-visual-test', VisualTestSystem)
+      // world.register('rpg-performance-monitor', PerformanceMonitor)
     }
 
     // Server-only systems
     if (world.isServer) {
       // Core validation test (only when tests enabled)
       if (testsEnabled) {
-        world.register('rpg-system-validation-test', SystemValidationTestSystem)
-        
-        // Register all test systems on server - PhysX is now supported
-        world.register('rpg-database-test', DatabaseTestSystem)
-        world.register('rpg-terrain-nan-test', TerrainNaNTestSystem)
+        // DISABLED: These test systems cause continuous spawning and memory leaks
+        // world.register('rpg-system-validation-test', SystemValidationTestSystem)
+        // world.register('rpg-database-test', DatabaseTestSystem)
+        // world.register('rpg-terrain-nan-test', TerrainNaNTestSystem)
       }
     }
 
@@ -372,12 +402,12 @@ export async function registerSystems(world: World): Promise<void> {
 
     if (isClientEnvironment) {
       // Removed console.log('[SystemLoader] Registering client-only systems')
-      world.register('test-ui', TestUISystem)
-      // ClientInteractionSystem removed - functionality merged into InteractionSystem
+      // DISABLED: TestUISystem may also cause issues
+      // world.register('test-ui', TestUISystem)
 
       // Physics test systems - now supported on both client and server
       if (testsEnabled) {
-        // Visual test systems that use PhysX
+        // Safe, event-driven test registrations
         world.register('rpg-test-combat', CombatTestSystem)
         world.register('rpg-test-aggro', AggroTestSystem)
         world.register('rpg-test-inventory', InventoryTestSystem)
@@ -385,15 +415,10 @@ export async function registerSystems(world: World): Promise<void> {
         world.register('rpg-test-store', StoreTestSystem)
         world.register('rpg-test-resource-gathering', ResourceGatheringTestSystem)
         world.register('rpg-test-equipment', EquipmentTestSystem)
-        world.register('rpg-test-movement', MovementTestSystem)
         world.register('rpg-test-physics', PhysicsTestSystem)
-
-        // New comprehensive test systems
         world.register('rpg-loot-drop-test', LootDropTestSystem)
         world.register('rpg-corpse-test', CorpseTestSystem)
         world.register('rpg-item-action-test', ItemActionTestSystem)
-
-        // All comprehensive test systems with 100% coverage
         world.register('rpg-fishing-test', FishingTestSystem)
         world.register('rpg-cooking-test', CookingTestSystem)
         world.register('rpg-woodcutting-test', WoodcuttingTestSystem)
@@ -402,8 +427,6 @@ export async function registerSystems(world: World): Promise<void> {
         world.register('rpg-persistence-test', PersistenceTestSystem)
         world.register('rpg-skills-test', SkillsTestSystem)
         world.register('rpg-player-test', PlayerTestSystem)
-        
-        // Physics integration tests
         world.register('rpg-physics-integration-test', PhysicsIntegrationTestSystem)
         world.register('rpg-precision-physics-test', PrecisionPhysicsTestSystem)
         world.register('rpg-test-runner', TestRunner)
@@ -419,7 +442,6 @@ export async function registerSystems(world: World): Promise<void> {
     if (world.isServer) {
       systems.database = getSystem(world, 'rpg-database') as DatabaseSystem
     }
-    systems.player = getSystem(world, 'rpg-player') as PlayerSystem
     systems.combat = getSystem(world, 'rpg-combat') as CombatSystem
     systems.inventory = getSystem(world, 'rpg-inventory') as InventorySystem
     systems.skills = getSystem(world, 'rpg-skills') as SkillsSystem
@@ -428,31 +450,26 @@ export async function registerSystems(world: World): Promise<void> {
     systems.banking = getSystem(world, 'rpg-banking') as BankingSystem
     systems.store = getSystem(world, 'rpg-store') as StoreSystem
     systems.resource = getSystem(world, 'rpg-resource') as ResourceSystem
-    // Movement now handled by core ClientMovementSystem
-    systems.pathfinding = getSystem(world, 'rpg-pathfinding') as PathfindingSystem
+    // Movement now handled by physics in PlayerLocal
+
     systems.worldGeneration = getSystem(world, 'rpg-world-generation') as WorldGenerationSystem
     systems.aggro = getSystem(world, 'rpg-aggro') as AggroSystem
     systems.equipment = getSystem(world, 'rpg-equipment') as EquipmentSystem
     systems.itemPickup = getSystem(world, 'rpg-item-pickup') as ItemPickupSystem
     systems.itemActions = getSystem(world, 'rpg-item-actions') as ItemActionSystem
-    systems.playerSpawn = getSystem(world, 'rpg-player-spawn') as PlayerSpawnSystem
     systems.processing = getSystem(world, 'rpg-processing') as ProcessingSystem
     systems.attackStyle = getSystem(world, 'rpg-attack-style') as AttackStyleSystem
-    systems.entityManager = getSystem(world, 'rpg-entity-manager') as EntityManager
     systems.death = getSystem(world, 'rpg-death') as DeathSystem
 
     // Client-only systems
     if (world.isClient) {
-      systems.inventoryInteraction = getSystem(world, 'rpg-inventory-interaction') as unknown as InventoryInteractionSystem
+      systems.inventoryInteraction = getSystem(world, 'rpg-inventory-interaction') as InventoryInteractionSystem
     }
 
     // New MMO-style Systems
     systems.loot = getSystem(world, 'rpg-loot') as LootSystem
     if (world.isClient) {
-      systems.interaction = getSystem(world, 'rpg-interaction') as InteractionSystem
-      // Camera and movement now handled by core systems (client-camera-system, client-movement-system)
-      systems.cameraSystem = getSystem(world, 'client-camera-system') as CameraSystem
-      systems.movementSystem = getSystem(world, 'client-movement-system') as MovementSystem
+
       // Removed uiComponents - replaced with React components
     }
 
@@ -481,7 +498,6 @@ export async function registerSystems(world: World): Promise<void> {
       systems.testStore = getSystem(world, 'rpg-test-store') as StoreTestSystem
       systems.testResourceGathering = getSystem(world, 'rpg-test-resource-gathering') as ResourceGatheringTestSystem
       systems.testEquipment = getSystem(world, 'rpg-test-equipment') as EquipmentTestSystem
-      systems.testMovement = getSystem(world, 'rpg-test-movement') as MovementTestSystem
       systems.testPhysics = getSystem(world, 'rpg-test-physics') as PhysicsTestSystem
 
       // New comprehensive test systems
@@ -504,7 +520,6 @@ export async function registerSystems(world: World): Promise<void> {
     systems.itemSpawner = getSystem(world, 'item-spawner') as ItemSpawnerSystem
     systems.testPhysicsCube = getSystem(world, 'test-physics-cube') as TestPhysicsCube
     systems.testUI = getSystem(world, 'test-ui') as UITestSystem // Will be undefined on server, which is fine
-    // ClientInteractionSystem removed - functionality merged into InteractionSystem
 
     // Get test system instances with proper casting
     if (
@@ -581,12 +596,10 @@ function setupAPI(world: World, systems: Systems): void {
     damagePlayer: (playerId: string, amount: number) => systems.player?.damagePlayer(playerId, amount),
     isPlayerAlive: (playerId: string) => systems.player?.isPlayerAlive(playerId),
     getPlayerHealth: (playerId: string) => {
-      const health = systems.player?.getPlayerHealth(playerId)
-      if (!health) return { current: 100, max: 100 } // Default health
-      return { current: health.health, max: health.maxHealth }
+      return systems.player?.getPlayerHealth(playerId) ?? { current: 100, max: 100 }
     },
     teleportPlayer: (playerId: string, position: Position3D) =>
-      systems.movementSystem?.teleportPlayer(playerId, position),
+      (systems.movementSystem as unknown as { teleportPlayer?: (id: string, pos: Position3D) => boolean | Promise<boolean> })?.teleportPlayer?.(playerId, position),
 
     // Combat API
     startCombat: (attackerId: string, targetId: string) => systems.combat?.startCombat(attackerId, targetId),
@@ -677,7 +690,7 @@ function setupAPI(world: World, systems: Systems): void {
     getAllMobs: () => systems.mob?.getAllMobs(),
     getMobsInArea: (center: Position3D, radius: number) => systems.mob?.getMobsInArea(center, radius),
     spawnMob: (type: string, position: Position3D) =>
-      systems.mob && world.emit(EventType.MOB_SPAWN_REQUEST, { type, position }),
+      systems.mob && world.emit(EventType.MOB_SPAWN_REQUEST, { mobType: type, position }),
 
     // Banking API
     getBankData: (_playerId: string, _bankId: string) => null, // Banking system doesn't expose public methods
@@ -700,11 +713,12 @@ function setupAPI(world: World, systems: Systems): void {
     getResourcesInArea: (_center: Position3D, _radius: number) => [], // Resource system doesn't expose this method
     isPlayerGathering: (_playerId: string) => false, // Resource system doesn't expose this method
 
-    // Movement API (Core ClientMovementSystem)
-    isPlayerMoving: (playerId: string) => systems.movementSystem?.isMoving(playerId),
+    // Movement API (Physics-based in PlayerLocal)
+    isPlayerMoving: (playerId: string) =>
+      (systems.movementSystem as unknown as { isMoving?: (id: string) => boolean })?.isMoving?.(playerId),
     getPlayerStamina: (_playerId: string) => ({ current: 100, max: 100, regenerating: true }), // MovementSystem doesn't have stamina
     movePlayer: (playerId: string, targetPosition: Position3D) =>
-      systems.movementSystem?.movePlayer(playerId, targetPosition),
+      (systems.movementSystem as unknown as { movePlayer?: (id: string, pos: Position3D) => void })?.movePlayer?.(playerId, targetPosition),
 
     // Death API
     getDeathLocation: (playerId: string) => systems.death?.getDeathLocation(playerId),
@@ -873,10 +887,11 @@ function setupAPI(world: World, systems: Systems): void {
       systems.interaction && world.emit(EventType.INTERACTION_UNREGISTER, { appId }),
 
     // Camera API (Core ClientCameraSystem)
-    getCameraInfo: () => systems.cameraSystem?.getCameraInfo(),
-    setCameraMode: (_mode: string) => {}, // Camera system doesn't expose setMode method
+    getCameraInfo: () => (systems.cameraSystem && 'getCameraInfo' in systems.cameraSystem
+      ? (systems.cameraSystem as unknown as { getCameraInfo: () => unknown }).getCameraInfo()
+      : undefined),
     setCameraTarget: (_target: THREE.Object3D | null) => {}, // setTarget is private
-    setCameraEnabled: (enabled: boolean) => systems.cameraSystem?.setEnabled(enabled),
+    setCameraEnabled: (_enabled: boolean) => undefined,
     resetCamera: () => {}, // resetCamera is private
 
     // UI Components API (Client only)
@@ -1094,15 +1109,17 @@ function setupAPI(world: World, systems: Systems): void {
         world.emit(EventType.RESOURCE_GATHERING_STOPPED, { playerId })
       },
 
-      // Movement actions (Core ClientMovementSystem)
+      // Movement actions (Physics-based in PlayerLocal)
       clickToMove: (
         playerId: string,
         targetPosition: Position3D,
         _currentPosition: Position3D,
         _isRunning?: boolean
       ) => {
-        world.emit(EventType.MOVEMENT_SET_MODE, { mode: 'click_to_move' })
-        systems.movementSystem?.movePlayer(playerId, targetPosition)
+        (systems.movementSystem as unknown as { movePlayer?: (id: string, pos: Position3D) => void })?.movePlayer?.(
+          playerId,
+          targetPosition
+        )
       },
 
       stopMovement: (playerId: string) => {
@@ -1196,8 +1213,8 @@ function setupAPI(world: World, systems: Systems): void {
         world.emit(EventType.ITEM_SPAWN, { itemId, position, quantity })
       },
 
-      spawnMobEntity: (mobType: string, position: Position3D, level?: number) => {
-        world.emit(EventType.MOB_SPAWNED, { mobType, position, level })
+      spawnMobEntity: (mobType: string, position: Position3D, _level?: number) => {
+        world.emit(EventType.MOB_SPAWN_REQUEST, { mobType, position })
       },
 
       destroyEntityById: (entityId: string) => {

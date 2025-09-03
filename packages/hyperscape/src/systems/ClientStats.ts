@@ -1,4 +1,4 @@
-import { System } from './System'
+import { SystemBase } from './SystemBase'
 import StatsGL from '../libs/stats-gl'
 import Panel from '../libs/stats-gl/panel'
 import { isBoolean } from 'lodash-es'
@@ -14,7 +14,7 @@ const PING_RATE = 1 / 2
  * - attaches stats to the ui to see fps/cpu/gpu
  *
  */
-export class ClientStats extends System {
+export class ClientStats extends SystemBase {
   stats: { dom: HTMLElement; setMode?: (mode: number) => void; addPanel: (panel: { dom: HTMLElement }, index?: number) => { dom: HTMLElement }; begin: () => void; end: () => void; init?: (renderer: unknown, debug: boolean) => void; update?: () => void } | null = null
   ui: HTMLElement | null = null
   active: boolean = false
@@ -26,7 +26,7 @@ export class ClientStats extends System {
   uiHidden: boolean = false
   
   constructor(world: World) {
-    super(world)
+    super(world, { name: 'client-stats', dependencies: { required: [], optional: [] }, autoCleanup: true })
   }
 
   async init(options: WorldOptions & { ui?: HTMLElement }): Promise<void> {
@@ -35,7 +35,7 @@ export class ClientStats extends System {
 
   start() {
     this.world.prefs?.on('change', this.onPrefsChange)
-    this.world.on(EventType.READY, this.onReady)
+    this.subscribe(EventType.READY, () => this.onReady())
   }
 
   onReady = () => {

@@ -5,7 +5,7 @@
  * Provides type-safe conversion between THREE.js and PhysX types.
  */
 
-import * as THREE from './three';
+import THREE from './three';
 import type PhysX from '@hyperscape/physx-js-webidl';
 
 // Global PHYSX declaration

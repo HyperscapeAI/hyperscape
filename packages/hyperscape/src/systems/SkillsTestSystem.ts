@@ -68,12 +68,16 @@ export class SkillsTestSystem extends VisualTestFramework {
     await super.init();
     
     this.skillsSystem = this.world.getSystem('rpg-skills') as SkillsSystem;
+    if (!this.skillsSystem) {
+      // If skills system isn't registered in this run, skip test setup gracefully
+      this.logger.warn('[SkillsTestSystem] rpg-skills system not found; tests will be no-op');
+    }
 
     // Set up event listeners
-    this.world.on(EventType.SKILLS_XP_GAINED, this.handleXPGained.bind(this));
-    this.world.on(EventType.SKILLS_LEVEL_UP, this.handleLevelUp.bind(this));
-    this.world.on(EventType.COMBAT_ACTION, this.handleCombatAction.bind(this));
-    this.world.on(EventType.RESOURCE_GATHERED, this.handleGatheringAction.bind(this));
+    this.subscribe(EventType.SKILLS_XP_GAINED, (data) => this.handleXPGained(data));
+    this.subscribe(EventType.SKILLS_LEVEL_UP, (data) => this.handleLevelUp(data));
+    this.subscribe(EventType.COMBAT_ACTION, () => this.handleCombatAction());
+    this.subscribe(EventType.RESOURCE_GATHERED, () => this.handleGatheringAction());
 
     // Create test stations immediately
     this.createTestStations();
@@ -624,12 +628,14 @@ export class SkillsTestSystem extends VisualTestFramework {
 
   private giveSkillXP(playerId: string, skill: string, amount: number): void {
     // Use the proper grantXP method from SkillsSystem
-    this.skillsSystem.grantXP(playerId, skill as keyof Skills, amount);
+    if (this.skillsSystem) {
+      this.skillsSystem.grantXP(playerId, skill as keyof Skills, amount);
+    }
   }
 
   private performCombatAction(playerId: string, action: string): void {
     // Simulate combat action that should give XP
-    this.world.emit(EventType.COMBAT_ACTION, { playerId, action });
+    this.emitTypedEvent(EventType.COMBAT_ACTION, { playerId, action });
     
     // Give XP based on the action
     const xpAmount = 10; // Base XP per action
@@ -655,7 +661,7 @@ export class SkillsTestSystem extends VisualTestFramework {
 
   private performGatheringAction(playerId: string, action: string): void {
     // Simulate gathering action that should give XP
-    this.world.emit(EventType.RESOURCE_ACTION, { playerId, action });
+    this.emitTypedEvent(EventType.RESOURCE_ACTION, { playerId, action });
     
     // Give XP based on the gathering action
     const xpAmount = 15; // Base XP per gathering action

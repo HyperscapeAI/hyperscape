@@ -9,7 +9,7 @@ import type {
     PxActor,
     PxContactPairHeader,
     PhysXModule
-} from '../types/physx';
+} from '../types/physics';
 
 /**
  * Get actor address directly

@@ -62,7 +62,9 @@ export function DraggableWindow({
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!enabled) return
-    
+    // Only start dragging on left mouse button to avoid hijacking right-drag camera orbit
+    if (e.button !== 0) return
+
     e.preventDefault()
     
     const windowElement = windowRef.current

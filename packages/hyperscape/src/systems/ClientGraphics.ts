@@ -4,7 +4,7 @@ import {
   RenderPass,
   SelectiveBloomEffect
 } from 'postprocessing'
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 
 import type { World } from '../World'
 import type { WorldOptions } from '../types'
@@ -59,6 +59,7 @@ export class ClientGraphics extends System {
   worldToScreenFactor: number = 0
 
   constructor(world: World) {
+    // Reuse System since ClientGraphics doesn't use SystemBase helpers heavily; but keep name for logs
     super(world)
   }
 
@@ -72,6 +73,7 @@ export class ClientGraphics extends System {
     this.height = this.viewport.offsetHeight
     this.aspect = this.width / this.height
     this.renderer = getRenderer()
+    // Guard: only resize when dimensions actually changed to avoid ResizeObserver loops
     this.renderer.setSize(this.width, this.height)
     this.renderer.setClearColor(0xffffff, 0)
     this.renderer.setPixelRatio(this.world.prefs?.dpr || 1)
@@ -97,7 +99,7 @@ export class ClientGraphics extends System {
     })
     this.renderPass = new RenderPass(this.world.stage.scene, this.world.camera)
     this.composer.addPass(this.renderPass)
-    this.bloom = new SelectiveBloomEffect(this.world.stage.scene, this.world.camera, {
+    this.bloom = new SelectiveBloomEffect(this.world.stage.scene, this.world.camera as unknown as THREE.Camera, {
       intensity: 0.8,
       luminanceThreshold: 0.1,
       luminanceSmoothing: 0.1,
@@ -107,11 +109,11 @@ export class ClientGraphics extends System {
     })
     this.bloom.inverted = true
     this.bloom.selection.layer = 14 // NO_BLOOM layer
-    this.bloomPass = new EffectPass(this.world.camera, this.bloom)
+    this.bloomPass = new EffectPass(this.world.camera as unknown as THREE.Camera, this.bloom)
     this.bloomPass.enabled = this.world.prefs?.bloom ?? true
     this.composer.addPass(this.bloomPass)
     this.effectPass = new EffectPass(
-      this.world.camera
+      this.world.camera as unknown as THREE.Camera
       // new VignetteEffect({
       //   darkness: 0.4,
       // })
@@ -121,28 +123,61 @@ export class ClientGraphics extends System {
     )
     this.composer.addPass(this.effectPass)
     this.world.prefs?.on('change', this.onPrefsChange)
-    this.resizer = new ResizeObserver(() => {
-      this.resize(this.viewport.offsetWidth, this.viewport.offsetHeight)
+    // Debounced resize with strict size change detection
+    let resizePending = false
+    this.resizer = new ResizeObserver((entries) => {
+      if (resizePending) return
+      
+      const entry = entries[0]
+      if (!entry) return
+      
+      const newWidth = Math.floor(entry.contentRect.width)
+      const newHeight = Math.floor(entry.contentRect.height)
+      
+      // Only resize if dimensions actually changed by at least 1 pixel
+      if (newWidth !== this.width || newHeight !== this.height) {
+        resizePending = true
+        requestAnimationFrame(() => {
+          resizePending = false
+          this.resize(newWidth, newHeight)
+        })
+      }
     })
     // Set ID for Cypress tests
     this.renderer.domElement.id = 'hyperscape-world-canvas'
-    this.viewport.appendChild(this.renderer.domElement)
-    this.resizer.observe(this.viewport)
+    // Avoid appending twice
+    if (this.renderer.domElement.parentElement !== this.viewport) {
+      // Detach from any previous parent to avoid duplicate canvases
+      if (this.renderer.domElement.parentElement) {
+        this.renderer.domElement.parentElement.removeChild(this.renderer.domElement)
+      }
+      this.viewport.appendChild(this.renderer.domElement)
+    }
+    // Temporarily disable ResizeObserver to prevent camera matrix corruption
+    // this.resizer.observe(this.viewport)
   }
 
   override start() {
-    if ('on' in this.world) {
-      // Assume on method exists on world
-      (this.world as { on: (event: string, handler: (session: XRSession | null) => void) => void }).on('xrSession', this.onXRSession)
-    }
+    this.world.on(EventType.XR_SESSION, this.onXRSession)
   }
 
   resize(width: number, height: number) {
+    // Prevent unnecessary resize operations
+    if (width === this.width && height === this.height) {
+      return
+    }
+    
+    console.log(`[ClientGraphics] Resizing from ${this.width}x${this.height} to ${width}x${height}`)
+    
     this.width = width
     this.height = height
     this.aspect = this.width / this.height
-    this.world.camera.aspect = this.aspect
-    this.world.camera.updateProjectionMatrix()
+    if ('aspect' in this.world.camera) {
+      ;(this.world.camera as unknown as { aspect: number }).aspect = this.aspect
+    }
+    if ('updateProjectionMatrix' in this.world.camera && typeof (this.world.camera as unknown as { updateProjectionMatrix: () => void }).updateProjectionMatrix === 'function') {
+      ;(this.world.camera as unknown as { updateProjectionMatrix: () => void }).updateProjectionMatrix()
+    }
     this.renderer.setSize(this.width, this.height)
     this.composer.setSize(this.width, this.height)
     this.emit(EventType.GRAPHICS_RESIZE, { width: this.width, height: this.height })
@@ -151,9 +186,11 @@ export class ClientGraphics extends System {
 
   render() {
     try {
+      // Clean up any null/undefined objects in the scene before rendering
+      this.cleanupScene();
       
       if (this.renderer.xr?.isPresenting || !this.usePostprocessing) {
-        this.renderer.render(this.world.stage.scene, this.world.camera)
+        this.renderer.render(this.world.stage.scene, this.world.camera as unknown as THREE.Camera)
       } else {
         this.composer.render()
       }
@@ -161,17 +198,33 @@ export class ClientGraphics extends System {
         this.updateXRDimensions()
       }
     } catch (error) {
-      console.error('[ClientGraphics] Render error:', error);
-      // If postprocessing is causing issues, fall back to regular rendering
-      if (this.usePostprocessing && (error as Error).message.includes('test')) {
-        console.warn('[ClientGraphics] Disabling postprocessing due to error');
-        this.usePostprocessing = false;
-        // Try to render without postprocessing
+      // keep console error here for render loop debugging
+      console.error('[ClientGraphics] Render error:', error)
+      // Always fall back to regular rendering once if postprocessing fails
+      if (this.usePostprocessing) {
+        this.usePostprocessing = false
         try {
-          this.renderer.render(this.world.stage.scene, this.world.camera);
+          this.renderer.render(this.world.stage.scene, this.world.camera as unknown as THREE.Camera)
         } catch (fallbackError) {
-          console.error('[ClientGraphics] Fallback render also failed:', fallbackError);
+          console.error('[ClientGraphics] Fallback render also failed:', fallbackError)
         }
+      }
+    }
+  }
+
+  private cleanupScene() {
+    // Remove any null/undefined objects that might cause render errors
+    const toRemove: THREE.Object3D[] = [];
+    this.world.stage.scene.traverse((obj) => {
+      if (!obj || obj.visible === null || obj.visible === undefined) {
+        toRemove.push(obj);
+      }
+    });
+    
+    for (const obj of toRemove) {
+      if (obj.parent) {
+        obj.parent.remove(obj);
+        console.log('[ClientGraphics] Removed null/invalid object from scene');
       }
     }
   }
@@ -230,13 +283,11 @@ export class ClientGraphics extends System {
           // Extract FOV information from projection matrix
           // const fovFactor = projectionMatrix[5] // Approximation of FOV scale
           // Access render state for framebuffer dimensions
-          const renderState = this.xrSession?.renderState
-          const baseLayer = renderState?.baseLayer || renderState?.layers?.[0]
-          if (baseLayer && 'framebufferWidth' in baseLayer && 'framebufferHeight' in baseLayer) {
-            this.xrWidth = (baseLayer as { framebufferWidth: number }).framebufferWidth
-            this.xrHeight = (baseLayer as { framebufferHeight: number }).framebufferHeight
-            this.xrDimensionsNeeded = false
-          }
+          const renderState = this.xrSession?.renderState as { baseLayer?: unknown; layers?: unknown[] } | undefined
+          const baseLayer = renderState?.baseLayer || (renderState?.layers && renderState.layers[0])
+          this.xrWidth = (baseLayer as { framebufferWidth: number }).framebufferWidth
+          this.xrHeight = (baseLayer as { framebufferHeight: number }).framebufferHeight
+          this.xrDimensionsNeeded = false
         }
       }
     }

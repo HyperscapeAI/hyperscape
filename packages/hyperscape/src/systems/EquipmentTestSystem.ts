@@ -128,7 +128,7 @@ export class EquipmentTestSystem extends VisualTestFramework {
     this.xpSystem = xpSystem
 
     // Listen for equipment stats updates
-    this.world.on(EventType.PLAYER_STATS_EQUIPMENT_UPDATED, (data: { 
+    this.subscribe(EventType.PLAYER_STATS_EQUIPMENT_UPDATED, (data: { 
       playerId: string; 
       equipmentStats: { attack: number; strength: number; defense: number; ranged: number; constitution: number } 
     }) => {
@@ -1046,8 +1046,8 @@ export class EquipmentTestSystem extends VisualTestFramework {
     }
 
     // Listen for equipment results
-    this.world.on(EventType.PLAYER_EQUIPMENT_CHANGED, equipmentSuccessListener)
-    this.world.on(EventType.UI_MESSAGE, equipmentFailureListener)
+    const equipmentSuccessSub = this.subscribe(EventType.PLAYER_EQUIPMENT_CHANGED, equipmentSuccessListener)
+    const equipmentFailureSub = this.subscribe(EventType.UI_MESSAGE, equipmentFailureListener)
 
     const testLevelRequirement = async () => {
       if (itemIndex >= testData.testItems.length) {
@@ -1058,8 +1058,8 @@ export class EquipmentTestSystem extends VisualTestFramework {
         }
 
         // Clean up listeners
-        this.world.off(EventType.PLAYER_EQUIPMENT_CHANGED, equipmentSuccessListener)
-        this.world.off(EventType.UI_MESSAGE, equipmentFailureListener)
+        equipmentSuccessSub.unsubscribe()
+        equipmentFailureSub.unsubscribe()
         
         this.completeLevelRequirementsTest(stationId)
         return

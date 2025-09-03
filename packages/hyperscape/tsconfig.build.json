@@ -23,7 +23,7 @@
     
     // Emit - only declarations for build
     "declaration": true,
-    "declarationMap": true,
+    "declarationMap": false,
     "emitDeclarationOnly": true,
     "outDir": "./build",
     
@@ -40,8 +40,8 @@
     // Skip Lib Check - needed due to conflicting types from parent directories
     "skipLibCheck": true,
     
-    // Advanced - include both node and DOM types for build
-    "types": ["node"],
+    // Advanced - include both node and Bun types for build
+    "types": ["node", "bun-types"],
     "jsx": "react-jsx",
     "jsxImportSource": "react"
   },

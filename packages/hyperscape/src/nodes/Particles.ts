@@ -163,7 +163,7 @@ export class Particles extends Node {
 
   mount() {
     this.needsRebuild = false
-    const world = this.ctx as unknown as World
+    const world = this.ctx as World
     if (world.particles) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       this.emitter = world.particles.register(this as any)

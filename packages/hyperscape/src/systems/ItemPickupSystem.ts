@@ -5,7 +5,7 @@
  * Items appear as colored cubes that players can click to pick up.
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import type {
   ItemDropPayload,
   ItemPickupPayload,
@@ -40,13 +40,13 @@ export class ItemPickupSystem extends SystemBase {
   async init(): Promise<void> {
     
     // Set up type-safe event subscriptions for item pickup mechanics
-    this.subscribe<ItemDropPayload>(EventType.ITEM_DROP, (event) => this.handleItemDrop(event.data));
-    this.subscribe<ItemPickupPayload>(EventType.ITEM_PICKUP, (event) => this.handleItemPickup(event.data));
-    this.subscribe<ItemPickupRequestPayload>(EventType.ITEM_PICKUP_REQUEST, (event) => this.handlePickupRequest(event.data));
+    this.subscribe<ItemDropPayload>(EventType.ITEM_DROP, (data) => this.handleItemDrop(data));
+    this.subscribe<ItemPickupPayload>(EventType.ITEM_PICKUP, (data) => this.handleItemPickup(data));
+    this.subscribe<ItemPickupRequestPayload>(EventType.ITEM_PICKUP_REQUEST, (data) => this.handlePickupRequest(data));
     
     // Listen for player events
-    this.subscribe<PlayerEnterPayload>(EventType.PLAYER_JOINED, (event) => this.handlePlayerJoin(event.data));
-    this.subscribe<PlayerLeavePayload>(EventType.PLAYER_LEFT, (event) => this.handlePlayerLeave(event.data));
+    this.subscribe<PlayerEnterPayload>(EventType.PLAYER_JOINED, (data) => this.handlePlayerJoin(data));
+    this.subscribe<PlayerLeavePayload>(EventType.PLAYER_LEFT, (data) => this.handlePlayerLeave(data));
   }
 
 
@@ -77,7 +77,7 @@ export class ItemPickupSystem extends SystemBase {
     mesh.position.y += 0.5; // Slightly above ground
     
     // Add to world scene
-    safeSceneAdd(this.world, mesh.parent as unknown as THREE.Object3D);
+    safeSceneAdd(this.world, mesh as unknown as THREE.Object3D);
     
     const groundItem: GroundItem = {
       id: itemId,
@@ -91,7 +91,7 @@ export class ItemPickupSystem extends SystemBase {
     this.groundItems.set(itemId, groundItem);
     
     // Emit drop event for other systems
-    this.emit(EventType.ITEM_DROPPED, { itemId, item, position, droppedBy, playerId: droppedBy });
+    this.emitTypedEvent(EventType.ITEM_DROPPED, { playerId: droppedBy, itemId, position });
     
     return itemId;
   }
@@ -215,7 +215,7 @@ export class ItemPickupSystem extends SystemBase {
 
     // Try to add to inventory
     const item = groundItem.item;
-    this.emit(EventType.INVENTORY_ITEM_ADDED, {
+    this.emitTypedEvent(EventType.INVENTORY_ITEM_ADDED, {
       playerId: event.playerId,
       item: {
         id: item.id,
@@ -232,7 +232,7 @@ export class ItemPickupSystem extends SystemBase {
     
     
     // Emit pickup event
-    this.emit(EventType.ITEM_PICKUP, {
+    this.emitTypedEvent(EventType.ITEM_PICKUP, {
         playerId: event.playerId,
         itemId: event.itemId,
         groundItemId: event.itemId

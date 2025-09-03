@@ -1,12 +1,158 @@
-/**
- * Physics-related type definitions (non-PhysX specific)
- */
-
-import * as THREE from '../extras/three';
+import type { default as PhysX } from '@hyperscape/physx-js-webidl';
+import THREE from '../extras/three';
 import type { System } from '../systems/System';
-import type PhysX from '@hyperscape/physx-js-webidl'
-import type { Entity, Collider } from './index'
+import type { Collider, Entity } from './index';
 
+// Re-export the PhysX namespace for direct access
+export type { default as PhysX } from '@hyperscape/physx-js-webidl';
+
+// Helper type for the loaded PhysX module
+export type PhysXModule = Awaited<ReturnType<typeof PhysX>>
+
+// Core PhysX types - direct aliases to avoid duplication
+export type PxVec3 = PhysX.PxVec3
+export type PxQuat = PhysX.PxQuat  
+export type PxTransform = PhysX.PxTransform
+
+// Actor types
+export type PxActor = PhysX.PxActor
+export type PxRigidActor = PhysX.PxRigidActor
+export type PxRigidBody = PhysX.PxRigidBody
+export type PxRigidDynamic = PhysX.PxRigidDynamic
+export type PxRigidStatic = PhysX.PxRigidStatic
+
+// Core PhysX objects
+export type PxPhysics = PhysX.PxPhysics
+export type PxScene = PhysX.PxScene
+export type PxFoundation = PhysX.PxFoundation
+export type PxTolerancesScale = PhysX.PxTolerancesScale
+export type PxCookingParams = PhysX.PxCookingParams
+export type PxDefaultAllocator = PhysX.PxDefaultAllocator
+export type PxDefaultErrorCallback = PhysX.PxDefaultErrorCallback
+
+// Shape and material types
+export type PxShape = PhysX.PxShape
+export type PxMaterial = PhysX.PxMaterial
+export type PxFilterData = PhysX.PxFilterData
+export type PxQueryFilterData = PhysX.PxQueryFilterData
+
+// Geometry types
+export type PxGeometry = PhysX.PxGeometry
+export type PxBoxGeometry = PhysX.PxBoxGeometry
+export type PxSphereGeometry = PhysX.PxSphereGeometry
+export type PxCapsuleGeometry = PhysX.PxCapsuleGeometry
+export type PxPlaneGeometry = PhysX.PxPlaneGeometry
+export type PxConvexMeshGeometry = PhysX.PxConvexMeshGeometry
+export type PxTriangleMeshGeometry = PhysX.PxTriangleMeshGeometry
+export type PxHeightFieldGeometry = PhysX.PxHeightFieldGeometry
+
+// Controller types
+export type PxController = PhysX.PxController
+export type PxControllerManager = PhysX.PxControllerManager
+export type PxControllerDesc = PhysX.PxControllerDesc
+export type PxCapsuleControllerDesc = PhysX.PxCapsuleControllerDesc
+export type PxBoxControllerDesc = PhysX.PxBoxControllerDesc
+export type PxControllerFilters = PhysX.PxControllerFilters
+export type PxControllerCollisionFlags = PhysX.PxControllerCollisionFlags
+export type PxExtendedVec3 = PhysX.PxExtendedVec3
+export type PxObstacleContext = PhysX.PxObstacleContext
+
+// Hit result types
+export type PxRaycastHit = PhysX.PxRaycastHit
+export type PxSweepHit = PhysX.PxSweepHit
+export type PxOverlapHit = PhysX.PxOverlapHit
+export type PxRaycastResult = PhysX.PxRaycastResult
+export type PxSweepResult = PhysX.PxSweepResult
+export type PxOverlapResult = PhysX.PxOverlapResult
+
+// Event callback types
+export type PxSimulationEventCallback = PhysX.PxSimulationEventCallback
+export type PxContactPair = PhysX.PxContactPair
+export type PxContactPairHeader = PhysX.PxContactPairHeader
+export type PxTriggerPair = PhysX.PxTriggerPair
+export type PxContactPairPoint = PhysX.PxContactPairPoint
+
+// Scene description types
+export type PxSceneDesc = PhysX.PxSceneDesc
+export type PxSceneFlags = PhysX.PxSceneFlags
+
+// Enum types
+export type PxForceModeEnum = PhysX.PxForceModeEnum
+export type PxRigidBodyFlagEnum = PhysX.PxRigidBodyFlagEnum
+export type PxShapeFlagEnum = PhysX.PxShapeFlagEnum
+export type PxActorFlagEnum = PhysX.PxActorFlagEnum
+export type PxHitFlags = PhysX.PxHitFlags
+
+// PhysX factory result interface
+export interface PhysXInfo {
+  version: number
+  allocator: PxDefaultAllocator
+  errorCb: PxDefaultErrorCallback
+  foundation: PxFoundation
+  physics: PxPhysics
+}
+
+// Strong type assertions for PhysX components
+export interface PhysXRigidBodyActor extends PxRigidDynamic {
+  setGlobalPose(pose: PxTransform): void
+  getGlobalPose(): PxTransform
+}
+
+export interface PhysXController extends PxController {
+  getActor(): PxRigidDynamic
+  setFootPosition(position: PxExtendedVec3): boolean
+  move(
+    disp: PxVec3,
+    minDist: number,
+    elapsedTime: number,
+    filters: PxControllerFilters,
+    obstacles?: PxObstacleContext
+  ): PxControllerCollisionFlags
+}
+
+// Collision callback interfaces - strongly typed
+// PhysX-native contact event for low-level callbacks
+export interface PhysXContactEvent {
+  bodyA: PxActor
+  bodyB: PxActor
+  shapeA: PxShape
+  shapeB: PxShape
+  contactPoints: PxContactPairPoint[]
+  eventType: 'contact_found' | 'contact_lost' | 'contact_persist'
+}
+
+// PhysX-native trigger event for low-level callbacks
+export interface PhysXTriggerEvent {
+  triggerShape: PxShape
+  otherShape: PxShape
+  triggerActor: PxActor
+  otherActor: PxActor
+  eventType: 'trigger_enter' | 'trigger_exit'
+}
+
+// Additional collision callback types with Three.js integration
+export interface ContactCallbackObject {
+  bodyA: PxActor
+  bodyB: PxActor
+  shapeA: PxShape
+  shapeB: PxShape
+  contactPoints: Array<{
+    position: THREE.Vector3
+    normal: THREE.Vector3
+    impulse: THREE.Vector3
+    separation: number
+  }>
+  pairFlags: number
+  eventType: string
+}
+
+export interface TriggerCallbackObject {
+  triggerShape: PxShape
+  otherShape: PxShape
+  triggerActor: PxActor
+  otherActor: PxActor
+  eventType: string
+}
 // Geometry to PhysX mesh conversion interfaces
 export interface GeometryPhysXMesh {
   release: () => void;
@@ -332,31 +478,8 @@ export interface NodeDataFromGLB {
   [key: string]: unknown;
 }
 
-// Physics system types from Physics.ts
-// PhysX type aliases
-export type PxActor = PhysX.PxActor
-export type PxRigidDynamic = PhysX.PxRigidDynamic
-export type PxRigidStatic = PhysX.PxRigidStatic
-export type PxTransform = PhysX.PxTransform
-export type PxShape = PhysX.PxShape
-export type PxMaterial = PhysX.PxMaterial
-export type PxScene = PhysX.PxScene
-export type PxController = PhysX.PxController
-export type PxControllerManager = PhysX.PxControllerManager
-export type PxPhysics = PhysX.PxPhysics
-export type PxGeometry = PhysX.PxGeometry
-export type PxSphereGeometry = PhysX.PxSphereGeometry
-export type PxFoundation = PhysX.PxFoundation
-export type PxTolerancesScale = PhysX.PxTolerancesScale
-export type PxCookingParams = PhysX.PxCookingParams
-export type PxControllerFilters = PhysX.PxControllerFilters
-export type PxQueryFilterData = PhysX.PxQueryFilterData
-export type PxRaycastResult = PhysX.PxRaycastResult
-export type PxSweepResult = PhysX.PxSweepResult
-export type PxOverlapResult = PhysX.PxOverlapResult
-export type PxVec3 = PhysX.PxVec3
-
 // Contact/Trigger events
+// Engine-level simplified contact event used across systems
 export interface ContactEvent {
   tag: string | null;
   playerId: string | null;
@@ -367,6 +490,7 @@ export interface ContactEvent {
   }>;
 }
 
+// Engine-level simplified trigger event used across systems
 export interface TriggerEvent {
   tag: string | null;
   playerId: string | null;
@@ -433,6 +557,52 @@ export interface PhysicsOverlapHit {
     get tag(): string | null;
     get playerId(): string | null;
   };
+}
+
+// Collision validation and ground clamping shared types
+export interface CollisionError {
+  type: 'missing_collision' | 'height_mismatch' | 'invalid_geometry' | 'underground_entity' | 'floating_entity';
+  position: { x: number; y: number; z: number }
+  severity: 'critical' | 'warning' | 'info';
+  message: string;
+  timestamp: number;
+  expectedHeight?: number;
+  actualHeight?: number;
+  heightDifference?: number;
+  entityId?: string;
+}
+
+export interface CollisionValidationResult {
+  isValid: boolean;
+  errors: CollisionError[];
+  totalChecks: number;
+  successfulChecks: number;
+  averageHeight: number;
+  maxHeightDifference: number;
+  validationTime: number;
+}
+
+export interface GroundClampingOptions {
+  raycastDistance?: number;
+  verticalOffset?: number;
+  layerMask?: number;
+  allowUnderground?: boolean;
+  snapToSurface?: boolean;
+  smoothing?: boolean;
+  smoothingFactor?: number;
+}
+
+export interface EntityGroundState {
+  entityId: string;
+  position: { x: number; y: number; z: number }
+  groundHeight: number;
+  isOnGround: boolean;
+  isUnderground: boolean;
+  isFloating: boolean;
+  lastGroundContact: number;
+  verticalVelocity: number;
+  groundNormal: { x: number; y: number; z: number }
+  surfaceType: string;
 }
 
 // Actor handle

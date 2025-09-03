@@ -4,10 +4,11 @@ import * as THREE_NAMESPACE from 'three';
 // Multiple imports of Three.js are expected in this module architecture
 // The globalThis.THREE ensures we're using a singleton instance
 
-// Re-export THREE namespace and all named exports
-export * from 'three';
-// Also export the namespace as default to ensure consistency
+// Export the THREE namespace object as the default export
 export default THREE_NAMESPACE;
+
+// Re-export the full three.js surface so `import THREE from '../extras/three'` works
+export * from 'three';
 
 // Vector3 compatibility utilities
 export function toTHREEVector3(v: THREE_NAMESPACE.Vector3 | { x: number; y: number; z: number }): THREE_NAMESPACE.Vector3 {
@@ -49,13 +50,6 @@ export function safeMatrixCompose(
 // The duplicate exports were causing TypeScript declaration generation to crash
 
 // PhysX Vector3 utilities are now in vector3-utils.ts
-
-// Module augmentation for three
-declare module 'three' {
-  interface InstancedMesh {
-    resize(size: number): void
-  }
-}
 
 // install three-mesh-bvh
 THREE_NAMESPACE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree

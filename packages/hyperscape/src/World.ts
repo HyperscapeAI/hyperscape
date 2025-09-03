@@ -1,9 +1,9 @@
 import EventEmitter from 'eventemitter3';
+import THREE from './extras/three';
+import type { Position3D } from './types/base-types';
 import type {
   HyperscapeObject3D
 } from './types/three-extensions';
-import type { Position3D } from './types/base-types';
-import * as THREE from './extras/three';
 // MaterialSetupFunction removed - unused import
 import { ClientLiveKit } from './systems/ClientLiveKit';
 
@@ -11,17 +11,19 @@ import { ClientLiveKit } from './systems/ClientLiveKit';
 
 import { Anchors, Anchors as AnchorsSystem } from './systems/Anchors';
 import { Chat, Chat as ChatSystem } from './systems/Chat';
+import { ClientActions } from './systems/ClientActions';
 import { Entities, Entities as EntitiesSystem } from './systems/Entities';
+import { EventBus, type EventSubscription } from './systems/EventBus';
 import { Events, Events as EventsSystem } from './systems/Events';
+import { LODs } from './systems/LODs';
+import { Particles } from './systems/Particles';
 import { Physics, Physics as PhysicsSystem } from './systems/Physics';
+import type { ServerNetwork } from './systems/ServerNetwork';
 import { Settings, Settings as SettingsSystem } from './systems/Settings';
 import { Stage, Stage as StageSystem } from './systems/Stage';
 import { System, SystemConstructor } from './systems/System';
-import { ClientAudio, ClientControls, ClientEnvironment, ClientGraphics, ClientLoader, ClientMonitor, ClientNetwork, ClientPrefs, ClientStats, ClientUI, HotReloadable, Player, RaycastHit, ServerDB, ServerServer, WorldOptions } from './types';
-import type { ServerNetwork } from './systems/ServerNetwork';
-import { ClientActions } from './systems/ClientActions';
-import { Particles } from './systems/Particles';
 import { XR } from './systems/XR';
+import { ClientAudio, ClientControls, ClientEnvironment, ClientGraphics, ClientLoader, ClientMonitor, ClientNetwork, ClientPrefs, ClientStats, ClientUI, HotReloadable, Player, RaycastHit, ServerDB, ServerServer, WorldOptions } from './types';
 
 class MockNetwork extends System {
   // Common network properties
@@ -136,6 +138,7 @@ export class World extends EventEmitter {
     THREE?: typeof THREE;
   };
   particles?: Particles;
+  lods?: LODs;
   
   // Optional client systems
   ui?: ClientUI & {
@@ -146,7 +149,7 @@ export class World extends EventEmitter {
     applyTheme?: (theme: unknown) => void;
   };
   loader?: ClientLoader;
-  network: ClientNetwork | ServerNetwork;
+  network: ClientNetwork | ServerNetwork | MockNetwork;
   environment?: ClientEnvironment;
   graphics?: ClientGraphics & {
     renderer?: {
@@ -189,6 +192,10 @@ export class World extends EventEmitter {
     getHeightAt: (x: number, z: number) => number;
     generate: (params: Record<string, unknown>) => void;
   };
+
+  // Unified typed event bus (public to enable typed access from systems)
+  $eventBus: EventBus;
+  __busListenerMap: Map<string, Map<(...args: unknown[]) => void, EventSubscription>> = new Map();
   
   // Move app state
   moveApp?: {
@@ -339,6 +346,8 @@ export class World extends EventEmitter {
 
   constructor() {
     super();
+    // Initialize unified EventBus
+    this.$eventBus = new EventBus();
 
     // Generate unique world ID
     this.id = `world_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -347,7 +356,7 @@ export class World extends EventEmitter {
     // NOTE: camera near is slightly smaller than spherecast. far is slightly more than skybox.
     // this gives us minimal z-fighting without needing logarithmic depth buffers
     this.camera = new THREE.PerspectiveCamera(70, 0, 0.2, 1200);
-    this.rig.add(this.camera);
+    this.rig.add?.(this.camera);
 
     // Register core systems
     this.register('settings', SettingsSystem);
@@ -361,7 +370,7 @@ export class World extends EventEmitter {
     
     this.register('stage', StageSystem);
 
-    this.network = new MockNetwork(this) as unknown as ClientNetwork | ServerNetwork;
+    this.network = new MockNetwork(this);
   }
 
 
@@ -519,7 +528,9 @@ export class World extends EventEmitter {
 
   private fixedUpdate(delta: number): void {
     for (const item of Array.from(this.hot)) {
-      item.fixedUpdate(delta);
+      if (item.fixedUpdate && typeof item.fixedUpdate === 'function') {
+        item.fixedUpdate(delta);
+      }
     }
     for (const system of this.systems) {
       system.fixedUpdate(delta);
@@ -540,7 +551,9 @@ export class World extends EventEmitter {
 
   private update(delta: number, _alpha: number): void {
     for (const item of Array.from(this.hot)) {
-      item.update(delta);
+      if (item.update) {
+        item.update(delta);
+      }
     }
     for (const system of this.systems) {
       try {
@@ -560,7 +573,9 @@ export class World extends EventEmitter {
 
   private lateUpdate(delta: number, _alpha: number): void {
     for (const item of Array.from(this.hot)) {
-      item.lateUpdate(delta);
+      if (item.lateUpdate && typeof item.lateUpdate === 'function') {
+        item.lateUpdate(delta);
+      }
     }
     for (const system of this.systems) {
       system.lateUpdate(delta);
@@ -569,7 +584,9 @@ export class World extends EventEmitter {
 
   private postLateUpdate(delta: number): void {
     for (const item of Array.from(this.hot)) {
-      item.postLateUpdate(delta);
+      if (item.postLateUpdate && typeof item.postLateUpdate === 'function') {
+        item.postLateUpdate(delta);
+      }
     }
     for (const system of this.systems) {
       system.postLateUpdate(delta);
@@ -645,7 +662,7 @@ export class World extends EventEmitter {
   }
 
   // Helper methods for common access patterns
-  getPlayer(playerId?: string): Player {
+  getPlayer(playerId?: string): Player | null {
     if (playerId) {
       return this.entities.getPlayer(playerId);
     }
@@ -677,8 +694,107 @@ export class World extends EventEmitter {
     
     this.systems = [];
     this.hot.clear();
+    // Cleanup bus subscriptions
+    for (const map of this.__busListenerMap.values()) {
+      for (const sub of map.values()) {
+        sub.unsubscribe();
+      }
+    }
+    this.__busListenerMap.clear();
     this.removeAllListeners();
   }
 
 
 } 
+
+// Expose typed EventBus helpers on World prototype while preserving existing API
+declare module './World' {}
+
+// Override EventEmitter methods to bridge to EventBus for string events
+// Note: We avoid double-calling by not registering string events with the base EventEmitter
+// and by emitting string events only through the EventBus.
+// This preserves existing world.on/world.emit usage while migrating to the new pattern.
+// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
+(World.prototype as any).on = function on<T extends string | symbol>(
+  this: World,
+  event: T,
+  fn: (...args: unknown[]) => void,
+  _context?: unknown
+) {
+  if (typeof event === 'string') {
+    let mapForEvent = this.__busListenerMap.get(event);
+    if (!mapForEvent) {
+      mapForEvent = new Map();
+      this.__busListenerMap.set(event, mapForEvent);
+    }
+    const sub = this.$eventBus.subscribe(event, (evt) => {
+      try {
+        fn(evt.data);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error(`Error in EventBus handler for '${event}':`, err);
+      }
+    });
+    mapForEvent.set(fn, sub);
+    return this;
+  }
+  return EventEmitter.prototype.on.call(this, event, fn, _context);
+};
+
+// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
+(World.prototype as any).off = function off<T extends string | symbol>(
+  this: World,
+  event: T,
+  fn?: (...args: unknown[]) => void,
+  _context?: unknown,
+  _once?: boolean
+) {
+  if (typeof event === 'string') {
+    if (!fn) {
+      const mapForEvent = this.__busListenerMap.get(event);
+      if (mapForEvent) {
+        for (const sub of mapForEvent.values()) {
+          sub.unsubscribe();
+        }
+        this.__busListenerMap.delete(event);
+      }
+      return this;
+    }
+    const mapForEvent = this.__busListenerMap.get(event);
+    if (mapForEvent) {
+      const sub = mapForEvent.get(fn);
+      if (sub) {
+        sub.unsubscribe();
+        mapForEvent.delete(fn);
+      }
+      if (mapForEvent.size === 0) {
+        this.__busListenerMap.delete(event);
+      }
+    }
+    return this;
+  }
+  return EventEmitter.prototype.off.call(this, event, fn, _context, _once);
+};
+
+// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
+(World.prototype as any).emit = function emit<T extends string | symbol>(
+  this: World,
+  event: T,
+  ...args: unknown[]
+) {
+  if (typeof event === 'string') {
+    const [data] = args;
+    this.$eventBus.emitEvent(event, (data as Record<string, unknown>) ?? {}, 'world');
+    return true;
+  }
+  return EventEmitter.prototype.emit.call(this, event, ...args);
+};
+
+// Provide a typed accessor to the event bus
+export interface World {
+  getEventBus(): EventBus;
+}
+
+World.prototype.getEventBus = function getEventBus(this: World): EventBus {
+  return this.$eventBus;
+};

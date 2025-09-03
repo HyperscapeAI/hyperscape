@@ -108,8 +108,8 @@ export class TerrainNaNTestSystem extends VisualTestFramework {
       { x: NaN, z: 10, label: 'NaN x' },
       { x: 10, z: NaN, label: 'NaN z' },
       { x: NaN, z: NaN, label: 'Both NaN' },
-      { x: undefined as unknown as number, z: undefined as unknown as number, label: 'Undefined' },
-      { x: null as unknown as number, z: null as unknown as number, label: 'Null' },
+      { x: Number.NaN, z: Number.NaN, label: 'Undefined' },
+      { x: Number.NaN, z: Number.NaN, label: 'Null' },
       { x: Infinity, z: -Infinity, label: 'Infinity' },
     ];
     
@@ -167,7 +167,7 @@ export class TerrainNaNTestSystem extends VisualTestFramework {
       const player = this.createPlayer({
         id: playerId,
         name: 'NaN Test Player',
-        position: { x: NaN, y: NaN, z: NaN }
+        position: { x: Number.NaN, y: Number.NaN, z: Number.NaN }
       });
       
       // Check resulting position
@@ -222,10 +222,10 @@ export class TerrainNaNTestSystem extends VisualTestFramework {
     const entityManager = requireSystem<EntityManager>(this.world, 'rpg-entity-manager');
     
     try {
-      const entity = await entityManager.createTestItem({
+        const entity = await entityManager.createTestItem({
         id: `test_entity_nan_${Date.now()}`,
         name: 'NaN Test Item',
-        position: { x: NaN, y: NaN, z: NaN },
+          position: { x: Number.NaN, y: Number.NaN, z: Number.NaN },
         itemId: 'test-item',
         quantity: 1
       });
@@ -283,10 +283,10 @@ export class TerrainNaNTestSystem extends VisualTestFramework {
     
     // Test fixPositionIfAtGroundLevel with various invalid inputs
     const testCases = [
-      { pos: { x: NaN, y: 0, z: NaN }, label: 'NaN x,z' },
-      { pos: { x: undefined as unknown as number, y: undefined as unknown as number, z: undefined as unknown as number }, label: 'Undefined' },
-      { pos: { x: null as unknown as number, y: 0, z: null as unknown as number }, label: 'Null' },
-      { pos: null as unknown as { x: number; y: number; z: number }, label: 'Null object' }
+      { pos: { x: Number.NaN, y: 0, z: Number.NaN }, label: 'NaN x,z' },
+      { pos: { x: Number.NaN, y: Number.NaN, z: Number.NaN }, label: 'Undefined' },
+      { pos: { x: Number.NaN, y: 0, z: Number.NaN }, label: 'Null' },
+      { pos: { x: Number.NaN, y: Number.NaN, z: Number.NaN }, label: 'Null object' }
     ];
     
     for (const testCase of testCases) {
@@ -352,7 +352,7 @@ export class TerrainNaNTestSystem extends VisualTestFramework {
     
     // Emit test result event
     const success = testData.errors.length === 0 && testData.consoleErrors.filter(e => e.includes('NaN input to generateNoise')).length === 0;
-    this.world.emit(EventType.TEST_RESULT, {
+    this.emitTypedEvent(EventType.TEST_RESULT, {
       system: 'TerrainNaNTestSystem',
       testType: testData.testType,
       success,

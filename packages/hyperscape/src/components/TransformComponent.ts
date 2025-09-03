@@ -1,6 +1,6 @@
 import { Component } from './Component';
 import type { Entity } from '../entities/Entity';
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 
 /**
  * Transform Component

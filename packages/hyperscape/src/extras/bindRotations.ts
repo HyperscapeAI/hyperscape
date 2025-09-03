@@ -1,4 +1,4 @@
-import * as THREE from './three'
+import THREE from './three'
 
 export function bindRotations(quaternion: THREE.Quaternion, euler: THREE.Euler) {
   euler._onChange!(() => {

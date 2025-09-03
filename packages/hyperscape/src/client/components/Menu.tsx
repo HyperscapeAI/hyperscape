@@ -8,7 +8,7 @@ import { CurvePreview } from './CurvePreview'
 import { ChevronLeftIcon, ChevronRightIcon } from './Icons'
 import { Portal } from './Portal'
 import { useUpdate } from './useUpdate'
-import type { MenuContextType } from '../../types/ui-component-types';
+import type { MenuContextType } from '../../types/ui-types';
 
 const MenuContext = createContext<MenuContextType | undefined>(undefined)
 

@@ -5,10 +5,9 @@
  * API for systems to wait for and access PhysX functionality.
  */
 
-import { EventEmitter } from 'node:events'
-import PhysXModuleLoader from '@hyperscape/physx-js-webidl'
-import type { PhysXInfo, PhysXModule } from './types/physx'
-import * as THREE from './extras/three'
+import { EventEmitter } from 'eventemitter3'
+import type { PhysXInfo, PhysXModule } from './types/physics'
+import THREE from './extras/three'
 
 export enum PhysXState {
   NOT_LOADED = 'not_loaded',
@@ -69,7 +68,8 @@ class PhysXManager extends EventEmitter {
    */
   getPhysX(): PhysXModule | null {
     // Strong type assumption - if PHYSX exists in globalThis, it's the PhysXModule
-    return ('PHYSX' in globalThis) ? (globalThis as unknown as { PHYSX: PhysXModule }).PHYSX : null
+    const g = globalThis as { PHYSX?: PhysXModule }
+    return g.PHYSX ?? null
   }
 
   /**
@@ -299,8 +299,32 @@ class PhysXManager extends EventEmitter {
         }
       }
       
-      // Load PhysX with our custom options
-      const PHYSX = await PhysXModuleLoader(moduleOptions)
+      // Use appropriate loader based on environment (use isBrowser defined at the top of function)
+      let PHYSX: PhysXModule
+      
+      if (isBrowser) {
+        // Browser environment - use script loader
+        console.log('[PhysXManager] Browser environment detected, loading PhysX via script...')
+        const loadPhysXScript = (await import('./physx-script-loader')).default
+        PHYSX = await loadPhysXScript(moduleOptions)
+      } else {
+        // Node.js/server environment - use dynamic import for ESM compatibility
+        console.log('[PhysXManager] Node.js/server environment detected, loading PhysX module...')
+        try {
+          // Use dynamic import for ESM compatibility
+          const physxModule = await import('@hyperscape/physx-js-webidl')
+          const PhysXLoader = physxModule.default || physxModule
+          
+          if (typeof PhysXLoader !== 'function') {
+            throw new Error(`PhysX module is not a function, got: ${typeof PhysXLoader}`)
+          }
+          
+          PHYSX = await PhysXLoader(moduleOptions)
+        } catch (e) {
+          console.error('[PhysXManager] Failed to load PhysX module:', e)
+          throw new Error(`Failed to load PhysX in Node.js environment: ${e}`)
+        }
+      }
       
       // Set global PHYSX for compatibility
       Object.defineProperty(globalThis, 'PHYSX', { value: PHYSX, writable: true, configurable: true });

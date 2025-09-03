@@ -1,7 +1,7 @@
 import type { World, WorldOptions, ControlBinding, ButtonEntry } from '../types'
 import type { PointerNode, CustomPointerEvent } from '../types/nodes'
 import { ControlPriorities } from '../extras/ControlPriorities'
-import { System } from './System'
+import { SystemBase } from './SystemBase'
 
 
 // Browser API type declarations - keeping standard browser API
@@ -18,14 +18,14 @@ interface DOMRect {
  *
  */
 
-export class ClientPointer extends System {
+export class ClientPointer extends SystemBase {
   pointerState: PointerState
   ui: { active: boolean; appendChild: (element: HTMLElement) => void; removeChild: (element: HTMLElement) => void; getBoundingClientRect: () => DOMRect } | null = null
   control: ControlBinding | null = null
   screenHit: { node?: PointerNode } | null = null
   
   constructor(world: World) {
-    super(world)
+    super(world, { name: 'client-pointer', dependencies: { required: [], optional: [] }, autoCleanup: true })
     this.pointerState = new PointerState()
   }
 

@@ -74,36 +74,37 @@ export class InventoryInteractionSystem extends SystemBase {
   }
 
   async init(): Promise<void> {
-    
-    // Listen for UI events
-    this.world.on(EventType.UI_OPEN_MENU, this.setupInventoryInteractions.bind(this));
-    this.world.on(EventType.UI_CLOSE_MENU, this.cleanupInteractions.bind(this));
+    // Listen for UI events via event bus
+    this.subscribe(EventType.UI_OPEN_MENU, (data: { playerId: string; inventoryElement: HTMLElement; equipmentElement?: HTMLElement }) =>
+      this.setupInventoryInteractions(data)
+    );
+    this.subscribe(EventType.UI_CLOSE_MENU, () => this.cleanupInteractions());
 
     // Listen to equipment changes for reactive patterns
-    this.subscribe<{ playerId: string; slot: EquipmentSlotName; itemId: string | null }>(EventType.PLAYER_EQUIPMENT_CHANGED, (event) => {
-      const data = event.data;
-      if (!this.playerEquipment.has(data.playerId)) {
-        this.playerEquipment.set(data.playerId, {});
+    this.subscribe<{ playerId: string; slot: EquipmentSlotName; itemId: string | null }>(
+      EventType.PLAYER_EQUIPMENT_CHANGED,
+      (data) => {
+        if (!this.playerEquipment.has(data.playerId)) {
+          this.playerEquipment.set(data.playerId, {});
+        }
+        const equipment = this.playerEquipment.get(data.playerId)!;
+        if (data.itemId) {
+          equipment[data.slot] = createMinimalItem(data.itemId, data.itemId, ItemType.MISC);
+        } else {
+          delete equipment[data.slot];
+        }
       }
-      const equipment = this.playerEquipment.get(data.playerId)!;
-      
-      if (data.itemId) {
-        // Create a minimal item with all required properties
-        equipment[data.slot] = createMinimalItem(data.itemId, data.itemId, ItemType.MISC);
-      } else {
-        delete equipment[data.slot];
-      }
-    });
-    
-    // Listen for drag/drop events
-    this.world.on(EventType.UI_DRAG_DROP, this.handleDragStart.bind(this));
-    this.world.on(EventType.UI_DRAG_DROP, this.handleDragEnd.bind(this));
-    this.world.on(EventType.UI_DRAG_DROP, this.handleDrop.bind(this));
-    
+    );
+
+    // Listen for drag/drop events (typed channel)
+    this.subscribe(EventType.UI_DRAG_DROP, (data: unknown) => this.handleDragStart(data));
+    this.subscribe(EventType.UI_DRAG_DROP, (data: unknown) => this.handleDragEnd(data));
+    this.subscribe(EventType.UI_DRAG_DROP, (data: unknown) => this.handleDrop(data));
+
     // Listen for player events
-    this.world.on(EventType.PLAYER_JOINED, this.handlePlayerJoin.bind(this));
-    this.world.on(EventType.PLAYER_LEFT, this.handlePlayerLeave.bind(this));
-    this.world.on(EventType.PLAYER_UNREGISTERED, (data: { id: string }) => {
+    this.subscribe(EventType.PLAYER_JOINED, (data: { playerId: string }) => this.handlePlayerJoin(data));
+    this.subscribe(EventType.PLAYER_LEFT, (data: { playerId: string }) => this.handlePlayerLeave(data));
+    this.subscribe(EventType.PLAYER_UNREGISTERED, (data: { id: string }) => {
       this.playerEquipment.delete(data.id);
     });
   }
@@ -407,7 +408,7 @@ export class InventoryInteractionSystem extends SystemBase {
     
     // Check if drop is valid
     if (!this.canDropOnTarget(this.currentDrag.itemData, target)) {
-      console.warn('InventoryInteractionSystem', `Invalid drop: ${this.currentDrag.itemData.name} cannot be dropped on ${target.type} slot ${target.slot}`);
+      this.logger.warn(`Invalid drop: ${this.currentDrag.itemData.name} cannot be dropped on ${target.type} slot ${String(target.slot)}`);
       this.cancelDrag();
       return;
     }
@@ -481,7 +482,7 @@ export class InventoryInteractionSystem extends SystemBase {
       });
     } else if (dragData.sourceType === 'equipment' && target.type === 'equipment') {
       // Swap equipment (if compatible)
-      console.log('InventoryInteractionSystem', 'Equipment swap', {
+      this.logger.info('Equipment swap', {
         playerId: this.getCurrentPlayerId(),
         fromSlot: dragData.sourceSlot,
         toSlot: target.slot
@@ -509,11 +510,7 @@ export class InventoryInteractionSystem extends SystemBase {
       }
       
       // Log drag end for debugging
-      console.log('InventoryInteractionSystem', 'Drag ended', {
-        sourceType: this.currentDrag.sourceType,
-        sourceSlot: this.currentDrag.sourceSlot,
-        itemId: this.currentDrag.itemId
-      });
+      this.logger.info('Drag ended', { sourceType: this.currentDrag.sourceType, sourceSlot: this.currentDrag.sourceSlot, itemId: this.currentDrag.itemId });
     }
     
     // Clear drag state

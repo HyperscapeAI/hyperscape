@@ -1,4 +1,4 @@
-import * as THREE from './three'
+import THREE from './three'
 
 export function getTrianglesFromGeometry(geometry: THREE.BufferGeometry): number {
   if (!geometry) return 0

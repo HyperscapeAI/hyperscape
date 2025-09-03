@@ -1,20 +1,19 @@
 export * from './ResourceSystem';
 export * from './StoreSystem';
 export * from './MobSystem';
-export * from './CameraSystem';
+// CameraSystem unified: use ClientCameraSystem exclusively
 // QuestSystem not yet implemented
 export * from './ItemPickupSystem';
 export * from './MobSpawnerSystem';
 export * from './LootSystem';
 export * from './EntityManager';
 export * from './PlayerSystem';
-export * from './MovementSystem';
+// Movement now handled by physics in PlayerLocal
 export * from './InventoryInteractionSystem';
 export * from './CombatSystem';
 export * from './PathfindingSystem';
 // DatabaseSystem is server-only and imported dynamically
 export * from './UISystem';
-export * from './ClientInteractionSystem';
 export * from './PersistenceSystem';
 export * from './InventorySystem';
 export * from './AuthenticationSystem';

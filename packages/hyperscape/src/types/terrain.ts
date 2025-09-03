@@ -5,7 +5,7 @@
  * Common terrain types have been moved to core.ts to avoid duplication.
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import type { Position3D } from './core';
 import type { PMeshHandle } from '../extras/geometryToPxMesh';
 
@@ -56,7 +56,7 @@ export interface TerrainTile {
 export interface ResourceNode {
   id: string;
   type: 'tree' | 'rock' | 'ore' | 'herb' | 'fish' | 'gem' | 'rare_ore';
-  position: Position3D;
+  position: Position3D | THREE.Vector3;
   mesh: THREE.Mesh | null;
   health: number;
   maxHealth: number;
@@ -66,8 +66,8 @@ export interface ResourceNode {
 }
 
 export interface RoadSegment {
-  start: { x: number; z: number };
-  end: { x: number; z: number };
+  start: THREE.Vector2 | { x: number; z: number };
+  end: THREE.Vector2 | { x: number; z: number };
   width: number;
   mesh: THREE.Mesh | null;
   material: 'stone' | 'dirt' | 'cobblestone';

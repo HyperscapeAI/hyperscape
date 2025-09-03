@@ -5,7 +5,7 @@
  * and entity positioning across various systems.
  */
 
-import type * as THREE from '../extras/three';
+import type THREE from '../extras/three';
 import type { Entity } from '../entities/Entity';
 
 /**

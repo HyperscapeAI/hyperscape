@@ -1,8 +1,8 @@
-import type { ComponentDefinition, EntityConstructor, EntityData, Entities as IEntities, Player, World } from '../types/index';
 import { Entity } from '../entities/Entity';
 import { PlayerLocal } from '../entities/PlayerLocal';
 import { PlayerRemote } from '../entities/PlayerRemote';
-import { System } from './System';
+import type { ComponentDefinition, EntityConstructor, EntityData, Entities as IEntities, Player, World } from '../types/index';
+import { SystemBase } from './SystemBase';
 
 // ComponentDefinition interface moved to shared types
 
@@ -11,7 +11,7 @@ import { System } from './System';
 // EntityConstructor interface moved to shared types
 
 // Simple entity implementation that uses the base Entity class directly
-class BaseEntity extends Entity {
+class GenericEntity extends Entity {
   constructor(world: World, data: EntityData, local?: boolean) {
     super(world, data, local);
   }
@@ -19,7 +19,7 @@ class BaseEntity extends Entity {
 
 // Entity type registry
 const EntityTypes: Record<string, EntityConstructor> = {
-  entity: BaseEntity,
+  entity: GenericEntity,
   playerLocal: PlayerLocal,
   playerRemote: PlayerRemote,
 };
@@ -32,7 +32,7 @@ const EntityTypes: Record<string, EntityConstructor> = {
  * - Executes entity scripts
  *
  */
-export class Entities extends System implements IEntities {
+export class Entities extends SystemBase implements IEntities {
   items: Map<string, Entity>;
   players: Map<string, Player>;
   player?: Player;
@@ -42,7 +42,7 @@ export class Entities extends System implements IEntities {
   private componentRegistry = new Map<string, ComponentDefinition>();
 
   constructor(world: World) {
-    super(world);
+    super(world, { name: 'entities', dependencies: { required: [], optional: [] }, autoCleanup: true });
     this.items = new Map();
     this.players = new Map();
     this.player = undefined;
@@ -59,10 +59,12 @@ export class Entities extends System implements IEntities {
     return this.items.values();
   }
 
-  getPlayer(entityId: string): Player {
+  getPlayer(entityId: string): Player | null {
     const player = this.players.get(entityId);
     if (!player) {
-      throw new Error(`Player not found: ${entityId}`);
+      // Don't throw - return null for disconnected players
+      // This allows systems to gracefully handle missing players
+      return null;
     }
     return player;
   }
@@ -123,7 +125,7 @@ export class Entities extends System implements IEntities {
       // so they can respond correctly to follow-through events.
       if (this.world.network.isClient) {
         if (data.owner !== this.world.network.id) {
-          this.world.emit('enter', { playerId: entity.id });
+          this.emitTypedEvent('PLAYER_JOINED', { playerId: entity.id, player: entity as PlayerLocal });
         }
       }
     }
@@ -131,7 +133,7 @@ export class Entities extends System implements IEntities {
     // Strong type assumption - world has network system when dealing with owned entities
     if (data.owner === this.world.network.id) {
       this.player = entity as Player;
-      this.world.emit('player', entity);
+      this.emitTypedEvent('PLAYER_REGISTERED', { playerId: entity.id });
     }
 
     // Initialize the entity if it has an init method
@@ -145,14 +147,13 @@ export class Entities extends System implements IEntities {
   remove(id: string): boolean {
     const entity = this.items.get(id);
     if (!entity) {
-      console.warn(`Tried to remove entity that did not exist: ${id}`);
+      this.logger.warn(`Tried to remove entity that did not exist: ${id}`);
       return false;
     }
     
     if (entity.isPlayer) {
       this.players.delete(entity.id);
-      // Emit leave event for players
-      this.world.emit('leave', { playerId: entity.id });
+      this.emitTypedEvent('PLAYER_LEFT', { playerId: entity.id });
     }
     
     entity.destroy(true);
@@ -187,7 +188,7 @@ export class Entities extends System implements IEntities {
       try {
         entity.update?.(delta);
       } catch (error) {
-        console.error(`[Entities] Error updating entity:`, entity.id || entity, error);
+        this.logger.error(`Error updating entity ${entity.id || 'unknown'}: ${error instanceof Error ? error.message : String(error)}`);
         throw error;
       }
     }
@@ -228,13 +229,8 @@ export class Entities extends System implements IEntities {
   }
 
   // TypeScript interface compliance methods
-  getLocalPlayer(): Player {
-    if (!this.player) {
-      // Return a dummy player object that satisfies the interface but indicates no player
-      // This prevents errors during initialization before player is created
-      return null as unknown as Player;
-    }
-    return this.player;
+  getLocalPlayer(): Player | null {
+    return this.player || null;
   }
 
   getAll(): Entity[] {

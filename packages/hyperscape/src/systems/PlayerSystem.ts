@@ -79,10 +79,14 @@ export class PlayerSystem extends SystemBase {
 
   private onPlayerRegister(data: { playerId: string }): void {
     // For now, just log the registration - PlayerLocal reference will be handled elsewhere
-    Logger.system('PlayerSystem', `Player registered: ${data.playerId}`);
+    console.log('[PlayerSystem] onPlayerRegister called with data:', data, 'playerId:', data?.playerId);
+    if (!data?.playerId) {
+      console.error('[PlayerSystem] ERROR: playerId is undefined in registration data!', data);
+    }
+    Logger.system('PlayerSystem', `Player registered: ${data?.playerId}`);
   }
 
-  private async onPlayerEnter(data: PlayerEnterEvent): Promise<void> {
+  async onPlayerEnter(data: PlayerEnterEvent): Promise<void> {
     try {
       Logger.system('PlayerSystem', `Player entering: ${data.playerId}`);
 
@@ -153,7 +157,7 @@ export class PlayerSystem extends SystemBase {
     }
   }
 
-  private async onPlayerLeave(data: PlayerLeaveEvent): Promise<void> {
+  async onPlayerLeave(data: PlayerLeaveEvent): Promise<void> {
     try {
       Logger.system('PlayerSystem', `Player leaving: ${data.playerId}`);
 
@@ -181,7 +185,7 @@ export class PlayerSystem extends SystemBase {
     }
   }
 
-  private async updateHealth(data: HealthUpdateEvent): Promise<void> {
+  async updateHealth(data: HealthUpdateEvent): Promise<void> {
     const player = this.players.get(data.entityId);
     if (!player) {
       Logger.system('PlayerSystem', `Player not found for health update: ${data.entityId}`);
@@ -242,7 +246,7 @@ export class PlayerSystem extends SystemBase {
     const player = this.players.get(playerId)!;
 
     // Get spawn position - use a default spawn point if world generation system doesn't have the method
-    const spawnPosition = { x: 0, y: 2, z: 0 }; // Default Lumbridge spawn position
+    const spawnPosition = { x: 0, y: 0.1, z: 0 }; // Default ground-level spawn
 
     // Reset player state
     player.alive = true;
@@ -319,9 +323,9 @@ export class PlayerSystem extends SystemBase {
     return !!player?.alive;
   }
 
-  getPlayerHealth(playerId: string): { health: number; maxHealth: number } | undefined {
+  getPlayerHealth(playerId: string): { current: number; max: number } | undefined {
     const player = this.players.get(playerId);
-    return player ? { health: player.health.current, maxHealth: player.health.max } : undefined;
+    return player ? { current: player.health.current, max: player.health.max } : undefined;
   }
 
   healPlayer(playerId: string, amount: number): boolean {

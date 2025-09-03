@@ -4,7 +4,7 @@
  * Shared types for particle emitters and particle data
  */
 
-import type { Matrix4, Vector3 } from '../extras/three';
+import type THREE from '../extras/three';
 
 // Particle message interfaces
 export interface ParticleMessageData {
@@ -43,7 +43,7 @@ export interface EmitterNode {
   quaternion: [number, number, number, number];
   scale: [number, number, number];
   emitting: boolean;
-  matrixWorld: Matrix4;
+  matrixWorld: THREE.Matrix4;
 }
 
 export interface ParticleEmitter {
@@ -63,14 +63,14 @@ export interface ParticleEmitter {
 export interface Particle {
   age: number
   life: number
-  direction: Vector3
-  velocity: Vector3
+  direction: THREE.Vector3
+  velocity: THREE.Vector3
   distance: number
   speed: number
-  finalPosition: Vector3
+  finalPosition: THREE.Vector3
   frameTime: number
   uv: number[]
-  position: Vector3
+  position: THREE.Vector3
   rotation: number
   startRotation: number
   size: number

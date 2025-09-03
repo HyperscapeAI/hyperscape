@@ -8,7 +8,7 @@
  * - Integrates with equipment and combat systems
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import type { World } from '../types';
 import { EventType } from '../types/events';
 import { equipmentRequirements } from '../data/EquipmentRequirements';
@@ -34,13 +34,11 @@ export class PlayerSpawnSystem extends SystemBase {
   }
 
   async init(): Promise<void> {
-    
-    // Listen for player events
-    this.world.on(EventType.PLAYER_JOINED, this.handlePlayerJoin.bind(this));
-    this.world.on(EventType.PLAYER_LEFT, this.handlePlayerLeave.bind(this));
-    
+    // Listen for player events via event bus
+    this.subscribe(EventType.PLAYER_JOINED, (data: { playerId: string }) => this.handlePlayerJoin(data));
+    this.subscribe(EventType.PLAYER_LEFT, (data: { playerId: string }) => this.handlePlayerLeave(data));
     // Listen for spawn completion events
-    this.world.on(EventType.PLAYER_SPAWN_COMPLETE, this.handleSpawnComplete.bind(this));
+    this.subscribe(EventType.PLAYER_SPAWN_COMPLETE, (data: { playerId: string }) => this.handleSpawnComplete(data));
     
   }
 
@@ -62,6 +60,22 @@ export class PlayerSpawnSystem extends SystemBase {
     // - Tutorial prompts
     // - UI highlighting
     // - Sound effects
+
+    // Debug: add a blue cube above player so we can visually confirm spawn
+    try {
+      const player = this.world.getPlayer(event.playerId)
+      if (player && player.node) {
+        const debug = new THREE.Mesh(
+          new THREE.BoxGeometry(0.3, 0.3, 0.3),
+          new THREE.MeshBasicMaterial({ color: 0x0000ff })
+        )
+        debug.name = `SpawnDebugCube_${event.playerId}`
+        debug.position.set(player.node.position.x, player.node.position.y + 3, player.node.position.z)
+        this.world.stage.scene.add(debug)
+      }
+    } catch (_e) {
+      // ignore
+    }
   }
 
   /**
@@ -79,6 +93,12 @@ export class PlayerSpawnSystem extends SystemBase {
    * Handle player join - start spawn process
    */
   private handlePlayerJoin(event: { playerId: string }): void {
+    this.logger.info(`handlePlayerJoin called: ${JSON.stringify(event)}`);
+    
+    if (!event?.playerId) {
+      this.logger.error(`ERROR: playerId is undefined in event! ${JSON.stringify(event)}`);
+      return;
+    }
     
     const player = this.world.getPlayer(event.playerId)!;
     

@@ -1,21 +1,14 @@
 // Type definitions for Hyperscape client components
 
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 import type { EntityData as CoreEntityData, ControlBinding } from '../types/index'
 import type { World } from '../World'
 
 // Export the actual World class instead of defining a separate interface
-export { World }
+export type { World }
 
-export interface UIState {
-  active: boolean
-  pane: string | null
-  state: {
-    active: boolean
-    pane: string | null
-  }
-  toggleVisible: () => void
-}
+// Use shared UIState from types/physics.ts where broader UI state exists
+export type { UIState } from '../types/physics'
 
 export interface EntityManager {
   items: Map<string, Entity>

@@ -1,4 +1,5 @@
-import * as jwt from 'jsonwebtoken'
+import jsonwebtoken from 'jsonwebtoken'
+const jwt = jsonwebtoken
 /**
  *
  * Hash File
@@ -41,7 +42,7 @@ export function createJWT(data: Record<string, unknown>): Promise<string> {
 
 export function verifyJWT(token: string): Promise<Record<string, unknown> | null> {
   return new Promise((resolve, _reject) => {
-    jwt.verify(token, jwtSecret, (err: jwt.VerifyErrors | null, decoded: unknown) => {
+    jwt.verify(token, jwtSecret, (err: jsonwebtoken.VerifyErrors | null, decoded: unknown) => {
       if (err) resolve(null)
       else resolve((decoded as Record<string, unknown>) || null)
     })

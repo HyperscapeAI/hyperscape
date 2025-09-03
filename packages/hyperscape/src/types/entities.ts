@@ -3,7 +3,7 @@
  * These types are shared across all entity implementations
  */
 
-import type * as THREE from '../extras/three';
+import type THREE from '../extras/three';
 import type { EntityData, Position3D } from './base-types';
 import type { 
   Item, 
@@ -13,7 +13,9 @@ import type {
   StatsComponent,
   NPCComponent,
   PrayerComponent,
-  EquipmentComponent
+  EquipmentComponent,
+  PlayerHealth,
+  PlayerStamina
 } from './core';
 
 // Enums for better type safety instead of string literals
@@ -268,8 +270,7 @@ export interface BaseEntityProperties {
   healthComponent: HealthComponent | null;
   visualComponent: VisualComponent | null;
   // Basic entity data that all entities have
-  health: number;
-  maxHealth: number;
+  health: PlayerHealth;  // Unified health format with current and max
   level: number;
 }
 
@@ -280,13 +281,11 @@ export interface PlayerEntityProperties extends BaseEntityProperties {
   equipmentComponent: EquipmentComponent;
   prayerComponent: PrayerComponent | null;
   // Player specific data
-  health: number;
-  maxHealth: number;
+  health: PlayerHealth;  // Unified health format with current and max
   level: number;
   playerId: string;
   playerName: string;
-  stamina: number;
-  maxStamina: number;
+  stamina: PlayerStamina;  // Changed from separate stamina/maxStamina to use PlayerStamina
   combatStyle: PlayerCombatStyle;
 }
 

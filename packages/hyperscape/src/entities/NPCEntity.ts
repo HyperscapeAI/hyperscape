@@ -2,7 +2,7 @@
  * NPCEntity - Non-player characters like shopkeepers, bankers, and quest givers
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import type { World } from '../World';
 import { Entity } from './Entity';
 import type { EntityInteractionData, NPCEntityConfig } from '../types/entities';

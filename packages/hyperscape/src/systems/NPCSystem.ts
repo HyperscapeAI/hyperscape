@@ -37,11 +37,11 @@ export class NPCSystem extends SystemBase {
 
   async init(): Promise<void> {
     // Subscribe to NPC interaction events using type-safe event system
-    this.subscribe<{ playerId: string; npcId: string; npc: NPCLocation }>(EventType.NPC_INTERACTION, (event) => this.handleNPCInteraction(event.data));
-    this.subscribe<{ playerId: string; itemId: string; quantity: number; bankId?: string }>(EventType.BANK_DEPOSIT, (event) => this.handleBankDeposit(event.data));
-    this.subscribe<{ playerId: string; itemId: string; quantity: number; bankId?: string }>(EventType.BANK_WITHDRAW, (event) => this.handleBankWithdraw(event.data));
-    this.subscribe<{ playerId: string; itemId: string; quantity: number; storeId?: string }>(EventType.STORE_BUY, (event) => this.handleStoreBuy(event.data));
-    this.subscribe<{ playerId: string; itemId: string; quantity: number; storeId?: string }>(EventType.STORE_SELL, (event) => this.handleStoreSell(event.data));
+    this.subscribe(EventType.NPC_INTERACTION, (data: { playerId: string; npcId: string; npc: NPCLocation }) => this.handleNPCInteraction(data));
+    this.subscribe(EventType.BANK_DEPOSIT, (data) => this.handleBankDeposit(data));
+    this.subscribe(EventType.BANK_WITHDRAW, (data) => this.handleBankWithdraw(data));
+    this.subscribe(EventType.STORE_BUY, (data) => this.handleStoreBuy(data));
+    this.subscribe(EventType.STORE_SELL, (data) => this.handleStoreSell(data));
   }
 
   /**
@@ -278,7 +278,7 @@ export class NPCSystem extends SystemBase {
     this.transactionHistory.push(transaction);
     
     // Emit success event
-    this.emitTypedEvent(EventType.BANK_DEPOSIT_SUCCESS, {
+    this.emitTypedEvent(EventType.BANK_WITHDRAW_SUCCESS, {
       playerId,
       itemId,
       quantity,

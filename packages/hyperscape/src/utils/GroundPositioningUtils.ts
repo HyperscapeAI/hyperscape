@@ -3,7 +3,7 @@
  * Provides utilities for positioning entities on terrain with proper height detection
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import type { World, System } from '../types';
 import type { GroundPositionResult, GroundHeightResult } from '../types/ground-types';
 
@@ -61,12 +61,12 @@ export function getGroundPosition(
     // No terrain system available, continue to next method
   }
 
-  // Method 2: Use world raycast
+  // Method 2: Use world raycast (PhysX) with environment layer mask
   if (world.raycast) {
     const origin = new THREE.Vector3(x, 1000, z); // Start high above
     const direction = new THREE.Vector3(0, -1, 0); // Ray down
-    
-    const hit = world.raycast(origin, direction, 2000);
+    const mask = (world as unknown as { createLayerMask: (...names: string[]) => number }).createLayerMask?.('environment') ?? 0xFFFFFFFF;
+    const hit = world.raycast(origin, direction, 2000, mask as number);
     if (hit && hit.point) {
       const position = new THREE.Vector3(x, hit.point.y + yOffset, z);
       return {

@@ -5,7 +5,7 @@ import type { VRMHooks } from '../types/physics'
 import { DEG2RAD } from './general'
 import { getTextureBytesFromMaterial } from './getTextureBytesFromMaterial'
 import { getTrianglesFromGeometry } from './getTrianglesFromGeometry'
-import * as THREE from './three'
+import THREE from './three'
 
 const v1 = new THREE.Vector3()
 const v2 = new THREE.Vector3()

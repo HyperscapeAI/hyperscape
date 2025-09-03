@@ -45,10 +45,11 @@ export interface ValidationResults {
 /**
  * Generic validation result
  */
+// Note: ValidationResult is used in multiple contexts; keep this generic
 export interface ValidationResult {
-  test: string;
+  test?: string;
   passed: boolean;
-  message: string;
+  message?: string;
   data?: unknown;
 }
 
@@ -87,6 +88,17 @@ export interface HeightmapValidationResult {
   averageFrameTime: number;
   totalValidationTime: number;
   walkabilityMap: Map<string, WalkabilityData>;
+}
+
+// Data validation result used by DataManager
+export interface DataValidationResult {
+  isValid: boolean;
+  errors: string[];
+  warnings: string[];
+  itemCount: number;
+  mobCount: number;
+  areaCount: number;
+  treasureCount: number;
 }
 
 /**

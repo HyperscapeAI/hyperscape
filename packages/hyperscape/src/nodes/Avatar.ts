@@ -1,7 +1,7 @@
 
 import type { HotReloadable } from '../types'
-import type { AvatarFactory, AvatarHooks, AvatarData, VRMAvatarInstance } from '../types/nodes'
-import * as THREE from '../extras/three'
+import type { AvatarHooks, AvatarData, VRMAvatarInstance, VRMAvatarFactory } from '../types/nodes'
+import THREE from '../extras/three'
 import { Node } from './Node'
 
 const defaults = {
@@ -11,7 +11,7 @@ const defaults = {
 }
 
 export class Avatar extends Node {
-  factory: AvatarFactory | null = null
+  factory: VRMAvatarFactory | null = null
   hooks: AvatarHooks | null = null
   instance: VRMAvatarInstance | null = null
   n: number
@@ -42,22 +42,32 @@ export class Avatar extends Node {
       if (!avatar) avatar = await this.ctx.loader.load('avatar', this._src)
       if (this.n !== n) return
       // Avatar loaded from loader is a different type - use type assertion based on context
-      const avatarData = avatar as { factory?: AvatarFactory; hooks?: AvatarHooks }
+      const avatarData = avatar as { factory?: VRMAvatarFactory; hooks?: AvatarHooks }
       this.factory = avatarData?.factory ?? null
       this.hooks = avatarData?.hooks ?? null
     }
     if (this.factory) {
-      // Factory create method signature based on actual implementation context
-      this.instance = (this.factory as unknown as { create: (matrix: THREE.Matrix4, hooks?: AvatarHooks, node?: Avatar) => VRMAvatarInstance }).create(this.matrixWorld, this.hooks ?? undefined, this)
-      this.instance?.setEmote(this._emote)
-      if (this._disableRateCheck && this.instance) {
-        this.instance.disableRateCheck()
-        this._disableRateCheck = false
+      // Only create instance if we don't already have one
+      if (!this.instance) {
+        console.log('[Avatar] Creating new VRM instance')
+        // Factory has typed create(matrix, hooks, node)
+        this.instance = this.factory.create(this.matrixWorld, this.hooks ?? undefined, this)
+        this.instance?.setEmote(this._emote)
+        if (this._disableRateCheck && this.instance) {
+          this.instance.disableRateCheck()
+          this._disableRateCheck = false
+        }
+        // Only register as hot if instance implements HotReloadable
+        const maybeHot = this.instance as Partial<HotReloadable>
+        if (this.ctx && maybeHot.update && maybeHot.fixedUpdate && maybeHot.postLateUpdate) {
+          this.ctx.setHot(maybeHot as HotReloadable, true)
+        }
+        this._onLoad?.()
+      } else {
+        console.log('[Avatar] Reusing existing VRM instance')
+        // Just update the existing instance
+        this.instance?.move(this.matrixWorld)
       }
-      if (this.ctx && this.instance && this.instance.update) {
-        this.ctx.setHot(this.instance as unknown as HotReloadable, true)
-      }
-      this._onLoad?.()
     }
   }
 
@@ -74,8 +84,9 @@ export class Avatar extends Node {
   unmount() {
     this.n++
     if (this.instance) {
-      if (this.ctx && this.instance.update) {
-        this.ctx.setHot(this.instance as unknown as HotReloadable, false)
+      const maybeHot = this.instance as Partial<HotReloadable>
+      if (this.ctx && maybeHot.update && maybeHot.fixedUpdate && maybeHot.postLateUpdate) {
+        this.ctx.setHot(maybeHot as HotReloadable, false)
       }
       this.instance.destroy()
       this.instance = null

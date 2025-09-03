@@ -2,60 +2,32 @@
 // Provides specialized reporting for game engine testing metrics
 
 import type { File, Reporter, TaskResultPack, UserConsoleLog } from 'vitest'
-import type { PerformanceMetrics, VisualMetrics, SystemMetrics } from '../../types/metrics-types'
 
 // Extend GameplayMetrics for this reporter's specific needs
-export interface GameplayMetrics {
-  actionResponseTime?: number
-  entityInteractions?: number
-}
+import type { GameMetrics, GameTaskMeta, GameTaskResultPack } from '../../types/metrics-types'
 
 // Game-specific metadata interfaces extending Vitest's TaskMeta
-export interface GameTaskMeta {
-  name?: string
-  performance?: PerformanceMetrics
-  visual?: VisualMetrics
-  gameplay?: GameplayMetrics
-  system?: SystemMetrics
-}
 
 // Vitest TaskResultPack is [id: string, result: TaskResult | undefined, meta: TaskMeta]
 // We need to type the meta part specifically for our game metrics
-type GameTaskResultPack = [id: string, result: unknown, meta: GameTaskMeta]
+// Use shared GameTaskResultPack type
 
-export interface GameMetrics {
-  performanceTests: {
-    renderTime: number
-    physicsTime: number
-    networkLatency: number
-    memoryUsage: number
-  }
-  visualTests: {
-    pixelAccuracy: number
-    geometryValidation: number
-    shaderCompliance: number
-  }
-  systemTests: {
-    entityCreation: number
-    componentUpdates: number
-    systemProcessing: number
-  }
-}
+// Use shared GameMetrics definition
 
 export class GameMetricsReporter implements Reporter {
   private metrics: GameMetrics = {
-    performanceTests: {
+    performance: {
       renderTime: 0,
       physicsTime: 0,
       networkLatency: 0,
       memoryUsage: 0
     },
-    visualTests: {
+    visual: {
       pixelAccuracy: 0,
       geometryValidation: 0,
       shaderCompliance: 0
     },
-    systemTests: {
+    system: {
       entityCreation: 0,
       componentUpdates: 0,
       systemProcessing: 0
@@ -71,11 +43,11 @@ export class GameMetricsReporter implements Reporter {
     
     // Initialize some baseline metrics if available
     if (typeof process !== 'undefined' && process.memoryUsage) {
-      this.metrics.performanceTests.memoryUsage = process.memoryUsage().heapUsed
+      this.metrics.performance!.memoryUsage = process.memoryUsage().heapUsed
     }
     
     // Simulate network latency for local tests
-    this.metrics.performanceTests.networkLatency = 5 // 5ms for local
+    this.metrics.performance!.networkLatency = 5 // 5ms for local
   }
 
   onTaskUpdate(packs: TaskResultPack[]) {
@@ -94,8 +66,8 @@ export class GameMetricsReporter implements Reporter {
     // Update memory usage at end
     if (typeof process !== 'undefined' && process.memoryUsage) {
       const memUsage = process.memoryUsage().heapUsed
-      this.metrics.performanceTests.memoryUsage = Math.max(
-        this.metrics.performanceTests.memoryUsage,
+      this.metrics.performance!.memoryUsage = Math.max(
+        this.metrics.performance!.memoryUsage!,
         memUsage
       )
     }
@@ -105,22 +77,22 @@ export class GameMetricsReporter implements Reporter {
     
     // Performance metrics
     console.log('\n📊 Performance Metrics:')
-    console.log(`  Render Time: ${this.metrics.performanceTests.renderTime.toFixed(2)}ms avg`)
-    console.log(`  Physics Time: ${this.metrics.performanceTests.physicsTime.toFixed(2)}ms avg`)
-    console.log(`  Network Latency: ${this.metrics.performanceTests.networkLatency.toFixed(2)}ms avg`)
-    console.log(`  Memory Usage: ${this.formatBytes(this.metrics.performanceTests.memoryUsage)}`)
+    console.log(`  Render Time: ${(this.metrics.performance!.renderTime || 0).toFixed(2)}ms avg`)
+    console.log(`  Physics Time: ${(this.metrics.performance!.physicsTime || 0).toFixed(2)}ms avg`)
+    console.log(`  Network Latency: ${(this.metrics.performance!.networkLatency || 0).toFixed(2)}ms avg`)
+    console.log(`  Memory Usage: ${this.formatBytes(this.metrics.performance!.memoryUsage || 0)}`)
 
     // Visual validation metrics
     console.log('\n👁️  Visual Validation:')
-    console.log(`  Pixel Accuracy: ${this.metrics.visualTests.pixelAccuracy.toFixed(1)}%`)
-    console.log(`  Geometry Validation: ${this.metrics.visualTests.geometryValidation.toFixed(1)}%`)
-    console.log(`  Shader Compliance: ${this.metrics.visualTests.shaderCompliance.toFixed(1)}%`)
+    console.log(`  Pixel Accuracy: ${(this.metrics.visual!.pixelAccuracy || 0).toFixed(1)}%`)
+    console.log(`  Geometry Validation: ${(this.metrics.visual!.geometryValidation || 0).toFixed(1)}%`)
+    console.log(`  Shader Compliance: ${(this.metrics.visual!.shaderCompliance || 0).toFixed(1)}%`)
 
     // System performance
     console.log('\n⚙️  System Performance:')
-    console.log(`  Entity Creation: ${this.metrics.systemTests.entityCreation}/s`)
-    console.log(`  Component Updates: ${this.metrics.systemTests.componentUpdates}/s`)
-    console.log(`  System Processing: ${this.metrics.systemTests.systemProcessing}ms`)
+    console.log(`  Entity Creation: ${this.metrics.system!.entityCreation || 0}/s`)
+    console.log(`  Component Updates: ${this.metrics.system!.componentUpdates || 0}/s`)
+    console.log(`  System Processing: ${this.metrics.system!.systemProcessing || 0}ms`)
 
     // Test summary
     const passed = files.reduce((acc, file) => acc + (file.result?.state === 'pass' ? 1 : 0), 0)
@@ -146,28 +118,28 @@ export class GameMetricsReporter implements Reporter {
     const testName = meta.name || id || 'unknown'
     
     // Extract performance metrics from test metadata
-    if (meta.performance) {
+    if (meta.performance && this.metrics.performance) {
       const perf = meta.performance
-      if (perf.renderTime) this.metrics.performanceTests.renderTime = Math.max(this.metrics.performanceTests.renderTime, perf.renderTime)
-      if (perf.physicsTime) this.metrics.performanceTests.physicsTime = Math.max(this.metrics.performanceTests.physicsTime, perf.physicsTime)
-      if (perf.networkLatency) this.metrics.performanceTests.networkLatency = Math.max(this.metrics.performanceTests.networkLatency, perf.networkLatency)
-      if (perf.memoryUsage) this.metrics.performanceTests.memoryUsage = Math.max(this.metrics.performanceTests.memoryUsage, perf.memoryUsage)
+      if (perf.renderTime) this.metrics.performance.renderTime = Math.max(this.metrics.performance.renderTime || 0, perf.renderTime)
+      if (perf.physicsTime) this.metrics.performance.physicsTime = Math.max(this.metrics.performance.physicsTime || 0, perf.physicsTime)
+      if (perf.networkLatency) this.metrics.performance.networkLatency = Math.max(this.metrics.performance.networkLatency || 0, perf.networkLatency)
+      if (perf.memoryUsage) this.metrics.performance.memoryUsage = Math.max(this.metrics.performance.memoryUsage || 0, perf.memoryUsage)
     }
 
     // Extract visual validation metrics
-    if (meta.visual) {
+    if (meta.visual && this.metrics.visual) {
       const visual = meta.visual
-      if (visual.pixelAccuracy) this.metrics.visualTests.pixelAccuracy = Math.max(this.metrics.visualTests.pixelAccuracy, visual.pixelAccuracy)
-      if (visual.geometryValidation) this.metrics.visualTests.geometryValidation = Math.max(this.metrics.visualTests.geometryValidation, visual.geometryValidation)
-      if (visual.shaderCompliance) this.metrics.visualTests.shaderCompliance = Math.max(this.metrics.visualTests.shaderCompliance, visual.shaderCompliance)
+      if (visual.pixelAccuracy) this.metrics.visual.pixelAccuracy = Math.max(this.metrics.visual.pixelAccuracy || 0, visual.pixelAccuracy)
+      if (visual.geometryValidation) this.metrics.visual.geometryValidation = Math.max(this.metrics.visual.geometryValidation || 0, visual.geometryValidation)
+      if (visual.shaderCompliance) this.metrics.visual.shaderCompliance = Math.max(this.metrics.visual.shaderCompliance || 0, visual.shaderCompliance)
     }
 
     // Extract system metrics
-    if (meta.system) {
+    if (meta.system && this.metrics.system) {
       const system = meta.system
-      if (system.entityCreation) this.metrics.systemTests.entityCreation = Math.max(this.metrics.systemTests.entityCreation, system.entityCreation)
-      if (system.componentUpdates) this.metrics.systemTests.componentUpdates = Math.max(this.metrics.systemTests.componentUpdates, system.componentUpdates)
-      if (system.systemProcessing) this.metrics.systemTests.systemProcessing = Math.max(this.metrics.systemTests.systemProcessing, system.systemProcessing)
+      if (system.entityCreation) this.metrics.system.entityCreation = Math.max(this.metrics.system.entityCreation || 0, system.entityCreation)
+      if (system.componentUpdates) this.metrics.system.componentUpdates = Math.max(this.metrics.system.componentUpdates || 0, system.componentUpdates)
+      if (system.systemProcessing) this.metrics.system.systemProcessing = Math.max(this.metrics.system.systemProcessing || 0, system.systemProcessing)
     }
 
     // Store individual test result pack
@@ -179,34 +151,34 @@ export class GameMetricsReporter implements Reporter {
     const warnings: string[] = []
 
     // Performance warnings
-    if (this.metrics.performanceTests.renderTime > 16.67) {
-      warnings.push(`⚠️  Render time ${this.metrics.performanceTests.renderTime.toFixed(2)}ms exceeds 60fps target (16.67ms)`)
+    if ((this.metrics.performance?.renderTime || 0) > 16.67) {
+      warnings.push(`⚠️  Render time ${(this.metrics.performance!.renderTime || 0).toFixed(2)}ms exceeds 60fps target (16.67ms)`)
     }
 
-    if (this.metrics.performanceTests.physicsTime > 10) {
-      warnings.push(`⚠️  Physics time ${this.metrics.performanceTests.physicsTime.toFixed(2)}ms is high (>10ms)`)
+    if ((this.metrics.performance?.physicsTime || 0) > 10) {
+      warnings.push(`⚠️  Physics time ${(this.metrics.performance!.physicsTime || 0).toFixed(2)}ms is high (>10ms)`)
     }
 
-    if (this.metrics.performanceTests.memoryUsage > 100 * 1024 * 1024) { // 100MB
-      warnings.push(`⚠️  Memory usage ${this.formatBytes(this.metrics.performanceTests.memoryUsage)} is high (>100MB)`)
+    if ((this.metrics.performance?.memoryUsage || 0) > 100 * 1024 * 1024) { // 100MB
+      warnings.push(`⚠️  Memory usage ${this.formatBytes(this.metrics.performance!.memoryUsage || 0)} is high (>100MB)`)
     }
 
     // Visual validation warnings
-    if (this.metrics.visualTests.pixelAccuracy < 95) {
-      warnings.push(`⚠️  Pixel accuracy ${this.metrics.visualTests.pixelAccuracy.toFixed(1)}% is below target (95%)`)
+    if ((this.metrics.visual?.pixelAccuracy || 0) < 95) {
+      warnings.push(`⚠️  Pixel accuracy ${(this.metrics.visual!.pixelAccuracy || 0).toFixed(1)}% is below target (95%)`)
     }
 
-    if (this.metrics.visualTests.geometryValidation < 90) {
-      warnings.push(`⚠️  Geometry validation ${this.metrics.visualTests.geometryValidation.toFixed(1)}% is below target (90%)`)
+    if ((this.metrics.visual?.geometryValidation || 0) < 90) {
+      warnings.push(`⚠️  Geometry validation ${(this.metrics.visual!.geometryValidation || 0).toFixed(1)}% is below target (90%)`)
     }
 
     // System performance warnings
-    if (this.metrics.systemTests.entityCreation < 100) {
-      warnings.push(`⚠️  Entity creation rate ${this.metrics.systemTests.entityCreation}/s is low (<100/s)`)
+    if ((this.metrics.system?.entityCreation || 0) < 100) {
+      warnings.push(`⚠️  Entity creation rate ${this.metrics.system!.entityCreation || 0}/s is low (<100/s)`)
     }
 
-    if (this.metrics.systemTests.systemProcessing > 5) {
-      warnings.push(`⚠️  System processing time ${this.metrics.systemTests.systemProcessing}ms is high (>5ms)`)
+    if ((this.metrics.system?.systemProcessing || 0) > 5) {
+      warnings.push(`⚠️  System processing time ${this.metrics.system!.systemProcessing || 0}ms is high (>5ms)`)
     }
 
     if (warnings.length > 0) {
@@ -235,24 +207,24 @@ export class GameMetricsReporter implements Reporter {
       // Look for [Metrics] logs from MetricsCollector
       if (content.includes('[Metrics]')) {
         // Look for performance metrics in logs
-        const renderTimeMatch = content.match(/render.*?time.*?:\s*(\d+\.?\d*)\s*ms/i)
+          const renderTimeMatch = content.match(/render.*?time.*?:\s*(\d+\.?\d*)\s*ms/i)
         if (renderTimeMatch) {
           const time = parseFloat(renderTimeMatch[1])
-          this.metrics.performanceTests.renderTime = Math.max(this.metrics.performanceTests.renderTime, time)
+            if (this.metrics.performance) this.metrics.performance.renderTime = Math.max(this.metrics.performance.renderTime || 0, time)
         }
 
         // Look for physics metrics
-        const physicsTimeMatch = content.match(/physics.*?time.*?:\s*(\d+\.?\d*)\s*ms/i)
+          const physicsTimeMatch = content.match(/physics.*?time.*?:\s*(\d+\.?\d*)\s*ms/i)
         if (physicsTimeMatch) {
           const time = parseFloat(physicsTimeMatch[1])
-          this.metrics.performanceTests.physicsTime = Math.max(this.metrics.performanceTests.physicsTime, time)
+            if (this.metrics.performance) this.metrics.performance.physicsTime = Math.max(this.metrics.performance.physicsTime || 0, time)
         }
 
         // Look for visual validation percentages
-        const pixelAccuracyMatch = content.match(/pixel.*?accuracy.*?:\s*(\d+\.?\d*)\s*%/i)
+          const pixelAccuracyMatch = content.match(/pixel.*?accuracy.*?:\s*(\d+\.?\d*)\s*%/i)
         if (pixelAccuracyMatch) {
           const accuracy = parseFloat(pixelAccuracyMatch[1])
-          this.metrics.visualTests.pixelAccuracy = Math.max(this.metrics.visualTests.pixelAccuracy, accuracy)
+            if (this.metrics.visual) this.metrics.visual.pixelAccuracy = Math.max(this.metrics.visual.pixelAccuracy || 0, accuracy)
         }
       }
       
@@ -260,31 +232,31 @@ export class GameMetricsReporter implements Reporter {
       if (content.includes('reportGeometryValidation')) {
         const match = content.match(/reportGeometryValidation.*?(\d+\.?\d*)/)
         if (match) {
-          this.metrics.visualTests.geometryValidation = parseFloat(match[1])
+          if (this.metrics.visual) this.metrics.visual.geometryValidation = parseFloat(match[1])
         }
       }
       if (content.includes('reportShaderCompliance')) {
         const match = content.match(/reportShaderCompliance.*?(\d+\.?\d*)/)
         if (match) {
-          this.metrics.visualTests.shaderCompliance = parseFloat(match[1])
+          if (this.metrics.visual) this.metrics.visual.shaderCompliance = parseFloat(match[1])
         }
       }
       if (content.includes('Entity creation:')) {
         const match = content.match(/Entity creation.*?(\d+)/)
         if (match) {
-          this.metrics.systemTests.entityCreation = parseInt(match[1])
+          if (this.metrics.system) this.metrics.system.entityCreation = parseInt(match[1])
         }
       }
       if (content.includes('Component updates:')) {
         const match = content.match(/Component updates.*?(\d+)/)
         if (match) {
-          this.metrics.systemTests.componentUpdates = parseInt(match[1])
+          if (this.metrics.system) this.metrics.system.componentUpdates = parseInt(match[1])
         }
       }
       if (content.includes('System processing:')) {
         const match = content.match(/System processing.*?(\d+\.?\d*)/)
         if (match) {
-          this.metrics.systemTests.systemProcessing = parseFloat(match[1])
+          if (this.metrics.system) this.metrics.system.systemProcessing = parseFloat(match[1])
         }
       }
       
@@ -299,11 +271,14 @@ export class GameMetricsReporter implements Reporter {
               const parsedMetrics = JSON.parse(jsonStr)
               
               // Update metrics from parsed JSON
-              if (parsedMetrics.visual) {
-                Object.assign(this.metrics.visualTests, parsedMetrics.visual)
+              if (parsedMetrics.performance && this.metrics.performance) {
+                Object.assign(this.metrics.performance, parsedMetrics.performance)
               }
-              if (parsedMetrics.system) {
-                Object.assign(this.metrics.systemTests, parsedMetrics.system)
+              if (parsedMetrics.visual && this.metrics.visual) {
+                Object.assign(this.metrics.visual, parsedMetrics.visual)
+              }
+              if (parsedMetrics.system && this.metrics.system) {
+                Object.assign(this.metrics.system, parsedMetrics.system)
               }
             }
           }
@@ -322,18 +297,18 @@ export class GameMetricsReporter implements Reporter {
   // Reset metrics for new test run
   resetMetrics(): void {
     this.metrics = {
-      performanceTests: {
+      performance: {
         renderTime: 0,
         physicsTime: 0,
         networkLatency: 0,
         memoryUsage: 0
       },
-      visualTests: {
+      visual: {
         pixelAccuracy: 0,
         geometryValidation: 0,
         shaderCompliance: 0
       },
-      systemTests: {
+      system: {
         entityCreation: 0,
         componentUpdates: 0,
         systemProcessing: 0

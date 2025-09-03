@@ -5,14 +5,10 @@
 
 import { Component } from './Component';
 import type { Entity } from '../entities/Entity';
-import type * as THREE from '../extras/three';
+import type THREE from '../extras/three';
+import type { VisualComponentData } from '../types/components'
 
-export interface VisualComponentData {
-  mesh?: THREE.Object3D | null;
-  nameSprite?: THREE.Object3D | null;
-  healthSprite?: THREE.Object3D | null;
-  isVisible?: boolean;
-}
+// Type moved to shared types/components.ts
 
 export class VisualComponent extends Component {
   public mesh: THREE.Object3D | null = null;

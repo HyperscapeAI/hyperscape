@@ -13,7 +13,7 @@ import { PlayerSystem } from '../systems/PlayerSystem';
 import { PersistenceSystem } from '../systems/PersistenceSystem';
 import { TerrainSystem } from '../systems/TerrainSystem';
 import { PlayerTokenManager } from '../client/PlayerTokenManager';
-import type { WorldChunk } from '../types/core';
+import type { WorldChunk, WorldArea } from '../types/core';
 import type { WorldChunkData, PlayerRow } from '../types/database';
 import type { World } from '../World';
 import { MockWorld, TestResult } from './test-utils';
@@ -387,10 +387,31 @@ export class PersistenceTestSuite {
     
     try {
       // Create a test chunk that should be eligible for reset (using detailed WorldChunk interface)
+      const area: WorldArea = {
+        id: 'test-area',
+        name: 'Test Area',
+        description: 'Test area for chunk reset',
+        difficultyLevel: 0,
+        bounds: { minX: 990, maxX: 1000, minZ: 990, maxZ: 1000 },
+        biomeType: 'grassland',
+        safeZone: true,
+        npcs: [],
+        resources: [],
+        mobSpawns: [],
+        connections: [],
+        specialFeatures: []
+      };
+
       const oldChunk: WorldChunk = {
         id: 'chunk_99_99',
         chunkX: 99,
         chunkZ: 99,
+        bounds: { minX: 990, maxX: 1000, minZ: 990, maxZ: 1000 },
+        area,
+        npcs: [],
+        resources: [],
+        mobs: [],
+        isLoaded: false,
         biome: 'grassland',
         heightData: [],
         resourceStates: {},

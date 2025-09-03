@@ -3,10 +3,10 @@
  * Managed by PlayerSystem, inherits health/UI management from Entity
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import type { World } from '../World';
 import type { Vector3 } from '../types';
-import type { EntityInteractionData, PlayerEntityData, PlayerCombatStyle } from '../types/entities';
+import type { EntityInteractionData, PlayerEntityData, PlayerCombatStyle, PlayerEntityProperties } from '../types/entities';
 import type { CombatBonuses, EquipmentComponent, InventoryItem, Player, PrayerComponent, StatsComponent } from '../types/core';
 import { EntityType, InteractionType } from '../types/entities';
 import { clamp } from '../utils/EntityUtils';
@@ -53,15 +53,19 @@ export class PlayerEntity extends CombatantEntity {
       model: null,
       properties: {
         // Base entity properties
-        health: data.health || (data.maxHealth || 100),
-        maxHealth: data.maxHealth || 100,
+        health: {
+          current: data.health || 100,
+          max: data.maxHealth || 100
+        },
         level: data.level || 1,
         
         // Player-specific properties (keeping old names for internal use)
         playerId: data.playerId,
         playerName: data.playerName || data.name,
-        stamina: data.stamina || (data.maxStamina || 100),
-        maxStamina: data.maxStamina || 100,
+        stamina: {
+          current: data.stamina || 100,
+          max: data.maxStamina || 100
+        },
         combatStyle: (data.combatStyle || 'attack') as PlayerCombatStyle,
         
         // Use minimal component implementations with type assertions
@@ -73,7 +77,6 @@ export class PlayerEntity extends CombatantEntity {
             current: data.health || 100,
             max: data.maxHealth || 100
           },
-          maxHealth: data.maxHealth || 100,
           attack: { level: 1, xp: 0 },
           defense: { level: 1, xp: 0 },
           strength: { level: 1, xp: 0 },
@@ -163,7 +166,7 @@ export class PlayerEntity extends CombatantEntity {
           currentAnimation: null,
           animationTime: 0
         }
-      } as import('../types/entities').PlayerEntityProperties,
+      } as PlayerEntityProperties,
       combat: {
         attack: 15, // Default player attack
         defense: 10, // Default player defense
@@ -177,6 +180,9 @@ export class PlayerEntity extends CombatantEntity {
     };
     
     super(world, config);
+    // Ensure type is serialized as string 'player' for client-side entity construction
+    this.type = 'player';
+    (this.data as { type?: string }).type = 'player';
     
     // Initialize player-specific properties
     this.playerId = data.playerId || data.id;
@@ -303,11 +309,15 @@ export class PlayerEntity extends CombatantEntity {
       // Additional stats from StatsComponent interface
       combatLevel: 3, // Will be calculated by skills system
       totalLevel: 9, // Sum of all skill levels
-      health: this.config.properties?.health || 100,
-      maxHealth: this.config.properties?.maxHealth || 100,
+      health: this.config.properties?.health || { current: 100, max: 100 },
       level: this.config.properties?.level || 1,
       // HP stats for combat level calculation
-      hitpoints: { level: 10, xp: 0, current: this.config.properties?.health || 100, max: this.config.properties?.maxHealth || 100 },
+      hitpoints: { 
+        level: 10, 
+        xp: 0, 
+        current: this.config.properties?.health?.current || 100, 
+        max: this.config.properties?.health?.max || 100 
+      },
       prayer: { level: 1, points: 1 },
       magic: { level: 1, xp: 0 }
     });

@@ -1,6 +1,6 @@
-import type { PxTransform, PxVec3 } from '../types/physx'
+import type { PxTransform, PxVec3 } from '../types/physics'
 import type PhysX from '@hyperscape/physx-js-webidl'
-import * as THREE from './three'
+import THREE from './three'
 import { setTransformPosition, vector3ToPxVec3 } from '../physics/vector-conversions'
 
 /**

@@ -76,25 +76,27 @@ export abstract class SystemBase extends System {
   ): EventSubscription;
   protected subscribe<T = AnyEvent>(
     eventType: string,
-    handler: (event: SystemEvent<T>) => void | Promise<void>
+    handler: (data: T) => void | Promise<void>
   ): EventSubscription;
   protected subscribe<K extends keyof EventMap, T = AnyEvent>(
     eventType: K | string,
-    handler: ((data: EventMap[K]) => void | Promise<void>) | ((event: SystemEvent<T>) => void | Promise<void>)
+    handler: ((data: EventMap[K]) => void | Promise<void>) | ((data: T) => void | Promise<void>)
   ): EventSubscription {
-    // For strongly typed events, wrap the handler to extract data from SystemEvent
-    if (eventType in EventType) {
-      const typedHandler = handler as (data: EventMap[K]) => void | Promise<void>;
-      const wrappedHandler = (event: SystemEvent<EventMap[K]>) => typedHandler(event.data);
-      const subscription = this.eventBus.subscribe(eventType as string, wrappedHandler as (event: SystemEvent<AnyEvent>) => void | Promise<void>);
-      this.eventSubscriptions.add(subscription);
-      return subscription;
-    } else {
-      // Fallback to legacy behavior for non-typed events
-      const subscription = this.eventBus.subscribe(eventType as string, handler as (event: SystemEvent<AnyEvent>) => void | Promise<void>);
+    const isTypedEvent = Object.values(EventType).includes(eventType as EventType);
+    if (isTypedEvent) {
+      // For known events, deliver handler the payload directly
+      const subscription = this.eventBus.subscribe(eventType as string, (event: SystemEvent<AnyEvent>) => {
+        (handler as (data: AnyEvent) => void | Promise<void>)(event.data);
+      });
       this.eventSubscriptions.add(subscription);
       return subscription;
     }
+    // Fallback for custom string events: pass payload directly as well
+    const subscription = this.eventBus.subscribe(eventType as string, (event: SystemEvent<AnyEvent>) => {
+      (handler as (data: AnyEvent) => void | Promise<void>)(event.data);
+    });
+    this.eventSubscriptions.add(subscription);
+    return subscription;
   }
 
   /**
@@ -106,25 +108,25 @@ export abstract class SystemBase extends System {
   ): EventSubscription;
   protected subscribeOnce<T = AnyEvent>(
     eventType: string,
-    handler: (event: SystemEvent<T>) => void | Promise<void>
+    handler: (data: T) => void | Promise<void>
   ): EventSubscription;
   protected subscribeOnce<K extends keyof EventMap, T = AnyEvent>(
     eventType: K | string,
-    handler: ((data: EventMap[K]) => void | Promise<void>) | ((event: SystemEvent<T>) => void | Promise<void>)
+    handler: ((data: EventMap[K]) => void | Promise<void>) | ((data: T) => void | Promise<void>)
   ): EventSubscription {
-    // For strongly typed events, wrap the handler to extract data from SystemEvent
-    if (eventType in EventType) {
-      const typedHandler = handler as (data: EventMap[K]) => void | Promise<void>;
-      const wrappedHandler = (event: SystemEvent<EventMap[K]>) => typedHandler(event.data);
-      const subscription = this.eventBus.subscribeOnce(eventType as string, wrappedHandler as (event: SystemEvent<AnyEvent>) => void | Promise<void>);
-      this.eventSubscriptions.add(subscription);
-      return subscription;
-    } else {
-      // Fallback to legacy behavior for non-typed events
-      const subscription = this.eventBus.subscribeOnce(eventType as string, handler as (event: SystemEvent<AnyEvent>) => void | Promise<void>);
+    const isTypedEvent = Object.values(EventType).includes(eventType as EventType);
+    if (isTypedEvent) {
+      const subscription = this.eventBus.subscribeOnce(eventType as string, (event: SystemEvent<AnyEvent>) => {
+        (handler as (data: AnyEvent) => void | Promise<void>)(event.data);
+      });
       this.eventSubscriptions.add(subscription);
       return subscription;
     }
+    const subscription = this.eventBus.subscribeOnce(eventType as string, (event: SystemEvent<AnyEvent>) => {
+      (handler as (data: AnyEvent) => void | Promise<void>)(event.data);
+    });
+    this.eventSubscriptions.add(subscription);
+    return subscription;
   }
 
   /**
@@ -132,8 +134,8 @@ export abstract class SystemBase extends System {
    */
   protected emitTypedEvent<K extends keyof EventMap>(eventType: K, data: EventMap[K]): void;
   protected emitTypedEvent(eventType: string, data: AnyEvent): void;
-  protected emitTypedEvent<K extends keyof EventMap>(eventType: K | string, data: EventMap[K] | AnyEvent): void {
-    this.eventBus.emitEvent(eventType as string, data as AnyEvent, this.systemName);
+  protected emitTypedEvent(eventType: string, data: AnyEvent): void {
+    this.eventBus.emitEvent(eventType, data, this.systemName);
   }
 
   /**
@@ -187,7 +189,7 @@ export abstract class SystemBase extends System {
     // Default: do nothing
   }
 
-  preFixedUpdate(): void {
+  preFixedUpdate(_willFixedStep: boolean): void {
     // Default: do nothing
   }
 
@@ -195,11 +197,11 @@ export abstract class SystemBase extends System {
     // Default: do nothing
   }
 
-  postFixedUpdate(): void {
+  postFixedUpdate(_dt: number): void {
     // Default: do nothing
   }
 
-  preUpdate(): void {
+  preUpdate(_alpha: number): void {
     // Default: do nothing
   }
 
@@ -207,15 +209,15 @@ export abstract class SystemBase extends System {
     // Default: do nothing
   }
 
-  postUpdate(): void {
+  postUpdate(_dt: number): void {
     // Default: do nothing
   }
 
-  lateUpdate(): void {
+  lateUpdate(_dt: number): void {
     // Default: do nothing
   }
 
-  postLateUpdate(): void {
+  postLateUpdate(_dt: number): void {
     // Default: do nothing
   }
 

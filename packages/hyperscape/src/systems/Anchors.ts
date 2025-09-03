@@ -1,5 +1,5 @@
 import type { World } from '../World'
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 import { System } from './System'
 
 /**

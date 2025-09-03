@@ -55,7 +55,7 @@ export class FishingTestSystem extends VisualTestFramework {
     this.xpSystem = xpSystem;
     
     // Listen for resource gathering responses
-    this.world.on(EventType.UI_MESSAGE, (data: UIMessageEvent) => {
+    this.subscribe(EventType.UI_MESSAGE, (data: UIMessageEvent) => {
       if (data.message && data.message.includes('fishing') && data.playerId) {
         const testStations = Array.from(this.testData.entries());
         for (const [stationId, testData] of testStations) {
@@ -689,7 +689,7 @@ export class FishingTestSystem extends VisualTestFramework {
     }
 
     // Listen for failure messages
-    const messageHandler = (data: { playerId: string; message: string; type: 'info' | 'success' | 'error' | 'warning' }) => {
+    const messageSub = this.subscribe(EventType.UI_MESSAGE, (data: { playerId: string; message: string; type: 'info' | 'success' | 'error' | 'warning' }) => {
       if (data.playerId === testData.player.id) {
         Logger.system('FishingTestSystem', `Received message for failure test: ${data.message}`);
         
@@ -699,7 +699,7 @@ export class FishingTestSystem extends VisualTestFramework {
             (failureType === 'too_far' && (messageLower.includes('too far') || messageLower.includes('distance') || messageLower.includes('closer'))) ||
             (failureType === 'inventory_full' && (messageLower.includes('inventory') || messageLower.includes('full') || messageLower.includes('space')))) {
           
-          this.world.off(EventType.UI_MESSAGE, messageHandler);
+          messageSub.unsubscribe();
           
           // Test passed - got expected failure message
           this.passTest(stationId, {
@@ -713,9 +713,7 @@ export class FishingTestSystem extends VisualTestFramework {
           });
         }
       }
-    };
-
-    this.world.on(EventType.UI_MESSAGE, messageHandler);
+    });
 
     // Attempt fishing - should fail
     setTimeout(() => {
@@ -727,7 +725,7 @@ export class FishingTestSystem extends VisualTestFramework {
 
       // Timeout fallback - if no message received, check if no fish was caught
       setTimeout(() => {
-        this.world.off(EventType.UI_MESSAGE, messageHandler);
+        messageSub.unsubscribe();
         
         // If we haven't passed or failed yet, check fish count
         const station = this.testStations.get(stationId);

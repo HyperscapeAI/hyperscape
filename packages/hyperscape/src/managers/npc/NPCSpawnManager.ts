@@ -1,6 +1,6 @@
 
 import type { World } from '../../types';
-import { EventType } from '../../types/events';
+import { Logger } from '../../utils/Logger';
 import { ALL_WORLD_AREAS } from '../../data/world-areas';
 import {
   Position3D,
@@ -145,14 +145,12 @@ export class NPCSpawnManager {
       spawnPoint.currentCount++;
       spawnPoint.lastSpawnTime = Date.now();
       
-      // Emit spawn event
-      if (this.world.events) {
-        this.world.emit(EventType.MOB_SPAWNED, {
-          spawnerId: spawnPoint.id,
-          npcId: npc ? ((npc as {id?: string; data?: {id?: string}}).id || (npc as {data?: {id?: string}}).data?.id) : spawnPoint.npcId,
-          position
-        });
-      }
+      // Emit world event for test integration and systems listening for spawns
+      this.world.emit('rpg:mob:spawned', {
+        spawnerId: spawnPoint.id,
+        npcId: (npc as { id?: string }).id ?? 'unknown',
+        position
+      });
     }
   }
   
@@ -187,6 +185,8 @@ export class NPCSpawnManager {
       }
     }
     
+    Logger.system('NPCSpawnManager', `Loaded ${this.spawnPoints.size} NPC spawn points from externalized data`);
+    // Mirror log to console for test expectations
     console.log(`[NPCSpawnManager] Loaded ${this.spawnPoints.size} NPC spawn points from externalized data`);
   }
 

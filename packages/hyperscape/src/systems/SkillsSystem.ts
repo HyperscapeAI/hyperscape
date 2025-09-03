@@ -48,10 +48,9 @@ export class SkillsSystem extends SystemBase {
 
   async init(): Promise<void> {
     // Subscribe to skill events using type-safe event system
-    this.subscribe<{ attackerId: string; targetId: string; damageDealt: number; attackStyle: string }>(EventType.COMBAT_KILL, (event) => this.handleCombatKill(event.data));
-    this.subscribe<{ entityId: string; skill: keyof Skills; xp: number }>(EventType.SKILLS_ACTION, (event) => this.handleSkillAction(event.data));
-    this.world.on(EventType.QUEST_COMPLETED, (...args: unknown[]) => {
-      const data = args[0] as { playerId: string; questId: string; rewards: { xp?: Record<keyof Skills, number> } };
+    this.subscribe<{ attackerId: string; targetId: string; damageDealt: number; attackStyle: string }>(EventType.COMBAT_KILL, (data) => this.handleCombatKill(data));
+    this.subscribe<{ entityId: string; skill: keyof Skills; xp: number }>(EventType.SKILLS_ACTION, (data) => this.handleSkillAction(data));
+    this.subscribe(EventType.QUEST_COMPLETED, (data: { playerId: string; questId: string; rewards: { xp?: Record<keyof Skills, number> } }) => {
       this.handleQuestComplete(data);
     });
   }
@@ -404,9 +403,9 @@ export class SkillsSystem extends SystemBase {
     if (skill === Skill.CONSTITUTION) {
       // Update hitpoints max
       const newMax = this.calculateMaxHitpoints(newLevel);
-      stats.maxHealth = newMax;
+      stats.health.max = newMax;
       // If current HP is higher than new max, cap it
-      stats.health = newMax;
+      stats.health.current = Math.min(stats.health.current, newMax);
     }
 
     // Special handling for Prayer level up - skipping for MVP
@@ -480,7 +479,7 @@ export class SkillsSystem extends SystemBase {
     if (!targetStats) return;
 
     // Calculate XP based on target's hitpoints
-    const baseXP = (targetStats.maxHealth ?? 10) * 4; // 4 XP per hitpoint
+    const baseXP = (targetStats.health?.max ?? 10) * 4; // 4 XP per hitpoint
     
     // Grant XP based on attack style
     switch (attackStyle) {

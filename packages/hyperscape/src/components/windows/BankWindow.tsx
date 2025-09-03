@@ -3,9 +3,9 @@ import { useEffect, useState } from 'react'
 import { DraggableWindow } from '../../client/components/DraggableWindow'
 import { BankingSystem } from '../../systems/BankingSystem'
 import { InventorySystem } from '../../systems/InventorySystem'
-import type { BankData, BankItem, InventorySlotItem, Item } from '../../types/core'
+import type { BankItem, InventorySlotItem, Item } from '../../types/core'
 import { EventType } from '../../types/events'
-import type { BankWindowProps } from '../../types/ui-component-types'
+import type { BankWindowProps } from '../../types/ui-types'
 // Using emojis for icons to avoid lucide-react version issues
 
 export function BankWindow({ world, visible, onClose, bankId = 'bank_town_0' }: BankWindowProps) {
@@ -38,15 +38,10 @@ export function BankWindow({ world, visible, onClose, bankId = 'bank_town_0' }: 
       // Access bank data - these are private properties accessed for UI display
       // Using explicit type assertion since these systems manage their own state internally
       
-      // Get bank data - accessing private property for UI display
-      try {
-        const playerBanks = (bankingSystem as unknown as { playerBanks: Map<string, Map<string, BankData>> }).playerBanks
-        const bankData = playerBanks?.get(playerId)?.get(bankId)
-        if (bankData) {
-          setBankItems(bankData.items || [])
-        }
-      } catch (error) {
-        console.warn('Failed to get bank data:', error)
+      // Get bank data via public API
+      const bankData = bankingSystem.getBankData(playerId, bankId)
+      if (bankData) {
+        setBankItems(bankData.items || [])
       }
 
       // Get inventory data using public methods  

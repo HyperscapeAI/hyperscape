@@ -1,6 +1,6 @@
 import type { GeometryCacheItem as CacheItem, GeometryPhysXMesh as PhysXMesh } from '../types/physics';
 import { World } from '../World';
-import * as THREE from './three';
+import THREE from './three';
 
 // Global PHYSX declaration with proper typing
 declare const PHYSX: {

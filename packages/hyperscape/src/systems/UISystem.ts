@@ -29,38 +29,75 @@ export class UISystem extends SystemBase {
   async init(): Promise<void> {
     
     // Set up type-safe event subscriptions for UI updates
-    this.subscribe<{ playerId: string; player: Player }>(EventType.PLAYER_UPDATED, (event) => {
-      this.updatePlayerUI(event.data);
+    this.subscribe(EventType.PLAYER_UPDATED, (data) => {
+      // Convert the playerData to Player format
+      if (data.playerData) {
+        const player = {
+          id: data.playerData.id,
+          name: data.playerData.name,
+          level: data.playerData.level,
+          health: { current: data.playerData.health, max: data.playerData.maxHealth },
+          combat: { combatLevel: data.playerData.level },
+          position: data.playerData.position || { x: 0, y: 0, z: 0 },
+          alive: data.playerData.alive
+        } as unknown as Player;
+        this.updatePlayerUI({ playerId: data.playerId, player });
+      }
     });
-    this.subscribe<{ playerId: string; health: number; maxHealth: number }>(EventType.PLAYER_HEALTH_UPDATED, (event) => {
-      this.updateHealthUI(event.data);
+    this.subscribe(EventType.PLAYER_HEALTH_UPDATED, (data) => {
+      this.updateHealthUI(data);
     });
-    this.subscribe<{ playerId: string; skills: SkillsData }>(EventType.PLAYER_SKILLS_UPDATED, (event) => {
-      this.updateSkillsUI(event.data);
+    this.subscribe(EventType.PLAYER_SKILLS_UPDATED, (data) => {
+      this.updateSkillsUI(data);
     });
-    this.subscribe<{ playerId: string; items: unknown[] }>(EventType.INVENTORY_UPDATED, (event) => {
-      const inventoryData = { playerId: event.data.playerId, inventory: { items: event.data.items } as InventoryData };
+    this.subscribe(EventType.INVENTORY_UPDATED, (data) => {
+      const inventoryData = { 
+        playerId: data.playerId, 
+        inventory: { 
+          items: data.items,
+          coins: 0,  // Default value since it's not in the event payload
+          maxSlots: 28  // Default inventory size
+        } as unknown as InventoryData 
+      };
       this.updateInventoryUI(inventoryData);
     });
-    this.subscribe<{ playerId: string; equipment: EquipmentData }>(EventType.PLAYER_EQUIPMENT_UPDATED, (event) => {
-      this.updateEquipmentUI(event.data);
+    this.subscribe(EventType.PLAYER_EQUIPMENT_UPDATED, (data) => {
+      // Convert Record<string, string | null> to EquipmentData
+      // The events provide item IDs as strings, but UI expects full item objects
+      const equipmentData = {
+        weapon: data.equipment['weapon'] ? { itemId: data.equipment['weapon'], name: 'Unknown', stats: { attack: 0, defense: 0, strength: 0 } } : null,
+        shield: data.equipment['shield'] ? { itemId: data.equipment['shield'], name: 'Unknown', stats: { attack: 0, defense: 0, strength: 0 } } : null,
+        helmet: data.equipment['helmet'] ? { itemId: data.equipment['helmet'], name: 'Unknown', stats: { attack: 0, defense: 0, strength: 0 } } : null,
+        body: data.equipment['body'] ? { itemId: data.equipment['body'], name: 'Unknown', stats: { attack: 0, defense: 0, strength: 0 } } : null,
+        legs: data.equipment['legs'] ? { itemId: data.equipment['legs'], name: 'Unknown', stats: { attack: 0, defense: 0, strength: 0 } } : null,
+        boots: data.equipment['boots'] ? { itemId: data.equipment['boots'], name: 'Unknown', stats: { attack: 0, defense: 0, strength: 0 } } : null,
+        arrows: data.equipment['arrows'] ? { itemId: data.equipment['arrows'], name: 'Unknown', stats: { attack: 0, defense: 0, strength: 0 } } : null
+      } as unknown as EquipmentData;
+      this.updateEquipmentUI({ playerId: data.playerId, equipment: equipmentData });
     });
-    this.subscribe<{ sessionId: string; attackerId: string; targetId: string }>(EventType.COMBAT_STARTED, (event) => {
-      this.updateCombatUI({ attackerId: event.data.attackerId, targetId: event.data.targetId });
+    this.subscribe(EventType.COMBAT_STARTED, (data) => {
+      this.updateCombatUI({ attackerId: data.attackerId, targetId: data.targetId });
     });
-    this.subscribe<{ sessionId: string; winnerId?: string }>(EventType.COMBAT_ENDED, (event) => {
-      this.updateCombatUI({ attackerId: event.data.winnerId });
+    this.subscribe(EventType.COMBAT_ENDED, (data) => {
+      this.updateCombatUI({ attackerId: data.winnerId || undefined });
     });
-    this.subscribe<{ playerId: string }>(EventType.PLAYER_REGISTERED, (event) => {
-      const mockPlayer = { id: event.data.playerId } as Player;
+    this.subscribe(EventType.PLAYER_REGISTERED, (data) => {
+      const mockPlayer = { id: data.playerId } as Player;
       this.initializePlayerUI(mockPlayer);
     });
-    this.subscribe<{ playerId: string }>(EventType.PLAYER_UNREGISTERED, (event) => {
-      this.cleanupPlayerUI(event.data.playerId);
+    this.subscribe(EventType.PLAYER_UNREGISTERED, (data) => {
+      this.cleanupPlayerUI(data.playerId);
     });
     
-    this.subscribe<UIRequestData>(EventType.UI_REQUEST, (event) => {
-      this.handleUIRequest(event.data);
+    this.subscribe(EventType.UI_REQUEST, (data) => {
+      // Create a UIRequestData object with default values
+      const requestData: UIRequestData = {
+        playerId: data.playerId,
+        requestType: 'update',  // Default request type
+        data: {},  // Empty data object
+        uiType: 'inventory'  // Default to inventory UI type
+      };
+      this.handleUIRequest(requestData);
     });
     
   }

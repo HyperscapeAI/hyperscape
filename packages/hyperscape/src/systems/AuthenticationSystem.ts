@@ -34,9 +34,10 @@ export class AuthenticationSystem extends SystemBase {
     this.databaseSystem = getSystem(this.world, 'rpg-database') as import('./DatabaseSystem').DatabaseSystem;
     
     // Set up type-safe event subscriptions for authentication (3 listeners!)
-    this.subscribe<{ playerId: string; hyperscapeUserId: string; hyperscapeJwtToken: string; clientToken: string; machineId: string }>(EventType.PLAYER_AUTHENTICATED, (event) => this.handlePlayerAuthentication(event.data));
-    this.subscribe<{ playerId: string }>(EventType.PLAYER_LOGOUT, (event) => this.handlePlayerLogout(event.data));
-    this.subscribe<{ playerId: string; clientToken: string }>(EventType.PLAYER_RECONNECTED, (event) => this.handlePlayerReconnection(event.data));
+    // Consume PLAYER_AUTHENTICATED as a request and emit a different event on success to avoid recursion
+    this.subscribe<{ playerId: string; hyperscapeUserId: string; hyperscapeJwtToken: string; clientToken: string; machineId: string }>(EventType.PLAYER_AUTHENTICATED, (data) => this.handlePlayerAuthentication(data));
+    this.subscribe<{ playerId: string }>(EventType.PLAYER_LOGOUT, (data) => this.handlePlayerLogout(data));
+    this.subscribe<{ playerId: string; clientToken: string }>(EventType.PLAYER_RECONNECTED, (data) => this.handlePlayerReconnection(data));
     
   }
 
@@ -280,8 +281,8 @@ export class AuthenticationSystem extends SystemBase {
       data.machineId
     );
     
-    // Emit authentication result
-    this.emitTypedEvent(EventType.PLAYER_AUTHENTICATED, {
+    // Emit session start to signal downstream systems without re-triggering authentication handler
+    this.emitTypedEvent(EventType.PLAYER_SESSION_STARTED, {
       playerId: data.playerId,
       result
     });
@@ -313,7 +314,8 @@ export class AuthenticationSystem extends SystemBase {
     
     const result = await this.authenticateWithClientToken(data.clientToken);
     
-    this.emitTypedEvent(EventType.PLAYER_RECONNECTED, {
+    // Signal session activity rather than re-emitting the request event
+    this.emitTypedEvent(EventType.PLAYER_SESSION_STARTED, {
       playerId: data.playerId,
       result
     });

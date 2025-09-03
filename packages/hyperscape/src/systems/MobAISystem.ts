@@ -4,17 +4,18 @@
  * Handles mob artificial intelligence, spawning, and combat behavior
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
+import type { CombatTarget, MobAIStateData, MobAIStateType, Player } from '../types/core';
+import * as Payloads from '../types/event-payloads';
 import { EventType } from '../types/events';
 import type { World } from '../types/index';
-import type { CombatTarget, MobAIStateData, Player, MobAIStateType } from '../types/core';
 
-import type { MobData } from '../types/core';
 import { MobEntity } from '../entities/MobEntity';
+import type { MobData } from '../types/core';
 import { MobType } from '../types/entities';
 import type { MobAISystemInfo as SystemInfo } from '../types/system-types';
-import type { PlayerSystem } from './PlayerSystem';
 import { Logger } from '../utils/Logger';
+import type { PlayerSystem } from './PlayerSystem';
 import { SystemBase } from './SystemBase';
 
 // Type for mobs that may come from different sources
@@ -51,18 +52,20 @@ export class MobAISystem extends SystemBase {
     this.playerSystem = this.world.getSystem('rpg-player') as PlayerSystem | undefined;
     
     // Subscribe to mob-related events using type-safe event system
-    this.subscribe<{ id: string; type: string; level: number; position: { x: number; y: number; z: number } }>(EventType.MOB_SPAWNED, (event) => this.handleMobSpawned(event.data));
-    this.subscribe<{ mobId: string; damage: number; attackerId: string }>(EventType.MOB_DAMAGED, (event) => this.handleMobDamaged(event.data));
-    this.subscribe<{ mobId: string; killerId: string }>(EventType.MOB_DIED, (event) => this.handleMobKilled(event.data));
-    this.subscribe<{ playerId: string; targetId: string; damage: number }>(EventType.COMBAT_ATTACK, (event) => this.handlePlayerAttack(event.data));
+    this.subscribe(EventType.MOB_SPAWNED, (data) => this.handleMobSpawned(data));
+    // MOB_DAMAGED is now in EventMap, so it receives just the data
+    this.subscribe(EventType.MOB_DAMAGED, (data) => this.handleMobDamaged(data));
+    // MOB_DIED is in EventMap, so it receives just the data
+    this.subscribe(EventType.MOB_DIED, (data) => this.handleMobKilled(data));
+    this.subscribe(EventType.COMBAT_ATTACK, (data) => this.handleCombatAttack(data));
   }
 
   /**
    * Handle mob spawning
    */
-  private handleMobSpawned(data: { id: string; type: string; level: number; position: { x: number; y: number; z: number } }): void {
+  private handleMobSpawned(data: { mobId: string; mobType: string; position: { x: number; y: number; z: number } }): void {
     // Handle the actual event structure from MobSystem
-    const mobId = data.id;
+    const mobId = data.mobId;
     
     // Defer the processing to allow EntityManager to create the entity first
     setTimeout(() => {
@@ -160,7 +163,7 @@ export class MobAISystem extends SystemBase {
       }
       
       // Emit damage event for visual feedback
-      this.world.emit(EventType.COMBAT_DAMAGE_DEALT, {
+      this.emitTypedEvent(EventType.COMBAT_DAMAGE_DEALT, {
         targetId: mobId,
         damage,
         position: this.getMobHomePosition(mob)
@@ -185,7 +188,7 @@ export class MobAISystem extends SystemBase {
   /**
    * Handle mob death
    */
-  private handleMobKilled(data: { mobId: string, killerId: string }): void {
+  private handleMobKilled(data: Payloads.MobDiedPayload): void {
     const { mobId, killerId } = data;
     const mob = this.activeMobs.get(mobId);
     const aiState = this.mobStates.get(mobId);
@@ -196,14 +199,20 @@ export class MobAISystem extends SystemBase {
   }
 
   /**
-   * Handle player attacking
+   * Handle combat attack events
    */
-  private handlePlayerAttack(data: { playerId: string, targetId: string, damage: number }): void {
-    const { playerId, targetId, damage } = data;
+  private handleCombatAttack(data: { attackerId: string; targetId: string; attackType: 'melee' | 'ranged' | 'magic' }): void {
+    const { attackerId, targetId } = data;
     
-    // If target is a mob, handle damage
+    // If target is a mob, make it aware of the attacker
     if (this.activeMobs.has(targetId)) {
-      this.handleMobDamaged({ mobId: targetId, damage, attackerId: playerId });
+      const aiState = this.mobStates.get(targetId);
+      if (aiState && aiState.state !== 'combat' && aiState.state !== 'chase') {
+        // Set the attacker as the mob's target
+        aiState.targetId = attackerId;
+        aiState.state = 'chase';
+        Logger.debug('MobAISystem', { message: `Mob ${targetId} is now targeting attacker ${attackerId}` });
+      }
     }
   }
 

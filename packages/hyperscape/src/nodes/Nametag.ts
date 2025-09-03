@@ -2,7 +2,7 @@
 import type { Nametags as NametagsSystem } from '../systems/Nametags'
 import type { NametagData } from '../types/nodes'
 import { Node } from './Node'
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 
 const defaults = {
   label: '...',

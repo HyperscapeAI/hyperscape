@@ -3,17 +3,11 @@
  * Stores combat-related data for entities that can participate in combat
  */
 
-import { Component } from './Component';
 import type { Entity } from '../entities/Entity';
+import type { CombatComponentData } from '../types/components';
+import { Component } from './Component';
 
-export interface CombatComponentData {
-  isInCombat?: boolean;
-  target?: string | null;
-  lastAttackTime?: number;
-  attackCooldown?: number;
-  damage?: number;
-  range?: number;
-}
+// Type moved to shared types/components.ts
 
 export class CombatComponent extends Component {
   public isInCombat: boolean = false;

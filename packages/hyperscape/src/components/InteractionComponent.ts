@@ -4,22 +4,10 @@
  */
 
 import { Component } from './Component';
+import type { InteractionComponentData } from '../types/components'
 import type { Entity } from '../entities/Entity';
 
-export interface InteractionComponentData {
-  type?: string;
-  interactable?: boolean;
-  distance?: number;
-  prompt?: string;
-  description?: string;
-  cooldown?: number;
-  lastInteractionTime?: number;
-  usesRemaining?: number;
-  maxUses?: number;
-  requiredItem?: string | null;
-  consumesItem?: boolean;
-  effect?: string | null;
-}
+// Type moved to shared types/components.ts
 
 export class InteractionComponent extends Component {
   constructor(entity: Entity, data?: InteractionComponentData) {

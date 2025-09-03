@@ -262,6 +262,29 @@ export interface PlayerSessionRow {
   lastActivity: number;
 }
 
+// Client token/session types for client identity
+export interface ClientPlayerToken {
+  playerId: string;
+  tokenSecret: string;
+  playerName: string;
+  createdAt: Date;
+  lastSeen: Date;
+  sessionId: string;
+  machineId: string;
+  clientVersion: string;
+  hyperscapeUserId: string;
+  hyperscapeLinked: boolean;
+  persistenceVersion: number;
+}
+
+export interface PlayerSession {
+  sessionId: string;
+  playerId: string;
+  startTime: Date;
+  lastActivity: Date;
+  isActive: boolean;
+}
+
 // Database migration interfaces
 export interface PluginMigration {
   name: string;

@@ -1,5 +1,5 @@
 import { clamp, hasRole } from '../utils';
-import * as THREE from './three';
+import THREE from './three';
 import { PlayerLocal } from '../entities/PlayerLocal';
 import type { PlayerRemote } from '../entities/PlayerRemote';
 import type { World } from '../World';
@@ -45,10 +45,10 @@ export function createPlayerProxy(_entity: unknown, player: PlayerLocal | Player
       return node.quaternion.clone()
     },
     get height() {
-      return player.avatar?.getHeight()
+      return player.avatar?.getHeight?.() || 1.8
     },
     get headToHeight() {
-      return player.avatar?.getHeadToHeight()
+      return player.avatar?.getHeadToHeight?.() || 1.6
     },
     get destroyed() {
       return !!player.destroyed
@@ -68,7 +68,7 @@ export function createPlayerProxy(_entity: unknown, player: PlayerLocal | Player
       }
     },
     getBoneTransform(boneName: string) {
-      return player.avatar?.getBoneTransform(boneName)
+      return player.avatar?.getBoneTransform?.(boneName) || null
     },
     setSessionAvatar(url: string) {
       if (!world.network) return
@@ -128,7 +128,9 @@ export function createPlayerProxy(_entity: unknown, player: PlayerLocal | Player
         },
       }
       activeEffectConfig = config
-      player.setEffect(effect as unknown as string, config.onEnd)
+      // The player API expects a string effect token; provide emote if present
+      const token = effect.emote ?? ''
+      player.setEffect(token, config.onEnd)
       if (world.network.isServer) {
         world.network.send('entityModified', { id: player.data.id, ef: effect })
       }

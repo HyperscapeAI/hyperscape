@@ -128,8 +128,7 @@ function createMockStatsComponent(overrides: Partial<StatsComponent> = {}): Stat
   return {
     combatLevel: 70,
     level: 70,
-    health: 99,
-    maxHealth: 99,
+    health: { current: 99, max: 99 },
     attack: createMockSkillData(60),
     strength: createMockSkillData(65),
     defense: createMockSkillData(45),
@@ -350,56 +349,55 @@ describe('HitCalculator', () => {
     })
 
     it('should calculate defense bonuses correctly', () => {
-      const mockStats = {
+      const mockStats = createMockStatsComponent({
         attack: { level: 40, xp: 1600 },
         ranged: { level: 30, xp: 900 },
         magic: { level: 25, xp: 625 },
         strength: { level: 40, xp: 1600 },
         defense: { level: 55, xp: 3025 },
-        health: 99,
-        maxHealth: 99,
+        health: { current: 99, max: 99 },
         combatLevel: 50,
         equipment: {
           helmet: { id: 'bronze_helmet', name: 'Bronze helmet', slot: EquipmentSlotName.HELMET, itemId: 'bronze_helmet', item: null },
           shield: { id: 'bronze_shield', name: 'Bronze shield', slot: EquipmentSlotName.SHIELD, itemId: 'bronze_shield', item: null }
         } as EquipmentComponent,
         activePrayers: {
-        protectFromMelee: false,
-        protectFromRanged: false,
-        protectFromMagic: false,
-        piety: false,
-        chivalry: false,
-        ultimateStrength: false,
-        superhumanStrength: false,
-        burstOfStrength: false,
-        rigour: false,
-        eagleEye: false,
-        hawkEye: false,
-        sharpEye: false,
-        augury: false,
-        mysticMight: false,
-        mysticLore: false,
-        mysticWill: false
-      }
-      }
+          protectFromMelee: false,
+          protectFromRanged: false,
+          protectFromMagic: false,
+          piety: false,
+          chivalry: false,
+          ultimateStrength: false,
+          superhumanStrength: false,
+          burstOfStrength: false,
+          rigour: false,
+          eagleEye: false,
+          hawkEye: false,
+          sharpEye: false,
+          augury: false,
+          mysticMight: false,
+          mysticLore: false,
+          mysticWill: false
+        }
+      })
 
       // Test through calculateDefenseRoll to verify bonus application
-      const defenseRoll = hitCalculator.calculateDefenseRoll(mockStats as StatsComponent, 'melee' as AttackType)
+      const defenseRoll = hitCalculator.calculateDefenseRoll(mockStats, 'melee' as AttackType)
       expect(defenseRoll).toBeGreaterThan(0)
     })
   })
 
   describe('edge cases', () => {
     it('should handle stats with missing skills', () => {
-      const incompleteStats = {
+      const incompleteStats = createMockStatsComponent({
         attack: { level: 1, xp: 0 },
         ranged: { level: 1, xp: 0 },
         magic: { level: 1, xp: 0 },
         strength: { level: 1, xp: 0 },
         defense: { level: 1, xp: 0 },
-        health: 10,
-        maxHealth: 10,
+        health: { current: 10, max: 10 },
         combatLevel: 3,
+        level: 3,
         equipment: {
           weapon: null,
           shield: null,
@@ -413,42 +411,42 @@ describe('HitCalculator', () => {
           ring: null
         },
         activePrayers: {
-        protectFromMelee: false,
-        protectFromRanged: false,
-        protectFromMagic: false,
-        piety: false,
-        chivalry: false,
-        ultimateStrength: false,
-        superhumanStrength: false,
-        burstOfStrength: false,
-        rigour: false,
-        eagleEye: false,
-        hawkEye: false,
-        sharpEye: false,
-        augury: false,
-        mysticMight: false,
-        mysticLore: false,
-        mysticWill: false
-      }
-      }
+          protectFromMelee: false,
+          protectFromRanged: false,
+          protectFromMagic: false,
+          piety: false,
+          chivalry: false,
+          ultimateStrength: false,
+          superhumanStrength: false,
+          burstOfStrength: false,
+          rigour: false,
+          eagleEye: false,
+          hawkEye: false,
+          sharpEye: false,
+          augury: false,
+          mysticMight: false,
+          mysticLore: false,
+          mysticWill: false
+        }
+      })
 
-      const attackRoll = hitCalculator.calculateAttackRoll(incompleteStats as StatsComponent, 'accurate' as CombatStyle, 'melee' as AttackType)
-      const defenseRoll = hitCalculator.calculateDefenseRoll(incompleteStats as StatsComponent, 'melee' as AttackType)
+      const attackRoll = hitCalculator.calculateAttackRoll(incompleteStats, 'accurate' as CombatStyle, 'melee' as AttackType)
+      const defenseRoll = hitCalculator.calculateDefenseRoll(incompleteStats, 'melee' as AttackType)
 
       expect(attackRoll).toBeGreaterThan(0)
       expect(defenseRoll).toBeGreaterThan(0)
     })
 
     it('should handle stats with no equipment', () => {
-      const statsWithoutEquipment = {
+      const statsWithoutEquipment = createMockStatsComponent({
         attack: { level: 50, xp: 2500 },
         ranged: { level: 40, xp: 1600 },
         magic: { level: 30, xp: 900 },
         strength: { level: 45, xp: 2025 },
         defense: { level: 35, xp: 1225 },
-        health: 99,
-        maxHealth: 99,
+        health: { current: 99, max: 99 },
         combatLevel: 60,
+        level: 60,
         equipment: {
           weapon: null,
           shield: null,
@@ -462,39 +460,39 @@ describe('HitCalculator', () => {
           ring: null
         },
         activePrayers: {
-        protectFromMelee: false,
-        protectFromRanged: false,
-        protectFromMagic: false,
-        piety: false,
-        chivalry: false,
-        ultimateStrength: false,
-        superhumanStrength: false,
-        burstOfStrength: false,
-        rigour: false,
-        eagleEye: false,
-        hawkEye: false,
-        sharpEye: false,
-        augury: false,
-        mysticMight: false,
-        mysticLore: false,
-        mysticWill: false
-      }
-      }
+          protectFromMelee: false,
+          protectFromRanged: false,
+          protectFromMagic: false,
+          piety: false,
+          chivalry: false,
+          ultimateStrength: false,
+          superhumanStrength: false,
+          burstOfStrength: false,
+          rigour: false,
+          eagleEye: false,
+          hawkEye: false,
+          sharpEye: false,
+          augury: false,
+          mysticMight: false,
+          mysticLore: false,
+          mysticWill: false
+        }
+      })
 
-      const attackRoll = hitCalculator.calculateAttackRoll(statsWithoutEquipment as StatsComponent, 'accurate' as CombatStyle, 'melee' as AttackType)
-      const defenseRoll = hitCalculator.calculateDefenseRoll(statsWithoutEquipment as StatsComponent, 'melee' as AttackType)
+      const attackRoll = hitCalculator.calculateAttackRoll(statsWithoutEquipment, 'accurate' as CombatStyle, 'melee' as AttackType)
+      const defenseRoll = hitCalculator.calculateDefenseRoll(statsWithoutEquipment, 'melee' as AttackType)
 
       expect(attackRoll).toBeGreaterThan(0)
       expect(defenseRoll).toBeGreaterThan(0)
     })
 
     it('should handle EntityCombatComponent in defense calculation', () => {
-      const mockStats = {
+      const mockStats = createMockStatsComponent({
         attack: { level: 40, xp: 1600 },
         defense: { level: 55, xp: 3025 },
-        health: 99,
-        maxHealth: 99,
+        health: { current: 99, max: 99 },
         combatLevel: 50,
+        level: 50,
         equipment: {
           weapon: null,
           shield: null,
@@ -508,24 +506,24 @@ describe('HitCalculator', () => {
           ring: null
         },
         activePrayers: {
-        protectFromMelee: false,
-        protectFromRanged: false,
-        protectFromMagic: false,
-        piety: false,
-        chivalry: false,
-        ultimateStrength: false,
-        superhumanStrength: false,
-        burstOfStrength: false,
-        rigour: false,
-        eagleEye: false,
-        hawkEye: false,
-        sharpEye: false,
-        augury: false,
-        mysticMight: false,
-        mysticLore: false,
-        mysticWill: false
-      }
-      }
+          protectFromMelee: false,
+          protectFromRanged: false,
+          protectFromMagic: false,
+          piety: false,
+          chivalry: false,
+          ultimateStrength: false,
+          superhumanStrength: false,
+          burstOfStrength: false,
+          rigour: false,
+          eagleEye: false,
+          hawkEye: false,
+          sharpEye: false,
+          augury: false,
+          mysticMight: false,
+          mysticLore: false,
+          mysticWill: false
+        }
+      })
 
       const mockCombatComponent: EntityCombatComponent = {
         level: 50,
@@ -541,20 +539,20 @@ describe('HitCalculator', () => {
         combatStyle: PlayerCombatStyle.DEFENSE
       }
 
-      const defenseRoll = hitCalculator.calculateDefenseRoll(mockStats as StatsComponent, 'melee' as AttackType, mockCombatComponent)
+      const defenseRoll = hitCalculator.calculateDefenseRoll(mockStats, 'melee' as AttackType, mockCombatComponent)
       expect(defenseRoll).toBeGreaterThan(0)
     })
 
     it('should handle extreme values gracefully', () => {
-      const extremeStats = {
+      const extremeStats = createMockStatsComponent({
         attack: { level: 99, xp: 13034431 },
         ranged: { level: 99, xp: 13034431 },
         magic: { level: 99, xp: 13034431 },
         strength: { level: 99, xp: 13034431 },
         defense: { level: 99, xp: 13034431 },
-        health: 99,
-        maxHealth: 99,
+        health: { current: 99, max: 99 },
         combatLevel: 126,
+        level: 99,
         equipment: {
           weapon: null,
           shield: null,
@@ -568,27 +566,27 @@ describe('HitCalculator', () => {
           ring: null
         },
         activePrayers: {
-        protectFromMelee: false,
-        protectFromRanged: false,
-        protectFromMagic: false,
-        piety: false,
-        chivalry: false,
-        ultimateStrength: false,
-        superhumanStrength: false,
-        burstOfStrength: false,
-        rigour: false,
-        eagleEye: false,
-        hawkEye: false,
-        sharpEye: false,
-        augury: false,
-        mysticMight: false,
-        mysticLore: false,
-        mysticWill: false
-      }
-      }
+          protectFromMelee: false,
+          protectFromRanged: false,
+          protectFromMagic: false,
+          piety: false,
+          chivalry: false,
+          ultimateStrength: false,
+          superhumanStrength: false,
+          burstOfStrength: false,
+          rigour: false,
+          eagleEye: false,
+          hawkEye: false,
+          sharpEye: false,
+          augury: false,
+          mysticMight: false,
+          mysticLore: false,
+          mysticWill: false
+        }
+      })
 
-      const attackRoll = hitCalculator.calculateAttackRoll(extremeStats as StatsComponent, 'accurate' as CombatStyle, 'melee' as AttackType)
-      const defenseRoll = hitCalculator.calculateDefenseRoll(extremeStats as StatsComponent, 'melee' as AttackType)
+      const attackRoll = hitCalculator.calculateAttackRoll(extremeStats, 'accurate' as CombatStyle, 'melee' as AttackType)
+      const defenseRoll = hitCalculator.calculateDefenseRoll(extremeStats, 'melee' as AttackType)
       const hitChance = hitCalculator.calculateHitChance(attackRoll, defenseRoll)
 
       expect(attackRoll).toBeGreaterThan(0)

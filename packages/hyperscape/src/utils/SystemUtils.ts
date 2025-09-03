@@ -4,8 +4,8 @@
  */
 
 import type { World, System, Entity, EntityData } from '../types';
-import type * as THREE from '../extras/three';
-import type { PxTransform } from '../types/physx';
+import type THREE from '../extras/three';
+import type { PxTransform } from '../types/physics';
 
 /**
  * Type-safe system getter that replaces (world as unknown as any)['system-name']
@@ -141,7 +141,8 @@ export interface CameraSystem extends System {
 }
 
 export function getCameraSystem(world: World): CameraSystem | null {
-  return getSystem<CameraSystem>(world, 'rpg-camera') || getSystem<CameraSystem>(world, 'client-camera');
+  // Unified camera system registration key: 'client-camera-system'
+  return getSystem<CameraSystem>(world, 'client-camera-system');
 }
 
 /**

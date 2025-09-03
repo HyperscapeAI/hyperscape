@@ -68,10 +68,10 @@ export class UITestSystem extends VisualTestFramework {
     this.bankingSystem = getSystem<BankingSystem>(this.world, 'rpg-banking')!;
     
     // Listen for UI events
-    this.world.on(EventType.UI_CREATE, this.handleUICreated.bind(this));
-    this.world.on(EventType.UI_UPDATE, this.handleUIInteraction.bind(this));
-    this.world.on(EventType.UI_MESSAGE, this.handleUIError.bind(this));
-    this.world.on(EventType.CHAT_MESSAGE, this.handleChatMessage.bind(this));
+    this.subscribe(EventType.UI_CREATE, (data: { type: string; playerId: string; success: boolean; id: string }) => this.handleUICreated(data));
+    this.subscribe(EventType.UI_UPDATE, (data: { type: string; playerId: string; success: boolean; target: string }) => this.handleUIInteraction(data));
+    this.subscribe(EventType.UI_MESSAGE, (data: { playerId: string; error: string; uiType: string }) => this.handleUIError(data));
+    this.subscribe(EventType.CHAT_MESSAGE, (data: { playerId: string; message: string; timestamp: number }) => this.handleChatMessage(data));
 
     // Listen to skills updates for reactive patterns
     this.subscribe(EventType.SKILLS_UPDATED, (data) => {
@@ -307,7 +307,7 @@ export class UITestSystem extends VisualTestFramework {
       });
 
       // Cast to Player type and ensure proper structure
-      const player = createdPlayer as unknown as PlayerEntity;
+      const player = createdPlayer as PlayerEntity;
       // Remove invalid property assignments - these don't exist on Player type
       player.equipment = {
         weapon: null,
@@ -385,7 +385,7 @@ export class UITestSystem extends VisualTestFramework {
       });
 
       // Cast to Player type and ensure proper structure
-      const player = createdPlayer as unknown as PlayerEntity;
+      const player = createdPlayer as PlayerEntity;
       // Remove invalid property assignments - these don't exist on Player type
       player.equipment = {
         weapon: null,
@@ -467,9 +467,9 @@ export class UITestSystem extends VisualTestFramework {
       });
 
       // Cast to Player type and ensure proper structure
-      const player = createdPlayer as unknown as PlayerEntity;
+      const player = createdPlayer as PlayerEntity;
       // Set health using proper PlayerHealth type (using casting to avoid intersection type conflict)
-      (player as unknown as { health: PlayerHealth }).health = { current: 65, max: 100 }; // Damaged health to test display
+      (player as { health: PlayerHealth }).health = { current: 65, max: 100 }; // Damaged health to test display
       player.inventory = { items: [], capacity: 28, coins: 0 };
       player.equipment = {
         weapon: null,
@@ -530,7 +530,7 @@ export class UITestSystem extends VisualTestFramework {
       });
 
       // Cast to Player type and ensure proper structure
-      const player = createdPlayer as unknown as PlayerEntity;
+      const player = createdPlayer as PlayerEntity;
       // Remove invalid property assignments - these don't exist on Player type
       player.inventory = { items: [], capacity: 28, coins: 0 };
       player.equipment = {
@@ -599,7 +599,7 @@ export class UITestSystem extends VisualTestFramework {
       });
 
       // Cast to Player type and ensure proper structure
-      const player = createdPlayer as unknown as PlayerEntity;
+      const player = createdPlayer as PlayerEntity;
       // Remove invalid property assignments - these don't exist on Player type
       player.inventory = { items: [], capacity: 28, coins: 0 };
       player.equipment = {
@@ -661,7 +661,7 @@ export class UITestSystem extends VisualTestFramework {
       });
 
       // Cast to Player type and ensure proper structure
-      const player = createdPlayer as unknown as PlayerEntity;
+      const player = createdPlayer as PlayerEntity;
       // Remove invalid property assignments - these don't exist on Player type
       player.inventory = { items: [], capacity: 28, coins: 0 };
       player.equipment = {
@@ -723,7 +723,7 @@ export class UITestSystem extends VisualTestFramework {
       });
 
       // Cast to Player type and ensure proper structure
-      const player = createdPlayer as unknown as PlayerEntity;
+      const player = createdPlayer as PlayerEntity;
       // Remove invalid property assignments - these don't exist on Player type
       player.inventory = { items: [], capacity: 28, coins: 0 };
       player.equipment = {
@@ -785,7 +785,7 @@ export class UITestSystem extends VisualTestFramework {
       });
 
       // Cast to Player type and ensure proper structure
-      const player = createdPlayer as unknown as PlayerEntity;
+      const player = createdPlayer as PlayerEntity;
       // Remove invalid property assignments - these don't exist on Player type
       player.inventory = { items: [], capacity: 28, coins: 0 };
       player.equipment = {
@@ -1126,7 +1126,7 @@ export class UITestSystem extends VisualTestFramework {
 
 
     // Simulate health change (using casting to avoid intersection type conflict)
-    (testData.player as unknown as { health: PlayerHealth }).health = { current: 85, max: testData.player.health.max };
+    (testData.player as { health: PlayerHealth }).health = { current: 85, max: testData.player.health.max };
 
     this.emitTypedEvent(EventType.UI_HEALTH_UPDATE, {
       playerId: testData.player.id,
@@ -1282,7 +1282,7 @@ export class UITestSystem extends VisualTestFramework {
       });
 
       // Cast to Player type and ensure proper structure
-      const player = createdPlayer as unknown as PlayerEntity;
+      const player = createdPlayer as PlayerEntity;
       // Remove invalid property assignments - these don't exist on Player type
       player.inventory = { items: [], capacity: 28, coins: 0 };
       player.equipment = {
@@ -1344,7 +1344,7 @@ export class UITestSystem extends VisualTestFramework {
       });
 
       // Cast to Player type and ensure proper structure
-      const player = createdPlayer as unknown as PlayerEntity;
+      const player = createdPlayer as PlayerEntity;
       // Remove invalid property assignments - these don't exist on Player type
       player.equipment = {
         weapon: null,
@@ -1429,7 +1429,7 @@ export class UITestSystem extends VisualTestFramework {
       });
 
       // Cast to Player type and ensure proper structure
-      const player = createdPlayer as unknown as PlayerEntity;
+      const player = createdPlayer as PlayerEntity;
       // Remove invalid property assignments - these don't exist on Player type
       player.inventory = { items: [], capacity: 28, coins: 0 };
       player.equipment = {

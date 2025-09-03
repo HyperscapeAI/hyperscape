@@ -3,15 +3,7 @@
  * Defines locations where treasure items spawn across different difficulty zones
  */
 
-export interface TreasureLocation {
-  id: string;
-  position: { x: number; y: number; z: number };
-  difficulty: 1 | 2 | 3;
-  areaId: string;
-  description: string;
-  respawnTime: number; // milliseconds
-  maxItems: number;
-}
+import type { TreasureLocation } from '../types/core'
 
 /**
  * Treasure spawn locations organized by difficulty level

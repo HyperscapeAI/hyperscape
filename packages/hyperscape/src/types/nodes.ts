@@ -2,11 +2,11 @@
  * Node-related type definitions
  */
 
-import type { NodeData, HotReloadable, Entity } from './index';
-import type { Node } from '../nodes/Node';
-import * as THREE from '../extras/three';
 import type * as YogaTypes from 'yoga-layout';
-import type { PxTransform, PxShape, PxRigidBodyFlagEnum } from './physx';
+import THREE from '../extras/three';
+import type { Node } from '../nodes/Node';
+import type { Entity, HotReloadable, NodeData } from './index';
+import type { ActorHandle as EngineActorHandle, PxRigidBodyFlagEnum, PxShape, PxTransform, PxVec3 } from './physics';
 
 // Custom pointer event for internal use (to avoid conflicts with browser PointerEvent)
 export interface CustomPointerEvent {
@@ -50,7 +50,14 @@ export interface NodeStats {
 
 export interface AvatarFactory {
   uid: string;
-  create: (url?: string) => AvatarInstance;
+  // Factory create signature used by Avatar node at runtime
+  create: (matrix: THREE.Matrix4, hooks?: AvatarHooks, node?: Node) => VRMAvatarInstance;
+}
+
+// VRM-specific avatar factory used by Avatar node at runtime
+export interface VRMAvatarFactory {
+  uid: string;
+  create: (matrix: THREE.Matrix4, hooks?: AvatarHooks, node?: Node) => VRMAvatarInstance;
 }
 
 export interface AvatarHooks {
@@ -221,10 +228,10 @@ export interface PhysXActor<T = unknown> {
   getGlobalPose: () => PxTransform;
   setGlobalPose: (pose: PxTransform, wakeup?: boolean) => void;
   setRigidBodyFlag?: (flag: PxRigidBodyFlagEnum | number, value: boolean) => void;
-  setLinearVelocity?: (velocity: THREE.Vector3, wakeup?: boolean) => void;
-  getLinearVelocity?: () => THREE.Vector3;
-  setAngularVelocity?: (velocity: THREE.Vector3, wakeup?: boolean) => void;
-  getAngularVelocity?: () => THREE.Vector3;
+  setLinearVelocity?: (velocity: PxVec3, wakeup?: boolean) => void;
+  getLinearVelocity?: () => PxVec3;
+  setAngularVelocity?: (velocity: PxVec3, wakeup?: boolean) => void;
+  getAngularVelocity?: () => PxVec3;
   setMass?: (mass: number) => void;
   getMass?: () => number;
   userData?: T;
@@ -236,17 +243,12 @@ export interface PhysXActor<T = unknown> {
   attachShape?: (shape: PxShape) => void;
   detachShape?: (shape: PxShape) => void;
   isSleeping?: () => boolean;
-  addForce?: (force: unknown, mode?: number) => void;
-  addTorque?: (torque: unknown, mode?: number) => void;
+  addForce?: (force: PxVec3, mode?: number) => void;
+  addTorque?: (torque: PxVec3, mode?: number) => void;
   setKinematicTarget?: (transform: PxTransform) => void;
 }
 
-export interface PhysXActorHandle {
-  actor: PhysXActor;
-  release: () => void;
-  move?: (matrix: THREE.Matrix4) => void;
-  destroy?: () => void;
-}
+export type PhysXActorHandle = EngineActorHandle;
 
 // Physics contact/trigger event types
 export interface PhysicsContactEvent {
@@ -434,6 +436,11 @@ export interface LODItem {
   object?: THREE.Object3D;
 }
 
+// LOD runtime contract for nodes checked by LOD system
+export interface LODNode {
+  check(): void;
+}
+
 // Controller interfaces
 export interface ControllerData extends NodeData {
   type?: 'capsule' | 'box';
@@ -484,7 +491,7 @@ export interface AudioData extends NodeData {
 }
 
 // Enhanced Avatar interfaces
-export interface VRMAvatarInstance {
+export interface VRMAvatarInstance extends HotReloadable {
   height: number;
   headToHeight: number;
   setEmote: (emote: string | null) => void;
@@ -492,7 +499,7 @@ export interface VRMAvatarInstance {
   disableRateCheck: () => void;
   destroy: () => void;
   getBoneTransform: (boneName: string) => THREE.Matrix4 | null;
-  update?: (deltaTime: number) => void;
+  update: (delta: number) => void;
   raw?: {
     scene?: THREE.Object3D;
     userData?: {
@@ -509,7 +516,7 @@ export interface AvatarData extends NodeData {
   src?: string | null;
   emote?: string | null;
   onLoad?: Function | null;
-  factory?: AvatarFactory;
+  factory?: VRMAvatarFactory;
   hooks?: AvatarHooks;
 }
 
@@ -709,6 +716,14 @@ export interface UIYogaNodeContext {
   getChildCount(): number;
   markDirty(): void;
   free(): void;
+  setMeasureFunc: (
+    fn: (
+      width: number,
+      widthMode: number,
+      height: number,
+      heightMode: number
+    ) => { width: number; height: number }
+  ) => void;
 }
 
 export interface UIContext {
@@ -716,13 +731,14 @@ export interface UIContext {
   _res: number;
 }
 
-export interface UIImageNodeContext {
-  width: number;
-  height: number;
-  complete?: boolean;
-  src?: string;
-  [key: string]: unknown;
-}
+export type UIImageNodeContext =
+  | {
+      width: number;
+      height: number;
+      complete?: boolean;
+      src?: string;
+    }
+  | HTMLImageElement;
 
 export interface UIBoxNodeContext {
   [key: string]: unknown;

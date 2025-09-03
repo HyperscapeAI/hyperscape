@@ -49,7 +49,7 @@ export class FiremakingTestSystem extends VisualTestFramework {
 
   constructor(world: World) {
     super(world);
-    this.world.on(EventType.TEST_RUN_FIREMAKING_TESTS, this.runAllTests.bind(this));
+    this.subscribe(EventType.TEST_RUN_FIREMAKING_TESTS, () => this.runAllTests());
   }
 
   runAllTests() {
@@ -185,7 +185,7 @@ export class FiremakingTestSystem extends VisualTestFramework {
                 this.passTest(stationId, { detail: `Fire ${data.fireId} correctly extinguished.` });
             }
         };
-        this.world.on(EventType.FIRE_EXTINGUISHED, fireExtinguishedListener);
+        this.subscribe(EventType.FIRE_EXTINGUISHED, fireExtinguishedListener);
         testData.listeners.push({ event: EventType.FIRE_EXTINGUISHED, handler: fireExtinguishedListener });
 
         // Create one fire and wait for it to burn out
@@ -201,7 +201,7 @@ export class FiremakingTestSystem extends VisualTestFramework {
                 }, 5000); // 5 seconds for testing
             }
         };
-        this.world.on(EventType.FIRE_CREATED, fireCreatedTestListener);
+        this.subscribe(EventType.FIRE_CREATED, fireCreatedTestListener);
         testData.listeners.push({ event: EventType.FIRE_CREATED, handler: fireCreatedTestListener });
 
     // Removed try-catch to let errors propagate
@@ -244,7 +244,7 @@ export class FiremakingTestSystem extends VisualTestFramework {
                 this.failTest(stationId, 'Fish was burnt during integration test.');
             }
         };
-        this.world.on(EventType.COOKING_COMPLETED, cookingListener);
+        this.subscribe(EventType.COOKING_COMPLETED, cookingListener);
         testData.listeners.push({ event: EventType.COOKING_COMPLETED, handler: cookingListener });
 
         // Listen for fire creation, then cook on it
@@ -261,7 +261,7 @@ export class FiremakingTestSystem extends VisualTestFramework {
                 }
             }
         };
-        this.world.on(EventType.FIRE_CREATED, fireListener);
+        this.subscribe(EventType.FIRE_CREATED, fireListener);
         testData.listeners.push({ event: EventType.FIRE_CREATED, handler: fireListener });
 
         // Start by making one fire
@@ -323,7 +323,7 @@ export class FiremakingTestSystem extends VisualTestFramework {
             }
         }
     };
-    this.world.on(EventType.FIRE_CREATED, fireCreatedListener);
+    this.subscribe(EventType.FIRE_CREATED, fireCreatedListener);
     listeners.push({ event: EventType.FIRE_CREATED, handler: fireCreatedListener });
 
     const chatListener = (data: { playerId: string, text: string }) => {
@@ -335,7 +335,7 @@ export class FiremakingTestSystem extends VisualTestFramework {
             }
         }
     };
-    this.world.on(EventType.CHAT_MESSAGE, chatListener);
+    this.subscribe(EventType.CHAT_MESSAGE, chatListener);
     listeners.push({ event: EventType.CHAT_MESSAGE, handler: chatListener });
 
     const xpGainListener = (data: { playerId: string; skill: string; amount: number }) => {
@@ -344,7 +344,7 @@ export class FiremakingTestSystem extends VisualTestFramework {
             testData.finalFiremakingXP += data.amount;
         }
     };
-    this.world.on(EventType.SKILLS_XP_GAINED, xpGainListener);
+    this.subscribe(EventType.SKILLS_XP_GAINED, xpGainListener);
     listeners.push({ event: EventType.SKILLS_XP_GAINED, handler: xpGainListener });
   }
 
@@ -355,7 +355,7 @@ export class FiremakingTestSystem extends VisualTestFramework {
       return;
     }
 
-    const successRate = (testData.firesCreated / testData.fireAttempts) * 100;
+    const successRate = (testData.fireAttempts > 0 ? (testData.firesCreated / testData.fireAttempts) : 0) * 100;
     const xpGained = testData.finalFiremakingXP - testData.initialFiremakingXP;
     
     const results = {

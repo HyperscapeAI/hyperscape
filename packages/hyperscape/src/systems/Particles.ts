@@ -1,37 +1,20 @@
 import { EventType } from '../types/events'
 import type { World } from '../World'
-import {
-  AdditiveBlending,
-  Camera,
-  DoubleSide,
-  DynamicDrawUsage,
-  Euler,
-  InstancedBufferAttribute,
-  InstancedMesh,
-  MeshBasicMaterial,
-  MeshStandardMaterial,
-  NormalBlending,
-  Object3D,
-  PlaneGeometry,
-  Quaternion,
-  SRGBColorSpace,
-  Texture,
-  Vector3
-} from '../extras/three'
+import THREE from '../extras/three'
 import { uuid } from '../utils'
 import type { ClientLoader } from './ClientLoader'
 import type { Stage } from './Stage'
-import { System } from './System'
+import { SystemBase } from './SystemBase'
 import type { ParticleEmitter, ParticleMessageData, EmitterNode } from '../types/particles'
 
 // Extended InstancedMesh type for particles
-interface ParticleInstancedMesh extends InstancedMesh {
-  _node: EmitterNode;
+interface ParticleInstancedMesh extends THREE.InstancedMesh {
+  _node: EmitterNode
 }
 
-const v1 = new Vector3()
-const v2 = new Vector3()
-const e1 = new Euler(0, 0, 0, 'YXZ')
+const v1 = new THREE.Vector3()
+const v2 = new THREE.Vector3()
+const e1 = new THREE.Euler(0, 0, 0, 'YXZ')
 const arr1: number[] = []
 const arr2: number[] = []
 
@@ -43,7 +26,7 @@ const billboardModeInts: Record<string, number> = {
 
 // Extend window interface properly
 interface WindowWithParticles extends Window {
-  PARTICLES_PATH?: string;
+  PARTICLES_PATH?: string
 }
 
 function getWorker(): Worker {
@@ -51,32 +34,30 @@ function getWorker(): Worker {
   return new Worker(particlesPath)
 }
 
-
-
-export class Particles extends System {
+export class Particles extends SystemBase {
   worker: Worker
-  uOrientationFull: { value: Quaternion }
-  uOrientationY: { value: Quaternion }
+  uOrientationFull: { value: THREE.Quaternion }
+  uOrientationY: { value: THREE.Quaternion }
   emitters: Map<string, ParticleEmitter>
-  
+
   constructor(world: World) {
-    super(world)
+    super(world, { name: 'particles', dependencies: { required: [], optional: [] }, autoCleanup: true })
     this.worker = getWorker()
-    this.uOrientationFull = { value: new Quaternion() }
-    this.uOrientationY = { value: new Quaternion() }
+    this.uOrientationFull = { value: new THREE.Quaternion() }
+    this.uOrientationY = { value: new THREE.Quaternion() }
     this.emitters = new Map()
   }
 
   async init(): Promise<void> {
     this.worker.onmessage = this.onMessage
     this.worker.onerror = this.onError
-    
+
     // Set the initial quaternion value after world is initialized
-    this.uOrientationFull.value = (this.world.rig as Object3D).quaternion
+    this.uOrientationFull.value = (this.world.rig as THREE.Object3D).quaternion
   }
 
   start() {
-    this.world.on(EventType.XR_SESSION, this.onXRSession)
+    this.subscribe(EventType.XR_SESSION, (session: unknown) => this.onXRSession(session))
   }
 
   register(node: EmitterNode) {
@@ -84,14 +65,14 @@ export class Particles extends System {
   }
 
   update(delta: number) {
-    const quaternion = (this.world.rig as Object3D).quaternion
-    
+    const quaternion = (this.world.rig as THREE.Object3D).quaternion
+
     e1.setFromQuaternion(quaternion)
     e1.x = 0
     e1.z = 0
     this.uOrientationY.value.setFromEuler(e1)
 
-    this.emitters.forEach((emitter) => {
+    this.emitters.forEach(emitter => {
       emitter.update(delta)
     })
   }
@@ -110,50 +91,49 @@ export class Particles extends System {
 
   onXRSession = (session: unknown) => {
     if (session && this.world.xr) {
-      this.uOrientationFull.value = (this.world.xr as { camera: Camera }).camera.quaternion
+      this.uOrientationFull.value = (this.world.xr as { camera: THREE.Camera }).camera.quaternion
     } else {
-      this.uOrientationFull.value = (this.world.rig as Object3D).quaternion
+      this.uOrientationFull.value = (this.world.rig as THREE.Object3D).quaternion
     }
   }
 }
-
 
 function createEmitter(world: World, system: Particles, node: EmitterNode): ParticleEmitter {
   const id = uuid()
   const config = node.getConfig()
 
-  const geometry = new PlaneGeometry(1, 1)
+  const geometry = new THREE.PlaneGeometry(1, 1)
 
-  const aPosition = new InstancedBufferAttribute(new Float32Array(node._max * 3), 3)
-  aPosition.setUsage(DynamicDrawUsage)
+  const aPosition = new THREE.InstancedBufferAttribute(new Float32Array(node._max * 3), 3)
+  aPosition.setUsage(THREE.DynamicDrawUsage)
   geometry.setAttribute('aPosition', aPosition)
 
-  const aRotation = new InstancedBufferAttribute(new Float32Array(node._max * 1), 1)
-  aRotation.setUsage(DynamicDrawUsage)
+  const aRotation = new THREE.InstancedBufferAttribute(new Float32Array(node._max * 1), 1)
+  aRotation.setUsage(THREE.DynamicDrawUsage)
   geometry.setAttribute('aRotation', aRotation)
 
-  const aDirection = new InstancedBufferAttribute(new Float32Array(node._max * 3), 3)
-  aDirection.setUsage(DynamicDrawUsage)
+  const aDirection = new THREE.InstancedBufferAttribute(new Float32Array(node._max * 3), 3)
+  aDirection.setUsage(THREE.DynamicDrawUsage)
   geometry.setAttribute('aDirection', aDirection)
 
-  const aSize = new InstancedBufferAttribute(new Float32Array(node._max * 1), 1)
-  aSize.setUsage(DynamicDrawUsage)
+  const aSize = new THREE.InstancedBufferAttribute(new Float32Array(node._max * 1), 1)
+  aSize.setUsage(THREE.DynamicDrawUsage)
   geometry.setAttribute('aSize', aSize)
 
-  const aColor = new InstancedBufferAttribute(new Float32Array(node._max * 3), 3)
-  aColor.setUsage(DynamicDrawUsage)
+  const aColor = new THREE.InstancedBufferAttribute(new Float32Array(node._max * 3), 3)
+  aColor.setUsage(THREE.DynamicDrawUsage)
   geometry.setAttribute('aColor', aColor)
 
-  const aAlpha = new InstancedBufferAttribute(new Float32Array(node._max * 1), 1)
-  aAlpha.setUsage(DynamicDrawUsage)
+  const aAlpha = new THREE.InstancedBufferAttribute(new Float32Array(node._max * 1), 1)
+  aAlpha.setUsage(THREE.DynamicDrawUsage)
   geometry.setAttribute('aAlpha', aAlpha)
 
-  const aEmissive = new InstancedBufferAttribute(new Float32Array(node._max * 1), 1)
-  aEmissive.setUsage(DynamicDrawUsage)
+  const aEmissive = new THREE.InstancedBufferAttribute(new Float32Array(node._max * 1), 1)
+  aEmissive.setUsage(THREE.DynamicDrawUsage)
   geometry.setAttribute('aEmissive', aEmissive)
 
-  const aUV = new InstancedBufferAttribute(new Float32Array(node._max * 4), 4)
-  aUV.setUsage(DynamicDrawUsage)
+  const aUV = new THREE.InstancedBufferAttribute(new Float32Array(node._max * 4), 4)
+  aUV.setUsage(THREE.DynamicDrawUsage)
   geometry.setAttribute('aUV', aUV)
 
   // ping-pong buffers
@@ -168,19 +148,19 @@ function createEmitter(world: World, system: Particles, node: EmitterNode): Part
     aUV: new Float32Array(node._max * 4),
   }
 
-  const texture = new Texture()
-  texture.colorSpace = SRGBColorSpace
+  const texture = new THREE.Texture()
+  texture.colorSpace = THREE.SRGBColorSpace
 
   const uniforms = {
     uTexture: { value: texture },
     uBillboard: { value: billboardModeInts[node._billboard] || 0 },
     uOrientation: node._billboard === 'full' ? system.uOrientationFull : system.uOrientationY,
-  };
+  }
   const loader = world.loader as ClientLoader
   if (loader) {
-    loader.load('texture', node._image).then((result) => {
-      const texture = result as Texture
-      texture.colorSpace = SRGBColorSpace
+    loader.load('texture', node._image).then(result => {
+      const texture = result as THREE.Texture
+      texture.colorSpace = THREE.SRGBColorSpace
       uniforms.uTexture.value = texture
       // texture.image = t.image
       // texture.needsUpdate = true
@@ -188,25 +168,25 @@ function createEmitter(world: World, system: Particles, node: EmitterNode): Part
   }
 
   // Create basic material (simplified for strong typing)
-  const BaseMaterial = node._lit ? MeshStandardMaterial : MeshBasicMaterial
+  const BaseMaterial = node._lit ? THREE.MeshStandardMaterial : THREE.MeshBasicMaterial
   const material = new BaseMaterial({
     map: texture,
     ...(node._lit ? { roughness: 1, metalness: 0 } : {}),
-    blending: node._blending === 'additive' ? AdditiveBlending : NormalBlending,
+    blending: node._blending === 'additive' ? THREE.AdditiveBlending : THREE.NormalBlending,
     transparent: true,
     color: 'white',
-    side: DoubleSide,
+    side: THREE.DoubleSide,
     depthWrite: false,
     depthTest: true,
   })
-  const mesh = new InstancedMesh(geometry, material, node._max as number) as InstancedMesh
+  const mesh = new THREE.InstancedMesh(geometry, material, node._max as number) as THREE.InstancedMesh
   // Add custom property for particle system
-  (mesh as ParticleInstancedMesh)._node = node
+  ;(mesh as ParticleInstancedMesh)._node = node
   mesh.count = 0
   mesh.instanceMatrix.needsUpdate = true
   mesh.frustumCulled = false
   mesh.matrixAutoUpdate = false
-  mesh.matrixWorldAutoUpdate = false;
+  mesh.matrixWorldAutoUpdate = false
   const stage = world.stage as Stage
   stage.scene.add(mesh)
 
@@ -354,7 +334,7 @@ function createEmitter(world: World, system: Particles, node: EmitterNode): Part
     onMessage,
     update,
     destroy,
-    isEmitting: false
+    isEmitting: false,
   }
   system.emitters.set(id, handle)
   if (system.worker) {

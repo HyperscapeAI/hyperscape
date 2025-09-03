@@ -2,7 +2,7 @@
  * Helper utilities for terrain operations
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 
 export interface TerrainTile {
   x: number;

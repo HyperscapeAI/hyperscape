@@ -1,4 +1,4 @@
-import { Vector3 } from '../extras/three';
+import THREE from '../extras/three';
 import type { SpatialEntity } from '../types/ground-types';
 
 export class SpatialIndex {
@@ -9,7 +9,7 @@ export class SpatialIndex {
     this.cellSize = cellSize;
   }
 
-  private getKey(position: Vector3): string {
+  private getKey(position: THREE.Vector3): string {
     const x = Math.floor(position.x / this.cellSize);
     const y = Math.floor(position.z / this.cellSize);
     return `${x},${y}`;
@@ -34,7 +34,7 @@ export class SpatialIndex {
     }
   }
 
-  getNearby(position: Vector3, range: number): SpatialEntity[] {
+  getNearby(position: THREE.Vector3, range: number): SpatialEntity[] {
     const nearby: SpatialEntity[] = [];
     const minX = Math.floor((position.x - range) / this.cellSize);
     const maxX = Math.floor((position.x + range) / this.cellSize);

@@ -9,8 +9,8 @@ import type {
   PxQuat,
   PxTransform,
   PxVec3
-} from '../types/physx';
-import * as THREE from '../extras/three';
+} from '../types/physics';
+import THREE from '../extras/three';
 import { getPhysX } from '../PhysXManager';
 
 /**
@@ -148,7 +148,10 @@ export function createTransform(
  * Utility to clean up PhysX vectors
  */
 export function cleanupPxVec3(vec: PxVec3 | PhysX.PxVec3): void {
-  (vec as unknown as { delete(): void }).delete();
+  const maybeAny = vec as unknown as { delete?: () => void };
+  if (typeof maybeAny.delete === 'function') {
+    maybeAny.delete();
+  }
 }
 
 /**
@@ -193,20 +196,5 @@ export function installThreeJSExtensions(): void {
       const pxQuat = new PHYSX.PxQuat(quaternion.x, quaternion.y, quaternion.z, quaternion.w);
       transform.q = pxQuat;
     };
-  }
-}
-
-// Declare the extensions on the THREE.js types
-declare module 'three' {
-  interface Vector3 {
-    toPxTransform?: (transform: PxTransform) => void;
-  }
-  
-  interface Quaternion {
-    toPxTransform?: (transform: PxTransform) => void;
-  }
-  
-  interface Matrix4 {
-    toPxTransform?: (transform: PxTransform) => void;
   }
 }

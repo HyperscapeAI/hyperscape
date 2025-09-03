@@ -8,12 +8,12 @@
  * - Visual status indicators and logging
  */
 
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 import { waitForPhysX } from '../PhysXManager'
-import { fixPositionIfAtGroundLevel } from '../utils/GroundPositioningUtils'
-import type { InventoryItem, PlayerEquipment, PlayerEquipmentItems, PlayerHealth, Skills, Item } from '../types/core'
+import type { InventoryItem, Item, PlayerEquipment, PlayerEquipmentItems, PlayerHealth, Skills } from '../types/core'
 import type { PlayerEntity } from '../types/test'
 import { calculateDistance } from '../utils/EntityUtils'
+import { fixPositionIfAtGroundLevel } from '../utils/GroundPositioningUtils'
 
 export interface TestStation {
   id: string
@@ -41,12 +41,12 @@ export interface TestResult {
 // Using a module-level constant instead of globals
 const SHARED_FAKE_PLAYERS = new Map<string, PlayerEntity>()
 
-import { getSystem } from '../utils/SystemUtils'
-import type { Entity, World } from '../types'
+import type { World } from '../types'
 import { EventType } from '../types/events'
+import { Logger } from '../utils/Logger'
+import { getSystem } from '../utils/SystemUtils'
 import { EntityManager } from './EntityManager'
 import { SystemBase } from './SystemBase'
-import { Logger } from '../utils/Logger'
 
 export abstract class VisualTestFramework extends SystemBase {
   protected testStations = new Map<string, TestStation>()
@@ -96,15 +96,15 @@ export abstract class VisualTestFramework extends SystemBase {
             Logger.system('VisualTestFramework', 'PhysX is ready, proceeding with initialization')
 
     // Listen to position updates for reactive patterns
-    this.world.on(EventType.PLAYER_POSITION_UPDATED, (data: { playerId: string; position: { x: number; y: number; z: number } }) => {
+    this.subscribe(EventType.PLAYER_POSITION_UPDATED, (data: { playerId: string; position: { x: number; y: number; z: number } }) => {
       this.playerPositions.set(data.playerId, data.position)
     })
-    this.world.on(EventType.MOB_POSITION_UPDATED, (data: { mobId: string; position: { x: number; y: number; z: number } }) => {
+    this.subscribe(EventType.MOB_POSITION_UPDATED, (data: { mobId: string; position: { x: number; y: number; z: number } }) => {
       this.mobPositions.set(data.mobId, data.position)
     })
 
     // Listen to equipment changes for reactive patterns
-    this.world.on(EventType.PLAYER_EQUIPMENT_CHANGED, (data: { playerId: string; slot: string; itemId: string | null }) => {
+    this.subscribe(EventType.PLAYER_EQUIPMENT_CHANGED, (data: { playerId: string; slot: string; itemId: string | null }) => {
       if (!this.playerEquipment.has(data.playerId)) {
         this.playerEquipment.set(data.playerId, {})
       }
@@ -113,13 +113,13 @@ export abstract class VisualTestFramework extends SystemBase {
     })
 
     // Listen to stats updates for reactive patterns
-    this.world.on(EventType.PLAYER_STATS_EQUIPMENT_UPDATED, (data: { playerId: string; stats: unknown }) => {
+    this.subscribe(EventType.PLAYER_STATS_EQUIPMENT_UPDATED, (data: { playerId: string; stats: unknown }) => {
       this.playerStats.set(data.playerId, data.stats as Record<string, unknown>)
     })
 
     // Listen for equipment changes to keep fake player equipment up to date
-    this.world.on(EventType.EQUIPMENT_EQUIP, this.handleEquipmentChange.bind(this))
-    this.world.on(EventType.EQUIPMENT_UNEQUIP, this.handleEquipmentChange.bind(this))
+    this.subscribe(EventType.EQUIPMENT_EQUIP, (data: { playerId: string; slot: string; itemId: string | null; item: Item | null }) => this.handleEquipmentChange(data))
+    this.subscribe(EventType.EQUIPMENT_UNEQUIP, (data: { playerId: string; slot: string; itemId: string | null; item: Item | null }) => this.handleEquipmentChange(data))
 
     // Only run test station management on server
     if (!this.world.isServer) {
@@ -127,8 +127,8 @@ export abstract class VisualTestFramework extends SystemBase {
     }
 
     // Listen for world events (server only)
-    this.world.on(EventType.TEST_STATION_CREATED, this.onTestStationCreated.bind(this))
-    this.world.on(EventType.TEST_RESULT, this.onTestResult.bind(this))
+    this.subscribe(EventType.TEST_STATION_CREATED, (data: { station: TestStation }) => this.onTestStationCreated(data))
+    this.subscribe(EventType.TEST_RESULT, (data: { stationId: string; result: TestResult }) => this.onTestResult(data))
   }
 
   start(): void {
@@ -147,6 +147,23 @@ export abstract class VisualTestFramework extends SystemBase {
     this.updateInterval = setInterval(() => {
       this.updateTestStations()
     }, 2000) // Update every 2 seconds for better performance
+
+    // Auto-run all tests once on start to kick off visual verification
+    // This runs a single pass and relies on per-station timeouts to avoid hangs
+    // Intentionally delayed slightly to allow dependent systems to finish init
+    setTimeout(() => {
+      for (const station of this.testStations.values()) {
+        try {
+          // Only trigger if not already running
+          if (station.status === 'idle') {
+            // Subclasses implement runTest; startTest handles status and timeout
+            void this.runTest(station.id)
+          }
+        } catch (error) {
+          this.failTest(station.id, `Auto-run error: ${error instanceof Error ? error.message : String(error)}`)
+        }
+      }
+    }, 300);
   }
 
   /**
@@ -186,7 +203,7 @@ export abstract class VisualTestFramework extends SystemBase {
     this.testStations.set(config.id, station)
 
     // Notify world
-    this.world.emit(EventType.TEST_STATION_CREATED, { station })
+    this.emitTypedEvent(EventType.TEST_STATION_CREATED, { station })
 
     return station
   }
@@ -219,7 +236,7 @@ export abstract class VisualTestFramework extends SystemBase {
     }
 
     // Emit event for visual creation
-    this.world.emit(EventType.UI_CREATE, {
+    this.emitTypedEvent(EventType.UI_CREATE, {
       id: `test_ui_${station.id}`,
       type: 'floating_name',
       position: ui.position,
@@ -245,7 +262,7 @@ export abstract class VisualTestFramework extends SystemBase {
     }
 
     // Emit event for visual creation
-    this.world.emit(EventType.UI_CREATE, {
+    this.emitTypedEvent(EventType.UI_CREATE, {
       id: `test_zone_${station.id}`,
       position: indicator.position,
       color: indicator.color,
@@ -263,14 +280,14 @@ export abstract class VisualTestFramework extends SystemBase {
 
     // Update floating name
     const statusText = this.getStatusText(station)
-    this.world.emit(EventType.UI_UPDATE, {
+    this.emitTypedEvent(EventType.UI_UPDATE, {
       id: `test_ui_${station.id}`,
       text: `${station.name}\n${statusText}`,
       color: color,
     })
 
     // Update zone indicator
-    this.world.emit(EventType.UI_UPDATE, {
+    this.emitTypedEvent(EventType.UI_UPDATE, {
       id: `test_zone_${station.id}`,
       color: color,
     })
@@ -374,14 +391,14 @@ export abstract class VisualTestFramework extends SystemBase {
     });
     
     // Add getPosition method for Entity compatibility
-    (player as unknown as { getPosition: () => { x: number; y: number; z: number } }).getPosition = () => ({
+    (player as { getPosition?: () => { x: number; y: number; z: number } }).getPosition = () => ({
       x: player.node.position.x,
       y: player.node.position.y,
       z: player.node.position.z
     });
     
     // Set player health properties (using any to avoid intersection type conflict)
-    (player as unknown as { health: PlayerHealth }).health = {
+    (player as { health: PlayerHealth }).health = {
       current: config.stats?.health ?? 100,
       max: config.stats?.maxHealth ?? 100,
     };
@@ -497,24 +514,23 @@ export abstract class VisualTestFramework extends SystemBase {
       magic: { level: 1, xp: 0 }
     });
     
-    // Register the mock entity in both the entities items map and players map
-    this.world.entities.items.set(config.id, mockPlayerEntity as unknown as Entity);
-    this.world.entities.players.set(config.id, mockPlayerEntity as unknown as PlayerEntity);
-    
+    // The real player Entity was already added via world.entities.add above.
+    // No need to insert the mock into entities maps.
+
           Logger.system(this.constructor.name, `Created mock test player ${config.id} with stats component`)
           Logger.system(this.constructor.name, `Player ${config.id} registered in players Map`)
 
     // CRITICAL: Register fake player with PlayerSystem for healing to work
     // Add a small delay to ensure the player is fully registered before emitting events
     setTimeout(() => {
-      this.world.emit(EventType.PLAYER_JOINED, {
+      this.emitTypedEvent(EventType.PLAYER_JOINED, {
         playerId: config.id,
         isInitialConnection: true
       })
     }, 10)
     
     // Then emit PLAYER_REGISTERED for any other systems that need it
-    this.world.emit(EventType.PLAYER_REGISTERED, {
+    this.emitTypedEvent(EventType.PLAYER_REGISTERED, {
       id: config.id,
       name: config.name,
       health: player.health.current,
@@ -537,7 +553,7 @@ export abstract class VisualTestFramework extends SystemBase {
     // CRITICAL: Also register fake player with XP system for aggro system to work
 
     // Initialize fake player inventory
-    this.world.emit(EventType.PLAYER_INIT, { id: config.id })
+    this.emitTypedEvent(EventType.PLAYER_INIT, { id: config.id })
             Logger.system(this.constructor.name, `Triggered inventory initialization for fake player ${config.id}`)
 
     // Add any items that were set in the fake player's inventory using proper event system
@@ -545,7 +561,7 @@ export abstract class VisualTestFramework extends SystemBase {
       // Add each inventory item using the proper inventory event
       player.inventory.items.forEach(invSlot => {
         // Use inventory add event instead of direct method call
-        this.world.emit(EventType.INVENTORY_ITEM_ADDED, {
+        this.emitTypedEvent(EventType.INVENTORY_ITEM_ADDED, {
           playerId: config.id,
           item: {
             id: `${config.id}_${invSlot.itemId}_${Date.now()}`,
@@ -560,7 +576,7 @@ export abstract class VisualTestFramework extends SystemBase {
 
     // Also initialize XP skills if stats were provided
     if (config.stats) {
-      this.world.emit(EventType.SKILLS_XP_GAINED, {
+      this.emitTypedEvent(EventType.SKILLS_XP_GAINED, {
         playerId: config.id,
         skills: playerSkills,
       })
@@ -573,7 +589,7 @@ export abstract class VisualTestFramework extends SystemBase {
     // Ensure systems are ready before registering fake players
 
     // Register the fake player with all systems
-    this.world.emit(EventType.PLAYER_REGISTERED, {
+    this.emitTypedEvent(EventType.PLAYER_REGISTERED, {
       playerId: player.id,
       playerData: {
         id: player.id,
@@ -614,14 +630,14 @@ export abstract class VisualTestFramework extends SystemBase {
 
     // Set skill levels if any were specified
     if (Object.keys(skillLevels).length > 0) {
-      this.world.emit(EventType.SKILLS_XP_GAINED, {
+      this.emitTypedEvent(EventType.SKILLS_XP_GAINED, {
         playerId: config.id,
         skills: skillLevels,
       })
     }
 
     // Emit initial position update for aggro system
-    this.world.emit(EventType.PLAYER_POSITION_UPDATED, {
+    this.emitTypedEvent(EventType.PLAYER_POSITION_UPDATED, {
       playerId: config.id,
       entityId: config.id,
       position: { x: player.node.position.x, y: player.node.position.y, z: player.node.position.z },
@@ -631,7 +647,7 @@ export abstract class VisualTestFramework extends SystemBase {
     if (player.equipment) {
       for (const [slot, item] of Object.entries(player.equipment)) {
         if (item && typeof item === 'object' && 'id' in item) {
-          this.world.emit(EventType.PLAYER_EQUIPMENT_CHANGED, {
+          this.emitTypedEvent(EventType.PLAYER_EQUIPMENT_CHANGED, {
             playerId: config.id,
             slot,
             itemId: (item as Item).id,
@@ -642,7 +658,7 @@ export abstract class VisualTestFramework extends SystemBase {
     }
 
     // Emit initial stats for reactive pattern
-    this.world.emit(EventType.PLAYER_STATS_EQUIPMENT_UPDATED, {
+    this.emitTypedEvent(EventType.PLAYER_STATS_EQUIPMENT_UPDATED, {
       playerId: config.id,
       stats: this.convertPlayerStatsToStats(playerSkills)
     })
@@ -662,7 +678,7 @@ export abstract class VisualTestFramework extends SystemBase {
    * Creates visual representation of fake player
    */
   private createPlayerVisual(player: PlayerEntity): void {
-    this.world.emit(EventType.PLAYER_CREATE, {
+    this.emitTypedEvent(EventType.PLAYER_CREATE, {
       id: `fake_player_${player.id}`,
       position: { x: player.node.position.x, y: player.node.position.y + 1, z: player.node.position.z },
       color: '#0088ff', // Blue for fake players
@@ -699,13 +715,13 @@ export abstract class VisualTestFramework extends SystemBase {
     }
 
     // Update visual
-    this.world.emit(EventType.PLAYER_POSITION_UPDATED, {
+    this.emitTypedEvent(EventType.PLAYER_POSITION_UPDATED, {
       id: `fake_player_${playerId}`,
       position: { ...fixedPosition, y: fixedPosition.y + 1 },
     })
 
     // Emit position update event for aggro system
-    this.world.emit(EventType.PLAYER_POSITION_UPDATED, {
+    this.emitTypedEvent(EventType.PLAYER_POSITION_UPDATED, {
       playerId: playerId,
       entityId: playerId,
       position: fixedPosition,
@@ -804,15 +820,16 @@ export abstract class VisualTestFramework extends SystemBase {
     const duration = Date.now() - station.lastRunTime
 
     // Emit result
-    this.world.emit(EventType.TEST_RESULT, {
+    this.emitTypedEvent(EventType.TEST_RESULT, {
       stationId,
       result: { success: true, duration, details },
     })
 
-    // Schedule restart after 5 seconds
-    setTimeout(() => {
-      this.restartTest(stationId)
-    }, 5000)
+    // DISABLED: Automatic restart causes infinite loops
+    // Tests should only restart when explicitly triggered
+    // setTimeout(() => {
+    //   this.restartTest(stationId)
+    // }, 5000)
   }
 
   /**
@@ -838,15 +855,16 @@ export abstract class VisualTestFramework extends SystemBase {
           Logger.systemError('VisualTestFramework', `Test failed: ${station.name} - ${error} (${duration}ms)`)
 
     // Emit result
-    this.world.emit(EventType.TEST_RESULT, {
+    this.emitTypedEvent(EventType.TEST_RESULT, {
       stationId,
       result: { success: false, error, duration },
     })
 
-    // Schedule restart after 10 seconds (longer for failed tests)
-    setTimeout(() => {
-      this.restartTest(stationId)
-    }, 10000)
+    // DISABLED: Automatic restart causes infinite loops
+    // Tests should only restart when explicitly triggered
+    // setTimeout(() => {
+    //   this.restartTest(stationId)
+    // }, 10000)
   }
 
   /**
@@ -864,9 +882,9 @@ export abstract class VisualTestFramework extends SystemBase {
     // Clean up any test state
     this.cleanupTest(stationId)
 
-    // Start the test again after a brief delay
-    // Schedule next test run
-    this.scheduleTestRun(stationId, 2000)
+    // DISABLED: Automatic re-scheduling causes infinite loops
+    // Tests should only run when explicitly triggered
+    // this.scheduleTestRun(stationId, 2000)
   }
 
   /**
@@ -874,10 +892,11 @@ export abstract class VisualTestFramework extends SystemBase {
    */
   private updateTestStations(): void {
     for (const [stationId, station] of this.testStations) {
-      // Auto-start idle tests
-      if (station.status === 'idle') {
-        this.scheduleTestRun(stationId, 0)
-      }
+      // DISABLED: Auto-start causes infinite test loops and memory leaks
+      // Tests should only run when explicitly triggered
+      // if (station.status === 'idle') {
+      //   this.scheduleTestRun(stationId, 0)
+      // }
 
       // Check for hanging tests
       if (station.status === 'running') {

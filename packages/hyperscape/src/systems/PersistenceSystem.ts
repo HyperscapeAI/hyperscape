@@ -64,7 +64,7 @@ export class PersistenceSystem extends SystemBase {
       throw new Error('[PersistenceSystem] DatabaseSystem not found on server!');
     }
     
-    this.playerSystem = getSystem(this.world, 'rpg-player') as unknown as IPlayerSystemForPersistence | null || undefined;
+    this.playerSystem = (getSystem(this.world, 'rpg-player') as IPlayerSystemForPersistence | null) || undefined;
     if (!this.playerSystem) {
       Logger.systemWarn('PersistenceSystem', 'PlayerSystem not found - player persistence will be limited');
     }
@@ -76,25 +76,25 @@ export class PersistenceSystem extends SystemBase {
     }
     
     // Subscribe to critical persistence events using type-safe event system
-    this.subscribe<{ playerId: string; playerToken?: string }>(EventType.PLAYER_JOINED, (event) => this.onPlayerEnter(event.data));
-    this.subscribe<{ playerId: string }>(EventType.PLAYER_LEFT, (event) => this.onPlayerLeave(event.data));
-    this.subscribe<{ chunkId: string; chunkData: WorldChunk }>(EventType.CHUNK_LOADED, (event) => {
+    this.subscribe(EventType.PLAYER_JOINED, (data) => this.onPlayerEnter(data as { playerId: string; playerToken?: string }));
+    this.subscribe(EventType.PLAYER_LEFT, (data) => this.onPlayerLeave(data as { playerId: string }));
+    this.subscribe(EventType.CHUNK_LOADED, (data: { chunkId: string; chunkData: WorldChunk }) => {
       // Convert chunkId to chunkX/chunkZ coordinates
-      const coords = this.parseChunkId(event.data.chunkId);
+      const coords = this.parseChunkId(data.chunkId);
       this.onChunkLoaded({ chunkX: coords.x, chunkZ: coords.z });
     });
-    this.subscribe<{ chunkId: string }>(EventType.CHUNK_UNLOADED, (event) => {
+    this.subscribe(EventType.CHUNK_UNLOADED, (data: { chunkId: string }) => {
       // Convert chunkId to chunkX/chunkZ coordinates
-      const coords = this.parseChunkId(event.data.chunkId);
+      const coords = this.parseChunkId(data.chunkId);
       this.onChunkUnloaded({ chunkX: coords.x, chunkZ: coords.z });
     });
     
     // Subscribe to persistence test events
-    this.subscribe<{ playerId: string; data?: Record<string, unknown> }>(EventType.PERSISTENCE_SAVE, (event) => {
-      this.handleTestSave({ playerId: event.data.playerId, data: event.data.data || {} });
+    this.subscribe(EventType.PERSISTENCE_SAVE, (data: { playerId: string; data?: Record<string, unknown> }) => {
+      this.handleTestSave({ playerId: data.playerId, data: data.data || {} });
     });
-    this.subscribe<{ playerId: string }>(EventType.PERSISTENCE_LOAD, (event) => {
-      this.handleTestLoad({ playerId: event.data.playerId });
+    this.subscribe(EventType.PERSISTENCE_LOAD, (data: { playerId: string }) => {
+      this.handleTestLoad({ playerId: data.playerId });
     });
     
   }

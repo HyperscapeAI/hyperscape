@@ -13,8 +13,8 @@
  * Reports all errors back to server for monitoring.
  */
 
-import { System } from './System';
-import * as THREE from '../extras/three';
+import { SystemBase } from './SystemBase';
+import THREE from '../extras/three';
 import type { World } from '../World';
 import type { MobSpawnerSystem } from './MobSpawnerSystem';
 import type { ResourceSystem } from './ResourceSystem';
@@ -28,7 +28,7 @@ import type {
   TerrainChunk
 } from '../types/validation-types';
 
-export class TerrainValidationSystem extends System {
+export class TerrainValidationSystem extends SystemBase {
   private terrainSystem!: TerrainSystem;
   private validationResults: ValidationResult[] = [];
   private validationErrors: TerrainValidationError[] = [];
@@ -50,7 +50,7 @@ export class TerrainValidationSystem extends System {
   };
 
   constructor(world: World) {
-    super(world);
+    super(world, { name: 'terrain-validation', dependencies: { required: [], optional: [] }, autoCleanup: true });
   }
 
   async init(): Promise<void> {
@@ -67,7 +67,7 @@ export class TerrainValidationSystem extends System {
     this.runAllValidationTests().then(() => {
       this.processValidationResults();
     }).catch((error) => {
-      console.error('[TerrainValidationSystem] ❌ CRITICAL: Validation tests failed:', error);
+      this.logger.error(`CRITICAL: Validation tests failed: ${(error as Error).message}`);
       this.addValidationError('critical', 'startup_validation', `Terrain validation failed at startup: ${error.message}`, { error: error.stack });
       throw error;
     });
@@ -349,7 +349,7 @@ export class TerrainValidationSystem extends System {
     entity.position.y = newY;
     
     // Emit position correction event
-    this.world.emit('entity:position:corrected', {
+    this.emitTypedEvent('entity:position:corrected', {
       entityId: entity.id,
       oldPosition: { ...entity.position, y: entity.position.y },
       newPosition: { ...entity.position, y: newY },
@@ -362,12 +362,7 @@ export class TerrainValidationSystem extends System {
    */
   public getTerrainHeight(x: number, z: number): number {
     if (!this.terrainSystem) return 0;
-    
-    try {
-      return this.terrainSystem.getHeightAt(x, z);
-    } catch (_error) {
-      return 0;
-    }
+    return this.terrainSystem.getHeightAt(x, z);
   }
 
   /**
@@ -375,17 +370,10 @@ export class TerrainValidationSystem extends System {
    */
   private getPhysXHeight(x: number, z: number): number | null {
     if (!this.world.raycast) return null;
-    
-    try {
-      const origin = new THREE.Vector3(x, 1000, z); // Start high above
-      const direction = new THREE.Vector3(0, -1, 0); // Ray down
-      
-      const hit = this.world.raycast(origin, direction, 2000); // 2km max distance
-      
-      return hit ? hit.point.y : null;
-    } catch (_error) {
-      return null;
-    }
+    const origin = new THREE.Vector3(x, 1000, z);
+    const direction = new THREE.Vector3(0, -1, 0);
+    const hit = this.world.raycast(origin, direction, 2000);
+    return hit ? hit.point.y : null;
   }
 
   /**
@@ -442,13 +430,7 @@ export class TerrainValidationSystem extends System {
    */
   public getBiomeAtPosition(x: number, z: number): string {
     if (!this.terrainSystem) return 'unknown';
-    
-    try {
-      // Use the public getBiomeAtPosition method
-      return this.terrainSystem.getBiomeAtPosition(x, z) ?? 'unknown';
-    } catch (_error) {
-      return 'unknown';
-    }
+    return this.terrainSystem.getBiomeAtPosition(x, z) || 'unknown';
   }
 
   /**
@@ -465,9 +447,10 @@ export class TerrainValidationSystem extends System {
    */
   private isImportantLocation(x: number, z: number): boolean {
     // Check distance to starter towns
+    const tileSize = 100;
     const towns = [
-      { x: 0, z: 0 }, { x: 100, z: 0 }, { x: -100, z: 0 },
-      { x: 0, z: 100 }, { x: 0, z: -100 }
+      { x: 0, z: 0 }, { x: 1 * tileSize, z: 0 }, { x: -1 * tileSize, z: 0 },
+      { x: 0, z: 1 * tileSize }, { x: 0, z: -1 * tileSize }
     ];
     
     for (const town of towns) {
@@ -599,32 +582,31 @@ export class TerrainValidationSystem extends System {
   private reportErrorToServer(error: { severity: string; test: string; message: string; data?: unknown }): void {
     try {
       // Report error back to server
-      this.world.emit('terrain:validation:error', {
+      this.emitTypedEvent('terrain:validation:error', {
         ...error,
         timestamp: new Date().toISOString(),
         worldId: this.world.id
       });
-      
-      console.error(`[TerrainValidationSystem] Reported ${error.severity} error to server:`, error.message);
+      this.logger.error(`Reported ${error.severity} error to server: ${error.message}`);
     } catch (reportError) {
-      console.error('[TerrainValidationSystem] Failed to report error to server:', reportError);
+      this.logger.error(`Failed to report error to server: ${reportError instanceof Error ? reportError.message : String(reportError)}`);
     }
   }
 
   private reportValidationSummaryToServer(summary: unknown): void {
     try {
-      this.world.emit('terrain:validation:summary', {
+      this.emitTypedEvent('terrain:validation:summary', {
         ...(summary as Record<string, unknown>),
         worldId: this.world.id
       });
     } catch (reportError) {
-      console.error('[TerrainValidationSystem] Failed to report summary to server:', reportError);
+      this.logger.error(`Failed to report summary to server: ${reportError instanceof Error ? reportError.message : String(reportError)}`);
     }
   }
 
   private async validateMobSpawnerPlacement(): Promise<void> {
     try {
-      const mobSystem = (this.world.getSystem('mobSpawner') || this.world.getSystem('MobSpawnerSystem')) as MobSpawnerSystem | null;
+      const mobSystem = this.world.getSystem<MobSpawnerSystem>('mobSpawner') || this.world.getSystem<MobSpawnerSystem>('MobSpawnerSystem') || null;
       
       if (!mobSystem) {
         this.addValidationError('critical', 'mob_spawner_placement', 'MobSpawnerSystem not found - mob spawning cannot be validated');
@@ -687,7 +669,7 @@ export class TerrainValidationSystem extends System {
       const allEntities: Array<{ id: string; position: { x: number; y: number; z: number }; type: string }> = [];
       
       // Collect resource positions
-      const resourceSystem = this.world.getSystem<ResourceSystem>('ResourceSystem');
+      const resourceSystem = this.world.getSystem<ResourceSystem>('rpg-resource') || this.world.getSystem<ResourceSystem>('ResourceSystem');
       if (resourceSystem) {
         const resources = resourceSystem?.getAllResources() || []
         for (const resource of resources) {
@@ -703,7 +685,7 @@ export class TerrainValidationSystem extends System {
       }
       
       // Collect mob positions
-      const mobSystem = (this.world.getSystem('mobSpawner') || this.world.getSystem('MobSpawnerSystem')) as MobSpawnerSystem | null;
+      const mobSystem = this.world.getSystem<MobSpawnerSystem>('mobSpawner') || this.world.getSystem<MobSpawnerSystem>('MobSpawnerSystem') || null;
       if (mobSystem && mobSystem.getSpawnedMobs) {
         const spawnedMobs = mobSystem.getSpawnedMobs();
         for (const [mobId, entityId] of spawnedMobs.entries()) {
@@ -793,27 +775,12 @@ export class TerrainValidationSystem extends System {
       const failures: string[] = [];
       
       for (const point of testPoints) {
-        try {
-          // Use terrain system's biome detection method
-          let detectedBiome: string;
-          
-          if (this.terrainSystem?.getBiomeAtPosition) {
-            detectedBiome = this.terrainSystem.getBiomeAtPosition(point.x, point.z);
-          } else {
-            // Fallback - just mark as successful for basic validation
-            detectedBiome = 'detected';
-          }
-          
-          if (detectedBiome) {
-            successful++;
-          } else {
-            failed++;
-            failures.push(`Point (${point.x}, ${point.z}) returned null biome`);
-          }
-          
-        } catch (error) {
+        const detectedBiome = this.terrainSystem.getBiomeAtPosition(point.x, point.z);
+        if (detectedBiome) {
+          successful++;
+        } else {
           failed++;
-          failures.push(`Point (${point.x}, ${point.z}) failed: ${(error as Error).message}`);
+          failures.push(`Point (${point.x}, ${point.z}) returned null biome`);
         }
       }
       
@@ -865,16 +832,9 @@ export class TerrainValidationSystem extends System {
       ];
       
       for (const point of lakeTestPoints) {
-        try {
-          if (this.terrainSystem?.getBiomeAtPosition) {
-            const biome = this.terrainSystem.getBiomeAtPosition(point.x, point.z);
-            
-            if (biome === 'lakes') {
-              lakeCount++;
-            }
-          }
-        } catch (error) {
-          console.warn(`[TerrainValidationSystem] Lake test failed at (${point.x}, ${point.z}):`, (error as Error).message);
+        const biome = this.terrainSystem.getBiomeAtPosition(point.x, point.z);
+        if (biome === 'lakes') {
+          lakeCount++;
         }
       }
       
@@ -924,7 +884,7 @@ export class TerrainValidationSystem extends System {
             heights.push(height);
             
           } catch (error) {
-            console.warn(`[TerrainValidationSystem] Height sample failed at (${point.x}, ${point.z}):`, (error as Error).message);
+            this.logger.warn(`Height sample failed at (${point.x}, ${point.z}): ${(error as Error).message}`);
           }
         }
         

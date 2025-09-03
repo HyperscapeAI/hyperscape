@@ -16,6 +16,7 @@ import { getSystem } from '../utils/SystemUtils';
 import type { AggroSystem } from './AggroSystem';
 import type { MobSystem } from './MobSystem';
 import { VisualTestFramework } from './VisualTestFramework';
+import { EventType } from '../types/events';
 
 export class AggroTestSystem extends VisualTestFramework {
   private testData = new Map<string, AggroTestData>();
@@ -641,7 +642,7 @@ export class AggroTestSystem extends VisualTestFramework {
       // Get current mob state
       let mob: MobInstance | undefined = undefined;
       if (this.mobSystem) {
-        mob = await this.mobSystem.getMob(testData.mobId) as unknown as MobInstance;
+        mob = (await this.mobSystem.getMob(testData.mobId)) as MobInstance | undefined;
       }
       
       if (!mob) {
@@ -831,7 +832,7 @@ export class AggroTestSystem extends VisualTestFramework {
       this.fakePlayers.delete(testData.player.id);
       
       // Emit cleanup events
-      this.emitTypedEvent('rpg:test:player:remove', {
+      this.emitTypedEvent(EventType.TEST_PLAYER_REMOVE, {
         id: `fake_player_${testData.player.id}`
       });
       

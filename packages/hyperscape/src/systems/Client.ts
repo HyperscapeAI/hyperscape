@@ -1,6 +1,6 @@
 import { System } from './System'
 
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 import { initYoga } from '../extras/yoga'
 import type { World, WorldOptions } from '../types'
 
@@ -27,8 +27,9 @@ export class Client extends System {
         
         // First check if the property exists on the world object itself
         if (prop in target) {
-          // Strong type assumption - cast through unknown for complex World type
-          return (target as unknown as Record<string, unknown>)[prop]
+          // Access through keyof to avoid unsafe Record cast
+          const key = prop as keyof typeof target
+          return target[key] as unknown
         }
         
         return undefined
@@ -47,15 +48,12 @@ export class Client extends System {
   }
 
   start() {
-    if (this.world.graphics && 'renderer' in this.world.graphics) {
-      this.world.graphics?.renderer.setAnimationLoop(this.world.tick);
+    if (this.world.graphics) {
+      (this.world.graphics.renderer as { setAnimationLoop: (fn: (time?: number) => void | null) => void }).setAnimationLoop((time?: number) => this.world.tick(time ?? performance.now()));
     }
     document.addEventListener('visibilitychange', this.onVisibilityChange)
 
-    if ('on' in this.world.settings) {
-      // Assume on method exists on settings
-      (this.world.settings as { on: (event: string, handler: (changes: { title?: { value?: string } }) => void) => void }).on('change', this.onSettingsChange);
-    }
+    this.world.settings.on('change', this.onSettingsChange)
   }
 
   onSettingsChange = (changes: { title?: { value?: string } }) => {
@@ -93,16 +91,13 @@ export class Client extends System {
       worker = new Worker(URL.createObjectURL(blob))
       worker.onmessage = () => {
         const time = performance.now()
-        if ('tick' in this.world) {
-          // Assume tick method exists on world
-          (this.world as { tick: (time: number) => void }).tick(time);
-        }
+        ;(this.world as { tick: (time: number) => void }).tick(time)
       }
     }
     if (document.hidden) {
       // stop rAF
-      if (this.world.graphics && 'renderer' in this.world.graphics) {
-        this.world.graphics?.renderer.setAnimationLoop(null);
+      if (this.world.graphics) {
+        (this.world.graphics.renderer as { setAnimationLoop: (fn: ((time?: number) => void) | null) => void }).setAnimationLoop(null)
       }
       // tell the worker to start
       worker.postMessage('start')
@@ -110,15 +105,15 @@ export class Client extends System {
       // tell the worker to stop
       worker.postMessage('stop')
       // resume rAF
-      if (this.world.graphics && 'renderer' in this.world.graphics) {
-        this.world.graphics?.renderer.setAnimationLoop(this.world.tick);
+      if (this.world.graphics) {
+        (this.world.graphics.renderer as { setAnimationLoop: (fn: (time?: number) => void) => void }).setAnimationLoop((time?: number) => this.world.tick(time ?? performance.now()))
       }
     }
   }
 
   destroy() {
-    if (this.world.graphics && 'renderer' in this.world.graphics) {
-      this.world.graphics?.renderer.setAnimationLoop(null);
+    if (this.world.graphics) {
+      (this.world.graphics.renderer as { setAnimationLoop: (fn: ((time?: number) => void) | null) => void }).setAnimationLoop(null)
     }
     worker?.postMessage('stop')
     worker = null

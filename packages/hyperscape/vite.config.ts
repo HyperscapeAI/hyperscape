@@ -16,7 +16,7 @@ export default defineConfig({
   publicDir: 'public',
   
   build: {
-    outDir: path.resolve(__dirname, 'dist/client'),
+    outDir: path.resolve(__dirname, 'build/public'),
     emptyOutDir: true,
     target: 'esnext', // Support top-level await
     minify: false, // Disable minification for debugging
@@ -36,7 +36,7 @@ export default defineConfig({
   },
   
   server: {
-    port: Number(process.env.VITE_PORT) || 3001,
+    port: Number(process.env.VITE_PORT) || 3333,
     open: false,
     host: true
   },

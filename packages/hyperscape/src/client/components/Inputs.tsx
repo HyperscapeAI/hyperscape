@@ -9,7 +9,7 @@ import type {
   InputSwitchProps, 
   InputDropdownProps, 
   InputFileProps 
-} from '../../types/ui-component-types';
+} from '../../types/ui-types';
 
 export function InputText({ label, value, onChange, placeholder, disabled }: InputTextProps) {
   return (

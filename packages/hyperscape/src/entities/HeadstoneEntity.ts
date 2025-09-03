@@ -2,7 +2,7 @@
  * HeadstoneEntity - Represents a player's death location with dropped items
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import type { World } from '../World';
 import { EventType } from '../types/events';
 import type { InventoryItem } from '../types/core';

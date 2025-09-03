@@ -1,10 +1,10 @@
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 
+import { Node as NodeClass } from '../nodes/Node'
 import { System } from './System'
-import { Node } from '../nodes/Node'
 
 import { CSM } from '../libs/csm/CSM'
-import type { World, WorldOptions, BaseEnvironment, SkyNode, SkyHandle, SkyInfo, EnvironmentModel, LoaderResult } from '../types/index'
+import type { BaseEnvironment, EnvironmentModel, LoadedModel, LoaderResult, SkyHandle, SkyInfo, SkyNode, World, WorldOptions } from '../types/index'
 
 // Strong type casting helpers - assume types are correct
 function _asNumber(value: unknown): number {
@@ -81,6 +81,7 @@ export class ClientEnvironment extends System {
   skyInfo!: SkyInfo;
 
   constructor(world: World) {
+    // Keep extending base System to avoid wide changes; preserve name for logs
     super(world)
   }
 
@@ -102,7 +103,10 @@ export class ClientEnvironment extends System {
 
     this.world.settings?.on('change', this.onSettingsChange)
     this.world.prefs?.on('change', this.onPrefsChange)
-    this.world.graphics?.on('resize', this.onViewportResize)
+    // graphics may not be an event emitter; guard against missing 'on'
+    if (this.world.graphics && typeof (this.world.graphics as { on?: Function }).on === 'function') {
+      (this.world.graphics as { on: (event: string, fn: () => void) => void }).on('resize', this.onViewportResize)
+    }
   }
 
   async updateModel() {
@@ -115,32 +119,43 @@ export class ClientEnvironment extends System {
     if (!glb) return
     if (this.model) this.model.deactivate()
     
-    // Create EnvironmentModel wrapper for the nodes
+    // Get the model nodes - handle both Map<string, Node> and EnvironmentModel return types
     if (glb && 'toNodes' in glb) {
-      const nodes = glb.toNodes()
-      this.model = {
-        deactivate: () => {
-          for (const node of nodes.values()) {
-            // Strong type assumption - nodes are Node instances
-            if (node) {
-              (node as unknown as Node).deactivate()
+      const nodesResult = (glb as LoadedModel).toNodes()
+      const nodes = nodesResult as Map<string, NodeClass> | EnvironmentModel
+      // Check if it's already an EnvironmentModel-like object with activate/deactivate
+      if (nodes && typeof (nodes as EnvironmentModel).activate === 'function' && typeof (nodes as EnvironmentModel).deactivate === 'function') {
+        this.model = nodes as EnvironmentModel
+        this.model.activate({ world: this.world, label: 'base' })
+      } else if (nodes && nodes instanceof Map) {
+        // If it's a Map of nodes, create a wrapper
+        // Cast nodes to Map<string, NodeClass> since we know these are actual Node instances
+        const nodeMap = nodes as Map<string, NodeClass>
+        this.model = {
+          deactivate: () => {
+            for (const node of nodeMap.values()) {
+              if (node && node.deactivate) {
+                node.deactivate()
+              }
             }
-          }
-        },
-        activate: (options: { world: World; label: string }) => {
-          for (const node of nodes.values()) {
-            // Strong type assumption - nodes are Node instances
-            if (node) {
-              (node as unknown as Node).activate(options.world)
+          },
+          activate: (options: { world: World; label: string }) => {
+            for (const node of nodeMap.values()) {
+              if (node && node.activate) {
+                node.activate(options.world)
+              } else if (node && options.world.stage) {
+                options.world.stage.add(node)
+              }
             }
           }
         }
+        this.model.activate({ world: this.world, label: 'base' })
+      } else {
+        this.model = null
       }
     } else {
       this.model = null
     }
-    
-    this.model?.activate({ world: this.world, label: 'base' })
   }
 
   addSky(node: SkyNode) {
@@ -163,7 +178,7 @@ export class ClientEnvironment extends System {
   async updateSky() {
     // Check if stage is available
     if (!this.world.stage || !this.world.stage.scene) {
-      console.warn('[ClientEnvironment] Stage not available for updateSky, deferring...');
+       console.warn('[ClientEnvironment] Stage not available for updateSky, deferring...');
       setTimeout(() => this.updateSky(), 100);
       return;
     }
@@ -257,10 +272,11 @@ export class ClientEnvironment extends System {
   override update(_delta: number) {
     if (this.csm) {
       try {
-        // Assume update method exists on CSM
-        this.csm.update!()
+        if (typeof (this.csm as { update?: () => void }).update === 'function') {
+          ;(this.csm as { update: () => void }).update()
+        }
       } catch (error) {
-        console.error('[ClientEnvironment] Error updating CSM:', error);
+        console.error('[ClientEnvironment] Error updating CSM:', error)
       }
     }
   }

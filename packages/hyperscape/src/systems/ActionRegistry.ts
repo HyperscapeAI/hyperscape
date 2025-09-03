@@ -34,7 +34,6 @@ class BaseActionRegistry {
       try {
         return action.validate(context);
       } catch {
-        // If validation throws, exclude the action
         return false;
       }
     });
@@ -83,15 +82,20 @@ export class ActionRegistry extends SystemBase {
         validate: action.validate,
         execute: action.execute
       })),
-      getAvailable: (context: Record<string, unknown>) => this.actionRegistryInstance.getAvailable(context as unknown as ActionContext).map(action => ({
-        name: action.name,
-        description: action.description,
-        parameters: action.parameters,
-        validate: action.validate,
-        execute: action.execute
-      })),
-      execute: (name: string, context: Record<string, unknown>, params: Record<string, unknown>) => 
-        this.actionRegistryInstance.execute(name, context as unknown as ActionContext, params)
+      getAvailable: (context?: Partial<ActionContext>) => {
+        const resolved: ActionContext = { world: this.world, playerId: context?.playerId, entity: context?.entity };
+        return this.actionRegistryInstance.getAvailable(resolved).map(action => ({
+          name: action.name,
+          description: action.description,
+          parameters: action.parameters,
+          validate: action.validate,
+          execute: action.execute
+        }));
+      },
+      execute: (name: string, context: Partial<ActionContext> | undefined, params: Record<string, unknown>) => {
+        const resolved: ActionContext = { world: this.world, playerId: context?.playerId, entity: context?.entity };
+        return this.actionRegistryInstance.execute(name, resolved, params);
+      }
     };
   }
 
@@ -104,7 +108,7 @@ export class ActionRegistry extends SystemBase {
     this.registerStoreActions();
     this.registerMovementActions();
     
-    console.log(`[ActionRegistry] Registered ${this.actionRegistryInstance.getAll().length} actions`);
+    this.logger.info(`Registered ${this.actionRegistryInstance.getAll().length} actions`);
   }
 
   private registerCombatActions(): void {
@@ -119,14 +123,11 @@ export class ActionRegistry extends SystemBase {
         return true;
       },
       execute: async (context: ActionContext, params: Record<string, unknown>) => {
-        const { world } = context;
-        const playerId = context.playerId || world.network.id;
-        
-        world.emit(EventType.COMBAT_START_ATTACK, { 
-          attackerId: playerId, 
+        const playerId = context.playerId || context.world.network.id;
+        this.emitTypedEvent(EventType.COMBAT_START_ATTACK, {
+          attackerId: playerId,
           targetId: params.targetId as string
         });
-        
         return { success: true, message: `Started attacking ${params.targetId}` };
       }
     });
@@ -136,10 +137,8 @@ export class ActionRegistry extends SystemBase {
       description: 'Stop current combat',
       parameters: [],
       execute: async (context: ActionContext, _params: Record<string, unknown>) => {
-        const { world } = context;
-        const playerId = context.playerId || world.network.id;
-        
-        world.emit(EventType.COMBAT_STOP_ATTACK, { attackerId: playerId });
+        const playerId = context.playerId || context.world.network.id;
+        this.emitTypedEvent(EventType.COMBAT_STOP_ATTACK, { attackerId: playerId });
         return { success: true, message: 'Stopped attacking' };
       }
     });
@@ -154,22 +153,12 @@ export class ActionRegistry extends SystemBase {
         { name: 'slot', type: 'number', required: true, description: 'Inventory slot number' }
       ],
       execute: async (context: ActionContext, params: Record<string, unknown>) => {
-        const { world } = context;
-        const playerId = context.playerId || world.network.id;
-        
-        // Validate slot parameter
+        const playerId = context.playerId || context.world.network.id;
         const slot = params.slot as number;
         if (typeof slot !== 'number' || slot < 0) {
           return { success: false, message: 'Invalid slot number provided' };
         }
-        
-        // Get item action system
-        const itemActionSystem = world.getSystem('rpg-item-actions');
-        if (itemActionSystem) {
-          // Trigger appropriate action based on item type
-          world.emit(EventType.INVENTORY_USE, { playerId, itemId: params.itemId as string, slot });
-        }
-        
+        this.emitTypedEvent(EventType.INVENTORY_USE, { playerId, itemId: params.itemId as string, slot });
         return { success: true, message: `Using item ${params.itemId}` };
       }
     });
@@ -182,15 +171,12 @@ export class ActionRegistry extends SystemBase {
         { name: 'quantity', type: 'number', required: false, description: 'Amount to drop' }
       ],
       execute: async (context: ActionContext, params: Record<string, unknown>) => {
-        const { world } = context;
-        const playerId = context.playerId || world.network.id;
-        
-        world.emit(EventType.ITEM_DROP, { 
-          playerId, 
-          itemId: params.itemId as string, 
-          quantity: (params.quantity as number) || 1 
+        const playerId = context.playerId || context.world.network.id;
+        this.emitTypedEvent(EventType.ITEM_DROP, {
+          playerId,
+          itemId: params.itemId as string,
+          quantity: (params.quantity as number) || 1
         });
-        
         return { success: true, message: `Dropped item ${params.itemId}` };
       }
     });
@@ -203,15 +189,12 @@ export class ActionRegistry extends SystemBase {
         { name: 'slot', type: 'string', required: false, description: 'Equipment slot (auto-detect if not provided)' }
       ],
       execute: async (context: ActionContext, params: Record<string, unknown>) => {
-        const { world } = context;
-        const playerId = context.playerId || world.network.id;
-        
-        world.emit(EventType.EQUIPMENT_TRY_EQUIP, { 
-          playerId, 
-          itemId: params.itemId as string, 
-          slot: params.slot as number
+        const playerId = context.playerId || context.world.network.id;
+        this.emitTypedEvent(EventType.EQUIPMENT_TRY_EQUIP, {
+          playerId,
+          itemId: params.itemId as string,
+          slot: params.slot as string | undefined
         });
-        
         return { success: true, message: `Equipping item ${params.itemId}` };
       }
     });
@@ -223,14 +206,11 @@ export class ActionRegistry extends SystemBase {
         { name: 'itemId', type: 'string', required: true, description: 'ID of the ground item to pick up' }
       ],
       execute: async (context: ActionContext, params: Record<string, unknown>) => {
-        const { world } = context;
-        const playerId = context.playerId || world.network.id;
-        
-        world.emit(EventType.ITEM_PICKUP_REQUEST, { 
-          playerId, 
+        const playerId = context.playerId || context.world.network.id;
+        this.emitTypedEvent(EventType.ITEM_PICKUP_REQUEST, {
+          playerId,
           itemId: params.itemId as string
         });
-        
         return { success: true, message: `Picking up item ${params.itemId}` };
       }
     });
@@ -244,16 +224,13 @@ export class ActionRegistry extends SystemBase {
         { name: 'resourceId', type: 'string', required: true, description: 'ID of the resource to gather' }
       ],
       execute: async (context: ActionContext, params: Record<string, unknown>) => {
-        const { world } = context;
-        const playerId = context.playerId || world.network.id;
-        const player = world.entities.player;
-        
-        world.emit(EventType.RESOURCE_GATHERING_STARTED, { 
-          playerId, 
-          resourceId: params.resourceId,
-          playerPosition: player?.position 
+        const playerId = context.playerId || context.world.network.id;
+        const player = context.world.entities.player;
+        this.emitTypedEvent(EventType.RESOURCE_GATHERING_STARTED, {
+          playerId,
+          resourceId: params.resourceId as string,
+          playerPosition: player?.position
         });
-        
         return { success: true, message: `Started gathering ${params.resourceId}` };
       }
     });
@@ -263,10 +240,8 @@ export class ActionRegistry extends SystemBase {
       description: 'Stop current gathering action',
       parameters: [],
       execute: async (context: ActionContext, _params: Record<string, unknown>) => {
-        const { world } = context;
-        const playerId = context.playerId || world.network.id;
-        
-        world.emit(EventType.RESOURCE_GATHERING_STOPPED, { playerId });
+        const playerId = context.playerId || context.world.network.id;
+        this.emitTypedEvent(EventType.RESOURCE_GATHERING_STOPPED, { playerId });
         return { success: true, message: 'Stopped gathering' };
       }
     });
@@ -280,16 +255,13 @@ export class ActionRegistry extends SystemBase {
         { name: 'bankId', type: 'string', required: true, description: 'ID of the bank to open' }
       ],
       execute: async (context: ActionContext, params: Record<string, unknown>) => {
-        const { world } = context;
-        const playerId = context.playerId || world.network.id;
-        const player = world.entities.player;
-        
-        world.emit(EventType.BANK_OPEN, { 
-          playerId, 
-          bankId: params.bankId,
-          playerPosition: player?.position 
+        const playerId = context.playerId || context.world.network.id;
+        const player = context.world.entities.player;
+        this.emitTypedEvent(EventType.BANK_OPEN, {
+          playerId,
+          bankId: params.bankId as string,
+          playerPosition: player?.position
         });
-        
         return { success: true, message: `Opening bank ${params.bankId}` };
       }
     });
@@ -303,16 +275,13 @@ export class ActionRegistry extends SystemBase {
         { name: 'quantity', type: 'number', required: false, description: 'Amount to deposit' }
       ],
       execute: async (context: ActionContext, params: Record<string, unknown>) => {
-        const { world } = context;
-        const playerId = context.playerId || world.network.id;
-        
-        world.emit(EventType.BANK_DEPOSIT, { 
-          playerId, 
+        const playerId = context.playerId || context.world.network.id;
+        this.emitTypedEvent(EventType.BANK_DEPOSIT, {
+          playerId,
           bankId: params.bankId as string,
           itemId: params.itemId as string,
           quantity: (params.quantity as number) || 1
         });
-        
         return { success: true, message: `Deposited ${(params.quantity as number) || 1} ${params.itemId}` };
       }
     });
@@ -326,16 +295,13 @@ export class ActionRegistry extends SystemBase {
         { name: 'storeId', type: 'string', required: true, description: 'ID of the store to open' }
       ],
       execute: async (context: ActionContext, params: Record<string, unknown>) => {
-        const { world } = context;
-        const playerId = context.playerId || world.network.id;
-        const player = world.entities.player;
-        
-        world.emit(EventType.STORE_OPEN, { 
-          playerId, 
-          storeId: params.storeId,
-          playerPosition: player?.position 
+        const playerId = context.playerId || context.world.network.id;
+        const player = context.world.entities.player;
+        this.emitTypedEvent(EventType.STORE_OPEN, {
+          playerId,
+          storeId: params.storeId as string,
+          playerPosition: player?.position
         });
-        
         return { success: true, message: `Opening store ${params.storeId}` };
       }
     });
@@ -349,16 +315,13 @@ export class ActionRegistry extends SystemBase {
         { name: 'quantity', type: 'number', required: false, description: 'Amount to buy' }
       ],
       execute: async (context: ActionContext, params: Record<string, unknown>) => {
-        const { world } = context;
-        const playerId = context.playerId || world.network.id;
-        
-        world.emit(EventType.STORE_BUY, { 
-          playerId, 
+        const playerId = context.playerId || context.world.network.id;
+        this.emitTypedEvent(EventType.STORE_BUY, {
+          playerId,
           storeId: params.storeId as string,
           itemId: params.itemId as string,
           quantity: (params.quantity as number) || 1
         });
-        
         return { success: true, message: `Buying ${(params.quantity as number) || 1} ${params.itemId}` };
       }
     });
@@ -372,16 +335,13 @@ export class ActionRegistry extends SystemBase {
         { name: 'quantity', type: 'number', required: false, description: 'Amount to sell' }
       ],
       execute: async (context: ActionContext, params: Record<string, unknown>) => {
-        const { world } = context;
-        const playerId = context.playerId || world.network.id;
-        
-        world.emit(EventType.STORE_SELL, { 
-          playerId, 
+        const playerId = context.playerId || context.world.network.id;
+        this.emitTypedEvent(EventType.STORE_SELL, {
+          playerId,
           storeId: params.storeId as string,
           itemId: params.itemId as string,
           quantity: (params.quantity as number) || 1
         });
-        
         return { success: true, message: `Selling ${(params.quantity as number) || 1} ${params.itemId}` };
       }
     });
@@ -397,14 +357,11 @@ export class ActionRegistry extends SystemBase {
         { name: 'z', type: 'number', required: true, description: 'Z coordinate' }
       ],
       execute: async (context: ActionContext, params: Record<string, unknown>) => {
-        const { world } = context;
-        const playerId = context.playerId || world.network.id;
-        
-        world.emit(EventType.MOVEMENT_CLICK_TO_MOVE, { 
+        const playerId = context.playerId || context.world.network.id;
+        this.emitTypedEvent(EventType.MOVEMENT_CLICK_TO_MOVE, {
           playerId,
           targetPosition: { x: params.x as number, y: (params.y as number) || 0, z: params.z as number }
         });
-        
         return { success: true, message: `Moving to (${params.x}, ${params.z})` };
       }
     });
@@ -414,10 +371,8 @@ export class ActionRegistry extends SystemBase {
       description: 'Stop current movement',
       parameters: [],
       execute: async (context: ActionContext, _params: Record<string, unknown>) => {
-        const { world } = context;
-        const playerId = context.playerId || world.network.id;
-        
-        world.emit('movement:stop', { playerId });
+        const playerId = context.playerId || context.world.network.id;
+        this.emitTypedEvent(EventType.MOVEMENT_STOP, { playerId });
         return { success: true, message: 'Stopped moving' };
       }
     });

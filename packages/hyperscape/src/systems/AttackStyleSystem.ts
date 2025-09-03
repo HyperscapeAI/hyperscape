@@ -95,13 +95,13 @@ export class AttackStyleSystem extends SystemBase {
 
   async init(): Promise<void> {
     // Subscribe to combat and UI events using the new event system with proper types
-    this.subscribe<{ playerId: string }>(EventType.PLAYER_REGISTERED, (event) => this.handlePlayerRegister({ id: event.data.playerId }));
-    this.subscribe<{ id: string }>(EventType.PLAYER_UNREGISTERED, (event) => this.handlePlayerUnregister(event.data));
-    this.subscribe<{ playerId: string; newStyle: string }>(EventType.ATTACK_STYLE_CHANGED, (event) => this.handleStyleChange(event.data));
-    this.subscribe<{ playerId: string; baseXP: number; skill: string; callback: (xpAmount: number) => void }>(EventType.COMBAT_XP_CALCULATE, (event) => this.handleXPCalculation(event.data));
-    this.subscribe<{ playerId: string; baseDamage: number; callback: (damage: number) => void }>(EventType.COMBAT_DAMAGE_CALCULATE, (event) => this.handleDamageCalculation(event.data));
-    this.subscribe<{ playerId: string; baseAccuracy: number; callback: (accuracy: number) => void }>(EventType.COMBAT_ACCURACY_CALCULATE, (event) => this.handleAccuracyCalculation(event.data));
-    this.subscribe<{ playerId: string; callback?: (info: Record<string, unknown> | null) => void }>(EventType.UI_ATTACK_STYLE_GET, (event) => this.handleGetStyleInfo(event.data));
+    this.subscribe(EventType.PLAYER_REGISTERED, (data) => this.handlePlayerRegister({ id: data.playerId }));
+    this.subscribe(EventType.PLAYER_UNREGISTERED, (data) => this.handlePlayerUnregister({ id: data.playerId }));
+    this.subscribe(EventType.ATTACK_STYLE_CHANGED, (data) => this.handleStyleChange(data));
+    this.subscribe(EventType.COMBAT_XP_CALCULATE, (data) => this.handleXPCalculation(data));
+    this.subscribe(EventType.COMBAT_DAMAGE_CALCULATE, (data) => this.handleDamageCalculation(data));
+    this.subscribe(EventType.COMBAT_ACCURACY_CALCULATE, (data) => this.handleAccuracyCalculation(data));
+    this.subscribe(EventType.UI_ATTACK_STYLE_GET, (data) => this.handleGetStyleInfo(data));
   }
 
   private handlePlayerRegister(data: { id: string }): void {

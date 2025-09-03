@@ -1,6 +1,6 @@
 import { isBoolean, isNumber } from 'lodash-es'
 
-import { System } from './System'
+import { SystemBase } from './SystemBase'
 import { storage } from '../storage'
 import { isTouch } from '../client/utils'
 import type { World } from '../types'
@@ -27,7 +27,7 @@ type PrefsValue = ClientPrefsData[PrefsKey]
  * Client Prefs System
  *
  */
-export class ClientPrefs extends System {
+export class ClientPrefs extends SystemBase {
   public ui: number = 1
   public actions: boolean = true
   public stats: boolean = false
@@ -42,7 +42,7 @@ export class ClientPrefs extends System {
   changes: Record<string, { prev: PrefsValue; value: PrefsValue }> | null = null
   
   constructor(world: World) {
-    super(world)
+    super(world, { name: 'client-prefs', dependencies: { required: [], optional: [] }, autoCleanup: true })
 
     const _isQuest = typeof navigator !== 'undefined' && navigator.userAgent ? /OculusBrowser/.test(navigator.userAgent) : false;
 
@@ -92,9 +92,10 @@ export class ClientPrefs extends System {
   }
 
   modify(key: PrefsKey, value: PrefsValue) {
-    if (this[key] === value) return
-    const prev = this[key]
-    Object.defineProperty(this, key, { value, writable: true, enumerable: true, configurable: true })
+    const current = (this as Record<string, unknown>)[key] as PrefsValue
+    if (current === value) return
+    const prev = current
+    ;(this as Record<string, unknown>)[key] = value
     if (!this.changes) this.changes = {}
     if (!this.changes[key]) this.changes[key] = { prev, value }
     else this.changes[key].value = value

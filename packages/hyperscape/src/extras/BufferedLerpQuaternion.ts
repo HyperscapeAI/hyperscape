@@ -1,6 +1,6 @@
 // note: buffer rule of thumb should be >= one update per interval, eg 1 / sendRate, example: 5Hz = 1 / 5 = 0.2s buffer + jitter
 
-import * as THREE from './three';
+import THREE from './three';
 import type { Sample } from '../types/physics';
 
 export class BufferedLerpQuaternion {

@@ -65,3 +65,6 @@ visual-test-results.log
 visual-test-summary.json
 test-results/
 playwright-report/
+
+*.sqlite
+*.sqlite-*

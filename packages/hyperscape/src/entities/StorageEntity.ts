@@ -34,13 +34,7 @@ export interface StorageConfig extends EntityConfig<BankEntityProperties> {
   };
 }
 
-export interface StorageSlot {
-  id: string;
-  itemId: string;
-  quantity: number;
-  metadata?: Record<string, string | number | boolean> | null;
-  slotIndex?: number;
-}
+import type { StorageSlot } from '../types/game-types'
 
 export abstract class StorageEntity extends Entity {
   // Storage properties

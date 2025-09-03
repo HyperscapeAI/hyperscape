@@ -2,7 +2,7 @@
  * Shared utilities for test systems
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 
 export interface TestVisual {
   mesh: THREE.Mesh;

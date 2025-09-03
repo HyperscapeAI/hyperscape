@@ -1,7 +1,10 @@
 import type { World, WorldChunk } from '../types';
 import { geometryToPxMesh, PMeshHandle } from '../extras/geometryToPxMesh';
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import { System } from './System';
+import { EventType } from '../types/events';
+import { NoiseGenerator } from '../utils/NoiseGenerator';
+import { MeshFactory } from '../utils/MeshFactory';
 
 /**
  * Terrain System
@@ -24,14 +27,19 @@ export class TerrainSystem extends System {
     private _terrainInitialized = false;
     private lastPlayerTile = { x: 0, z: 0 };
     private updateTimer = 0;
+    private noise!: NoiseGenerator;
     private databaseSystem!: { 
         saveWorldChunk(chunkData: unknown): void;
     }; // DatabaseSystem reference
     private chunkSaveInterval?: NodeJS.Timeout;
+    private terrainUpdateIntervalId?: NodeJS.Timeout;
+    private serializationIntervalId?: NodeJS.Timeout;
+    private boundingBoxIntervalId?: NodeJS.Timeout;
     private activeChunks = new Set<string>();
     
     private coreChunkRange = 1; // 9 core chunks (3x3 grid)
     private ringChunkRange = 2; // Additional ring around core chunks
+    private unloadPadding = 1; // Hysteresis padding for unloading beyond ring range
     private playerChunks = new Map<string, Set<string>>(); // player -> chunk keys
     private simulatedChunks = new Set<string>(); // chunks with active simulation
     private isGenerating = false; // Track if terrain generation is in progress
@@ -72,26 +80,27 @@ export class TerrainSystem extends System {
     };
     private terrainBoundingBoxes = new Map<string, THREE.Box3>();
     
+    // Deterministic noise seeding
+    private computeSeedFromWorldId(): number {
+        const id = String((this.world as { id?: string }).id || 'hyperscape');
+        let hash = 0;
+        for (let i = 0; i < id.length; i++) {
+            hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+        }
+        return hash || 12345;
+    }
+    
     // World Configuration - Your Specifications
     private readonly CONFIG = {
         // Core World Specs
         TILE_SIZE: 100,           // 100m x 100m tiles
         WORLD_SIZE: 100,          // 100x100 grid = 10km x 10km world
         TILE_RESOLUTION: 64,      // 64x64 vertices per tile for smooth terrain
-        MAX_HEIGHT: 50,           // 50m max height variation
+        MAX_HEIGHT: 80,           // 80m max height variation
         
         // Chunking - Only adjacent tiles
         VIEW_DISTANCE: 1,         // Load only 1 tile in each direction (3x3 = 9 tiles)
         UPDATE_INTERVAL: 0.5,     // Check player movement every 0.5 seconds
-        
-        // Terrain Generation - Multi-octave noise
-        NOISE_SCALE: 0.02,        // Primary terrain noise frequency
-        NOISE_OCTAVES: 4,         // Number of noise octaves for detail
-        NOISE_PERSISTENCE: 0.5,   // Amplitude reduction per octave
-        NOISE_LACUNARITY: 2.0,    // Frequency increase per octave
-        BIOME_SCALE: 0.003,       // Biome transition frequency (larger = bigger biomes)
-        HEIGHT_AMPLIFIER: 1.0,    // Height scaling factor
-        BASE_LEVEL: 10.0,         // Base ground level (y=10) to keep terrain above 0
         
         // Movement Constraints
         WATER_IMPASSABLE: true,   // Water blocks movement
@@ -332,12 +341,13 @@ export class TerrainSystem extends System {
 
     async init(): Promise<void> {
         
+        // Initialize deterministic noise from world id
+        this.noise = new NoiseGenerator(this.computeSeedFromWorldId());
         // Get systems references
         // Check if database system exists and has the required method
-        const dbSystem = this.world.getSystem('rpg-database');
-        if (dbSystem && 'saveWorldChunk' in dbSystem) {
-            // Assume saveWorldChunk method exists
-            this.databaseSystem = dbSystem as { saveWorldChunk(chunkData: unknown): void };
+        const dbSystem = this.world.getSystem('rpg-database') as { saveWorldChunk(chunkData: unknown): void } | undefined;
+        if (dbSystem) {
+            this.databaseSystem = dbSystem;
         }
 
         // Initialize chunk loading system
@@ -361,35 +371,41 @@ export class TerrainSystem extends System {
     }
 
     async start(): Promise<void> {
+        console.log('[TerrainSystem] Starting terrain system...');
         
         // Final environment detection
-        const isServer = this.world.network.isServer || false;
-        const isClient = this.world.network.isClient || false;
+        const isServer = this.world.network?.isServer || false;
+        const isClient = this.world.network?.isClient || false;
         
+        console.log(`[TerrainSystem] Environment: ${isServer ? 'Server' : isClient ? 'Client' : 'Unknown'}`);
 
         if (isClient) {
             this.setupClientTerrain();
         } else if (isServer) {
             this.setupServerTerrain();
         } else {
-            // Environment not detected - terrain setup deferred
+            console.warn('[TerrainSystem] Environment not detected - terrain setup deferred');
         }
         
+        // Load initial tiles
+        this.loadInitialTiles();
+        
         // Start player-based terrain update loop
-        setInterval(() => {
+        this.terrainUpdateIntervalId = setInterval(() => {
             this.updatePlayerBasedTerrain();
         }, 1000); // Update every second
         
         // Start serialization loop
-        setInterval(() => {
+        this.serializationIntervalId = setInterval(() => {
             this.performPeriodicSerialization();
         }, 60000); // Check every minute
         
         // Start bounding box verification
-        setInterval(() => {
+        this.boundingBoxIntervalId = setInterval(() => {
             this.verifyTerrainBoundingBoxes();
         }, 30000); // Verify every 30 seconds
         
+        console.log('[TerrainSystem] Terrain system started successfully');
     }
 
     private setupClientTerrain(): void {
@@ -401,11 +417,8 @@ export class TerrainSystem extends System {
         this.terrainContainer.name = 'TerrainContainer';
         scene.add(this.terrainContainer);
         
-        // Setup camera
-        const camera = this.world.camera as THREE.PerspectiveCamera;
-        camera.position.set(0, 100, 200);
-        camera.lookAt(0, 0, 0);
-        camera.updateProjectionMatrix();
+        // Setup initial camera only if no client camera system controls it
+        // Leave control to ClientCameraSystem for third-person follow
         
         // Load initial tiles
         this.loadInitialTiles();
@@ -425,19 +438,39 @@ export class TerrainSystem extends System {
     }
 
     private loadInitialTiles(): void {
-        const _startTime = performance.now();
-        let _tilesGenerated = 0;
+        const startTime = performance.now();
+        let tilesGenerated = 0;
+        let minHeight = Infinity;
+        let maxHeight = -Infinity;
         
+        console.log('[TerrainSystem] Loading initial tiles...');
         
-        // Generate 3x3 grid around origin
-        for (let dx = -1; dx <= 1; dx++) {
-            for (let dz = -1; dz <= 1; dz++) {
-                this.generateTile(dx, dz);
-                _tilesGenerated++;
+        // Generate initial 3x3 grid around origin
+        const initialRange = 1;
+        for (let dx = -initialRange; dx <= initialRange; dx++) {
+            for (let dz = -initialRange; dz <= initialRange; dz++) {
+                const tile = this.generateTile(dx, dz);
+                tilesGenerated++;
+                
+                // Sample heights to check variation
+                for (let i = 0; i < 10; i++) {
+                    const testX = tile.x * this.CONFIG.TILE_SIZE + (Math.random() - 0.5) * this.CONFIG.TILE_SIZE;
+                    const testZ = tile.z * this.CONFIG.TILE_SIZE + (Math.random() - 0.5) * this.CONFIG.TILE_SIZE;
+                    const height = this.getHeightAt(testX, testZ);
+                    minHeight = Math.min(minHeight, height);
+                    maxHeight = Math.max(maxHeight, height);
+                }
             }
         }
         
-        const _endTime = performance.now();
+        const endTime = performance.now();
+        console.log(`[TerrainSystem] Generated ${tilesGenerated} tiles in ${(endTime - startTime).toFixed(2)}ms`);
+        console.log(`[TerrainSystem] Height range: ${minHeight.toFixed(2)}m to ${maxHeight.toFixed(2)}m (variation: ${(maxHeight - minHeight).toFixed(2)}m)`);
+        
+        // Warn if terrain is too flat
+        if (maxHeight - minHeight < 20) {
+            console.warn('[TerrainSystem] ⚠️ Terrain appears too flat! Height variation is only ' + (maxHeight - minHeight).toFixed(2) + 'm');
+        }
     }
 
     private generateTile(tileX: number, tileZ: number): TerrainTile {
@@ -525,6 +558,56 @@ export class TerrainSystem extends System {
         // Generate visual features (roads, lakes)
         this.generateVisualFeatures(tile);
         
+        // Add water meshes for low areas
+        this.generateWaterMeshes(tile);
+        
+        // Add visible resource meshes (simple proxies)
+        if (tile.resources.length > 0 && tile.mesh) {
+            for (const resource of tile.resources) {
+                if (resource.mesh) continue;
+                let m: THREE.Mesh | null = null;
+                if (resource.type === 'tree') {
+                    m = MeshFactory.createResourceMesh({ color: 0x2f7d32, size: { x: 1.2, y: 3.0, z: 1.2 } });
+                } else if (resource.type === 'fish') {
+                    m = MeshFactory.createSphereMesh({ color: 0x3aa7ff, radius: 0.6, transparent: true, opacity: 0.7 });
+                } else if (resource.type === 'rock' || resource.type === 'ore' || resource.type === 'rare_ore') {
+                    m = MeshFactory.createResourceMesh({ color: 0x8a8a8a, size: { x: 1.0, y: 1.0, z: 1.0 } });
+                } else if (resource.type === 'herb') {
+                    m = MeshFactory.createResourceMesh({ color: 0x66bb6a, size: { x: 0.6, y: 0.8, z: 0.6 } });
+                }
+                if (m) {
+                    const pos = resource.position instanceof THREE.Vector3
+                        ? resource.position
+                        : new THREE.Vector3(resource.position.x, resource.position.y, resource.position.z);
+                    m.position.set(pos.x, pos.y, pos.z);
+                    m.name = `resource_${resource.id}`;
+                    tile.mesh.add(m);
+                    resource.mesh = m;
+                }
+            }
+        }
+
+        // Emit typed event for other systems (resources, AI nav, etc.)
+        try {
+            const originX = tile.x * this.CONFIG.TILE_SIZE;
+            const originZ = tile.z * this.CONFIG.TILE_SIZE;
+            const resourcesPayload = tile.resources.map(r => {
+                const pos = r.position instanceof THREE.Vector3
+                    ? { x: originX + r.position.x, y: r.position.y, z: originZ + r.position.z }
+                    : { x: originX + r.position.x, y: r.position.y, z: originZ + r.position.z };
+                return { id: r.id, type: r.type, position: pos };
+            });
+            const genericBiome = this.mapBiomeToGeneric(tile.biome as string);
+            this.world.emit(EventType.TERRAIN_TILE_GENERATED, {
+                tileId: `${tileX},${tileZ}`,
+                position: { x: originX, z: originZ },
+                biome: genericBiome,
+                tileX,
+                tileZ,
+                resources: resourcesPayload
+            });
+        } catch (_err) {}
+
         // Store tile
         this.terrainTiles.set(key, tile);
         this.activeChunks.add(key);
@@ -547,23 +630,12 @@ export class TerrainSystem extends System {
         const colors = new Float32Array(positions.count * 3);
         const heightData: number[] = [];
         
-        // Get biome color
-        const biome = this.getBiomeAt(tileX, tileZ);
-        const biomeData = this.BIOMES[biome];
+        // Default biome fallback for coloring
+        const defaultBiomeData = this.BIOMES['plains'] || { color: 0x7fb069, name: 'Plains' };
         
-        // Safety check for biomeData - use plains as fallback
-        const safeBiomeData = biomeData || this.BIOMES['plains'] || {
-            color: 0x6b8f47,
-            name: 'Plains'
-        };
-        
-        if (!biomeData) {
-            console.error(`[TerrainSystem] Biome '${biome}' not found in BIOMES. Using default plains biome.`);
-        }
-        
-        // Pre-calculate road data for this tile
+        // Pre-calculate nearby road data in world coordinates
         const roadColor = new THREE.Color(0x8B7355); // Brown road color
-        const roadMap = this.calculateRoadVertexInfluence(tileX, tileZ);
+        const nearbyRoads = this.getNearbyRoadSegmentsWorld(tileX, tileZ);
         
         // Generate heightmap and vertex colors
         for (let i = 0; i < positions.count; i++) {
@@ -572,34 +644,66 @@ export class TerrainSystem extends System {
             
             // Safeguard against NaN position values
             if (isNaN(localX) || isNaN(localZ)) {
-                positions.setY(i, this.CONFIG.BASE_LEVEL);
-                heightData.push(this.CONFIG.BASE_LEVEL);
+                positions.setY(i, 10);
+                heightData.push(10);
                 continue;
             }
             
             const x = localX + (tileX * this.CONFIG.TILE_SIZE);
             const z = localZ + (tileZ * this.CONFIG.TILE_SIZE);
             
-            // Generate height using noise
+            // Generate height using our improved noise function
             let height = this.getHeightAt(x, z);
             
             // Final NaN check for height
             if (isNaN(height)) {
-                height = this.CONFIG.BASE_LEVEL;
+                height = 10;
             }
             
             positions.setY(i, height);
             heightData.push(height);
             
-            // Start with biome color
-            const color = new THREE.Color(safeBiomeData.color);
+            // Get biome for this specific vertex position
+            const vertexTileX = Math.floor(x / this.CONFIG.TILE_SIZE);
+            const vertexTileZ = Math.floor(z / this.CONFIG.TILE_SIZE);
+            const vertexBiomeKey = this.getBiomeAt(vertexTileX, vertexTileZ);
+            const vertexBiome = this.BIOMES[vertexBiomeKey] || defaultBiomeData;
             
-            // Add height-based variation
-            const heightFactor = (height / this.CONFIG.MAX_HEIGHT) * 0.5 + 0.5;
-            color.multiplyScalar(heightFactor);
+            // Start with base biome color
+            const color = new THREE.Color(vertexBiome.color);
+            
+            // Add height-based shading
+            const normalizedHeight = height / 80; // Max height is 80
+            
+            // Snow on high peaks
+            if (normalizedHeight > 0.75) {
+                const snowColor = new THREE.Color(0xf0f8ff);
+                const snowFactor = (normalizedHeight - 0.75) / 0.25;
+                color.lerp(snowColor, snowFactor * 0.8);
+            }
+            // Rock exposure on steep slopes
+            else if (normalizedHeight > 0.6) {
+                const rockColor = new THREE.Color(0x6b6b6b);
+                const rockFactor = (normalizedHeight - 0.6) / 0.2;
+                color.lerp(rockColor, rockFactor * 0.3);
+            }
+            // Water coloring for low areas
+            else if (normalizedHeight < 0.15) {
+                const waterColor = new THREE.Color(0x1e3a5f);
+                const depth = 0.15 - normalizedHeight;
+                color.lerp(waterColor, Math.min(1, depth * 5));
+            }
+            
+            // Add lighting/shading based on height
+            const brightness = 0.7 + normalizedHeight * 0.4;
+            color.multiplyScalar(brightness);
+            
+            // Add subtle noise variation
+            const colorVariation = 0.9 + Math.random() * 0.2;
+            color.multiplyScalar(colorVariation);
             
             // Check for road influence at this vertex
-            const roadInfluence = roadMap.get(`${localX.toFixed(1)},${localZ.toFixed(1)}`) || 0;
+            const roadInfluence = this.sampleRoadInfluenceAt(x, z, nearbyRoads);
             
             if (roadInfluence > 0) {
                 // Blend road color with terrain color
@@ -625,63 +729,130 @@ export class TerrainSystem extends System {
         return geometry;
     }
 
+    // Build list of nearby road segments in world coordinates for blending across tile seams
+    private getNearbyRoadSegmentsWorld(tileX: number, tileZ: number): Array<{ start: THREE.Vector2; end: THREE.Vector2; halfWidth: number }>{
+        const segments: Array<{ start: THREE.Vector2; end: THREE.Vector2; halfWidth: number }> = [];
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dz = -1; dz <= 1; dz++) {
+                const key = `${tileX + dx}_${tileZ + dz}`;
+                const tile = this.terrainTiles.get(key);
+                if (!tile) continue;
+                for (const r of tile.roads) {
+                    const sx = (tile.x * this.CONFIG.TILE_SIZE) + (r.start instanceof THREE.Vector2 ? r.start.x : r.start.x);
+                    const sz = (tile.z * this.CONFIG.TILE_SIZE) + (r.start instanceof THREE.Vector2 ? r.start.y : r.start.z);
+                    const ex = (tile.x * this.CONFIG.TILE_SIZE) + (r.end instanceof THREE.Vector2 ? r.end.x : r.end.x);
+                    const ez = (tile.z * this.CONFIG.TILE_SIZE) + (r.end instanceof THREE.Vector2 ? r.end.y : r.end.z);
+                    segments.push({ start: new THREE.Vector2(sx, sz), end: new THREE.Vector2(ex, ez), halfWidth: r.width * 0.5 });
+                }
+            }
+        }
+        return segments;
+    }
+
+    // Sample influence of world-space road segments at a world position
+    private sampleRoadInfluenceAt(worldX: number, worldZ: number, segments: Array<{ start: THREE.Vector2; end: THREE.Vector2; halfWidth: number }>): number {
+        const p = new THREE.Vector2(worldX, worldZ);
+        let influence = 0;
+        for (const s of segments) {
+            const d = this.distanceToLineSegment(p, s.start, s.end);
+            if (d <= s.halfWidth) {
+                const local = 1 - (d / s.halfWidth);
+                if (local > influence) influence = local;
+            }
+        }
+        return influence;
+    }
+
     getHeightAt(worldX: number, worldZ: number): number {
-        // Validate input coordinates
-        if (typeof worldX !== 'number' || isNaN(worldX)) {
-            worldX = 0;
-        }
-        if (typeof worldZ !== 'number' || isNaN(worldZ)) {
-            worldZ = 0;
-        }
+        // Ensure valid coordinates
+        if (!isFinite(worldX)) worldX = 0;
+        if (!isFinite(worldZ)) worldZ = 0;
         
-        // Multi-octave noise for realistic terrain generation
+        // Multi-layered noise for realistic terrain
+        // Layer 1: Continental shelf - very large scale features
+        const continentScale = 0.0008;
+        const continentNoise = this.noise.fractal2D(
+            worldX * continentScale,
+            worldZ * continentScale,
+            5, 0.7, 2.0
+        );
+        
+        // Layer 2: Mountain ridges - creates dramatic peaks and valleys
+        const ridgeScale = 0.003;
+        const ridgeNoise = this.noise.ridgeNoise2D(
+            worldX * ridgeScale,
+            worldZ * ridgeScale
+        );
+        
+        // Layer 3: Hills and valleys - medium scale variation
+        const hillScale = 0.012;
+        const hillNoise = this.noise.fractal2D(
+            worldX * hillScale,
+            worldZ * hillScale,
+            4, 0.5, 2.2
+        );
+        
+        // Layer 4: Erosion - smooths valleys and creates river beds
+        const erosionScale = 0.005;
+        const erosionNoise = this.noise.erosionNoise2D(
+            worldX * erosionScale,
+            worldZ * erosionScale,
+            3
+        );
+        
+        // Layer 5: Fine detail - small bumps and texture
+        const detailScale = 0.04;
+        const detailNoise = this.noise.fractal2D(
+            worldX * detailScale,
+            worldZ * detailScale,
+            2, 0.3, 2.5
+        );
+        
+        // Combine layers with carefully tuned weights
         let height = 0;
-        let amplitude = 1;
-        let frequency = this.CONFIG.NOISE_SCALE;
-        let maxHeight = 0;
         
-        // Generate multiple octaves of noise
-        for (let i = 0; i < this.CONFIG.NOISE_OCTAVES; i++) {
-            const noiseValue = this.generateNoise(worldX * frequency, worldZ * frequency);
-            height += noiseValue * amplitude;
-            maxHeight += amplitude;
-            
-            amplitude *= this.CONFIG.NOISE_PERSISTENCE;
-            frequency *= this.CONFIG.NOISE_LACUNARITY;
+        // Base continental elevation (40% weight)
+        height += continentNoise * 0.4;
+        
+        // Add mountain ridges with squared effect for sharper peaks (30% weight)
+        const ridgeContribution = ridgeNoise * Math.abs(ridgeNoise);
+        height += ridgeContribution * 0.3;
+        
+        // Add rolling hills (20% weight)
+        height += hillNoise * 0.2;
+        
+        // Apply erosion to create valleys (10% weight, subtractive)
+        height += erosionNoise * 0.1;
+        
+        // Add fine detail (5% weight)
+        height += detailNoise * 0.05;
+        
+        // Normalize to [0, 1] range
+        height = (height + 1) * 0.5;
+        height = Math.max(0, Math.min(1, height));
+        
+        // Apply power curve to create more dramatic elevation changes
+        // Lower values = more valleys, higher values = more peaks
+        height = Math.pow(height, 1.4);
+        
+        // Create ocean depressions
+        const oceanScale = 0.0015;
+        const oceanMask = this.noise.simplex2D(
+            worldX * oceanScale,
+            worldZ * oceanScale
+        );
+        
+        // If in ocean zone, depress the terrain
+        if (oceanMask < -0.3) {
+            const oceanDepth = (-0.3 - oceanMask) * 2; // How deep into ocean
+            height *= Math.max(0.1, 1 - oceanDepth);
         }
         
-        // Normalize height - avoid division by zero
-        height = maxHeight > 0 ? height / maxHeight : 0;
+        // Scale to actual world height
+        const MAX_HEIGHT = 80; // Maximum terrain height in meters
+        const finalHeight = height * MAX_HEIGHT;
         
-        // Get biome data for this position
-        const tileX = Math.floor(worldX / this.CONFIG.TILE_SIZE);
-        const tileZ = Math.floor(worldZ / this.CONFIG.TILE_SIZE);
-        const biome = this.getBiomeAt(tileX, tileZ);
-        const biomeData = this.BIOMES[biome];
-        
-        // Safety check for biomeData before using it
-        if (!biomeData) {
-            console.error(`[TerrainSystem] Biome '${biome}' not found in BIOMES for height generation. Using default height.`);
-            return height * this.CONFIG.MAX_HEIGHT * 0.3 + this.CONFIG.BASE_LEVEL; // Default to plains-like height
-        }
-        
-        // Apply biome-specific height modification
-        const terrainMultiplier = biomeData.terrainMultiplier ?? 0.5;
-        height *= terrainMultiplier;
-        
-        // Clamp height within biome range
-        const heightRange = biomeData.heightRange ?? [0.1, 0.5];
-        const biomeHeight = heightRange[0] + 
-                           (heightRange[1] - heightRange[0]) * (height * 0.5 + 0.5);
-        
-        const finalHeight = biomeHeight * this.CONFIG.MAX_HEIGHT * this.CONFIG.HEIGHT_AMPLIFIER + this.CONFIG.BASE_LEVEL;
-        
-        // Safeguard against NaN values
-        if (isNaN(finalHeight)) {
-            return this.CONFIG.BASE_LEVEL;
-        }
-        
-        return finalHeight;
+        return isFinite(finalHeight) ? finalHeight : 10;
     }
     
     private generateNoise(x: number, z: number): number {
@@ -706,7 +877,9 @@ export class TerrainSystem extends System {
     }
 
     private getBiomeAt(tileX: number, tileZ: number): string {
-        // GDD-compliant biome determination using Voronoi-like regions
+        // Get world coordinates for center of tile
+        const worldX = tileX * this.CONFIG.TILE_SIZE + this.CONFIG.TILE_SIZE / 2;
+        const worldZ = tileZ * this.CONFIG.TILE_SIZE + this.CONFIG.TILE_SIZE / 2;
         
         // Check if near starter towns first (safe zones)
         const towns = [
@@ -722,27 +895,52 @@ export class TerrainSystem extends System {
             if (distance < 3) return 'starter_towns';
         }
         
-        // Use noise-based biome generation for realistic distribution
-        const biomeNoise = this.getBiomeNoise(tileX * this.CONFIG.BIOME_SCALE, tileZ * this.CONFIG.BIOME_SCALE);
-        const distanceFromCenter = Math.sqrt(tileX * tileX + tileZ * tileZ);
+        // Get height to determine elevation-based biome
+        const height = this.getHeightAt(worldX, worldZ);
+        const normalizedHeight = height / 80; // Normalize to 0-1 based on max height
         
-        // Biome selection based on noise and distance (difficulty zones)
-        if (biomeNoise < -0.4) {
+        // Get moisture value for this position
+        const moistureScale = 0.002;
+        const moistureNoise = this.noise.fractal2D(
+            worldX * moistureScale,
+            worldZ * moistureScale,
+            3, 0.5, 2.0
+        );
+        const moisture = (moistureNoise + 1) * 0.5; // Normalize to 0-1
+        
+        // Biome selection based on height and moisture
+        // Ocean/water bodies (below sea level)
+        if (normalizedHeight < 0.15) {
             return 'lakes';
-        } else if (distanceFromCenter < 8) {
-            // Close to center - easier biomes
-            return biomeNoise > 0.2 ? 'mistwood_valley' : 'plains';
-        } else if (distanceFromCenter < 15) {
-            // Medium distance - intermediate biomes
-            if (biomeNoise > 0.3) return 'darkwood_forest';
-            if (biomeNoise > -0.1) return 'goblin_wastes';
-            return 'plains';
-        } else {
-            // Far from center - difficult biomes
-            if (biomeNoise > 0.4) return 'northern_reaches';
-            if (biomeNoise > 0.0) return 'darkwood_forest';
-            return 'blasted_lands';
         }
+        
+        // Low elevation (0.15 - 0.35)
+        if (normalizedHeight < 0.35) {
+            if (moisture > 0.7) {
+                return 'mistwood_valley'; // Wet lowlands = misty swamp
+            } else if (moisture < 0.3) {
+                return 'goblin_wastes'; // Dry lowlands = wasteland
+            } else {
+                return 'plains'; // Moderate moisture = grasslands
+            }
+        }
+        
+        // Mid elevation (0.35 - 0.6)
+        if (normalizedHeight < 0.6) {
+            if (moisture > 0.5) {
+                return 'darkwood_forest'; // Wet mid-elevation = forest
+            } else {
+                return 'goblin_wastes'; // Dry mid-elevation = wastes
+            }
+        }
+        
+        // High elevation (0.6 - 0.8)
+        if (normalizedHeight < 0.8) {
+            return 'northern_reaches'; // Mountains
+        }
+        
+        // Very high elevation (> 0.8)
+        return 'northern_reaches'; // Snow-capped peaks
     }
     
     private getBiomeNoise(x: number, z: number): number {
@@ -750,6 +948,27 @@ export class TerrainSystem extends System {
         return Math.sin(x * 2.1 + z * 1.7) * Math.cos(x * 1.3 - z * 2.4) * 0.5 +
                Math.sin(x * 4.2 + z * 3.8) * Math.cos(x * 2.7 - z * 4.1) * 0.3 +
                Math.sin(x * 8.1 - z * 6.2) * Math.cos(x * 5.9 + z * 7.3) * 0.2;
+    }
+
+    // Map internal biome keys to generic TerrainTileData biome set
+    private mapBiomeToGeneric(internal: string): 'forest' | 'plains' | 'desert' | 'mountains' | 'swamp' | 'tundra' | 'jungle' {
+        switch (internal) {
+            case 'mistwood_valley':
+            case 'darkwood_forest':
+                return 'forest';
+            case 'plains':
+            case 'starter_towns':
+                return 'plains';
+            case 'northern_reaches':
+                return 'tundra';
+            case 'blasted_lands':
+            case 'goblin_wastes':
+                return 'desert';
+            case 'lakes':
+                return 'swamp';
+            default:
+                return 'plains';
+        }
     }
 
     private generateTileResources(tile: TerrainTile): void {
@@ -1063,19 +1282,13 @@ export class TerrainSystem extends System {
         }
     }
 
-    update(deltaTime: number): void {
-        this.updateTimer += deltaTime;
-        
-        // Only check for tile updates periodically
-        if (this.updateTimer >= this.CONFIG.UPDATE_INTERVAL) {
-            this.updateTimer = 0;
-            this.checkPlayerMovement();
-        }
+    update(_deltaTime: number): void {
+        // Use the dedicated interval-based player terrain updater to avoid flicker
     }
 
     private checkPlayerMovement(): void {
         // Get player positions and update loaded tiles accordingly
-        const players = this.world.entities.getPlayers() || [];
+        const players = this.world.getPlayers() || [];
         
         for (const player of players) {
             if (player.node.position) {
@@ -1182,6 +1395,9 @@ export class TerrainSystem extends System {
         // Remove from maps
         this.terrainTiles.delete(tile.key);
         this.activeChunks.delete(tile.key);
+        try {
+            this.world.emit('terrain:tile:unloaded', { tileId: `${tile.x},${tile.z}` });
+        } catch (_e) {}
         
     }
 
@@ -1386,6 +1602,60 @@ export class TerrainSystem extends System {
             
             // Store mesh reference
             road.mesh = roadMesh;
+        }
+    }
+    
+    /**
+     * Generate water meshes for low areas
+     */
+    private generateWaterMeshes(tile: TerrainTile): void {
+        // Sample tile to find water areas
+        const waterLevel = 12; // Water appears below 12m elevation
+        const sampleStep = 20; // Sample every 20m
+        const waterAreas: Array<{x: number, z: number, depth: number}> = [];
+        
+        for (let x = -this.CONFIG.TILE_SIZE/2; x < this.CONFIG.TILE_SIZE/2; x += sampleStep) {
+            for (let z = -this.CONFIG.TILE_SIZE/2; z < this.CONFIG.TILE_SIZE/2; z += sampleStep) {
+                const worldX = tile.x * this.CONFIG.TILE_SIZE + x;
+                const worldZ = tile.z * this.CONFIG.TILE_SIZE + z;
+                const height = this.getHeightAt(worldX, worldZ);
+                
+                if (height < waterLevel) {
+                    waterAreas.push({
+                        x: x,
+                        z: z,
+                        depth: waterLevel - height
+                    });
+                }
+            }
+        }
+        
+        // Create water plane if we found water
+        if (waterAreas.length > 5) { // At least 5 water samples
+            const waterGeometry = new THREE.PlaneGeometry(this.CONFIG.TILE_SIZE, this.CONFIG.TILE_SIZE);
+            waterGeometry.rotateX(-Math.PI / 2);
+            
+            const waterMaterial = new THREE.MeshPhongMaterial({
+                color: 0x1e3a5f,
+                transparent: true,
+                opacity: 0.7,
+                shininess: 100,
+                specular: 0x4080ff
+            });
+            
+            const waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
+            waterMesh.position.y = waterLevel;
+            waterMesh.name = `Water_${tile.key}`;
+            waterMesh.userData = {
+                type: 'water',
+                walkable: false,
+                clickable: false
+            };
+            
+            if (tile.mesh) {
+                tile.mesh.add(waterMesh);
+                tile.waterMeshes.push(waterMesh);
+            }
         }
     }
     
@@ -1699,6 +1969,15 @@ export class TerrainSystem extends System {
         if (this.chunkSaveInterval) {
             clearInterval(this.chunkSaveInterval);
         }
+        if (this.terrainUpdateIntervalId) {
+            clearInterval(this.terrainUpdateIntervalId);
+        }
+        if (this.serializationIntervalId) {
+            clearInterval(this.serializationIntervalId);
+        }
+        if (this.boundingBoxIntervalId) {
+            clearInterval(this.boundingBoxIntervalId);
+        }
         
         // Save all modified chunks before shutdown
         this.saveModifiedChunks();
@@ -1763,7 +2042,7 @@ export class TerrainSystem extends System {
     async saveAllActiveChunks(): Promise<void> {
         // In a real implementation, this would persist chunk data
         // For now, just save modified chunks
-        await this.saveModifiedChunks();
+        this.saveModifiedChunks();
     }
 
     // ===== TEST INTEGRATION METHODS (expected by test-terrain.mjs) =====
@@ -1798,8 +2077,8 @@ export class TerrainSystem extends System {
             biomeCount: Object.keys(this.BIOMES).length,
             chunkSize: this.CONFIG.TILE_SIZE,
             worldBounds: {
-                min: { x: 0, z: 0 },
-                max: { x: this.CONFIG.WORLD_SIZE, z: this.CONFIG.WORLD_SIZE }
+                min: { x: -this.CONFIG.WORLD_SIZE / 2, z: -this.CONFIG.WORLD_SIZE / 2 },
+                max: { x: this.CONFIG.WORLD_SIZE / 2, z: this.CONFIG.WORLD_SIZE / 2 }
             },
             activeBiomes: Array.from(new Set(Array.from(this.terrainTiles.values()).map(t => t.biome))),
             totalRoads: Array.from(this.terrainTiles.values()).reduce((sum, t) => sum + t.roads.length, 0)
@@ -1813,8 +2092,7 @@ export class TerrainSystem extends System {
         const tileX = Math.floor(x / this.CONFIG.TILE_SIZE);
         const tileZ = Math.floor(z / this.CONFIG.TILE_SIZE);
         const biome = this.getBiomeAt(tileX, tileZ);
-        const biomeData = this.BIOMES[biome];
-        return biomeData ? biomeData.name : 'unknown';
+        return biome;
     }
 
     /**
@@ -1830,8 +2108,9 @@ export class TerrainSystem extends System {
      * Initialize chunk loading system with 9 core + ring strategy
      */
     private initializeChunkLoadingSystem(): void {
-        this.coreChunkRange = 1; // 3x3 grid = 9 core chunks
-        this.ringChunkRange = 2; // Additional ring for preloading
+        // Increase load radius to reduce tile pop-in
+        this.coreChunkRange = 2; // 5x5 core grid
+        this.ringChunkRange = 3; // Preload ring up to ~7x7
         
         // Initialize tracking maps
         this.playerChunks.clear();
@@ -1962,10 +2241,27 @@ export class TerrainSystem extends System {
             }
         }
         
-        // Remove tiles that are no longer needed
+        // Remove tiles that are no longer needed, with hysteresis padding
+        // Approximate each player's center from their core chunk set
+        const playerCenters: Array<{ x: number; z: number }> = [];
+        for (const coreSet of this.playerChunks.values()) {
+            let anyKey: string | null = null;
+            for (const k of coreSet) { anyKey = k; break; }
+            if (anyKey) {
+                const [cx, cz] = anyKey.split('_').map(Number);
+                playerCenters.push({ x: cx, z: cz });
+            }
+        }
         for (const [tileKey, tile] of this.terrainTiles) {
             if (!neededTiles.has(tileKey)) {
-                this.unloadTile(tile);
+                let minChebyshev = Infinity;
+                for (const c of playerCenters) {
+                    const d = Math.max(Math.abs(tile.x - c.x), Math.abs(tile.z - c.z));
+                    if (d < minChebyshev) minChebyshev = d;
+                }
+                if (minChebyshev > this.ringChunkRange + this.unloadPadding) {
+                    this.unloadTile(tile);
+                }
             }
         }
         

@@ -2,7 +2,7 @@
  * ResourceEntity - Harvestable resources like trees and fishing spots
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import type { World } from '../World';
 import { InteractableEntity, type InteractableConfig } from './InteractableEntity';
 import type { EntityInteractionData, ResourceEntityConfig } from '../types/entities';

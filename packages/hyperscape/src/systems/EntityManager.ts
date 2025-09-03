@@ -9,19 +9,19 @@
  */
 
 import { World } from '../World';
-import { EventType } from '../types/events';
 import { getMobById } from '../data/mobs';
+import { Entity, EntityConfig } from '../entities/Entity';
 import { ItemEntity } from '../entities/ItemEntity';
 import { MobEntity } from '../entities/MobEntity';
 import { NPCEntity } from '../entities/NPCEntity';
 import { ResourceEntity } from '../entities/ResourceEntity';
-import { Entity, EntityConfig } from '../entities/Entity';
-import { NPCBehavior, NPCState, Position3D } from '../types/core';
+import { NPCBehavior, NPCState } from '../types/core';
 import type { ItemEntityConfig, ItemEntityProperties, ItemSpawnData, MobEntityConfig, MobSpawnData, NPCEntityConfig, NPCEntityProperties, NPCSpawnData, ResourceEntityConfig, ResourceEntityProperties, ResourceSpawnData } from '../types/entities';
-import { EntityType, InteractionType, ItemRarity, MobAIState, MobType } from '../types/entities';
+import { EntityType, InteractionType, ItemRarity, MobAIState, MobType, NPCType, ResourceType } from '../types/entities';
+import { EventType } from '../types/events';
 import type { EntitySpawnedEvent } from '../types/systems';
-import { SystemBase } from './SystemBase';
 import { Logger } from '../utils/Logger';
+import { SystemBase } from './SystemBase';
 
 export class EntityManager extends SystemBase {
   private entities = new Map<string, Entity>();
@@ -48,27 +48,75 @@ export class EntityManager extends SystemBase {
     // Set up type-safe event subscriptions for entity management (16+ listeners!)
     // NOTE: We don't subscribe to ENTITY_SPAWNED here as that would create a circular loop
     // ENTITY_SPAWNED is emitted BY this system after spawning, not TO request spawning
-    this.subscribe<{ entityId: string }>(EventType.ENTITY_DEATH, (event) => this.handleEntityDestroy(event.data));
-    this.subscribe<{ entityId: string; playerId: string; interactionType: string }>(EventType.ENTITY_INTERACT, (event) => this.handleInteractionRequest(event.data));
-    this.subscribe<{ entityId: string; position: Position3D }>(EventType.ENTITY_MOVE_REQUEST, (event) => this.handleMoveRequest(event.data));
-    this.subscribe<{ entityId: string; propertyName: string; value: unknown }>(EventType.ENTITY_PROPERTY_REQUEST, (event) => this.handlePropertyRequest(event.data));
+    this.subscribe(EventType.ENTITY_DEATH, (data) => this.handleEntityDestroy(data));
+    this.subscribe(EventType.ENTITY_INTERACT, (data) => this.handleInteractionRequest({ entityId: data.entityId, playerId: data.playerId, interactionType: data.action }));
+    this.subscribe(EventType.ENTITY_MOVE_REQUEST, (data) => this.handleMoveRequest(data));
+    this.subscribe(EventType.ENTITY_PROPERTY_REQUEST, (data) => this.handlePropertyRequest({ entityId: data.entityId, propertyName: data.property, value: data.value }));
     
     // Listen for specific entity type spawn requests
-    this.subscribe<ItemSpawnData>(EventType.ITEM_SPAWNED, (event) => this.handleItemSpawn(event.data));
-    this.subscribe<{ entityId: string; playerId: string }>(EventType.ITEM_PICKUP, (event) => this.handleItemPickup(event.data));
-    this.subscribe<MobSpawnData>(EventType.MOB_SPAWNED, (event) => this.handleMobSpawn(event.data));
-    this.subscribe<{ entityId: string; damage: number; attackerId: string }>(EventType.MOB_ATTACKED, (event) => this.handleMobAttacked(event.data));
+    this.subscribe(EventType.ITEM_SPAWNED, (data) => this.handleItemSpawn({ 
+      id: data.itemId, 
+      customId: `item_${data.itemId}`, 
+      name: 'item', 
+      position: data.position, 
+      model: null,
+      quantity: 1,
+      stackable: true,
+      value: 1
+    }));
+    this.subscribe(EventType.ITEM_PICKUP, (data) => this.handleItemPickup({ entityId: data.itemId, playerId: data.playerId }));
+    // EntityManager should handle spawn REQUESTS, not completed spawns
+    this.subscribe(EventType.MOB_SPAWN_REQUEST, (data) => this.handleMobSpawn({
+      mobType: data.mobType,
+      position: data.position,
+      level: 1,  // MOB_SPAWN_REQUEST doesn't have level in EventMap
+      customId: `mob_${Date.now()}`,
+      name: data.mobType
+    }));
+    this.subscribe(EventType.MOB_ATTACKED, (data) => this.handleMobAttacked({ entityId: data.mobId, damage: data.damage, attackerId: data.attackerId }));
     Logger.system('EntityManager', '✅ Event listeners registered, ready to handle mob spawns');
-    this.subscribe<{ mobId: string; targetId: string; damage: number }>(EventType.COMBAT_MOB_ATTACK, (event) => this.handleMobAttack(event.data));
-    this.subscribe<ResourceSpawnData>(EventType.RESOURCE_GATHERED, (event) => this.handleResourceSpawn(event.data));
-    this.subscribe<{ entityId: string; playerId: string; amount: number }>(EventType.RESOURCE_HARVEST, (event) => this.handleResourceHarvest(event.data));
-    this.subscribe<NPCSpawnData>(EventType.NPC_INTERACTION, (event) => this.handleNPCSpawn(event.data));
-    this.subscribe<{ entityId: string; playerId: string; dialogueId: string }>(EventType.NPC_DIALOGUE, (event) => this.handleNPCDialogue(event.data));
+    this.subscribe(EventType.COMBAT_MOB_ATTACK, (data) => this.handleMobAttack({ mobId: data.mobId, targetId: data.targetId, damage: 0 }));
+    // RESOURCE_GATHERED has different structure in EventMap
+    // Map the string resourceType to the enum value
+    this.subscribe(EventType.RESOURCE_GATHERED, (data) => {
+      const resourceTypeMap: Record<string, ResourceType> = {
+        'tree': ResourceType.TREE,
+        'rock': ResourceType.MINING_ROCK,
+        'ore': ResourceType.MINING_ROCK,
+        'herb': ResourceType.TREE,  // Map herb to tree for now
+        'fish': ResourceType.FISHING_SPOT
+      };
+      this.handleResourceSpawn({ 
+        resourceType: resourceTypeMap[data.resourceType] || ResourceType.TREE, 
+        position: { x: 0, y: 0, z: 0 }, 
+        customId: `resource_${Date.now()}`,
+        name: 'resource',
+        model: null,
+        respawnTime: 60000,
+        toolRequired: 'none',
+        skillRequired: 'none',
+        xpReward: 10
+      });
+    });
+    this.subscribe(EventType.RESOURCE_HARVEST, (data) => this.handleResourceHarvest({ entityId: data.resourceId, playerId: data.playerId, amount: data.success ? 1 : 0 }));
+    // NPC_INTERACTION has different structure in EventMap
+    this.subscribe(EventType.NPC_INTERACTION, (data) => this.handleNPCSpawn({ 
+      customId: data.npcId, 
+      name: 'NPC',
+      npcType: NPCType.QUEST_GIVER,  // Default to quest giver
+      position: { x: 0, y: 0, z: 0 },
+      model: null,
+      dialogues: [],
+      questGiver: true,
+      shopkeeper: false,
+      bankTeller: false
+    }));
+    this.subscribe(EventType.NPC_DIALOGUE, (data) => this.handleNPCDialogue({ entityId: data.npcId, playerId: data.playerId, dialogueId: data.dialogueId }));
     
     // Network sync for clients
     if (this.world.isClient) {
-      this.subscribe<{ clientId: string }>(EventType.CLIENT_CONNECT, (event) => this.handleClientConnect({ playerId: event.data.clientId }));
-      this.subscribe<{ clientId: string }>(EventType.CLIENT_DISCONNECT, (event) => this.handleClientDisconnect({ playerId: event.data.clientId }));
+      this.subscribe(EventType.CLIENT_CONNECT, (data) => this.handleClientConnect({ playerId: data.clientId }));
+      this.subscribe(EventType.CLIENT_DISCONNECT, (data) => this.handleClientDisconnect({ playerId: data.clientId }));
     }
     
   }
@@ -140,7 +188,7 @@ export class EntityManager extends SystemBase {
     }
     
     // Emit spawn event
-    this.world.emit(EventType.ENTITY_SPAWNED, {
+    this.emitTypedEvent(EventType.ENTITY_SPAWNED, {
       entityId: config.id,
       entityType: config.type,
       position: config.position,
@@ -167,7 +215,7 @@ export class EntityManager extends SystemBase {
     this.world.entities.remove(entityId);
     
     // Emit destroy event
-    this.world.emit(EventType.ENTITY_DEATH, {
+    this.emitTypedEvent(EventType.ENTITY_DEATH, {
       entityId,
       entityType: entity.type
     });
@@ -251,8 +299,10 @@ export class EntityManager extends SystemBase {
         combatComponent: null,
         healthComponent: null,
         visualComponent: null,
-        health: 1,
-        maxHealth: 1,
+        health: {
+          current: 1,
+          max: 1
+        },
         level: 1,
         harvestable: false,
         dialogue: [],
@@ -282,7 +332,7 @@ export class EntityManager extends SystemBase {
     
     this.destroyEntity(data.entityId);
     
-    this.world.emit(EventType.ITEM_PICKUP, {
+    this.emitTypedEvent(EventType.ITEM_PICKUP, {
       playerId: data.playerId,
       item: itemId,
       quantity: quantity
@@ -340,8 +390,10 @@ export class EntityManager extends SystemBase {
         combatComponent: null,
         healthComponent: null,
         visualComponent: null,
-        health: this.getMobMaxHealth(mobType, level),
-        maxHealth: this.getMobMaxHealth(mobType, level),
+        health: {
+          current: this.getMobMaxHealth(mobType, level),
+          max: this.getMobMaxHealth(mobType, level)
+        },
         level: level,
       },
       targetPlayerId: null,
@@ -352,6 +404,16 @@ export class EntityManager extends SystemBase {
     Logger.system('EntityManager', `✅ Mob entity spawned: ${entity?.id} (${mobType})`);
     Logger.system('EntityManager', `Entity exists in world.entities: ${this.world.entities.has(config.id)}`);
     Logger.system('EntityManager', 'Entity spawned successfully');
+    
+    // Emit MOB_SPAWNED event to notify other systems (like AggroSystem)
+    // that a mob has been successfully spawned
+    if (entity) {
+      this.emitTypedEvent(EventType.MOB_SPAWNED, {
+        mobId: config.id,
+        mobType: mobType,
+        position: position
+      });
+    }
   }
 
   private handleMobAttacked(data: { entityId: string; damage: number; attackerId: string }): void {
@@ -361,17 +423,26 @@ export class EntityManager extends SystemBase {
       return;
     }
     
-    const currentHealth = mob.getProperty('health');
-    if (typeof currentHealth !== 'number') {
-      Logger.systemError('EntityManager', `Invalid health value for mob ${data.entityId}`);
+    const healthData = mob.getProperty('health');
+    const currentHealth = typeof healthData === 'object' && healthData && 'current' in healthData 
+      ? (healthData as { current: number }).current 
+      : (typeof healthData === 'number' ? healthData : 0);
+    
+    if (typeof currentHealth !== 'number' || isNaN(currentHealth)) {
+      Logger.systemError('EntityManager', `Invalid health value for mob ${data.entityId}: ${JSON.stringify(healthData)}`);
       return;
     }
     const newHealth = Math.max(0, currentHealth - data.damage);
     
-    mob.setProperty('health', newHealth);
+    // Update health data structure
+    if (typeof healthData === 'object' && healthData && 'current' in healthData) {
+      mob.setProperty('health', { ...healthData as { current: number; max: number }, current: newHealth });
+    } else {
+      mob.setProperty('health', newHealth);
+    }
     
     if (newHealth <= 0) {
-      this.world.emit(EventType.MOB_DIED, {
+      this.emitTypedEvent(EventType.MOB_DIED, {
         entityId: data.entityId,
         killedBy: data.attackerId,
         position: mob.getPosition()
@@ -390,7 +461,7 @@ export class EntityManager extends SystemBase {
     
     const damage = mob.getProperty('attackPower');
     
-    this.world.emit(EventType.PLAYER_DAMAGE, {
+    this.emitTypedEvent(EventType.PLAYER_DAMAGE, {
       playerId: data.targetId,
       damage,
       source: data.mobId,
@@ -405,7 +476,7 @@ export class EntityManager extends SystemBase {
       data: entity.getNetworkData()
     }));
     
-    this.world.emit(EventType.CLIENT_ENTITY_SYNC, {
+    this.emitTypedEvent(EventType.CLIENT_ENTITY_SYNC, {
       playerId: data.playerId,
       entities: entityData
     });
@@ -433,7 +504,7 @@ export class EntityManager extends SystemBase {
       }
     });
     
-    this.world.emit(EventType.NETWORK_ENTITY_UPDATES, { updates });
+    this.emitTypedEvent(EventType.NETWORK_ENTITY_UPDATES, { updates });
     
     // Clear dirty entities
     this.networkDirtyEntities.clear();
@@ -594,8 +665,10 @@ export class EntityManager extends SystemBase {
         combatComponent: null,
         healthComponent: null,
         visualComponent: null,
-        health: 1,
-        maxHealth: 1,
+        health: {
+          current: 1,
+          max: 1
+        },
         level: 1,
         resourceType: data.resourceType,
         harvestable: true,
@@ -662,8 +735,10 @@ export class EntityManager extends SystemBase {
         combatComponent: null,
         healthComponent: null,
         visualComponent: null,
-        health: 1,
-        maxHealth: 1,
+        health: {
+          current: 1,
+          max: 1
+        },
         level: 1
       }
     };
@@ -678,7 +753,7 @@ export class EntityManager extends SystemBase {
       return;
     }
     
-    this.world.emit(EventType.NPC_DIALOGUE, {
+    this.emitTypedEvent(EventType.NPC_DIALOGUE, {
       playerId: data.playerId,
       npcId: data.entityId,
       dialogue: npc.getProperty('dialogue')
@@ -752,8 +827,10 @@ export class EntityManager extends SystemBase {
         combatComponent: null,
         healthComponent: null,
         visualComponent: null,
-        health: 1,
-        maxHealth: 1,
+        health: {
+          current: 1,
+          max: 1
+        },
         level: 1,
         itemId: config.itemId || 'test-item',
         harvestable: false,

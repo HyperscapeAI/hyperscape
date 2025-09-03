@@ -1,4 +1,4 @@
-import * as THREE from './three'
+import THREE from './three'
 import type { GLBData } from '../types'
 
 const q1 = new THREE.Quaternion()
@@ -88,8 +88,15 @@ export function createEmoteFactory(glb: GLBData, _url: string) {
 
   // console.timeEnd('emote-init')
 
+  type EmoteRetargetOptions = {
+    rootToHips?: number
+    version?: string
+    getBoneName?: (name: string) => string
+  }
+
   return {
-    toClip({ rootToHips, version, getBoneName }) {
+    toClip(options: EmoteRetargetOptions = {}) {
+      const { rootToHips = 1, version = '1', getBoneName = (name: string) => name } = options
       // we're going to resize animation to match vrm height
       const height = rootToHips
 

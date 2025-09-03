@@ -12,60 +12,13 @@
 
 import type { World } from '../World';
 import { calculateDistance } from '../utils/MathUtils';
-import { System } from './System';
+import { SystemBase } from './SystemBase';
 import { EventType } from '../types/events';
+import type { NavigationNode, PathfindingRequest, PathResult, AgentNavigationState } from '../types/game-types'
 
-export interface NavigationNode {
-  x: number;
-  z: number;
-  y: number; // Height at this position
-  walkable: boolean;
-  slope: number;
-  biome: string;
-  cost: number; // Movement cost multiplier
-  neighbors: NavigationNode[];
-  parent?: NavigationNode; // For pathfinding
-  gScore: number; // Distance from start
-  hScore: number; // Heuristic distance to goal
-  fScore: number; // gScore + hScore
-}
+// Types moved to shared types in ../types/game-types
 
-export interface PathfindingRequest {
-  id: string;
-  agentId: string;
-  start: { x: number; z: number };
-  goal: { x: number; z: number };
-  agentSize: number;
-  maxSlope: number;
-  allowedBiomes?: string[];
-  priority: 'low' | 'normal' | 'high';
-  callback: (path: PathResult | null) => void;
-}
-
-export interface PathResult {
-  success: boolean;
-  path: { x: number; y: number; z: number }[];
-  totalDistance: number;
-  estimatedTime: number;
-  errorMessage?: string;
-}
-
-export interface AgentNavigationState {
-  agentId: string;
-  position: { x: number; y: number; z: number }
-  targetPosition: { x: number; y: number; z: number }
-  currentPath: { x: number; y: number; z: number }[];
-  pathIndex: number;
-  speed: number;
-  size: number;
-  maxSlope: number;
-  isMoving: boolean;
-  isStuck: boolean;
-  stuckTimer: number;
-  lastValidPosition: { x: number; y: number; z: number }
-}
-
-export class AINavigationSystem extends System {
+export class AINavigationSystem extends SystemBase {
   private navigationGrid = new Map<string, NavigationNode>();
   private pathfindingQueue: PathfindingRequest[] = [];
   private activeAgents = new Map<string, AgentNavigationState>();
@@ -78,6 +31,7 @@ export class AINavigationSystem extends System {
   private isProcessingRequests = false;
   private gridResolution = 2; // 2 meter grid resolution
   private maxPathfindingTime = 50; // 50ms max per frame for pathfinding
+  private processorIntervalId: ReturnType<typeof setInterval> | null = null;
   
   // Navigation configuration
   private readonly CONFIG = {
@@ -101,56 +55,34 @@ export class AINavigationSystem extends System {
   };
 
   constructor(world: World) {
-    super(world);
+    super(world, { name: 'ai-navigation', dependencies: { required: [], optional: [] }, autoCleanup: true });
   }
 
   async init(): Promise<void> {
     
     // Find terrain validation system
-            const system = this.world.getSystem('terrain-validation');
-            if (system && 
-                'getTerrainHeight' in system &&
-                'calculateSlope' in system &&
-                'isPositionWalkable' in system &&
-                'getBiomeAtPosition' in system) {
-              this.terrainValidationSystem = system as unknown as {
-                getTerrainHeight: (x: number, z: number) => number | null;
-                calculateSlope: (x: number, z: number) => number;
-                isPositionWalkable: (x: number, z: number, height?: number, slope?: number) => boolean;
-                getBiomeAtPosition: (x: number, z: number) => string | null;
-              };
-            }
+    const system = this.world.getSystem('terrain-validation');
+    if (system) {
+      this.terrainValidationSystem = system as unknown as {
+        getTerrainHeight: (x: number, z: number) => number | null;
+        calculateSlope: (x: number, z: number) => number;
+        isPositionWalkable: (x: number, z: number, height?: number, slope?: number) => boolean;
+        getBiomeAtPosition: (x: number, z: number) => string | null;
+      };
+    }
     if (!this.terrainValidationSystem) {
-      console.error('[AINavigation] ❌ TerrainValidationSystem not found! AI navigation will be limited.');
+      this.logger.error('TerrainValidationSystem not found! AI navigation will be limited.');
     }
 
     // Listen for terrain changes
-    this.world.on(EventType.TERRAIN_TILE_GENERATED, (...args: unknown[]) => {
-      const [data] = args as [{ bounds: unknown }];
-      this.onTerrainChanged(data);
-    });
-    this.world.on(EventType.TERRAIN_VALIDATION_COMPLETE, (...args: unknown[]) => {
-      const [data] = args as [{ walkabilityMap: Map<string, { isWalkable: boolean; slope: number; biome: string }> }];
-      this.onValidationComplete(data);
-    });
-    this.world.on(EventType.ENTITY_POSITION_CHANGED, (...args: unknown[]) => {
-      const [data] = args as [{ agentId: string; position: { x: number; y: number; z: number } }];
-      this.onAgentMoved(data);
-    });
+    this.subscribe(EventType.TERRAIN_TILE_GENERATED, (data: { bounds: unknown }) => this.onTerrainChanged(data));
+    this.subscribe(EventType.TERRAIN_VALIDATION_COMPLETE, (data: { walkabilityMap: Map<string, { isWalkable: boolean; slope: number; biome: string }> }) => this.onValidationComplete(data));
+    this.subscribe(EventType.ENTITY_POSITION_CHANGED, (data: { agentId: string; position: { x: number; y: number; z: number } }) => this.onAgentMoved(data));
     
     // Listen for navigation requests
-    this.world.on(EventType.AI_NAVIGATION_REQUEST, (...args: unknown[]) => {
-      const [request] = args as [PathfindingRequest];
-      this.handleNavigationRequest(request);
-    });
-    this.world.on(EventType.AI_AGENT_REGISTER, (...args: unknown[]) => {
-      const [data] = args as [{ agentId: string; position: { x: number; y: number; z: number }; speed?: number; size?: number; maxSlope?: number }];
-      this.registerAgent(data);
-    });
-    this.world.on(EventType.AI_AGENT_UNREGISTER, (...args: unknown[]) => {
-      const [data] = args as [{ agentId: string }];
-      this.unregisterAgent(data);
-    });
+    this.subscribe(EventType.AI_NAVIGATION_REQUEST, (request: PathfindingRequest) => this.handleNavigationRequest(request));
+    this.subscribe(EventType.AI_AGENT_REGISTER, (data: { agentId: string; position: { x: number; y: number; z: number }; speed?: number; size?: number; maxSlope?: number }) => this.registerAgent(data));
+    this.subscribe(EventType.AI_AGENT_UNREGISTER, (data: { agentId: string }) => this.unregisterAgent(data));
 
   }
 
@@ -167,7 +99,7 @@ export class AINavigationSystem extends System {
    * Start pathfinding request processor
    */
   private startPathfindingProcessor(): void {
-    setInterval(() => {
+    this.processorIntervalId = setInterval(() => {
       if (!this.isProcessingRequests && this.pathfindingQueue.length > 0) {
         this.processPathfindingRequests();
       }
@@ -209,7 +141,7 @@ export class AINavigationSystem extends System {
     const generationTime = performance.now() - startTime;
     
     // Emit navigation grid ready
-    this.world.emit(EventType.AI_NAVIGATION_GRID_READY, {
+    this.emitTypedEvent(EventType.AI_NAVIGATION_GRID_READY, {
       nodeCount: nodesGenerated,
       generationTime,
       bounds
@@ -614,7 +546,7 @@ export class AINavigationSystem extends System {
       
       if (agent.stuckTimer > this.CONFIG.STUCK_DETECTION_TIME) {
         if (!agent.isStuck) {
-          console.warn(`[AINavigation] ⚠️  Agent ${data.agentId} appears stuck at ${agent.position.x.toFixed(1)}, ${agent.position.z.toFixed(1)}`);
+          this.logger.warn(`Agent ${data.agentId} appears stuck at ${agent.position.x.toFixed(1)}, ${agent.position.z.toFixed(1)}`);
           agent.isStuck = true;
           
           // Attempt to find alternative path
@@ -638,7 +570,7 @@ export class AINavigationSystem extends System {
     agent.isMoving = false;
     
     // Try to move back to last valid position
-    this.world.emit(EventType.AI_AGENT_UNSTUCK, {
+    this.emitTypedEvent(EventType.AI_AGENT_UNSTUCK, {
       agentId: agent.agentId,
       currentPosition: agent.position,
       fallbackPosition: agent.lastValidPosition
@@ -814,6 +746,10 @@ export class AINavigationSystem extends System {
     this.navigationGrid.clear();
     this.pathfindingQueue = [];
     this.activeAgents.clear();
+    if (this.processorIntervalId) {
+      clearInterval(this.processorIntervalId);
+      this.processorIntervalId = null;
+    }
   }
 
   // Required System interface methods

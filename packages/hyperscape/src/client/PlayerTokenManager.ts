@@ -1,26 +1,6 @@
-import { EventEmitter } from 'events';
+import EventEmitter from 'eventemitter3';
 
-export interface ClientPlayerToken {
-  playerId: string;
-  tokenSecret: string;
-  playerName: string;
-  createdAt: Date;
-  lastSeen: Date;
-  sessionId: string;
-  machineId: string;
-  clientVersion: string;
-  hyperscapeUserId: string;
-  hyperscapeLinked: boolean;
-  persistenceVersion: number;
-}
-
-export interface PlayerSession {
-  sessionId: string;
-  playerId: string;
-  startTime: Date;
-  lastActivity: Date;
-  isActive: boolean;
-}
+import type { ClientPlayerToken, PlayerSession } from '../types/database'
 
 /**
  * Manages player tokens and sessions for client-side identity persistence
@@ -220,7 +200,7 @@ export class PlayerTokenManager extends EventEmitter {
       };
       
       // Use sendBeacon for reliable delivery during page unload
-      navigator.sendBeacon('/api/player/disconnect', JSON.stringify(data));
+      navigator.sendBeacon(import.meta.env.PUBLIC_API_URL + '/player/disconnect', JSON.stringify(data));
     });
   }
 

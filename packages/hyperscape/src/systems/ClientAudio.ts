@@ -1,4 +1,4 @@
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 
 import { System } from './System'
 import type { World, AudioGroupGains } from '../types'

@@ -5,7 +5,7 @@ import type {
 } from '../types';
 import type { EntityData } from '../types/index';
 import { Component, createComponent } from '../components';
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import { getPhysX } from '../PhysXManager';
 import { type PhysXRigidDynamic } from '../systems/Physics';
 import { getWorldNetwork } from '../utils/SystemUtils';
@@ -51,7 +51,7 @@ export class Entity implements IEntity {
   public nodes: Map<string, THREE.Object3D> = new Map(); // Child nodes by ID
   public worldNodes: Set<THREE.Object3D> = new Set(); // Nodes added to world
   public listeners: Record<string, Set<EventCallback>> = {}; // Event listeners
-  public worldListeners: Map<EventCallback, string> = new Map(); // World event listeners
+  public worldListeners: Map<(data: unknown) => void, string> = new Map(); // World event listeners
   protected lastUpdate = 0;
   
   protected health: number = 0;
@@ -133,8 +133,7 @@ export class Entity implements IEntity {
           combatComponent: null,
           healthComponent: null,
           visualComponent: null,
-          health: this.health,
-          maxHealth: this.maxHealth,
+          health: { current: this.health, max: this.maxHealth },
           level: 1
         }
       };
@@ -168,8 +167,14 @@ export class Entity implements IEntity {
     this.velocity = new THREE.Vector3(0, 0, 0);
     
     // Initialize RPG-specific properties
-    this.health = config?.properties?.health as number || GAME_CONSTANTS.PLAYER.DEFAULT_HEALTH;
-    this.maxHealth = config?.properties?.maxHealth as number || GAME_CONSTANTS.PLAYER.DEFAULT_MAX_HEALTH;
+    const healthData = config?.properties?.health;
+    if (healthData && typeof healthData === 'object' && 'current' in healthData && 'max' in healthData) {
+      this.health = healthData.current;
+      this.maxHealth = healthData.max;
+    } else {
+      this.health = GAME_CONSTANTS.PLAYER.DEFAULT_HEALTH;
+      this.maxHealth = GAME_CONSTANTS.PLAYER.DEFAULT_MAX_HEALTH;
+    }
     this.level = config?.properties?.level as number || 1;
     
     // Add to world scene
@@ -277,7 +282,7 @@ export class Entity implements IEntity {
     this.components.delete(type);
     
     // Emit event
-    this.world.emit(EventType.ENTITY_COMPONENT_ADDED, {
+    this.world.emit(EventType.ENTITY_COMPONENT_REMOVED, {
       entityId: this.id,
       componentType: type
     });
@@ -827,7 +832,23 @@ export class Entity implements IEntity {
     try {
       // Load the model
       const safeLoader = new SafeLoaderWrapper(this.world.loader);
-      const modelObject = await safeLoader.loadModel(this.config.model) as unknown as THREE.Object3D;
+      const model = await safeLoader.loadModel(this.config.model)
+      // Convert the loaded model into a THREE.Object3D via toNodes when available
+      let modelObject: THREE.Object3D | null = null
+      if (typeof model.toNodes === 'function') {
+        const nodes = model.toNodes()
+        const possible = nodes.get('root') || nodes.get('model') || nodes.get(this.name) || null
+        const isThreeObject3D = (obj: unknown): obj is THREE.Object3D => {
+          return !!obj && typeof obj === 'object' && 'isObject3D' in (obj as Record<string, unknown>)
+        }
+        if (isThreeObject3D(possible)) {
+          modelObject = possible
+        }
+      }
+      // Fallback: if no nodes map provided, skip assignment
+      if (!modelObject) {
+        throw new Error('Loaded model did not provide a THREE.Object3D node')
+      }
       
       // Clear existing mesh
       if (this.mesh) {
@@ -929,12 +950,16 @@ export class Entity implements IEntity {
     };
     target.userData = userData;
 
-    // Listen for interaction events
-    this.world.on(EventType.ENTITY_INTERACT, async (data: EntityInteractionData) => {
-      if (data.entityId === this.id) {
-        await this.onInteract(data);
+    // Listen for interaction events and track handler for cleanup
+    const onInteractHandler = async (data: unknown) => {
+      const typed = data as EntityInteractionData;
+      if (typed && typed.entityId === this.id) {
+        await this.onInteract(typed);
       }
-    });
+    };
+    this.world.on(EventType.ENTITY_INTERACT, onInteractHandler);
+    // Track listener with exact function reference and event name
+    this.worldListeners.set(onInteractHandler, EventType.ENTITY_INTERACT);
   }
 
   update(delta: number): void {
@@ -1141,8 +1166,8 @@ export class Entity implements IEntity {
     });
 
     // Clear world event listeners
-    this.worldListeners.forEach(callback => {
-      this.world.off(callback);
+    this.worldListeners.forEach((eventName, callback) => {
+      this.world.off(eventName, callback);
     });
     this.worldListeners.clear();
   }

@@ -12,7 +12,7 @@
  * - Test large data sets and performance
  */
 
-import { Vector3 } from '../extras/three';
+import THREE from '../extras/three';
 import { getItem } from '../data/items';
 import { Skills, World, InventoryItem, Item } from '../types/core';
 import type { PlayerEntity } from '../types/index'
@@ -70,7 +70,7 @@ export class PersistenceTestSystem extends VisualTestFramework {
   async init(): Promise<void> {
     await super.init();
   
-    // Get required systems - assume they exist in test environment
+    // Get required systems; guard if missing to avoid runtime errors in tests
     this.persistenceSystem = getSystem<PersistenceSystem>(this.world, 'rpg-persistence')!;
     this.inventorySystem = getSystem<InventorySystem>(this.world, 'rpg-inventory')!;
     this.rpgSkillsSystem = getSystem<SkillsSystem>(this.world, 'rpg-skills')!;
@@ -78,9 +78,9 @@ export class PersistenceTestSystem extends VisualTestFramework {
     this.equipmentSystem = getSystem<EquipmentSystem>(this.world, 'rpg-equipment')!;
     
     // Listen for persistence events
-    this.world.on(EventType.PERSISTENCE_SAVE, this.handleDataSaved.bind(this));
-    this.world.on(EventType.PERSISTENCE_LOAD, this.handleDataLoaded.bind(this));
-    this.world.on(EventType.UI_MESSAGE, this.handlePersistenceMessage.bind(this));
+    this.subscribe(EventType.PERSISTENCE_SAVE, (data: { playerId: string; data: unknown }) => this.handleDataSaved(data));
+    this.subscribe(EventType.PERSISTENCE_LOAD, (data: { playerId: string }) => this.handleDataLoaded(data));
+    this.subscribe(EventType.UI_MESSAGE, (data: { playerId: string; message: string; type: 'success' | 'error' | 'info' | 'warning' }) => this.handlePersistenceMessage(data));
     
     // Create test stations
     this.createTestStations();
@@ -91,42 +91,42 @@ export class PersistenceTestSystem extends VisualTestFramework {
     this.createTestStation({
       id: 'persistence_basic_save_load',
       name: 'Basic Save/Load Test',
-      position: new Vector3(-40, 1.8, -40)
+      position: new THREE.Vector3(-40, 1.8, -40)
     });
 
     // Skill Progression Persistence Test - Save/load with skill changes
     this.createTestStation({
       id: 'persistence_skill_progression',
       name: 'Skill Progression Persistence Test',
-      position: new Vector3(-45, 1.8, -40)
+      position: new THREE.Vector3(-45, 1.8, -40)
     });
 
     // Inventory Persistence Test - Complex inventory state
     this.createTestStation({
       id: 'persistence_inventory',
       name: 'Inventory Persistence Test',
-      position: new Vector3(-50, 1.8, -40)
+      position: new THREE.Vector3(-50, 1.8, -40)
     });
 
     // Bank Storage Persistence Test - Banking system persistence
     this.createTestStation({
       id: 'persistence_bank_storage',
       name: 'Bank Storage Persistence Test',
-      position: new Vector3(-40, 1.8, -45)
+      position: new THREE.Vector3(-40, 1.8, -45)
     });
 
     // Equipment Persistence Test - Worn items persistence
     this.createTestStation({
       id: 'persistence_equipment',
       name: 'Equipment Persistence Test',
-      position: new Vector3(-45, 1.8, -45)
+      position: new THREE.Vector3(-45, 1.8, -45)
     });
 
     // Large Data Set Test - Performance with large amounts of data
     this.createTestStation({
       id: 'persistence_large_dataset',
       name: 'Large Dataset Persistence Test',
-      position: new Vector3(-50, 1.8, -45)
+      position: new THREE.Vector3(-50, 1.8, -45)
     });
   }
 
@@ -268,7 +268,7 @@ export class PersistenceTestSystem extends VisualTestFramework {
 
     // Create test data structure
     const originalData = {
-      skills: this.rpgSkillsSystem.getSkills(player.id) || this.createDefaultSkills(),
+      skills: (this.rpgSkillsSystem && this.rpgSkillsSystem.getSkills(player.id)) || this.createDefaultSkills(),
       inventory: player.inventory,
       equipment: [],
       bankStorage: [],
@@ -316,7 +316,7 @@ export class PersistenceTestSystem extends VisualTestFramework {
       // Wait for XP to be applied
       setTimeout(() => {
         const originalData = {
-          skills: this.rpgSkillsSystem.getSkills(player.id) || this.createDefaultSkills(),
+          skills: (this.rpgSkillsSystem && this.rpgSkillsSystem.getSkills(player.id)) || this.createDefaultSkills(),
           inventory: player.inventory,
           equipment: [],
           bankStorage: [],
@@ -376,7 +376,7 @@ export class PersistenceTestSystem extends VisualTestFramework {
       player.inventory.coins = 350;
 
       const originalData = {
-        skills: this.rpgSkillsSystem.getSkills(player.id) || this.createDefaultSkills(),
+        skills: (this.rpgSkillsSystem && this.rpgSkillsSystem.getSkills(player.id)) || this.createDefaultSkills(),
         inventory: player.inventory,
         equipment: [],
         bankStorage: [],
@@ -438,7 +438,7 @@ export class PersistenceTestSystem extends VisualTestFramework {
       // Wait for bank operations
       setTimeout(() => {
         const originalData = {
-          skills: this.rpgSkillsSystem.getSkills(player.id) || this.createDefaultSkills(),
+          skills: (this.rpgSkillsSystem && this.rpgSkillsSystem.getSkills(player.id)) || this.createDefaultSkills(),
           inventory: player.inventory,
           equipment: [],
           bankStorage: [...bankItems],
@@ -503,7 +503,7 @@ export class PersistenceTestSystem extends VisualTestFramework {
       // Wait for equipment operations
       setTimeout(() => {
         const originalData = {
-          skills: this.rpgSkillsSystem.getSkills(player.id) || this.createDefaultSkills(),
+          skills: (this.rpgSkillsSystem && this.rpgSkillsSystem.getSkills(player.id)) || this.createDefaultSkills(),
           inventory: player.inventory,
           equipment: [...equipmentItems],
           bankStorage: [],
@@ -545,18 +545,21 @@ export class PersistenceTestSystem extends VisualTestFramework {
 
       // Create large inventory (28 slots filled)
       const largeInventoryItems: InventoryItem[] = [];
-      const items = [
-                getItem('bronze_sword'), getItem('steel_sword'), getItem('mithril_sword'), getItem('logs'),
-        getItem('raw_fish'), getItem('cooked_fish'), getItem('arrows'), getItem('coins')
-      ];
+      const bronze = getItem('bronze_sword');
+      const steel = getItem('steel_sword');
+      const mithril = getItem('mithril_sword');
+      const logs = getItem('logs');
+      const rawFish = getItem('raw_fish');
+      const cookedFish = getItem('cooked_fish');
+      const arrows = getItem('arrows');
+      const coins = getItem('coins');
+      const items = [bronze, steel, mithril, logs, rawFish, cookedFish, arrows, coins];
       
       let totalCoins = 0;
       for (let i = 0; i < 28; i++) {
         const item = items[i % items.length]!;
         const quantity = Math.floor(Math.random() * 1000) + 1;
-        if (item.id === '999') {
-          totalCoins += quantity;
-        }
+        if (coins && item.id === coins.id) totalCoins += quantity;
         largeInventoryItems.push({ 
           id: `${item.id}_${i}`,
           itemId: item.id, 
@@ -582,7 +585,7 @@ export class PersistenceTestSystem extends VisualTestFramework {
       // Wait for XP to be applied
       setTimeout(() => {
         const originalData = {
-          skills: this.rpgSkillsSystem.getSkills(player.id) || this.createDefaultSkills(),
+          skills: (this.rpgSkillsSystem && this.rpgSkillsSystem.getSkills(player.id)) || this.createDefaultSkills(),
           inventory: player.inventory,
           equipment: [],
           bankStorage: [],

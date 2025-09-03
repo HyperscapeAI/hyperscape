@@ -1,34 +1,34 @@
 const emitters: { [key: string]: ParticleEmitter | null } = {}
 
 import { DEG2RAD } from '../extras/general'
-import { Vector3, Quaternion, Matrix4, Color } from '../extras/three'
+import THREE from '../extras/three'
 
-const v1 = new Vector3()
-const v2 = new Vector3()
-const v3 = new Vector3()
-const v4 = new Vector3()
-const _v5 = new Vector3()
-const q1 = new Quaternion()
-const q2 = new Quaternion()
-const _q3 = new Quaternion()
-const m1 = new Matrix4()
-const color1 = new Color()
+const v1 = new THREE.Vector3()
+const v2 = new THREE.Vector3()
+const v3 = new THREE.Vector3()
+const v4 = new THREE.Vector3()
+const _v5 = new THREE.Vector3()
+const q1 = new THREE.Quaternion()
+const q2 = new THREE.Quaternion()
+const _q3 = new THREE.Quaternion()
+const m1 = new THREE.Matrix4()
+const color1 = new THREE.Color()
 
-const xAxis = new Vector3(1, 0, 0)
-const yAxis = new Vector3(0, 1, 0)
-const zAxis = new Vector3(0, 0, 1)
+const xAxis = new THREE.Vector3(1, 0, 0)
+const yAxis = new THREE.Vector3(0, 1, 0)
+const zAxis = new THREE.Vector3(0, 0, 1)
 
 interface Particle {
   age: number
   life: number
-  direction: Vector3
-  velocity: Vector3
+  direction: THREE.Vector3
+  velocity: THREE.Vector3
   distance: number
   speed: number
-  finalPosition: Vector3
+  finalPosition: THREE.Vector3
   frameTime: number
   uv: number[]
-  position: Vector3
+  position: THREE.Vector3
   rotation: number
   startRotation: number
   size: number
@@ -198,8 +198,8 @@ function createEmitter(config: EmitterConfig): ParticleEmitter {
   let ended = false
   const rateOverDistance = config.rateOverDistance
   let distanceRemainder = 0
-  let lastWorldPos: Vector3 | null = null
-  const moveDir = new Vector3()
+  let lastWorldPos: THREE.Vector3 | null = null
+  const moveDir = new THREE.Vector3()
 
   const particles: Particle[] = []
 
@@ -208,15 +208,15 @@ function createEmitter(config: EmitterConfig): ParticleEmitter {
     particles.push({
       age: 0,
       life: 0,
-      direction: new Vector3(),
-      velocity: new Vector3(),
+      direction: new THREE.Vector3(),
+      velocity: new THREE.Vector3(),
       distance: 0,
       speed: 10,
-      finalPosition: new Vector3(),
+      finalPosition: new THREE.Vector3(),
       frameTime: 0,
       uv: [0, 0, 1, 1],
 
-      position: new Vector3(),
+      position: new THREE.Vector3(),
       rotation: 0,
       startRotation: 0,
       size: 1,
@@ -241,9 +241,9 @@ function createEmitter(config: EmitterConfig): ParticleEmitter {
 
   const shape = createShape(config.shape)
   const spritesheet = createSpritesheet(config.spritesheet)
-  const force = config.force ? new Vector3().fromArray(config.force) : null
-  const velocityLinear = config.velocityLinear ? new Vector3().fromArray(config.velocityLinear) : null
-  const velocityOrbital = config.velocityOrbital ? new Vector3().fromArray(config.velocityOrbital) : null
+  const force = config.force ? new THREE.Vector3().fromArray(config.force) : null
+  const velocityLinear = config.velocityLinear ? new THREE.Vector3().fromArray(config.velocityLinear) : null
+  const velocityOrbital = config.velocityOrbital ? new THREE.Vector3().fromArray(config.velocityOrbital) : null
   const velocityRadial = config.velocityRadial || null
 
   const sizeOverLife = config.sizeOverLife ? createNumberCurve(config.sizeOverLife) : null
@@ -252,7 +252,7 @@ function createEmitter(config: EmitterConfig): ParticleEmitter {
   const alphaOverLife = config.alphaOverLife ? createNumberCurve(config.alphaOverLife) : null
   const emissiveOverLife = config.emissiveOverLife ? createNumberCurve(config.emissiveOverLife) : null
 
-  function emit({ amount, matrixWorld }: { amount: number; matrixWorld: Matrix4 }) {
+  function emit({ amount, matrixWorld }: { amount: number; matrixWorld: THREE.Matrix4 }) {
     const progress = elapsed / config.duration // ratio through this cycle (0 to 1)
     for (let i = 0; i < amount; i++) {
       const particle = particles.find(p => p.age >= p.life)
@@ -373,10 +373,10 @@ function createEmitter(config: EmitterConfig): ParticleEmitter {
           const lerpFactor = (i + 1) / (particlesToEmit + 1)
 
           // Create a position vector along the path
-          const emitPosition = new Vector3().copy(lastWorldPos).lerp(currWorldPos, lerpFactor)
+          const emitPosition = new THREE.Vector3().copy(lastWorldPos).lerp(currWorldPos, lerpFactor)
 
           // Create a temporary matrix with this position
-          const tempMatrix = new Matrix4().copy(m1)
+          const tempMatrix = new THREE.Matrix4().copy(m1)
           tempMatrix.setPosition(emitPosition)
 
           // Emit a single particle at this position
@@ -459,10 +459,10 @@ function createEmitter(config: EmitterConfig): ParticleEmitter {
           // Calculate tangential direction
           v4.crossVectors(
             velocityOrbital.x > 0
-              ? new Vector3(1, 0, 0)
+              ? new THREE.Vector3(1, 0, 0)
               : velocityOrbital.y > 0
-                ? new Vector3(0, 1, 0)
-                : new Vector3(0, 0, 1),
+                ? new THREE.Vector3(0, 1, 0)
+                : new THREE.Vector3(0, 0, 1),
             v3
           ).normalize()
           // Adjust velocity in the tangential direction
@@ -733,20 +733,20 @@ function toRGB(color: string) {
 
 function createShape(config: unknown[]) {
   const [type, ...args] = config
-  const _v = new Vector3()
-  const normal = new Vector3()
+  const _v = new THREE.Vector3()
+  const normal = new THREE.Vector3()
 
   switch (type) {
     case 'point':
       // Point shape - always at origin with upward direction
-      return (pos: Vector3, dir: Vector3) => {
+      return (pos: THREE.Vector3, dir: THREE.Vector3) => {
         pos.set(0, 0, 0)
         dir.set(0, 1, 0)
       }
 
     case 'sphere':
       // Sphere shape - position on or within sphere, direction points outward
-      return (pos: Vector3, dir: Vector3) => {
+      return (pos: THREE.Vector3, dir: THREE.Vector3) => {
         const [radius, thickness] = args as [number, number]
         // Random point on unit sphere
         const u = Math.random()
@@ -765,7 +765,7 @@ function createShape(config: unknown[]) {
 
     case 'hemisphere':
       // Hemisphere shape - position on or within hemisphere, flat base on XZ plane
-      return (pos: Vector3, dir: Vector3) => {
+      return (pos: THREE.Vector3, dir: THREE.Vector3) => {
         const [radius, thickness] = args as [number, number]
         // Random point on unit hemisphere (positive Y)
         const u = Math.random()
@@ -789,7 +789,7 @@ function createShape(config: unknown[]) {
 
     case 'cone':
       // Cone shape - position on base circle, direction based on cone angle
-      return (pos: Vector3, dir: Vector3) => {
+      return (pos: THREE.Vector3, dir: THREE.Vector3) => {
         const [baseRadius, thickness, originalAngleFromCenter] = args as [number, number, number]
         const angleFromCenter = originalAngleFromCenter * DEG2RAD
 
@@ -823,7 +823,7 @@ function createShape(config: unknown[]) {
 
     case 'box':
       // Box shape - position on or within box, direction points outward
-      return (pos: Vector3, dir: Vector3) => {
+      return (pos: THREE.Vector3, dir: THREE.Vector3) => {
         const [width, height, depth, thickness, origin, spherize] = args as [number, number, number, number, string | undefined, boolean | undefined]
 
         // Handle different origin types: volume, edge, or shell
@@ -1012,7 +1012,7 @@ function createShape(config: unknown[]) {
 
     case 'circle':
       // Circle shape - position on or within circle in XZ plane
-      return (pos: Vector3, dir: Vector3) => {
+      return (pos: THREE.Vector3, dir: THREE.Vector3) => {
         const [radius, thickness, spherize] = args as [number, number, boolean | undefined]
 
         // Random angle around the circle
@@ -1048,7 +1048,7 @@ function createShape(config: unknown[]) {
 
     case 'rectangle':
       // Rectangle shape - position on rectangular plane in XZ plane
-      return (pos: Vector3, dir: Vector3) => {
+      return (pos: THREE.Vector3, dir: THREE.Vector3) => {
         const [width, depth, thickness, spherize = false] = args as [number, number, number, boolean | undefined]
 
         // Determine if on edge or inside based on thickness

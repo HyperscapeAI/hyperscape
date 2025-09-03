@@ -35,16 +35,16 @@ export class ItemActionSystem extends SystemBase {
   async init(): Promise<void> {
     
     // Set up type-safe event subscriptions for item interactions
-    this.subscribe<{ playerId: string; itemId: string; slot: number; position: { x: number; y: number } }>(EventType.ITEM_RIGHT_CLICK, (event) => this.handleItemRightClick(event.data));
-    this.subscribe<{ playerId: string; actionId: string; itemId: string; slot: number }>(EventType.ITEM_ACTION_SELECTED, (event) => this.handleActionSelected(event.data));
-    this.subscribe<{ playerId: string }>(EventType.UI_CLOSE_MENU, (event) => this.handleCloseContextMenu(event.data));
+    this.subscribe<{ playerId: string; itemId: string; slot: number; position: { x: number; y: number } }>(EventType.ITEM_RIGHT_CLICK, (data) => this.handleItemRightClick(data));
+    this.subscribe<{ playerId: string; actionId: string; itemId: string; slot: number }>(EventType.ITEM_ACTION_SELECTED, (data) => this.handleActionSelected(data));
+    this.subscribe<{ playerId: string }>(EventType.UI_CLOSE_MENU, (data) => this.handleCloseContextMenu(data));
     
     // Set up ground item interaction subscriptions
-    this.subscribe<{ playerId: string; itemId: string; position: { x: number; y: number; z: number } }>(EventType.CORPSE_CLICK, (event) => this.handleGroundItemClick(event.data));
+    this.subscribe<{ playerId: string; itemId: string; position: { x: number; y: number; z: number } }>(EventType.CORPSE_CLICK, (data) => this.handleGroundItemClick(data));
     
     // Set up player event subscriptions
-    this.subscribe<{ playerId: string }>(EventType.PLAYER_JOINED, (event) => this.handlePlayerJoin(event.data));
-    this.subscribe<{ playerId: string }>(EventType.PLAYER_LEFT, (event) => this.handlePlayerLeave(event.data));
+    this.subscribe<{ playerId: string }>(EventType.PLAYER_JOINED, (data) => this.handlePlayerJoin(data));
+    this.subscribe<{ playerId: string }>(EventType.PLAYER_LEFT, (data) => this.handlePlayerLeave(data));
   }
 
 

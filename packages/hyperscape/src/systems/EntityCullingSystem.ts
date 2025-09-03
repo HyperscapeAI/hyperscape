@@ -1,8 +1,8 @@
-import { System } from './System';
+import { SystemBase } from './SystemBase';
 import type { World, Entity } from '../types/index';
 import { calculateDistance } from '../utils/MathUtils';
 import { getSystem } from '../utils/SystemUtils';
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import { EventType } from '../types/events';
 
 /**
@@ -14,7 +14,7 @@ import { EventType } from '../types/events';
  * - Controlling entity update frequency based on visibility
  * - Managing entity activity based on player proximity
  */
-export class EntityCullingSystem extends System {
+export class EntityCullingSystem extends SystemBase {
   private camera: { position: THREE.Vector3 } | null = null;
   private culledEntities: Set<string>;
   private lodLevels: Map<string, number>; // entityId -> LOD level
@@ -34,7 +34,7 @@ export class EntityCullingSystem extends System {
   private entityCategories = new Map<string, 'static' | 'dynamic' | 'critical' | 'ui'>();
   
   constructor(world: World) {
-    super(world);
+    super(world, { name: 'entity-culling', dependencies: { required: [], optional: [] }, autoCleanup: true });
     this.culledEntities = new Set();
     this.lodLevels = new Map();
     this.distanceCache = new Map();
@@ -42,12 +42,10 @@ export class EntityCullingSystem extends System {
   }
   
   async init(): Promise<void> {
-    
-    // Listen for camera updates
-    this.world.on('camera:update', this.onCameraUpdate.bind(this));
-    this.world.on(EventType.ENTITY_CREATED, this.onEntityCreated.bind(this));
-    this.world.on(EventType.ENTITY_DEATH, this.onEntityDestroyed.bind(this));
-    
+    // Listen for camera updates and entity lifecycle events
+    this.subscribe('camera:update', (data: { camera?: { position: THREE.Vector3 }; position?: THREE.Vector3 }) => this.onCameraUpdate(data));
+    this.subscribe(EventType.ENTITY_CREATED, (data: { entityId: string; entityType: string }) => this.onEntityCreated(data));
+    this.subscribe(EventType.ENTITY_DEATH, (data: { entityId: string }) => this.onEntityDestroyed(data));
   }
   
   start(): void {
@@ -137,7 +135,7 @@ export class EntityCullingSystem extends System {
     }
     
     // Emit LOD change event
-    this.world.emit('entity:lod_changed', {
+    this.emitTypedEvent('entity:lod_changed', {
       entityId: entity.id,
       lodLevel,
       distance,
@@ -154,7 +152,7 @@ export class EntityCullingSystem extends System {
       this.culledEntities.add(entity.id);
       this.setEntityActive(entity, false);
       
-      this.world.emit('entity:culled', {
+      this.emitTypedEvent('entity:culled', {
         entityId: entity.id,
         reason: 'distance'
       });
@@ -164,7 +162,7 @@ export class EntityCullingSystem extends System {
       this.culledEntities.delete(entity.id);
       this.setEntityActive(entity, true);
       
-      this.world.emit('entity:unculled', {
+      this.emitTypedEvent('entity:unculled', {
         entityId: entity.id
       });
     }

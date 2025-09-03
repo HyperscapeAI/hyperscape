@@ -1,9 +1,10 @@
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js'
 
 import { Node } from './Node'
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 
 import type { SkinnedMeshData } from '../types/nodes'
+import type { HotReloadable } from '../types'
 
 import { isBoolean } from 'lodash-es'
 
@@ -18,7 +19,7 @@ const m1 = new THREE.Matrix4()
 
 const defaultStopOpts = { fade: 0.15 }
 
-export class SkinnedMesh extends Node {
+export class SkinnedMesh extends Node implements HotReloadable {
   _object3d: THREE.Object3D | null
   _animations: THREE.AnimationClip[]
   clips: Record<string, THREE.AnimationClip> = {}
@@ -171,7 +172,7 @@ export class SkinnedMesh extends Node {
       this.mixer = new THREE.AnimationMixer(this.obj!)
       this.ctx!.setHot(this, true)
     }
-    if (this.action && (this.action as unknown as { _clip?: { name: string } })._clip?.name === name) {
+    if (this.action && (this.action as { _clip?: { name: string } })._clip?.name === name) {
       return
     }
     if (this.action) {

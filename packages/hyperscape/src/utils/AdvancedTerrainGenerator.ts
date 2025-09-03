@@ -10,7 +10,7 @@
  * - Height-based color gradients
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import { NoiseGenerator, TerrainFeatureGenerator } from './NoiseGenerator';
 
 export interface TerrainConfig {

@@ -46,6 +46,19 @@ export class BankingSystem extends SystemBase {
     });
   }
 
+  /**
+   * Public read-only access to a player's bank data for the given bank id.
+   * Returns null if the player or bank has not been initialized.
+   */
+  public getBankData(playerId: string, bankId: string): BankData | null {
+    const typedPlayerId = createPlayerID(playerId)
+    const typedBankId = createBankID(bankId)
+    const playerBanks = this.playerBanks.get(typedPlayerId)
+    if (!playerBanks) return null
+    const bank = playerBanks.get(typedBankId)
+    return bank ?? null
+  }
+
   async init(): Promise<void> {
     // Subscribe to banking events
     // Listen to PLAYER_REGISTERED for all players (real and test)

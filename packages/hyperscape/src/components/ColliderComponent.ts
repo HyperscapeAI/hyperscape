@@ -1,6 +1,6 @@
-import type { PxRigidBody, PxShape } from '../types/physx';
+import type { PxRigidBody, PxShape } from '../types/physics';
 import type { Entity } from '../entities/Entity';
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import { Component } from './Component';
 
 // Use THREE types directly since they are the actual instances

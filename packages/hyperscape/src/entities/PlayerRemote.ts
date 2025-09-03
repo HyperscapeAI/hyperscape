@@ -1,9 +1,10 @@
 import type { EntityData, HotReloadable, NetworkData } from '../types/index'
+import { Emotes } from '../extras/playerEmotes'
 import type { World } from '../World'
 import { createNode } from '../extras/createNode'
 import { LerpQuaternion } from '../extras/LerpQuaternion'
 import { LerpVector3 } from '../extras/LerpVector3'
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 import { Entity } from './Entity'
 import { Avatar, Nametag, Group, Mesh, UI, UIView, UIText } from '../nodes'
 import { EventType } from '../types/events'
@@ -36,6 +37,8 @@ export class PlayerRemote extends Entity implements HotReloadable {
   onEffectEnd?: () => void;
   chatTimer?: NodeJS.Timeout;
   destroyed: boolean = false;
+  private lastEmote?: string;
+  private prevPosition: THREE.Vector3 = new THREE.Vector3();
   
   constructor(world: World, data: EntityData, local?: boolean) {
     super(world, data, local)
@@ -100,26 +103,111 @@ export class PlayerRemote extends Entity implements HotReloadable {
     this.aura?.activate(this.world)
     this.base.activate(this.world)
 
-    this.applyAvatar()
+    // Ensure base node starts aligned with the entity transform so the avatar follows
+    this.base.position.copy(this.position)
+    this.base.quaternion.copy(this.node.quaternion)
+
+    // Start avatar loading but don't await it - let it complete asynchronously
+    this.applyAvatar().catch(err => {
+      console.error('[PlayerRemote] Failed to apply avatar in init:', err)
+    })
 
     this.lerpPosition = new LerpVector3(this.position, this.world.networkRate)
-    this.lerpQuaternion = new LerpQuaternion(this.rotation, this.world.networkRate)
+    // IMPORTANT: Use the entity's actual quaternion, not the cloned getter
+    this.lerpQuaternion = new LerpQuaternion(this.node.quaternion, this.world.networkRate)
     this.teleport = 0
 
     this.world.setHot(this, true)
+    // Initialize previous position for speed-based emote calculation
+    this.prevPosition.copy(this.position)
   }
 
-  applyAvatar() {
+  async applyAvatar() {
     const avatarUrl = this.data.sessionAvatar || this.data.avatar || 'asset://avatar.vrm'
     if (this.avatarUrl === avatarUrl) return
-    this.world.loader?.load('avatar', avatarUrl).then((src: unknown) => {
-      if (this.avatar) this.avatar.deactivate()
-      this.avatar = (src as ArrayBuffer & { toNodes(): Map<string, Avatar> }).toNodes().get('avatar')
+    
+    console.log('[PlayerRemote] Loading avatar:', avatarUrl)
+    
+    // Ensure loader is available
+    if (!this.world.loader) {
+      console.warn('[PlayerRemote] Loader not available yet')
+      return
+    }
+    
+    try {
+      const src = await this.world.loader.load('avatar', avatarUrl)
+      
+      // Clean up previous avatar
       if (this.avatar) {
-        this.base.add(this.avatar)
+        if (this.avatar.deactivate) {
+          this.avatar.deactivate()
+        }
+        // If avatar has an instance, destroy it to clean up VRM scene
+        if ((this.avatar as any).instance && (this.avatar as any).instance.destroy) {
+          (this.avatar as any).instance.destroy()
+        }
       }
       
-      // Add null check for avatar before accessing methods
+      // Use the same pattern as PlayerLocal
+      const isAvatarNodeMap = (v: unknown): v is { toNodes: () => Map<string, Avatar> } =>
+        typeof v === 'object' && v !== null && 'toNodes' in v && typeof (v as { toNodes: unknown }).toNodes === 'function'
+      
+      if (!isAvatarNodeMap(src)) {
+        console.error('[PlayerRemote] Avatar loader did not return expected node map, got:', src)
+        return
+      }
+      
+      const nodeMap = src.toNodes()
+      console.log('[PlayerRemote] NodeMap type:', nodeMap?.constructor?.name, 'keys:', nodeMap instanceof Map ? Array.from(nodeMap.keys()) : 'not a map')
+      
+      // Check if nodeMap is actually a Map
+      if (!(nodeMap instanceof Map)) {
+        console.error('[PlayerRemote] toNodes() did not return a Map, got:', nodeMap)
+        return
+      }
+      
+      const rootNode = nodeMap.get('root')
+      if (!rootNode) {
+        console.error('[PlayerRemote] No root node found in loaded avatar. Available keys:', Array.from(nodeMap.keys()))
+        return
+      }
+      
+      // The avatar node is a child of the root node or in the map directly
+      const avatarNode = nodeMap.get('avatar') || ((rootNode as any).get ? (rootNode as any).get('avatar') : null)
+      console.log('[PlayerRemote] Root node:', rootNode, 'Avatar node:', avatarNode)
+      
+      // Use the avatar node if we found it, otherwise try root
+      const nodeToUse = avatarNode || rootNode
+      
+      if (!nodeToUse) {
+        console.error('[PlayerRemote] No avatar node found')
+        return
+      }
+      
+      this.avatar = nodeToUse as Avatar
+      console.log('[PlayerRemote] Using node:', nodeToUse)
+      
+      // Set up the avatar node properly
+      if ((nodeToUse as any).ctx !== this.world) {
+        (nodeToUse as any).ctx = this.world
+      }
+      
+      // Set the parent to base's matrix so it follows the remote player
+      (nodeToUse as any).parent = { matrixWorld: this.base.matrixWorld }
+      
+      // Activate and mount the avatar node
+      if ((nodeToUse as any).activate) {
+        (nodeToUse as any).activate(this.world)
+      }
+      
+      if ((nodeToUse as any).mount) {
+        await (nodeToUse as any).mount()
+      }
+      
+      // The avatar instance will be managed by the VRM factory
+      // Don't add anything to base - the VRM scene is added to world.stage.scene
+      
+      // Set up positioning
       if (this.avatar && this.avatar.getHeadToHeight) {
         const headHeight = this.avatar.getHeadToHeight();
         if (headHeight != null) {
@@ -132,7 +220,20 @@ export class PlayerRemote extends Entity implements HotReloadable {
         this.nametag.active = true
       }
       this.avatarUrl = avatarUrl
-    })
+      
+      console.log('[PlayerRemote] Avatar loaded and mounted successfully')
+      // Ensure a default idle emote after mount so avatar isn't frozen
+      if (this.avatar) {
+        if ('emote' in this.avatar) {
+          ;(this.avatar as unknown as { emote: string | null }).emote = Emotes.IDLE
+        } else if (typeof (this.avatar as any).setEmote === 'function') {
+          ;(this.avatar as any).setEmote(Emotes.IDLE)
+        }
+        this.lastEmote = Emotes.IDLE
+      }
+    } catch (err) {
+      console.error('[PlayerRemote] Failed to load avatar:', err)
+    }
   }
 
   getAnchorMatrix() {
@@ -154,10 +255,71 @@ export class PlayerRemote extends Entity implements HotReloadable {
       this.lerpPosition.update(delta)
       this.lerpQuaternion.update(delta)
     }
-    // Use null coalescing for emote - convert undefined to null
-    if (this.avatar && this.avatar.setEmote) {
-      this.avatar.setEmote(this.data.emote ?? null);
+
+    // Mirror entity transform into base node so the avatar follows correctly
+    if (this.base) {
+      this.base.position.copy(this.position)
+      this.base.quaternion.copy(this.node.quaternion)
     }
+    
+    // Drive avatar instance from base transform (like PlayerLocal does)
+    if (this.avatar && (this.avatar as any).instance) {
+      const instance = (this.avatar as any).instance
+      if (instance && typeof instance.move === 'function' && this.base) {
+        // Drive the avatar instance with the base's matrix if available
+        const baseAny = this.base as unknown as { updateTransform?: () => void; matrixWorld?: THREE.Matrix4 };
+        if (typeof baseAny.updateTransform === 'function') {
+          baseAny.updateTransform()
+        }
+        if (baseAny.matrixWorld) {
+          instance.move(baseAny.matrixWorld)
+        }
+      }
+      if (instance && typeof instance.update === 'function') {
+        instance.update(delta)
+      }
+    }
+
+    // Use server-provided emote state directly - no inference
+    // The server/PlayerLocal sends the correct animation state
+    if (this.avatar) {
+      const serverEmote = this.data.emote as string | undefined
+      let desiredUrl: string
+      
+      if (serverEmote) {
+        // Map symbolic emote to asset URL
+        if (serverEmote.startsWith('asset://')) {
+          desiredUrl = serverEmote
+        } else {
+          const emoteMap: Record<string, string> = {
+            idle: Emotes.IDLE,
+            walk: Emotes.WALK,
+            run: Emotes.RUN,
+            float: Emotes.FLOAT,
+            fall: Emotes.FALL,
+            flip: Emotes.FLIP,
+            talk: Emotes.TALK,
+          }
+          desiredUrl = emoteMap[serverEmote] || Emotes.IDLE
+        }
+      } else {
+        // Default to idle if no emote data
+        desiredUrl = Emotes.IDLE
+      }
+
+      // Update animation if changed
+      if (desiredUrl !== this.lastEmote) {
+        if ('emote' in this.avatar) {
+          ;(this.avatar as unknown as { emote: string | null }).emote = desiredUrl
+        } else if (typeof (this.avatar as any).setEmote === 'function') {
+          ;(this.avatar as any).setEmote(desiredUrl)
+        }
+        this.lastEmote = desiredUrl
+      }
+    }
+
+    // Update prev position at end of frame
+    this.prevPosition.copy(this.position)
   }
 
   lateUpdate(_delta: number): void {
@@ -211,6 +373,8 @@ export class PlayerRemote extends Entity implements HotReloadable {
     if (Object.prototype.hasOwnProperty.call(data, 'q')) {
       // Rotation is no longer stored in EntityData, apply directly to entity transform
       this.lerpQuaternion.pushArray(data.q!, this.teleport || null)
+      // When explicit rotation update arrives, clear any movement-facing override to avoid fighting network
+      this.lastEmote = this.lastEmote // no-op, kept for clarity
     }
     if (Object.prototype.hasOwnProperty.call(data, 'e')) {
       this.data.emote = data.e
@@ -239,7 +403,9 @@ export class PlayerRemote extends Entity implements HotReloadable {
       this.data.roles = data.roles as string[]
     }
     if (avatarChanged) {
-      this.applyAvatar()
+      this.applyAvatar().catch(err => {
+        console.error('[PlayerRemote] Failed to apply avatar in modify:', err)
+      })
     }
   }
 

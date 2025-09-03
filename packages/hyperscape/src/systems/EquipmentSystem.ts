@@ -10,7 +10,7 @@
  * - Colored cube representations for equipment
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import { EventType } from '../types/events';
 import { dataManager } from '../data/DataManager';
 import { equipmentRequirements } from '../data/EquipmentRequirements';
@@ -744,9 +744,9 @@ export class EquipmentSystem extends SystemBase {
     if (!equipment || !equipment.arrows?.item) return 0;
     
     // Get arrow quantity from inventory system
-    const inventorySystem = this.world.getSystem('rpg-inventory');
-    if (inventorySystem && 'getItemQuantity' in inventorySystem && equipment.arrows.itemId) {
-      const arrowCount = (inventorySystem as { getItemQuantity: (playerId: string, itemId: string) => number }).getItemQuantity(playerId, equipment.arrows.itemId?.toString() || '');
+    const inventorySystem = this.world.getSystem('rpg-inventory') as import('./InventorySystem').InventorySystem | undefined;
+    if (inventorySystem && equipment.arrows.itemId) {
+      const arrowCount = inventorySystem.getItemQuantity(playerId, equipment.arrows.itemId?.toString() || '');
       return Math.max(0, arrowCount);
     }
     
@@ -760,12 +760,15 @@ export class EquipmentSystem extends SystemBase {
       return false;
     }
     
-    // Consume arrow from inventory
-    const inventorySystem = this.world.getSystem('rpg-inventory');
-    if (inventorySystem && 'removeItem' in inventorySystem && equipment.arrows.itemId) {
-      const consumed = (inventorySystem as { removeItem: (playerId: string, itemId: string, quantity: number) => boolean }).removeItem(playerId, equipment.arrows.itemId?.toString() || '', 1);
-      
-      if (consumed) {
+    // Request inventory to remove arrow via typed event API
+    if (equipment.arrows.itemId) {
+      this.emitTypedEvent(EventType.INVENTORY_REMOVE_ITEM, {
+        playerId,
+        itemId: equipment.arrows.itemId?.toString() || '',
+        quantity: 1,
+      });
+
+      {
         // Update equipment quantity
         const arrowsWithQuantity = equipment.arrows as { quantity?: number };
         if (arrowsWithQuantity.quantity) {
@@ -835,7 +838,7 @@ export class EquipmentSystem extends SystemBase {
       itemId: item.id
     };
 
-    slot.visualMesh = visual as unknown as THREE.Object3D;
+    slot.visualMesh = visual;
     
     // Add to world scene
     if (this.world.stage.scene) {
@@ -883,8 +886,19 @@ export class EquipmentSystem extends SystemBase {
    */
   private updateEquipmentPositions(): void {
     for (const [playerId, equipment] of this.playerEquipment) {
-      const player = this.world.getPlayer(playerId);
-      if (!player || !this.hasEquipmentSupport(player)) continue;
+      // Check if player still exists (may have disconnected)
+      const player = this.world.getPlayer ? 
+        this.world.getPlayer(playerId) : 
+        this.world.entities?.get(playerId);
+      
+      // Skip if player not found or doesn't have equipment support
+      if (!player || !this.hasEquipmentSupport(player)) {
+        // Clean up equipment for disconnected players
+        if (!player) {
+          this.playerEquipment.delete(playerId);
+        }
+        continue;
+      }
 
       this.updatePlayerEquipmentVisuals(player, equipment);
     }
@@ -907,7 +921,7 @@ export class EquipmentSystem extends SystemBase {
     Object.entries(attachmentPoints).forEach(([slotName, attachment]) => {
       const slot = equipment[slotName as keyof PlayerEquipment] as EquipmentSlot;
       if (slot?.visualMesh) {
-        this.attachEquipmentToPlayer(player, slot.visualMesh, attachment.bone, attachment.offset);
+        this.attachEquipmentToPlayer(player, slot.visualMesh as THREE.Object3D, attachment.bone, attachment.offset);
       }
     });
   }

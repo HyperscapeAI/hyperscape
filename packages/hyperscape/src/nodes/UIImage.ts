@@ -84,7 +84,7 @@ export class UIImage extends Node {
         width,
         height,
         this._borderRadius * this.ui._res,
-        this.img as unknown as CanvasImageSource,
+         this.img as unknown as CanvasImageSource,
         left + drawParams.x,
         top + drawParams.y,
         drawParams.width,
@@ -100,22 +100,22 @@ export class UIImage extends Node {
     if (!this.ui) return console.error('uiimage: must be child of ui node')
     this.yogaNode = Yoga.Node.create() as YogaNode
     this.yogaNode.setDisplay(Display[this._display] as number)
-    this.yogaNode.setPositionType(this._absolute ? (Yoga as unknown as Record<string, number>).POSITION_TYPE_ABSOLUTE : (Yoga as unknown as Record<string, number>).POSITION_TYPE_RELATIVE)
-    if (isNumber(this._top)) this.yogaNode.setPosition((Yoga as unknown as Record<string, number>).EDGE_TOP, this._top * this.ui._res)
-    if (isNumber(this._right)) this.yogaNode.setPosition((Yoga as unknown as Record<string, number>).EDGE_RIGHT, this._right * this.ui._res)
-    if (isNumber(this._bottom)) this.yogaNode.setPosition((Yoga as unknown as Record<string, number>).EDGE_BOTTOM, this._bottom * this.ui._res)
-    if (isNumber(this._left)) this.yogaNode.setPosition((Yoga as unknown as Record<string, number>).EDGE_LEFT, this._left * this.ui._res)
+    this.yogaNode.setPositionType(this._absolute ? Yoga.POSITION_TYPE_ABSOLUTE : Yoga.POSITION_TYPE_RELATIVE)
+    if (isNumber(this._top)) this.yogaNode.setPosition(Yoga.EDGE_TOP, this._top * this.ui._res)
+    if (isNumber(this._right)) this.yogaNode.setPosition(Yoga.EDGE_RIGHT, this._right * this.ui._res)
+    if (isNumber(this._bottom)) this.yogaNode.setPosition(Yoga.EDGE_BOTTOM, this._bottom * this.ui._res)
+    if (isNumber(this._left)) this.yogaNode.setPosition(Yoga.EDGE_LEFT, this._left * this.ui._res)
     if (isArray(this._margin)) {
       const [top, right, bottom, left] = this._margin
-      this.yogaNode.setMargin((Yoga as unknown as Record<string, number>).EDGE_TOP, top * this.ui._res)
-      this.yogaNode.setMargin((Yoga as unknown as Record<string, number>).EDGE_RIGHT, right * this.ui._res)
-      this.yogaNode.setMargin((Yoga as unknown as Record<string, number>).EDGE_BOTTOM, bottom * this.ui._res)
-      this.yogaNode.setMargin((Yoga as unknown as Record<string, number>).EDGE_LEFT, left * this.ui._res)
+      this.yogaNode.setMargin(Yoga.EDGE_TOP, top * this.ui._res)
+      this.yogaNode.setMargin(Yoga.EDGE_RIGHT, right * this.ui._res)
+      this.yogaNode.setMargin(Yoga.EDGE_BOTTOM, bottom * this.ui._res)
+      this.yogaNode.setMargin(Yoga.EDGE_LEFT, left * this.ui._res)
     } else {
-      this.yogaNode.setMargin((Yoga as unknown as Record<string, number>).EDGE_ALL, this._margin * this.ui._res)
+      this.yogaNode.setMargin(Yoga.EDGE_ALL, this._margin * this.ui._res)
     }
     // measure function
-    (this.yogaNode as unknown as { setMeasureFunc: (fn: (width: number, widthMode: number, height: number, heightMode: number) => { width: number; height: number }) => void }).setMeasureFunc((width: number, widthMode: number, height: number, heightMode: number) => {
+    this.yogaNode.setMeasureFunc((width: number, widthMode: number, height: number, heightMode: number) => {
       // no image? zero size
       if (!this.img || !this.ui) {
         return { width: 0, height: 0 }
@@ -139,10 +139,10 @@ export class UIImage extends Node {
         finalWidth = finalHeight * imgAspectRatio
       } else {
         // neither dimension specified - use natural size with constraints
-        if (widthMode === (Yoga as unknown as Record<string, number>).MEASURE_MODE_EXACTLY) {
+        if (widthMode === Yoga.MEASURE_MODE_EXACTLY) {
           finalWidth = width
           finalHeight = width / imgAspectRatio
-        } else if (widthMode === (Yoga as unknown as Record<string, number>).MEASURE_MODE_AT_MOST) {
+        } else if (widthMode === Yoga.MEASURE_MODE_AT_MOST) {
           finalWidth = Math.min(this.img.width * this.ui._res, width)
           finalHeight = finalWidth / imgAspectRatio
         } else {
@@ -151,12 +151,12 @@ export class UIImage extends Node {
           finalHeight = this.img.height * this.ui._res
         }
         // apply height constraints if any
-        if (heightMode === (Yoga as unknown as Record<string, number>).MEASURE_MODE_EXACTLY) {
+        if (heightMode === Yoga.MEASURE_MODE_EXACTLY) {
           finalHeight = height
           if (this._objectFit === 'contain') {
             finalWidth = Math.min(finalWidth, height * imgAspectRatio)
           }
-        } else if (heightMode === (Yoga as unknown as Record<string, number>).MEASURE_MODE_AT_MOST && finalHeight > height) {
+        } else if (heightMode === Yoga.MEASURE_MODE_AT_MOST && finalHeight > height) {
           finalHeight = height
           finalWidth = height * imgAspectRatio
         }
@@ -165,7 +165,8 @@ export class UIImage extends Node {
     })
     if (this.parent) {
       const parentWithYoga = this.parent as { yogaNode?: YogaNode };
-      parentWithYoga.yogaNode?.insertChild(this.yogaNode, parentWithYoga.yogaNode.getChildCount())
+      const parentYoga = parentWithYoga.yogaNode
+      if (parentYoga) parentYoga.insertChild(this.yogaNode, parentYoga.getChildCount())
     }
     if (this._src && !this.img) {
       this.loadImage(this._src)
@@ -208,22 +209,27 @@ export class UIImage extends Node {
     return this
   }
 
-  async loadImage(src: string): Promise<void> {
+    async loadImage(src: string): Promise<void> {
     const ctx = this.ctx
     if (!ctx || !ctx.loader) return
     const url = ctx.resolveURL(src)
     const loaderResult = ctx.loader.get('image', url)
-    if (loaderResult) {
+    if (loaderResult && this.isImageLike(loaderResult)) {
       this.img = loaderResult as unknown as UIImageNode
     } else {
       const loadedImage = await ctx.loader.load('image', url)
-      if (loadedImage) {
+      if (loadedImage && this.isImageLike(loadedImage)) {
         this.img = loadedImage as unknown as UIImageNode
       }
     }
     if (!this.ui) return
     this.yogaNode?.markDirty()
     this.ui?.redraw()
+  }
+
+  // Local type guard to avoid global scope pollution
+  private isImageLike(value: unknown): value is { width: number; height: number } {
+    return !!value && typeof value === 'object' && 'width' in (value as Record<string, unknown>) && 'height' in (value as Record<string, unknown>)
   }
 
   calculateDrawParameters(imgWidth, imgHeight, containerWidth, containerHeight) {
@@ -327,10 +333,8 @@ export class UIImage extends Node {
     }
     if (this._top === value) return
     this._top = value
-    if (this.yogaNode && this.ui) {
-      if (isNum && this._top !== null) {
-        this.yogaNode.setPosition((Yoga as unknown as Record<string, number>).EDGE_TOP, this._top * this.ui._res)
-      }
+    if (this.yogaNode && this.ui && isNum && this._top !== null) {
+      this.yogaNode.setPosition(Yoga.EDGE_TOP, this._top * this.ui._res)
     }
     this.ui?.redraw()
   }
@@ -347,10 +351,8 @@ export class UIImage extends Node {
     }
     if (this._right === value) return
     this._right = value
-    if (this.yogaNode && this.ui) {
-      if (isNum && this._right !== null) {
-        this.yogaNode.setPosition((Yoga as unknown as Record<string, number>).EDGE_RIGHT, this._right * this.ui._res)
-      }
+    if (this.yogaNode && this.ui && isNum && this._right !== null) {
+      this.yogaNode.setPosition(Yoga.EDGE_RIGHT, this._right * this.ui._res)
     }
     this.ui?.redraw()
   }
@@ -367,10 +369,8 @@ export class UIImage extends Node {
     }
     if (this._bottom === value) return
     this._bottom = value
-    if (this.yogaNode && this.ui) {
-      if (isNum && this._bottom !== null) {
-        this.yogaNode.setPosition((Yoga as unknown as Record<string, number>).EDGE_BOTTOM, this._bottom * this.ui._res)
-      }
+    if (this.yogaNode && this.ui && isNum && this._bottom !== null) {
+      this.yogaNode.setPosition(Yoga.EDGE_BOTTOM, this._bottom * this.ui._res)
     }
     this.ui?.redraw()
   }
@@ -387,10 +387,8 @@ export class UIImage extends Node {
     }
     if (this._left === value) return
     this._left = value
-    if (this.yogaNode && this.ui) {
-      if (isNum && this._left !== null) {
-        this.yogaNode.setPosition((Yoga as unknown as Record<string, number>).EDGE_LEFT, this._left * this.ui._res)
-      }
+    if (this.yogaNode && this.ui && isNum && this._left !== null) {
+      this.yogaNode.setPosition(Yoga.EDGE_LEFT, this._left * this.ui._res)
     }
     this.ui?.redraw()
   }
@@ -500,12 +498,12 @@ export class UIImage extends Node {
     if (this.yogaNode && this.ui) {
       if (isArray(this._margin)) {
         const [top, right, bottom, left] = this._margin
-        this.yogaNode.setMargin((Yoga as unknown as Record<string, number>).EDGE_TOP, top * this.ui._res)
-        this.yogaNode.setMargin((Yoga as unknown as Record<string, number>).EDGE_RIGHT, right * this.ui._res)
-        this.yogaNode.setMargin((Yoga as unknown as Record<string, number>).EDGE_BOTTOM, bottom * this.ui._res)
-        this.yogaNode.setMargin((Yoga as unknown as Record<string, number>).EDGE_LEFT, left * this.ui._res)
+        this.yogaNode.setMargin(Yoga.EDGE_TOP, top * this.ui._res)
+        this.yogaNode.setMargin(Yoga.EDGE_RIGHT, right * this.ui._res)
+        this.yogaNode.setMargin(Yoga.EDGE_BOTTOM, bottom * this.ui._res)
+        this.yogaNode.setMargin(Yoga.EDGE_LEFT, left * this.ui._res)
       } else {
-        this.yogaNode.setMargin((Yoga as unknown as Record<string, number>).EDGE_ALL, this._margin * this.ui._res)
+        this.yogaNode.setMargin(Yoga.EDGE_ALL, this._margin * this.ui._res)
       }
     }
     this.ui?.redraw()

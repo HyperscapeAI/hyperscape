@@ -33,6 +33,13 @@ add('player', ['environment', 'prop', playerCollision ? 'player' : null])
 add('environment', ['camera', 'player', 'environment', 'prop', 'tool'])
 add('prop', ['environment', 'prop'])
 add('tool', ['environment', 'prop'])
+// Aliases and additional layers used by interaction/pathfinding
+// Map 'ground' and 'terrain' to behave like 'environment'
+add('ground', ['camera', 'player', 'environment', 'prop', 'tool'])
+add('terrain', ['camera', 'player', 'environment', 'prop', 'tool'])
+// Basic obstacle/building layers for raycast checks
+add('obstacle', ['player', 'environment'])
+add('building', ['player', 'environment'])
 
 for (const key in Groups) {
   Layers[key] = {

@@ -85,11 +85,11 @@ export class UIView extends Node {
     this.borderRadius = data.borderRadius ?? defaults.borderRadius
     this.margin = data.margin ?? defaults.margin
     this.padding = data.padding ?? defaults.padding
-    this.flexDirection = (data.flexDirection as unknown as string) ?? (defaults.flexDirection as string)
-    this.justifyContent = (data.justifyContent as unknown as string) ?? (defaults.justifyContent as string)
-    this.alignItems = (data.alignItems as unknown as string) ?? (defaults.alignItems as string)
-    this.alignContent = (data.alignContent as unknown as string) ?? (defaults.alignContent as string)
-    this.flexWrap = (data.flexWrap as unknown as string) ?? (defaults.flexWrap as string)
+    this.flexDirection = (data.flexDirection as string | undefined) ?? (defaults.flexDirection as string)
+    this.justifyContent = (data.justifyContent as string | undefined) ?? (defaults.justifyContent as string)
+    this.alignItems = (data.alignItems as string | undefined) ?? (defaults.alignItems as string)
+    this.alignContent = (data.alignContent as string | undefined) ?? (defaults.alignContent as string)
+    this.flexWrap = (data.flexWrap as string | undefined) ?? (defaults.flexWrap as string)
     this.gap = data.gap ?? defaults.gap
     this.flexBasis = data.flexBasis ?? (defaults.flexBasis as FlexBasis)
     this.flexGrow = data.flexGrow ?? defaults.flexGrow
@@ -131,9 +131,8 @@ export class UIView extends Node {
     }
     this.box = { left, top, width, height }
     this.children.forEach(child => {
-      if ((child as unknown as { draw: (ctx: CanvasRenderingContext2D, left: number, top: number) => void }).draw) {
-        (child as unknown as { draw: (ctx: CanvasRenderingContext2D, left: number, top: number) => void }).draw(ctx, left, top)
-      }
+      const drawable = child as { draw?: (ctx: CanvasRenderingContext2D, left: number, top: number) => void }
+      if (drawable.draw) drawable.draw(ctx, left, top)
     })
   }
 
@@ -142,7 +141,7 @@ export class UIView extends Node {
     this.ui = (this.parent as Node & { ui?: UIContext })?.ui
     if (!this.ui) return console.error('uiview: must be child of ui node')
     this.yogaNode = Yoga.Node.create()
-    this.yogaNode.setDisplay((Display as unknown as Record<string, unknown>)[this._display] as YogaTypes.Display)
+    this.yogaNode.setDisplay(Display[this._display] as YogaTypes.Display)
     this.yogaNode.setWidth(this._width === null ? undefined : this._width * this.ui!._res)
     this.yogaNode.setHeight(this._height === null ? undefined : this._height * this.ui!._res)
     this.yogaNode.setPositionType(this._absolute ? Yoga.POSITION_TYPE_ABSOLUTE : Yoga.POSITION_TYPE_RELATIVE)
@@ -241,7 +240,7 @@ export class UIView extends Node {
     }
     if (this._display === value) return
     this._display = value
-    this.yogaNode?.setDisplay((Display as unknown as Record<string, unknown>)[this._display] as YogaTypes.Display)
+    this.yogaNode?.setDisplay((Display as Record<string, YogaTypes.Display>)[this._display])
     this.ui?.redraw()
   }
 
@@ -467,7 +466,7 @@ export class UIView extends Node {
     }
     if (this._flexDirection === value) return
     this._flexDirection = value
-    this.yogaNode?.setFlexDirection((FlexDirection as unknown as Record<string, unknown>)[this._flexDirection] as YogaTypes.FlexDirection)
+    this.yogaNode?.setFlexDirection((FlexDirection as Record<string, YogaTypes.FlexDirection>)[this._flexDirection])
     this.ui?.redraw()
   }
 

@@ -1,4 +1,4 @@
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 import { Emotes } from '../extras/playerEmotes'
 import type { World } from '../World'
 import type { LoadedAvatar } from '../types'
@@ -107,14 +107,14 @@ export class AvatarPreview {
     this.avatar = await this.world.loader.load('avatar', this.url) as LoadedAvatar
     if (!this.avatar) return { error: 'Failed to load avatar' }
     
-    this.node = this.avatar
+    this.node = (this.avatar
       .toNodes({
         camera: this.camera,
         scene: this.scene,
         octree: null,
         loader: this.world.loader,
       })
-      .get('avatar') as AvatarNode
+      .get('avatar')) as AvatarNode
     if (this.node) {
       this.node.activate(this.world);
       this.node.setEmote(Emotes.IDLE);

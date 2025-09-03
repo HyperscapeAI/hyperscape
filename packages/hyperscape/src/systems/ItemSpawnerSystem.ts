@@ -62,15 +62,16 @@ export class ItemSpawnerSystem extends SystemBase {
     }
     
     // Set up type-safe event subscriptions for item spawning (4 listeners!)
-    this.subscribe<{ itemId: string; position: { x: number; y: number; z: number }; quantity?: number }>(EventType.ITEM_SPAWN_REQUEST, async (event) => await this.spawnItemAtLocation(event.data));
-    this.subscribe<{ itemId: string }>(EventType.ITEM_DESPAWN, (event) => this.despawnItem(event.data.itemId));
-    this.subscribe<{}>(EventType.ITEM_RESPAWN_SHOPS, async () => await this.respawnShopItems());
-    this.subscribe<{ position: { x: number; y: number; z: number }; lootTable: string[] }>(EventType.ITEM_SPAWN_LOOT, async (event) => await this.spawnLootItems(event.data));
+    this.subscribe<{ itemId: string; position: { x: number; y: number; z: number }; quantity?: number }>(EventType.ITEM_SPAWN_REQUEST, async (data) => await this.spawnItemAtLocation(data));
+    this.subscribe<{ itemId: string }>(EventType.ITEM_DESPAWN, (data) => this.despawnItem(data.itemId));
+    this.subscribe<{}>(EventType.ITEM_RESPAWN_SHOPS, async (_data) => await this.respawnShopItems());
+    this.subscribe<{ position: { x: number; y: number; z: number }; lootTable: string[] }>(EventType.ITEM_SPAWN_LOOT, async (data) => await this.spawnLootItems(data));
   }
 
   async start(): Promise<void> {
-    // Spawn all item types across their appropriate locations
-    await this.spawnAllItemTypes();
+    // Don't spawn items on startup to avoid memory issues
+    // Items will be spawned on-demand or when shops are accessed
+    this.logger.info('[ItemSpawnerSystem] Skipping automatic item spawning to conserve memory');
   }
 
   private async spawnAllItemTypes(): Promise<void> {
@@ -232,8 +233,10 @@ export class ItemSpawnerSystem extends SystemBase {
         combatComponent: null,
         healthComponent: null,
         visualComponent: null,
-        health: 1,
-        maxHealth: 1,
+        health: {
+          current: 1,
+          max: 1
+        },
         level: 1,
         // Item-specific properties
         itemId: itemData.id,
@@ -253,7 +256,7 @@ export class ItemSpawnerSystem extends SystemBase {
     }
     
     // Register with systems
-    this.world.emit(EventType.ITEM_SPAWNED, {
+    this.emitTypedEvent(EventType.ITEM_SPAWNED, {
       itemId: itemId,
       itemType: itemData.id,
       position: position,
@@ -339,7 +342,7 @@ export class ItemSpawnerSystem extends SystemBase {
   private despawnItem(itemId: string): void {
     const entityId = this.spawnedItems.get(itemId);
     if (entityId) {
-      this.world.emit(EventType.ENTITY_DEATH, { entityId });
+      this.emitTypedEvent(EventType.ENTITY_DEATH, { entityId });
       this.spawnedItems.delete(itemId);
       
     }
@@ -360,7 +363,7 @@ export class ItemSpawnerSystem extends SystemBase {
     // Clear existing shop items
     for (const [_shopName, entityIds] of this.shopItems) {
       entityIds.forEach(entityId => {
-        this.world.emit(EventType.ENTITY_DEATH, { entityId });
+        this.emitTypedEvent(EventType.ENTITY_DEATH, { entityId });
       });
     }
     this.shopItems.clear();

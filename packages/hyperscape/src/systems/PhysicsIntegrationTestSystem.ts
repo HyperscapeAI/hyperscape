@@ -1,6 +1,6 @@
 
 // import { System } from '../../systems/System'; // Currently unused
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 
 /**
  * Physics Integration Test System
@@ -75,7 +75,6 @@ interface TestScenario {
 interface PhysicsTestObject {
   mesh: THREE.Mesh;
   body?: unknown; // Physics body - type depends on physics engine
-  position: THREE.Vector3;
   velocity?: THREE.Vector3;
   userData?: PhysicsTestUserData;
 }
@@ -134,6 +133,7 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
   private cubeTestId = 0;
   private characterTestId = 0;
   private testStartTime = 0;
+  private scenariosInitialized = false;
   
   constructor(world: World) {
     super(world, {
@@ -144,29 +144,27 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
   }
 
   async init(): Promise<void> {
-    
     // Listen for test requests
-    this.world.on(EventType.PHYSICS_TEST_BALL_RAMP, this.testBallOnRamp.bind(this));
-    this.world.on(EventType.PHYSICS_TEST_CUBE_DROP, this.testCubeDrop.bind(this));
-    this.world.on(EventType.PHYSICS_TEST_CHARACTER_COLLISION, this.testCharacterCollision.bind(this));
-    this.world.on(EventType.PHYSICS_TEST_RUN_ALL, this.runAllPhysicsTests.bind(this));
-    
+    this.subscribe(EventType.PHYSICS_TEST_BALL_RAMP, () => this.testBallOnRamp());
+    this.subscribe(EventType.PHYSICS_TEST_CUBE_DROP, () => this.testCubeDrop());
+    this.subscribe(EventType.PHYSICS_TEST_CHARACTER_COLLISION, () => this.testCharacterCollision());
+    this.subscribe(EventType.PHYSICS_TEST_RUN_ALL, () => this.runAllPhysicsTests());
   }
 
   start(): void {
+    // Auto-run physics integration tests once on start
+    this.runAllPhysicsTests();
+  }
+
+  private ensureScenariosCreated(): void {
+    if (this.scenariosInitialized) return;
     this.testStartTime = Date.now();
-    
-    // Create all test scenarios positioned 10 meters from spawn
     this.createBallRampTest();
     this.createCubeDropTest();
     this.createCharacterColliderTest();
     this.createTerrainValidationTest();
     this.createRampTrajectoryTest();
-    
-    // Start automated test sequence
-    setTimeout(() => {
-      this.runAllPhysicsTests();
-    }, 2000); // Wait 2 seconds for world to stabilize
+    this.scenariosInitialized = true;
   }
 
   /**
@@ -240,10 +238,7 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
       if (this.world.stage.scene) {
         this.world.stage.scene.add(ball);
       }
-      this.physicsTestObjects.set(userData.testId, {
-        mesh: ball,
-        position: ball.position.clone()
-      });
+      this.physicsTestObjects.set(userData.testId, { mesh: ball });
     });
     
           this.testScenarios.set('ball_ramp', {
@@ -304,10 +299,7 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
       if (this.world.stage.scene) {
         this.world.stage.scene.add(cube);
       }
-      this.physicsTestObjects.set(userData.testId, {
-        mesh: cube,
-        position: cube.position.clone()
-      });
+      this.physicsTestObjects.set(userData.testId, { mesh: cube });
     }
     
     this.testScenarios.set('cube_drop', {
@@ -362,10 +354,7 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
     if (this.world.stage.scene) {
       this.world.stage.scene.add(characterProxy);
     }
-    this.physicsTestObjects.set(userData.testId, {
-      mesh: characterProxy,
-      position: characterProxy.position.clone()
-    });
+    this.physicsTestObjects.set(userData.testId, { mesh: characterProxy });
     
     // Create obstacles for collision testing
     const obstacles: THREE.Mesh[] = [];
@@ -452,10 +441,7 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
       if (this.world.stage.scene) {
         this.world.stage.scene.add(testSphere);
       }
-      this.physicsTestObjects.set(userData.testId, {
-        mesh: testSphere,
-        position: testSphere.position.clone()
-      });
+      this.physicsTestObjects.set(userData.testId, { mesh: testSphere });
     });
     
     this.testScenarios.set('terrain_validation', {
@@ -527,10 +513,7 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
     if (this.world.stage.scene) {
       this.world.stage.scene.add(projectile);
     }
-    this.physicsTestObjects.set(userData.testId, {
-      mesh: projectile,
-      position: projectile.position.clone()
-    });
+    this.physicsTestObjects.set(userData.testId, { mesh: projectile });
     
     this.testScenarios.set('ramp_trajectory', {
       type: 'ramp_trajectory',
@@ -549,6 +532,7 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
    * Execute ball ramp test
    */
   private testBallOnRamp(): void {
+    this.ensureScenariosCreated();
     
     const scenario = this.testScenarios.get('ball_ramp')!;
     
@@ -650,6 +634,7 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
    * Execute cube drop test
    */
   private testCubeDrop(): void {
+    this.ensureScenariosCreated();
     
     const scenario = this.testScenarios.get('cube_drop')!;
     
@@ -750,6 +735,7 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
    * Execute character collision test
    */
   private testCharacterCollision(): void {
+    this.ensureScenariosCreated();
     
     const scenario = this.testScenarios.get('character_collision')!;
     
@@ -836,7 +822,7 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
    * Run all physics tests in sequence
    */
   private runAllPhysicsTests(): void {
-    
+    this.ensureScenariosCreated();
     // Run tests with proper timing
     setTimeout(() => this.testBallOnRamp(), 1000);
     setTimeout(() => this.testCubeDrop(), 2000);
@@ -893,8 +879,8 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
       })),
       objects: Array.from(this.physicsTestObjects.entries()).map(([key, value]) => ({
         id: key,
-        type: value.userData?.type || 'unknown',
-        position: { x: value.position.x, y: value.position.y, z: value.position.z }
+        type: (value.mesh.userData as PhysicsTestUserData | undefined)?.type || 'unknown',
+        position: { x: value.mesh.position.x, y: value.mesh.position.y, z: value.mesh.position.z }
       })),
       testScenarios: Array.from(this.testScenarios.entries()).map(([key, value]) => ({
         name: key,
@@ -923,14 +909,14 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
     // Monitor test objects and detect issues in real-time
     this.physicsTestObjects.forEach((object, id) => {
       // Check for objects falling through floor
-      if (object.position.y < -2.0) {
-        console.error(`[PhysicsTests] WARNING: Object ${id} fell below expected floor level:`, object.position.y);
+      if (object.mesh.position.y < -2.0) {
+        this.logger.error(`Object ${id} fell below expected floor level: ${object.mesh.position.y}`);
       }
       
       // Check for objects moving too far from test area
-      const distanceFromOrigin = object.position.length();
+      const distanceFromOrigin = object.mesh.position.length();
       if (distanceFromOrigin > 50) {
-        console.error(`[PhysicsTests] WARNING: Object ${id} moved too far from test area:`, distanceFromOrigin);
+        this.logger.error(`Object ${id} moved too far from test area: ${distanceFromOrigin}`);
       }
     });
   }

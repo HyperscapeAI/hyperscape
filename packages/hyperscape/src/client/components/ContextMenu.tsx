@@ -43,7 +43,8 @@ export function ContextMenu({ visible, position, actions, onClose, title }: Cont
     zIndex: 2000,
     fontSize: '0.875rem',
     color: 'rgba(255, 255, 255, 0.9)',
-    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)'
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
+    pointerEvents: 'auto'
   }
 
   return (
@@ -64,7 +65,9 @@ export function ContextMenu({ visible, position, actions, onClose, title }: Cont
         <button
           key={action.id}
           disabled={!action.enabled}
-          onClick={() => {
+          onClick={(e) => {
+            // Prevent bubbling to canvas/document which could trigger movement
+            e.stopPropagation()
             if (action.enabled) {
               action.onClick()
               onClose()
@@ -91,6 +94,10 @@ export function ContextMenu({ visible, position, actions, onClose, title }: Cont
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.backgroundColor = 'transparent'
+          }}
+          onMouseDown={(e) => {
+            // Prevent this click from bubbling to the canvas/document and triggering movement
+            e.stopPropagation()
           }}
         >
           {action.icon && (

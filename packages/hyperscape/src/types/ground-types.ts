@@ -5,7 +5,7 @@
  * and entity positioning on surfaces.
  */
 
-import type * as THREE from '../extras/three';
+import type THREE from '../extras/three';
 
 /**
  * Result of a ground position calculation

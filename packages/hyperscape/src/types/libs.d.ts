@@ -2,7 +2,7 @@
 
 // GLTF Loader
 declare module '*/gltfloader/GLTFLoader.js' {
-  import * as THREE from '../extras/three';
+  import THREE from '../extras/three';
   
   export class GLTFLoader extends THREE.Loader {
     constructor(manager?: THREE.LoadingManager);
@@ -68,7 +68,7 @@ declare module '*/stats-gl/index.js' {
 
 // Three Custom Shader Material
 declare module '*/three-custom-shader-material/index.js' {
-  import * as THREE from '../extras/three';
+  import THREE from '../extras/three';
   
   export default class CustomShaderMaterial extends THREE.Material {
     constructor(options: {
@@ -84,7 +84,7 @@ declare module '*/three-custom-shader-material/index.js' {
 
 // Three VRM
 declare module '*/three-vrm/index.js' {
-  import * as THREE from '../extras/three';
+  import THREE from '../extras/three';
   
   export class VRM {
     scene: THREE.Group;

@@ -1,5 +1,6 @@
 import { System } from './System';
 import type { World } from '../types';
+import type { LODNode } from '../types/nodes'
 
 const BATCH_SIZE = 1000;
 
@@ -11,9 +12,8 @@ const BATCH_SIZE = 1000;
  *
  */
 
-export interface LODNode {
-  check(): void;
-}
+// LODNode is used across systems; export a shared version from types if needed
+// Use shared LODNode type from types/nodes.ts
 
 export class LODs extends System {
   private nodes: LODNode[];

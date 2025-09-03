@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { cls } from './cls';
-import type { HierarchyNode } from '../../types/ui-component-types';
+import type { HierarchyNode } from '../../types/ui-types';
 
 export function NodeHierarchy({ app }) {
   const [selectedNode, setSelectedNode] = useState<HierarchyNode | null>(null)

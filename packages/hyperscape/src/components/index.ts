@@ -19,6 +19,8 @@ import { MeshComponent } from './MeshComponent';
 import { HealthComponent } from './HealthComponent';
 import { ColliderComponent } from './ColliderComponent';
 import { StatsComponent } from './StatsComponent';
+import { VisualComponent } from './VisualComponent';
+import { CombatComponent } from './CombatComponent';
 import type { Entity } from '../entities/Entity';
 
 export interface ComponentConstructor {
@@ -31,6 +33,8 @@ export const ComponentRegistry: Record<string, ComponentConstructor> = {
   health: HealthComponent as ComponentConstructor,
   collider: ColliderComponent as ComponentConstructor,
   stats: StatsComponent as ComponentConstructor,
+  combat: CombatComponent as ComponentConstructor,
+  visual: VisualComponent as ComponentConstructor,
 };
 
 // Helper function to create components dynamically

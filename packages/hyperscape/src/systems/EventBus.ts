@@ -14,23 +14,9 @@
 
 import EventEmitter from 'eventemitter3';
 import { AnyEvent, EventPayloads, EventType } from '../types/events';
+import type { SystemEvent, EventHandler, EventSubscription } from '../types/event-system'
 
-export interface SystemEvent<T = unknown> {
-  readonly type: EventType;
-  readonly data: T;
-  readonly source: string;
-  readonly timestamp: number;
-  readonly id: string;
-}
-
-export interface EventHandler<T = unknown> {
-  (event: SystemEvent<T>): void | Promise<void>;
-}
-
-export interface EventSubscription {
-  unsubscribe(): void;
-  readonly active: boolean;
-}
+// Types moved to shared event-system.ts
 
 /**
  * Type-safe unified event bus
@@ -249,3 +235,5 @@ export class EventBus extends EventEmitter {
     };
   }
 }
+
+export type { SystemEvent, EventHandler, EventSubscription };

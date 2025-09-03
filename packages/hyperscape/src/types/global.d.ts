@@ -1,7 +1,8 @@
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import { World } from '../World';
 
 declare global {
+  const PHYSX: PhysXModule | undefined
   interface Window {
     THREE?: typeof THREE;
     world?: World;
@@ -12,6 +13,33 @@ declare global {
     monaco?: unknown; // Monaco editor instance
     gc?: () => void; // Garbage collection function
     PARTICLES_PATH?: string;
+  }
+  
+  // WebXR ambient typings (augmentations)
+  // Add XR entry point on Navigator and minimal XR types used by the app
+  interface Navigator {
+    xr?: XRSystem;
+  }
+
+  type XRSessionMode = 'inline' | 'immersive-vr' | 'immersive-ar'
+
+  interface XRSystem {
+    isSessionSupported(mode: XRSessionMode): Promise<boolean>
+    requestSession(mode: XRSessionMode, options?: XRSessionInit): Promise<XRSession>
+  }
+
+  // Augment XRSession with minimal fields used by our systems
+  interface XRSession extends EventTarget {
+    updateTargetFrameRate?(rate: number): void
+    addEventListener?(type: string, listener: (event?: Event) => void): void
+    inputSources?: ReadonlyArray<{
+      handedness: 'left' | 'right' | 'none'
+      gamepad?: { axes: readonly number[]; buttons: readonly { pressed: boolean }[] }
+    }>
+    renderState?: {
+      baseLayer?: { framebufferWidth?: number; framebufferHeight?: number }
+      layers?: Array<{ framebufferWidth?: number; framebufferHeight?: number }>
+    }
   }
 
   // Node.js/Browser timer functions

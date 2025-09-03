@@ -1,12 +1,12 @@
-import moment from 'moment'
-import type { EntityData, ChatMessage, SnapshotData, World, WorldOptions } from '../types'
+// moment removed; use native Date
 import { emoteUrls } from '../extras/playerEmotes'
+import THREE from '../extras/three'
 import { readPacket, writePacket } from '../packets'
 import { storage } from '../storage'
+import type { ChatMessage, EntityData, SnapshotData, World, WorldOptions } from '../types'
 import { uuid } from '../utils'
 import { hashFile } from '../utils-client'
-import { System } from './System'
-import * as THREE from '../extras/three'
+import { SystemBase } from './SystemBase'
 
 // SnapshotData interface moved to shared types
 
@@ -17,7 +17,7 @@ import * as THREE from '../extras/three'
  * - provides abstract network methods matching ServerNetwork
  *
  */
-export class ClientNetwork extends System {
+export class ClientNetwork extends SystemBase {
   ids: number
   ws: WebSocket | null
   apiUrl: string | null
@@ -29,7 +29,7 @@ export class ClientNetwork extends System {
   maxUploadSize: number
   
   constructor(world: World) {
-    super(world)
+    super(world, { name: 'client-network', dependencies: { required: [], optional: [] }, autoCleanup: true })
     this.ids = -1
     this.ws = null
     this.apiUrl = null
@@ -57,11 +57,9 @@ export class ClientNetwork extends System {
     this.ws.addEventListener('message', this.onPacket)
     this.ws.addEventListener('close', this.onClose)
     this.ws.addEventListener('error', (e) => {
-      // Only log WebSocket errors if the connection was unexpected
       const isExpectedDisconnect = this.ws?.readyState === WebSocket.CLOSED || this.ws?.readyState === WebSocket.CLOSING
-      
       if (!isExpectedDisconnect) {
-        console.error('[ClientNetwork] WebSocket error:', e)
+        this.logger.error(`WebSocket error: ${e instanceof ErrorEvent ? e.message : String(e)}`)
       }
     })
   }
@@ -120,7 +118,7 @@ export class ClientNetwork extends System {
           }
         }
       } catch (err) {
-        console.error('[ClientNetwork] Error in flush:', err)
+        this.logger.error(`Error in flush: ${err instanceof Error ? err.message : String(err)}`)
       }
     }
   }
@@ -148,7 +146,7 @@ export class ClientNetwork extends System {
         attempts++
       }
       if (!this.world.physics.physics) {
-        console.error('[ClientNetwork] Physics failed to initialize after waiting')
+        this.logger.error('Physics failed to initialize after waiting')
       }
     }
     
@@ -156,7 +154,7 @@ export class ClientNetwork extends System {
     this.serverTimeOffset = data.serverTime - performance.now()
     this.apiUrl = data.apiUrl || null
     this.maxUploadSize = data.maxUploadSize || 10 * 1024 * 1024 // Default 10MB
-    this.world.assetsUrl = data.assetsUrl || '/assets/'
+    this.world.assetsUrl = data.assetsUrl || '/world-assets/'
 
     const loader = this.world.loader
     if (loader) {
@@ -195,7 +193,7 @@ export class ClientNetwork extends System {
         }
       }
       if (!playerAvatarPreloaded) {
-        console.warn('[ClientNetwork] No player entity found for preloading avatar')
+        this.logger.warn('No player entity found for preloading avatar')
       }
       loader.execPreload()
     }
@@ -239,11 +237,16 @@ export class ClientNetwork extends System {
     this.world.entities.add(data);
   }
 
-  onEntityModified = (data: { id: string; changes: Record<string, unknown> }) => {
-    const entity = this.world.entities.get(data.id)
-    if (!entity) return console.error('onEntityModified: no entity found', data)
-    // Modify entity if method exists
-    entity.modify(data.changes);
+  onEntityModified = (data: { id: string; changes?: Record<string, unknown> } & Record<string, unknown>) => {
+    const { id } = data
+    const entity = this.world.entities.get(id)
+    if (!entity) {
+      this.logger.error(`onEntityModified: no entity found for ${JSON.stringify(data)}`)
+      return
+    }
+    // Accept both normalized { changes: {...} } and flat payloads { id, ...changes }
+    const changes = data.changes ?? Object.fromEntries(Object.entries(data).filter(([k]) => k !== 'id' && k !== 'changes'))
+    entity.modify(changes)
   }
 
   onEntityEvent = (event: { id: string; version: number; name: string; data?: unknown }) => {
@@ -260,28 +263,25 @@ export class ClientNetwork extends System {
   }
 
   onPlayerTeleport = (data: { playerId: string; position: [number, number, number] }) => {
-    const player = this.world.entities.player;
-    if (player) {
-      // Strong type assumption - player has teleport method
+    const player = this.world.entities.player as { teleport?: (pos: THREE.Vector3, rotY?: number) => void } | undefined
+    if (player?.teleport) {
       const pos = new THREE.Vector3(data.position[0], data.position[1], data.position[2]);
-      (player as unknown as { teleport: (pos: THREE.Vector3) => void }).teleport(pos);
+      player.teleport(pos);
     }
   }
 
   onPlayerPush = (data: { force: [number, number, number] }) => {
-    const player = this.world.entities.player;
-    if (player) {
-      // Strong type assumption - player has push method
+    const player = this.world.entities.player as { push?: (force: THREE.Vector3) => void } | undefined
+    if (player?.push) {
       const force = new THREE.Vector3(data.force[0], data.force[1], data.force[2]);
-      (player as unknown as { push: (force: THREE.Vector3) => void }).push(force);
+      player.push(force);
     }
   }
 
   onPlayerSessionAvatar = (data: { playerId: string; avatar: string }) => {
-    const player = this.world.entities.player;
-    if (player) {
-      // Strong type assumption - player has setSessionAvatar method
-      (player as unknown as { setSessionAvatar: (avatar: string) => void }).setSessionAvatar(data.avatar);
+    const player = this.world.entities.player as { setSessionAvatar?: (url: string) => void } | undefined
+    if (player?.setSessionAvatar) {
+      player.setSessionAvatar(data.avatar)
     }
   }
 
@@ -292,7 +292,11 @@ export class ClientNetwork extends System {
   }
 
   onKick = (code: string) => {
-    this.world.emit('kick', code)
+    // Emit a typed UI event for kicks
+    this.emitTypedEvent('UI_KICK', {
+      playerId: this.id || 'unknown',
+      reason: code || 'unknown',
+    })
   }
 
   onClose = (code: CloseEvent) => {
@@ -303,9 +307,13 @@ export class ClientNetwork extends System {
       body: `You have been disconnected.`,
       text: `You have been disconnected.`,
       timestamp: Date.now(),
-      createdAt: moment().toISOString(),
+      createdAt: new Date().toISOString(),
     }, false)
-    this.world.emit('disconnect', code || true)
+    // Emit a typed network disconnect event
+    this.emitTypedEvent('NETWORK_DISCONNECTED', {
+      code: code.code,
+      reason: code.reason || 'closed',
+    })
   }
 
   destroy() {

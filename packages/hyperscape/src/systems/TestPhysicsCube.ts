@@ -1,4 +1,4 @@
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import type { World } from '../World';
 import { EventType } from '../types/events';
 import { SystemBase } from './SystemBase';
@@ -38,8 +38,8 @@ export class TestPhysicsCube extends SystemBase {
 
   async init(): Promise<void> {
     // Listen for cube spawn requests
-    this.world.on(EventType.TEST_SPAWN_CUBE, this.spawnCube.bind(this));
-    this.world.on(EventType.TEST_CLEAR_CUBES, this.clearAllCubes.bind(this));
+    this.subscribe(EventType.TEST_SPAWN_CUBE, (data: CubeData) => this.spawnCube(data));
+    this.subscribe(EventType.TEST_CLEAR_CUBES, () => this.clearAllCubes());
     
   }
 
@@ -144,7 +144,7 @@ export class TestPhysicsCube extends SystemBase {
     mesh.userData.entityType = 'test_cube';
     
     // Emit physics registration event
-    this.world.emit(EventType.PHYSICS_REGISTER, {
+    this.emitTypedEvent(EventType.PHYSICS_REGISTER, {
       entityId: entityId,
       type: 'box',
       size: data.size,
@@ -186,7 +186,7 @@ export class TestPhysicsCube extends SystemBase {
       
       // Unregister physics if it had any
       if (cubeData.data.hasPhysics) {
-        this.world.emit(EventType.PHYSICS_UNREGISTER, {
+        this.emitTypedEvent(EventType.PHYSICS_UNREGISTER, {
           entityId: cubeId
         });
       }
@@ -248,7 +248,7 @@ export class TestPhysicsCube extends SystemBase {
     // Reset counter
     this.cubeCounter = 0;
     
-    console.log('[TestPhysicsCube] Test physics cube system destroyed and cleaned up');
+    this.logger.info('[TestPhysicsCube] Test physics cube system destroyed and cleaned up');
     
     // Call parent cleanup
     super.destroy();

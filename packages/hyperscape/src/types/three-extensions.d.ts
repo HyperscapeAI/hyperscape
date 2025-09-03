@@ -1,4 +1,4 @@
-import * as THREE from '../extras/three';
+import type * as THREE from 'three';
 import type PhysX from '@hyperscape/physx-js-webidl';
 
 declare module 'three' {
@@ -108,18 +108,11 @@ declare module 'three' {
 
 // Additional type definitions for specific THREE.js patterns
 export interface HyperscapeObject3D extends THREE.Object3D {
-  activate?(context: { world: unknown; entity: any }): void;
-  deactivate?(): void;
-  disableRateCheck?(): void;
-  active?: boolean;
-  getHeadToHeight?(): number;
-  height?: number;
-  setEmote?(emote: string): void;
-  getBoneTransform?(boneName: string): THREE.Matrix4 | null;
-  label?: string;
-  health?: number;
-  value?: string;
-  updateTransform?(): void;
+  position: THREE.Vector3
+  quaternion: THREE.Quaternion
+  rotation: THREE.Euler
+  add?: (...objects: THREE.Object3D[]) => void
+  remove?: (...objects: THREE.Object3D[]) => void
 }
 
 export interface HyperscapeMaterial extends THREE.Material {
@@ -166,3 +159,8 @@ export interface CSSStyleProperties {
   justifyContent?: 'center' | 'flex-start' | 'flex-end' | 'space-between' | 'space-around' | 'space-evenly' | string;
   [key: string]: unknown;
 }
+
+// Ensure the '../extras/three' wrapper exposes all named exports from 'three' for type checking
+// Note: do not redeclare the '../extras/three' module here; it has a concrete
+// implementation with both default and named exports. Keeping this file focused
+// on augmenting 'three' avoids conflicts with the wrapper's surface.

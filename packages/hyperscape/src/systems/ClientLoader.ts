@@ -1,84 +1,25 @@
 import { VRMLoaderPlugin } from '@pixiv/three-vrm'
 import Hls from 'hls.js/dist/hls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import type { GLTFParser } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js'
-import type { GLBData, Node as INode, LoadedAvatar, LoadedEmote, LoadedModel, LoaderResult, VideoFactory, World } from '../types'
-import type { PxTransform } from '../types/physx'
-
 import { createEmoteFactory } from '../extras/createEmoteFactory'
 import { createNode } from '../extras/createNode'
 import { createVRMFactory } from '../extras/createVRMFactory'
 import { glbToNodes } from '../extras/glbToNodes'
 import { patchTextureLoader } from '../extras/textureLoaderPatch'
-import * as THREE from '../extras/three'
-import { TextureLoader } from '../extras/three'
+import THREE from '../extras/three'
 import { Node } from '../nodes/Node'
-import { System } from './System'
+import type { GLBData, HSNode as INode, LoadedAvatar, LoadedEmote, LoadedModel, LoaderResult, VideoFactory, World } from '../types'
+import { EventType } from '../types/events'
+import { SystemBase } from './SystemBase'
 
 // THREE.Cache.enabled = true
 
-// Helper to convert Node class to INode interface
-interface SimpleTransform {
-  p: { x: number; y: number; z: number };
-  q: { x: number; y: number; z: number; w: number };
-}
-
 function nodeToINode(node: Node): INode {
-  const worldPos = new THREE.Vector3();
-  const worldQuat = new THREE.Quaternion();
-  const worldScale = new THREE.Vector3();
-  
-  // Update the node's transform matrices
+  // Ensure transforms are current, then return the actual Node instance
   node.updateTransform();
-  
-  // Get world position from the node
-  node.getWorldPosition(worldPos);
-  
-  // Decompose the world matrix to get world rotation and scale
-  node.matrixWorld.decompose(worldPos, worldQuat, worldScale);
-  
-  return {
-    id: node.id || '',
-    type: node.name || 'node',
-    parent: node.parent ? nodeToINode(node.parent as Node) : null,
-    children: (node.children || []).map(child => nodeToINode(child as Node)),
-    transform: {
-      p: { x: node.position.x, y: node.position.y, z: node.position.z },
-      q: { x: node.quaternion.x, y: node.quaternion.y, z: node.quaternion.z, w: node.quaternion.w }
-    } as SimpleTransform as PxTransform,
-    visible: true, // Node visibility is handled differently in Hyperscape
-    add: (child: INode) => {
-      // Convert INode back to Node
-      const childNode = child as { node?: Node } | Node;
-      const actualNode = 'node' in childNode && childNode.node ? childNode.node : childNode as Node;
-      node.add(actualNode);
-    },
-    remove: (child: INode) => {
-      // Convert INode back to Node
-      const childNode = child as { node?: Node } | Node;
-      const actualNode = 'node' in childNode && childNode.node ? childNode.node : childNode as Node;
-      node.remove(actualNode);
-    },
-    traverse: (callback: (node: INode) => void) => node.traverse((n: Node) => callback(nodeToINode(n))),
-    getWorldPosition: () => {
-      node.getWorldPosition(worldPos);
-      return worldPos;
-    },
-    getWorldRotation: () => {
-      // Node has matrixWorld property of type THREE.Matrix4
-      node.matrixWorld.decompose(worldPos, worldQuat, worldScale);
-      return worldQuat;
-    },
-    getWorldScale: () => {
-      // Calculate world scale from matrix world
-      if ('matrixWorld' in node && node.matrixWorld instanceof THREE.Matrix4) {
-        node.matrixWorld.decompose(worldPos, worldQuat, worldScale);
-      } else {
-        worldScale.copy(node.scale);
-      }
-      return worldScale;
-    }
-  };
+  return node as INode;
 }
 
 /**
@@ -88,7 +29,7 @@ function nodeToINode(node: Node): INode {
  * - Basic file loader for many different formats, cached.
  *
  */
-export class ClientLoader extends System {
+export class ClientLoader extends SystemBase {
   files: Map<string, File>
   promises: Map<string, Promise<LoaderResult>>
   results: Map<string, LoaderResult>
@@ -99,15 +40,15 @@ export class ClientLoader extends System {
   vrmHooks?: { camera: THREE.Camera; scene: THREE.Scene; octree: unknown; setupMaterial: (material: THREE.Material) => void; loader?: ClientLoader }
   preloader?: Promise<void> | null
   constructor(world: World) {
-    super(world)
+    super(world, { name: 'client-loader', dependencies: { required: [], optional: [] }, autoCleanup: true })
     this.files = new Map()
     this.promises = new Map()
     this.results = new Map()
     this.rgbeLoader = new RGBELoader()
-    this.texLoader = new TextureLoader()
+    this.texLoader = new THREE.TextureLoader()
     this.gltfLoader = new GLTFLoader()
-    // Cast entire callback to any to avoid type incompatibility between different Three.js versions
-    this.gltfLoader.register(parser => new VRMLoaderPlugin(parser))
+    // Register VRM loader plugin with proper parser typing
+    this.gltfLoader.register((parser: GLTFParser) => new VRMLoaderPlugin(parser))
     
     // Apply texture loader patch to handle blob URL errors
     patchTextureLoader()
@@ -139,7 +80,7 @@ export class ClientLoader extends System {
 
   execPreload() {
     if (this.preloadItems.length === 0) {
-      this.world.emit('progress', 100)
+      this.emitTypedEvent(EventType.ASSETS_LOADING_PROGRESS, { progress: 100, total: 0 })
       return
     }
     
@@ -152,10 +93,10 @@ export class ClientLoader extends System {
         .then(() => {
           loadedItems++
           progress = (loadedItems / totalItems) * 100
-          this.world.emit('progress', progress)
+          this.emitTypedEvent(EventType.ASSETS_LOADING_PROGRESS, { progress, total: totalItems })
         })
         .catch(error => {
-          console.error(`[ClientLoader] Failed to load ${item.type}: ${item.url}`, error)
+          this.logger.error(`Failed to load ${item.type}: ${item.url}: ${error instanceof Error ? error.message : String(error)}`)
           throw error // Re-throw to be caught by allSettled
         })
     })
@@ -163,11 +104,11 @@ export class ClientLoader extends System {
     this.preloader = Promise.allSettled(promises).then((results) => {
       const failed = results.filter(r => r.status === 'rejected')
       if (failed.length > 0) {
-        console.error('[ClientLoader] Some assets failed to load:', failed)
+        this.logger.error(`Some assets failed to load: ${failed.length}`)
       }
       this.preloader = null
       // Don't emit ready here - let PlayerLocal do it after it's initialized
-      // this.world.emit('ready', true)
+      // this.emitTypedEvent('ready', true)
     })
   }
 
@@ -204,7 +145,7 @@ export class ClientLoader extends System {
       this.files.set(url, file)
       return file
     } catch (error) {
-      console.error('[ClientLoader] Failed to fetch file:', url, error)
+      this.logger.error(`Failed to fetch file: ${url}: ${error instanceof Error ? error.message : String(error)}`)
       throw error
     }
   }
@@ -293,7 +234,7 @@ export class ClientLoader extends System {
           this.results.set(key, model)
           return model
         } catch (error) {
-          console.warn('[ClientLoader] Failed to parse GLB model, texture loading issue:', url, (error as Error)?.message || 'Unknown error')
+          this.logger.warn(`Failed to parse GLB model, texture loading issue: ${url}: ${(error as Error)?.message || 'Unknown error'}`)
           // Create a simple fallback model  
           const fallbackNode = {
             clone: () => ({
@@ -331,15 +272,14 @@ export class ClientLoader extends System {
             getStats() {
               return { triangles: 0, texBytes: 0, nodes: 0 }  // Emotes don't have stats
             },
-            toClip(_options?: { fps?: number; name?: string }) {
-              // Assume toClip exists on animation factory
-              return factory.toClip({} as Parameters<typeof factory.toClip>[0]) ?? null
+            toClip(options?: { rootToHips?: number; version?: string; getBoneName?: (name: string) => string }) {
+              return factory.toClip(options || {}) ?? null
             },
           }
           this.results.set(key, emote)
           return emote
         } catch (error) {
-          console.warn('[ClientLoader] Failed to parse emote GLB, texture loading issue:', url, (error as Error)?.message || 'Unknown error')
+          this.logger.warn(`Failed to parse emote GLB, texture loading issue: ${url}: ${(error as Error)?.message || 'Unknown error'}`)
           const emote: LoadedEmote = {
             toNodes() {
               return new Map<string, INode>()  // Fallback emote
@@ -347,7 +287,7 @@ export class ClientLoader extends System {
             getStats() {
               return {}
             },
-            toClip(_options?: { fps?: number; name?: string }) {
+            toClip(_options?: { rootToHips?: number; version?: string; getBoneName?: (name: string) => string }) {
               return null
             },
           }
@@ -368,14 +308,19 @@ export class ClientLoader extends System {
             toNodes(customHooks) {
               const nodeMap = new Map<string, INode>()
               const clone = node.clone(true)
+              // Apply custom hooks if provided to the cloned avatar node
               if (customHooks) {
-                              const avatar = clone.get('avatar');
-              if (avatar) {
-                // Type-safe assignment of hooks
-                Object.assign(avatar, { hooks: customHooks });
+                const clonedAvatar = clone.get('avatar')
+                if (clonedAvatar) {
+                  Object.assign(clonedAvatar, { hooks: customHooks })
+                }
               }
-              }
+              // Always expose a stable map interface
               nodeMap.set('root', nodeToINode(clone))
+              const clonedAvatarForMap = clone.get('avatar')
+              if (clonedAvatarForMap) {
+                nodeMap.set('avatar', nodeToINode(clonedAvatarForMap))
+              }
               return nodeMap
             },
             getStats() {
@@ -388,7 +333,7 @@ export class ClientLoader extends System {
           this.results.set(key, avatar)
           return avatar
         } catch (error) {
-          console.warn('[ClientLoader] Failed to parse avatar GLB, texture loading issue:', url, (error as Error).message)
+          this.logger.warn(`Failed to parse avatar GLB, texture loading issue: ${url}: ${(error as Error).message}`)
           // Create a simple fallback avatar
           const _hooks = this.vrmHooks
           const fallbackNode = {
@@ -405,6 +350,8 @@ export class ClientLoader extends System {
               const nodeMap = new Map<string, INode>()
               const clone = fallbackNode.clone()
               nodeMap.set('root', nodeToINode(clone))
+              // Fallback has no explicit avatar node; expose root as best-effort avatar
+              nodeMap.set('avatar', nodeToINode(clone))
               return nodeMap
             },
             getStats: () => fallbackNode.getStats(),
@@ -415,8 +362,8 @@ export class ClientLoader extends System {
       }
       if (type === 'script') {
         // DISABLED: Script loading from external files
-        console.warn(`[ClientLoader] ⚠️ Script loading disabled - Attempted to load from file`)
-        console.warn(`[ClientLoader] Scripts must now be implemented as TypeScript classes`)
+        this.logger.warn('⚠️ Script loading disabled - Attempted to load from file')
+        this.logger.warn('Scripts must now be implemented as TypeScript classes')
         throw new Error('Script loading is disabled. Use TypeScript classes instead.')
       }
       if (type === 'audio') {
@@ -504,8 +451,8 @@ export class ClientLoader extends System {
           getStats() {
             return { triangles: 0, texBytes: 0, nodes: 0 }  // Emotes don't have stats
           },
-          toClip(_options?: { fps?: number; name?: string }) {
-            return factory.toClip({} as Parameters<typeof factory.toClip>[0]) ?? null
+          toClip(_options?: { rootToHips?: number; version?: string; getBoneName?: (name: string) => string }) {
+            return factory.toClip({}) ?? null
           },
         }
         this.results.set(key, emote)
@@ -513,24 +460,69 @@ export class ClientLoader extends System {
       })
     }
     if (type === 'avatar') {
+       this.logger.info(`Loading avatar from: ${localUrl}`)
       promise = this.gltfLoader.loadAsync(localUrl).then(glb => {
-        const factory = createVRMFactory(glb as GLBData, this.world.setupMaterial)
+         this.logger.info('Avatar GLB loaded')
+          const factory = createVRMFactory(glb as GLBData, this.world.setupMaterial)
         const hooks = this.vrmHooks
         const node = createNode('group', { id: '$root' })
         const node2 = createNode('avatar', { id: 'avatar', factory, hooks })
+          this.logger.info(`Created avatar node2: id=${node2.id}`)
+        
+        // Add avatar to root
         node.add(node2)
-        const avatar: LoadedAvatar = {
+        
+         this.logger.info(`After add: rootChildren=${node.children.length}`)
+        
+        // Verify the structure is correct
+         const verifyGet = node.get('avatar')
+         this.logger.info(`Verify node.get("avatar"): ${verifyGet ? 'FOUND' : 'NOT FOUND'}`)
+        
+        // Test that the node structure is correct before returning
+        const testGet = node.get('avatar')
+        console.log('[ClientLoader] Test node.get("avatar"):', testGet ? { id: testGet.id, name: testGet.name } : 'null')
+        
+          const logger = this.logger
+          const avatar: LoadedAvatar = {
           toNodes(customHooks) {
-            const nodeMap = new Map<string, INode>()
+              logger.info('toNodes called')
+            
+            // Test get() on original node
+              const originalAvatar = node.get('avatar')
+              logger.info(`Original node.get("avatar"): ${originalAvatar ? 'FOUND' : 'NOT FOUND'}`)
+            
+            // Clone the node tree
             const clone = node.clone(true)
-            if (customHooks) {
-              const avatar = clone.get('avatar');
-              if (avatar) {
-                // Type-safe assignment of hooks
-                Object.assign(avatar, { hooks: customHooks });
-              }
+              logger.info(`After clone: cloneChildren=${clone.children.length}`)
+            
+            // Test get() on cloned node
+              const clonedAvatar = clone.get('avatar')
+              logger.info(`Clone.get("avatar"): ${clonedAvatar ? 'FOUND' : 'NOT FOUND'}`)
+            
+            // Apply custom hooks if provided
+            if (customHooks && clonedAvatar) {
+              Object.assign(clonedAvatar, { hooks: customHooks })
             }
+            
+            // Create the map with both root and avatar nodes
+            const nodeMap = new Map<string, INode>()
             nodeMap.set('root', nodeToINode(clone))
+            
+            // Try multiple ways to get the avatar
+            let avatarForMap = clonedAvatar
+              if (!avatarForMap && clone.children.length > 0) {
+                logger.warn('Using first child as fallback')
+              avatarForMap = clone.children[0]
+            }
+            
+              if (avatarForMap) {
+                nodeMap.set('avatar', nodeToINode(avatarForMap))
+                logger.info('Added avatar to map')
+              } else {
+                logger.error('NO AVATAR FOUND TO ADD TO MAP!')
+              }
+            
+              logger.info(`Final nodeMap keys: ${Array.from(nodeMap.keys()).join(',')}`)
             return nodeMap
           },
           getStats() {

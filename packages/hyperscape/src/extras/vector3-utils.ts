@@ -1,5 +1,5 @@
-import * as THREE from './three';
-import type { PxVec3, PxTransform } from '../types/physx';
+import THREE from './three';
+import type { PxVec3, PxTransform } from '../types/physics';
 import { getPhysX } from '../PhysXManager';
 
 /**
@@ -8,7 +8,8 @@ import { getPhysX } from '../PhysXManager';
 export function vector3ToPxVec3(vector: THREE.Vector3, pxVec3?: PxVec3): PxVec3 | undefined {
   const PHYSX = getPhysX();
   if (!pxVec3 && PHYSX) {
-    pxVec3 = new PHYSX.PxVec3() as unknown as PxVec3;
+    // PxVec3 is structurally compatible; cast the constructor generically
+    pxVec3 = new PHYSX.PxVec3() as PxVec3;
   }
   if (pxVec3) {
     pxVec3.x = vector.x;
@@ -29,7 +30,7 @@ export function pxVec3ToVector3(pxVec3: PxVec3, target?: THREE.Vector3): THREE.V
 export function vector3ToPxExtVec3(vector: THREE.Vector3, pxExtVec3?: PxVec3): PxVec3 | undefined {
   const PHYSX = getPhysX();
   if (!pxExtVec3 && PHYSX) {
-    pxExtVec3 = new PHYSX.PxVec3() as unknown as PxVec3;
+    pxExtVec3 = new PHYSX.PxVec3() as PxVec3;
   }
   if (pxExtVec3) {
     pxExtVec3.x = vector.x;

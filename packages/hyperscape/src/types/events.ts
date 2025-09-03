@@ -324,7 +324,6 @@ export enum EventType {
   CAMERA_TARGET_CHANGED = 'camera:target:changed',
 
   // Movement System
-  MOVEMENT_SET_MODE = 'movement:set:mode',
   MOVEMENT_STOP = 'movement:stop',
   MOVEMENT_TOGGLE_RUN = 'movement:toggle:run',
   MOVEMENT_STARTED = 'movement:started',

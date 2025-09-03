@@ -4,7 +4,7 @@
  * Creates visual boundaries and labels for world areas for testing and debugging
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import type { World } from '../types/index';
 import { SystemBase } from './SystemBase';
 import { EventType } from '../types/events';
@@ -33,9 +33,9 @@ export class BiomeVisualizationSystem extends SystemBase {
     });
     
     // Listen for visualization toggle events
-    this.world.on(EventType.BIOME_TOGGLE_VISUALIZATION, this.toggleVisualization.bind(this));
-    this.world.on(EventType.BIOME_SHOW_AREA, this.showArea.bind(this));
-    this.world.on(EventType.BIOME_HIDE_AREA, this.hideArea.bind(this));
+    this.subscribe(EventType.BIOME_TOGGLE_VISUALIZATION, () => this.toggleVisualization());
+    this.subscribe(EventType.BIOME_SHOW_AREA, (data: { areaId: string }) => this.showArea(data));
+    this.subscribe(EventType.BIOME_HIDE_AREA, (data: { areaId: string }) => this.hideArea(data));
     
     
     // Generate all biome visuals

@@ -45,9 +45,17 @@ let db: Knex | undefined
 
 export async function getDB(path: string): Promise<Knex> {
   if (!db) {
+    const isBun = typeof process !== 'undefined' && !!(process as unknown as { versions?: { bun?: string } }).versions?.bun
+    if (isBun) {
+      // Under Bun runtime, avoid loading native better-sqlite3 via Knex (ABI mismatch). Use lightweight mock instead.
+      console.log('[DB] Bun runtime detected - using mock database for server core (knex/better-sqlite3 unsupported)')
+      db = createMockDatabase() as Database
+      return db!
+    }
+    
     try {
-      console.log('[DB] Attempting to initialize database at:', path);
-      console.log('[DB] better-sqlite3 module check via require');
+      console.log('[DB] Attempting to initialize database at:', path)
+      console.log('[DB] better-sqlite3 module check via require')
       
       db = knex({
         client: 'better-sqlite3',
@@ -57,14 +65,13 @@ export async function getDB(path: string): Promise<Knex> {
         useNullAsDefault: true,
       })
       
-      console.log('[DB] Database initialized, running migrations...');
+      console.log('[DB] Database initialized, running migrations...')
       await migrate(db)
-      console.log('[DB] Database migrations completed successfully');
+      console.log('[DB] Database migrations completed successfully')
     } catch (error) {
       console.error('[DB] Error initializing database:', error instanceof Error ? error.message : String(error))
       console.error('[DB] Full error:', error)
       console.log('[DB] Falling back to mock database for development')
-      // Return a mock database that doesn't crash
       db = createMockDatabase() as Database
     }
   }

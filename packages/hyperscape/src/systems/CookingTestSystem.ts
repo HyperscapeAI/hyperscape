@@ -26,7 +26,7 @@ export class CookingTestSystem extends VisualTestFramework {
 
   constructor(world: World) {
     super(world);
-    this.world.on(EventType.TEST_RUN_COOKING_TESTS, this.runAllTests.bind(this));
+    this.subscribe(EventType.TEST_RUN_COOKING_TESTS, () => this.runAllTests());
   }
 
   runAllTests() {
@@ -178,7 +178,7 @@ export class CookingTestSystem extends VisualTestFramework {
                 this.passTest(stationId, { detail: 'Correctly failed to cook without fire.' });
             }
         };
-        this.world.on(EventType.CHAT_MESSAGE, chatListener);
+        this.subscribe(EventType.CHAT_MESSAGE, chatListener);
          
               const testData = this.testData.get(stationId);
       if (testData && testData.listeners) {
@@ -227,7 +227,7 @@ export class CookingTestSystem extends VisualTestFramework {
                 this.passTest(stationId, { healthGained: data.amount, finalHealth });
             }
         };
-        this.world.on(EventType.PLAYER_HEALTH_UPDATED, healListener);
+        this.subscribe(EventType.PLAYER_HEALTH_UPDATED, healListener);
          
         const testData = this.testData.get(stationId);
         if (testData && testData.listeners) {
@@ -339,7 +339,7 @@ export class CookingTestSystem extends VisualTestFramework {
               }
           }
       };
-      this.world.on(EventType.COOKING_COMPLETED, cookingCompletedListener);
+      this.subscribe(EventType.COOKING_COMPLETED, cookingCompletedListener);
        
               listeners.push({ event: EventType.COOKING_COMPLETED, handler: cookingCompletedListener as Function });
 
@@ -353,7 +353,7 @@ export class CookingTestSystem extends VisualTestFramework {
             this.updateInventory(testData.player, itemDef, data.quantity, data.action);
           }
       };
-      this.world.on(EventType.INVENTORY_UPDATED, inventoryChangeListener);
+      this.subscribe(EventType.INVENTORY_UPDATED, inventoryChangeListener);
        
               listeners.push({ event: EventType.INVENTORY_UPDATED, handler: inventoryChangeListener as Function});
 
@@ -364,7 +364,7 @@ export class CookingTestSystem extends VisualTestFramework {
             testData.finalCookingXP += data.amount;
           }
       };
-      this.world.on(EventType.SKILLS_XP_GAINED, xpGainListener);
+      this.subscribe(EventType.SKILLS_XP_GAINED, xpGainListener);
        
               listeners.push({ event: EventType.SKILLS_XP_GAINED, handler: xpGainListener });
   }
@@ -373,7 +373,7 @@ export class CookingTestSystem extends VisualTestFramework {
     const testData = this.testData.get(stationId);
     if (!testData) return;
 
-    const successRate = (testData.successfulCooks / testData.attemptsMade) * 100;
+    const successRate = (testData.attemptsMade > 0 ? (testData.successfulCooks / testData.attemptsMade) : 0) * 100;
     const xpGained = testData.finalCookingXP - testData.initialCookingXP;
 
     const results = {

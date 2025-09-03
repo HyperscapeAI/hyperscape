@@ -849,13 +849,13 @@ export class InventoryTestSystem extends VisualTestFramework {
         if (movedItem && slot0Empty) {
           Logger.system('InventoryTestSystem', 'Item successfully moved to slot 10');
           testData.player.inventory.items = data.items;
-          this.world.off(EventType.INVENTORY_UPDATED, moveHandler);
+          moveSub.unsubscribe();
           this.completeMovementTest(stationId);
         }
       }
     };
 
-    this.world.on(EventType.INVENTORY_UPDATED, moveHandler);
+    const moveSub = this.subscribe(EventType.INVENTORY_UPDATED, (data: { playerId: string; items: InventoryItem[] }) => moveHandler(data));
 
     // Simulate moving items within inventory
     setTimeout(() => {
@@ -868,7 +868,8 @@ export class InventoryTestSystem extends VisualTestFramework {
 
       // Timeout if move doesn't complete
       setTimeout(() => {
-        this.world.off(EventType.INVENTORY_UPDATED, moveHandler);
+        // Completion timeout; test completes regardless
+        moveSub.unsubscribe();
         this.completeMovementTest(stationId);
       }, 5000);
     }, 2000);
@@ -881,23 +882,20 @@ export class InventoryTestSystem extends VisualTestFramework {
     Logger.system('InventoryTestSystem', 'Starting item use sequence');
     
     // Listen for ITEM_USED event to track successful usage
-    const itemUsedHandler = (event: { data: { playerId: string; itemId: string } }) => {
-      if (event.data.playerId === testData.player.id) {
-        Logger.system('InventoryTestSystem', 'Item used event received', { data: event.data });
+    const itemUsedSub = this.subscribe(EventType.ITEM_USED, (data: { playerId: string; itemId: string; slot?: number }) => {
+      if (data.playerId === testData.player.id) {
+        Logger.system('InventoryTestSystem', 'Item used event received', { data });
         testData.itemsUsed++;
       }
-    };
+    });
     
     // Listen for health update to track healing
-    const healthUpdateHandler = (event: { data: { playerId: string; health: number; maxHealth: number } }) => {
-      if (event.data.playerId === testData.player.id) {
-        Logger.system('InventoryTestSystem', 'Health updated', { health: event.data.health });
-        (testData.player.health as PlayerHealth) = { current: event.data.health, max: event.data.maxHealth };
+    const healthUpdateSub = this.subscribe(EventType.PLAYER_HEALTH_UPDATED, (data: { playerId: string; health: number; maxHealth: number }) => {
+      if (data.playerId === testData.player.id) {
+        Logger.system('InventoryTestSystem', 'Health updated', { health: data.health });
+        (testData.player.health as PlayerHealth) = { current: data.health, max: data.maxHealth };
       }
-    };
-    
-    this.world.on(EventType.ITEM_USED, itemUsedHandler);
-    this.world.on(EventType.PLAYER_HEALTH_UPDATED, healthUpdateHandler);
+    });
 
     // Wait for player initialization and items to be added, then use first consumable item
     setTimeout(async () => {
@@ -956,8 +954,8 @@ export class InventoryTestSystem extends VisualTestFramework {
       
       // Wait a bit for the events to process before completing
       setTimeout(() => {
-        this.world.off(EventType.ITEM_USED, itemUsedHandler);
-        this.world.off(EventType.PLAYER_HEALTH_UPDATED, healthUpdateHandler);
+        itemUsedSub.unsubscribe();
+        healthUpdateSub.unsubscribe();
         this.completeUseTest(stationId);
       }, 1000);
     }, 3000); // Increased delay to account for initialization

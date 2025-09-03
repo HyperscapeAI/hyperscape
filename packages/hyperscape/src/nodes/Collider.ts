@@ -1,6 +1,5 @@
 
-import * as THREE from '../extras/three'
-import { safeMatrixDecompose } from '../extras/three'
+import THREE, { safeMatrixDecompose } from '../extras/three'
 
 import type {
   PxBoxGeometry,
@@ -13,7 +12,7 @@ import type {
   PxTransform,
   PxTriangleMeshGeometry,
   PxVec3
-} from '../types/physx'
+} from '../types/physics'
 import type { ColliderData } from '../types/nodes'
 
 import { getRef, Node } from './Node'
@@ -245,14 +244,14 @@ export class Collider extends Node {
     const position: THREE.Vector3 = _v1.copy(plainPosition).multiply(plainScale)
     const pose = new PHYSX.PxTransform()
 
-    // Set position directly on pose
-    const poseP = (pose as unknown as { p: { x: number; y: number; z: number } }).p
+    // Set position directly on pose (PxTransform has p: PxVec3)
+    const poseP = (pose as { p: { x: number; y: number; z: number } }).p
     poseP.x = position.x
     poseP.y = position.y
     poseP.z = position.z
 
-    // Set quaternion directly on pose
-    const poseQ = (pose as unknown as { q: { x: number; y: number; z: number; w: number } }).q
+    // Set quaternion directly on pose (PxTransform has q: PxQuat)
+    const poseQ = (pose as { q: { x: number; y: number; z: number; w: number } }).q
     poseQ.x = this.quaternion.x
     poseQ.y = this.quaternion.y
     poseQ.z = this.quaternion.z
@@ -407,11 +406,11 @@ export class Collider extends Node {
     if (value === undefined) value = defaults.geometry
     if (value === null) {
       this._geometry = undefined
-    } else if (value && typeof value === 'object' && 'isBufferGeometry' in value) {
-      this._geometry = value as THREE.BufferGeometry
+    } else if (value && typeof value === 'object' && (value as { isBufferGeometry?: unknown }).isBufferGeometry) {
+      this._geometry = value as unknown as THREE.BufferGeometry
     } else {
-      const geometry = getRef(value)
-      if (geometry && 'isBufferGeometry' in geometry) {
+      const geometry = getRef(value as unknown as Node)
+      if (geometry && (geometry as unknown as { isBufferGeometry?: unknown }).isBufferGeometry) {
         this._geometry = geometry as unknown as THREE.BufferGeometry
       }
     }

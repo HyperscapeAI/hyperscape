@@ -9,7 +9,6 @@ import { ClientEnvironment } from './systems/ClientEnvironment'
 import { ClientGraphics } from './systems/ClientGraphics'
 import { ClientLiveKit } from './systems/ClientLiveKit'
 import { ClientLoader } from './systems/ClientLoader'
-import { ClientMovementSystem } from './systems/ClientMovementSystem'
 import { ClientNetwork } from './systems/ClientNetwork'
 import { ClientPointer } from './systems/ClientPointer'
 import { ClientPrefs } from './systems/ClientPrefs'
@@ -24,13 +23,21 @@ import { Stage } from './systems/Stage'
 // import { Wind } from './systems/Wind'
 // import { XR } from './systems/XR'
 
-import * as THREE from './extras/three'
+import THREE from './extras/three'
+import { HeightmapPathfinding } from './systems/HeightmapPathfinding'
+// Test systems removed - consolidated into MovementValidationSystem
 
 // Import unified terrain system
 import { TerrainSystem } from './systems/TerrainSystem'
+import { Physics } from './systems/Physics'
 
 // Import RPG systems loader
 import { registerSystems } from './systems/SystemLoader'
+// ClientMovementFix removed - integrated into core movement systems
+import { ClientDiagnostics } from './systems/ClientDiagnostics'
+import { AvatarFix } from './systems/AvatarFix'
+import { RaycastTestSystem } from './systems/RaycastTestSystem'
+import { InteractionSystem } from './systems/InteractionSystem'
 
 import type { StageSystem } from './types/system-interfaces'
 import { LODs } from './systems/LODs'
@@ -47,63 +54,8 @@ interface Module {
 // Window extension for browser testing
 interface WindowWithWorld extends Window {
   world: World
-  THREE
+  THREE: typeof THREE
 }
-
-/**
- * Load client-side plugin systems from a specified path
- */
-async function loadClientPluginSystems(world: World, pluginPath: string) {
-  
-  // Convert absolute file system path to relative URL for web
-  let webPath = pluginPath;
-  if (pluginPath.startsWith('/')) {
-    // Convert absolute path to relative URL
-    const parts = pluginPath.split('/');
-    const packagesIndex = parts.findIndex(part => part === 'packages');
-    if (packagesIndex !== -1) {
-      webPath = '/' + parts.slice(packagesIndex + 1).join('/');
-    }
-  }
-  
-  
-  try {
-    // Try multiple possible paths for plugin bundles
-    const possiblePaths = [
-      `/dist/rpg-plugin-bundle.js`,
-      `${webPath}/rpg-plugin-bundle.js`
-    ];
-    
-    let success = false;
-    
-    for (const systemLoaderUrl of possiblePaths) {
-      try {
-        const module = await import(systemLoaderUrl);
-        if ('registerSystems' in module && typeof module.registerSystems === 'function') {
-          // Module conforms to Module interface
-          const rpgModule = module as Module;
-          await rpgModule.registerSystems(world);
-          success = true;
-          break;
-        } else {
-          console.warn(`[Client Plugin Loader] registerSystems function not found in: ${systemLoaderUrl}`);
-        }
-              } catch {
-          continue;
-        }
-    }
-    
-    if (!success) {
-      throw new Error('Could not load systems from any known path');
-    }
-    
-  } catch (error) {
-    console.error('[Client Plugin Loader] Error loading plugin systems:', error);
-    throw error;
-  }
-}
-
-
 
 export function createClientWorld() {
   const world = new World()
@@ -124,11 +76,26 @@ export function createClientWorld() {
   world.register('actions', ClientActions);
   world.register('target', ClientTarget);
   world.register('ui', ClientUI);
+  // Core physics (creates environment ground plane and layer masks)
+  world.register('physics', Physics);
   
   // Register unified core systems
   world.register('client-camera-system', ClientCameraSystem);
-  world.register('client-movement-system', ClientMovementSystem);
+  
+  // Register simple ground for testing (comment out when using full terrain)
+  // world.register('simple-ground', SimpleGroundSystem);
   world.register('terrain', TerrainSystem);
+  
+  // Register heightmap-based pathfinding (only activates with terrain)
+  world.register('heightmap-pathfinding', HeightmapPathfinding);
+  
+  // Register comprehensive movement test system only when explicitly enabled
+  const shouldEnableMovementTest =
+    (typeof window !== 'undefined' && (window as unknown as { __ENABLE_MOVEMENT_TEST__?: boolean }).__ENABLE_MOVEMENT_TEST__ === true)
+  
+  if (shouldEnableMovementTest) {
+    // Movement test consolidated into MovementValidationSystem (registered in SystemLoader)
+  }
   
   // Commented out systems can be uncommented when implemented
   world.register('lods', LODs)
@@ -149,6 +116,8 @@ export function createClientWorld() {
   // Setup THREE.js access after world initialization
   setTimeout(setupStageWithTHREE, 200);
   
+
+  
   // Create a promise that resolves when RPG systems are loaded
   const systemsLoadedPromise = new Promise<void>((resolve) => {
     // Register RPG game systems after core systems are ready
@@ -158,9 +127,22 @@ export function createClientWorld() {
         await registerSystems(world);
         console.log('[Client World] RPG game systems registered successfully');
         
+        // Register client helper systems
+        // world.register('client-movement-fix', ClientMovementFix); // Disabled for now
+        world.register('client-diagnostics', ClientDiagnostics);
+        // world.register('avatar-fix', AvatarFix); // Disabled - avatar is properly managed in PlayerLocal
+        
+        // Temporarily disable raycast test system to prevent canvas/ground plane conflicts
+        // if (typeof window !== 'undefined' && (window as any).__ENABLE_RAYCAST_TEST__) {
+        //     world.register('raycast-test', RaycastTestSystem);
+        //     console.log('[Client World] Raycast test system registered');
+        // }
+        
+        console.log('[Client World] Client helper systems registered');
+        
         // Update world object in browser window after systems are loaded
         if (typeof window !== 'undefined') {
-          const windowWithWorld = window as unknown as WindowWithWorld;
+          const windowWithWorld = window as WindowWithWorld;
           windowWithWorld.world = world;
           
           // Also expose Three.js if available from stage system
@@ -178,7 +160,7 @@ export function createClientWorld() {
         
         // Still expose world object even if systems fail
         if (typeof window !== 'undefined') {
-          const windowWithWorld = window as unknown as WindowWithWorld;
+          const windowWithWorld = window as WindowWithWorld;
           windowWithWorld.world = world;
         }
       }
@@ -189,17 +171,6 @@ export function createClientWorld() {
   // Store the promise on the world instance so it can be awaited
   (world as World & { systemsLoadedPromise: Promise<void> }).systemsLoadedPromise = systemsLoadedPromise;
 
-  // Load external plugin systems if specified
-  const PLUGIN_PATH = globalThis.env?.PLUGIN_PATH;
-  if (PLUGIN_PATH) {
-    setTimeout(async () => {
-      try {
-        await loadClientPluginSystems(world, PLUGIN_PATH);
-      } catch (error) {
-        console.error('[Client World] Failed to load external plugin systems:', error instanceof Error ? error.message : error);
-      }
-    }, 100);
-  }
   
   return world;
 }

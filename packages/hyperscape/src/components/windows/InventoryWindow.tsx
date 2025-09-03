@@ -7,7 +7,7 @@ import type { InventorySlotItem } from '../../types/core'
 import type { Item } from '../../types/core'
 import { ItemType } from '../../types/core'
 import { EventType } from '../../types/events'
-import type { WindowProps, ItemContextMenu } from '../../types/ui-component-types';
+import type { WindowProps, ItemContextMenu } from '../../types/ui-types';
 // Using emojis for icons to avoid lucide-react version issues
 
 interface InventoryWindowProps extends WindowProps {

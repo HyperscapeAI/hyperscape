@@ -23,9 +23,45 @@ export class Socket {
     this.closed = false
     this.disconnected = false
 
-    this.ws.on('message', this.onMessage)
-    this.ws.on('pong', this.onPong)
-    this.ws.on('close', this.onClose)
+    // If ws is unexpectedly undefined, install a minimal no-op stub to prevent hard crashes
+    if (!this.ws) {
+      this.ws = {
+        on: () => {},
+        ping: () => {},
+        terminate: () => {},
+        send: () => {},
+        close: () => {},
+      } as unknown as NodeWebSocket
+    }
+
+    const wsNode = this.ws as unknown as {
+      on?: (event: string, listener: (arg?: unknown) => void) => void
+      addEventListener?: (event: string, listener: (arg?: unknown) => void) => void
+    }
+    if (typeof wsNode.on === 'function') {
+      wsNode.on('message', (arg?: unknown) => {
+        const data = arg as ArrayBuffer | Uint8Array
+        if (data instanceof ArrayBuffer || data instanceof Uint8Array) {
+          this.onMessage(data)
+        }
+      })
+      wsNode.on('pong', () => {
+        this.onPong()
+      })
+      wsNode.on('close', (arg?: unknown) => {
+        const code = typeof arg === 'object' && arg !== null && 'code' in (arg as { code?: number | string })
+          ? (arg as { code?: number | string }).code
+          : undefined
+        this.onClose({ code })
+      })
+    } else if (typeof wsNode.addEventListener === 'function') {
+      wsNode.addEventListener('message', (evt?: unknown) => {
+        const data = (evt as { data?: ArrayBuffer | Uint8Array } | undefined)?.data
+        if (data) this.onMessage(data)
+      })
+      wsNode.addEventListener('close', () => this.onClose({}))
+      // 'pong' event is Node-specific; browsers don't expose it
+    }
   }
 
   send<T>(name: string, data: T): void {
@@ -39,7 +75,17 @@ export class Socket {
 
   ping(): void {
     this.alive = false
-    this.ws.ping()
+    const wsNode = this.ws as unknown as { ping?: () => void; send?: (data: unknown) => void }
+    if (typeof wsNode.ping === 'function') {
+      wsNode.ping()
+    } else {
+      // Fallback to app-level ping packet if low-level ping isn't available
+      try {
+        this.send('ping', null as unknown as never)
+      } catch {
+        // ignore
+      }
+    }
   }
 
   // end(code) {
@@ -65,7 +111,11 @@ export class Socket {
   }
 
   disconnect(code?: number | string): void {
-    if (!this.closed) return this.ws.terminate()
+    if (!this.closed) {
+      const wsNode = this.ws as unknown as { terminate?: () => void; close?: () => void }
+      if (typeof wsNode.terminate === 'function') return wsNode.terminate()
+      if (typeof wsNode.close === 'function') return wsNode.close()
+    }
     if (this.disconnected) return
     this.disconnected = true
     this.network.onDisconnect(this, code)

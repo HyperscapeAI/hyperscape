@@ -38,6 +38,17 @@ export interface GameMetrics {
   system?: SystemMetrics;
 }
 
+// Game task result pack used by reporters
+export type GameTaskResultPack = [id: string, result: unknown, meta: GameTaskMeta]
+
+export interface GameTaskMeta {
+  name?: string
+  performance?: PerformanceMetrics
+  visual?: VisualMetrics
+  gameplay?: GameplayMetrics
+  system?: SystemMetrics
+}
+
 export interface TestMetrics {
   testsPassed: number;
   testsFailed: number;

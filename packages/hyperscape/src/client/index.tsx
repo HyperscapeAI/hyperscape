@@ -4,8 +4,9 @@ import { Client } from './world-client'
 import { ErrorBoundary } from './ErrorBoundary'
 import { errorReporting } from './error-reporting'
 import { playerTokenManager } from './PlayerTokenManager'
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 import { installThreeJSExtensions } from '../physics/vector-conversions'
+import type { World } from '../types'
 
 // Set global environment flags
 (globalThis as typeof globalThis & { isBrowser?: boolean; isServer?: boolean }).isBrowser = true;
@@ -65,8 +66,14 @@ function App() {
   return (
     <div ref={appRef} data-component="app-root">
       <ErrorBoundary>
-        <Client wsUrl={wsUrl} onSetup={() => {
-          console.log('[App] Client onSetup called')
+        <Client wsUrl={wsUrl} onSetup={(world: World, config) => {
+          console.log('[App] Client onSetup called with world and config', { world, config })
+          // Make world accessible globally for debugging
+          if (typeof window !== 'undefined') {
+            const globalWindow = window as Window & { world?: unknown; THREE?: unknown };
+            globalWindow.world = world;
+            globalWindow.THREE = THREE;
+          }
         }} />
       </ErrorBoundary>
     </div>

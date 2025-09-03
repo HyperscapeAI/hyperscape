@@ -14,9 +14,7 @@
     
     // Modules
     "baseUrl": ".",
-    "paths": {
-      "*": ["src/types/*"]
-    },
+    "paths": {},
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
@@ -38,7 +36,7 @@
     "skipLibCheck": true,
     
     // Advanced
-    "types": ["node", "vitest/globals"],
+    "types": ["node", "vitest/globals", "bun-types"],
     "jsx": "react-jsx",
     "jsxImportSource": "react"
   },

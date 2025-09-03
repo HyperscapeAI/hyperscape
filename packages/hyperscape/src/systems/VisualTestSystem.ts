@@ -1,4 +1,4 @@
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import { getSystem } from '../utils/SystemUtils';
 import type { World } from '../types/index';
 import { SystemBase } from './SystemBase';
@@ -62,19 +62,19 @@ export class VisualTestSystem extends SystemBase {
   async init(): Promise<void> {
     
     // Listen for entity creation/destruction events
-    this.world.on(EventType.PLAYER_REGISTERED, this.createPlayerCube.bind(this));
-    this.world.on(EventType.PLAYER_UNREGISTERED, this.removeEntity.bind(this));
-    this.world.on(EventType.MOB_SPAWNED, this.createMobCube.bind(this));
-    this.world.on(EventType.MOB_DESPAWNED, this.removeEntity.bind(this));
+    this.subscribe(EventType.PLAYER_REGISTERED, (data: Player) => this.createPlayerCube(data));
+    this.subscribe(EventType.PLAYER_UNREGISTERED, (data: { id: string }) => this.removeEntity(data.id));
+    this.subscribe(EventType.MOB_SPAWNED, (data: MobInstance) => this.createMobCube(data));
+    this.subscribe(EventType.MOB_DESPAWNED, (data: { id: string }) => this.removeEntity(data.id));
     // Disabled automatic item cube creation - causes duplicate visual items in loot tests
     // this.world.on(EventType.ITEM_SPAWNED, this.createItemCube.bind(this));
-    this.world.on(EventType.ITEM_DESPAWNED, this.removeEntity.bind(this));
-    this.world.on(EventType.RESOURCE_SPAWNED, this.createResourceCube.bind(this));
-    this.world.on(EventType.NPC_SPAWNED, this.createNPCCube.bind(this));
+    this.subscribe(EventType.ITEM_DESPAWNED, (data: { id: string }) => this.removeEntity(data.id));
+    this.subscribe(EventType.RESOURCE_SPAWNED, (data: Resource) => this.createResourceCube(data));
+    this.subscribe(EventType.NPC_SPAWNED, (data: NPC) => this.createNPCCube(data));
     
     // Position update events
-    this.world.on(EventType.PLAYER_POSITION_UPDATED, this.updateEntityPosition.bind(this));
-    this.world.on(EventType.MOB_POSITION_UPDATED, this.updateEntityPosition.bind(this));
+    this.subscribe(EventType.PLAYER_POSITION_UPDATED, (data: { playerId: string; position: { x: number; y: number; z: number } }) => this.updateEntityPosition({ entityId: data.playerId, position: data.position }));
+    this.subscribe(EventType.MOB_POSITION_UPDATED, (data: { mobId: string; position: { x: number; y: number; z: number } }) => this.updateEntityPosition({ entityId: data.mobId, position: data.position }));
     
     // Generate visual test world
     this.generateTestWorld();

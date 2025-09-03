@@ -1,14 +1,12 @@
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 
 import { isTouch } from '../client/utils'
-import type { ControlBinding, World } from '../types'
 import { ControlPriorities } from '../extras/ControlPriorities'
 import type { Action } from '../nodes/Action'
+import type { ControlBinding, World } from '../types'
 import { clamp } from '../utils'
-import { ClientActions as ActionsSystem } from './ClientActions'
 import { ClientGraphics as GraphicsSystem } from './ClientGraphics'
-import { Entities as EntitiesSystem } from './Entities'
-import { System } from './System'
+import { SystemBase } from './SystemBase'
 import { XR as XRSystem } from './XR'
 
 // Use ControlBinding directly since it has all the properties we need
@@ -33,7 +31,7 @@ interface ClientActionHandler {
   stop: () => void
 }
 
-export class ClientActions extends System {
+export class ClientActions extends SystemBase {
   nodes: Action[]
   cursor: number
   current: { node: Action | null; distance: number }
@@ -42,7 +40,7 @@ export class ClientActions extends System {
   control: ControlBinding | null = null
   
   constructor(world: World) {
-    super(world)
+    super(world, { name: 'client-actions', dependencies: { required: [], optional: [] }, autoCleanup: true })
     this.nodes = []
     this.cursor = 0
     this.current = {
@@ -58,7 +56,7 @@ export class ClientActions extends System {
     if (controlsSystem) {
       this.control = controlsSystem.bind({ priority: ControlPriorities.ACTION }) as ControlBinding
     } else {
-      console.warn('[ClientActions] Controls system not found, actions will not work')
+      this.logger.warn('Controls system not found, actions will not work')
       this.control = null
     }
   }
@@ -127,7 +125,7 @@ export class ClientActions extends System {
     }
     this.action?.update(delta)
 
-    const actionsSystem = this.world.findSystem('actions') as ActionsSystem | undefined;
+    const actionsSystem = this.world.findSystem('actions') as ClientActions | undefined;
     if (actionsSystem) {
       actionsSystem.btnDown = false
     }
@@ -149,11 +147,7 @@ export class ClientActions extends System {
       if (xrSystem?.session) _scaleFactor *= 0.2 // shrink because its HUGE in VR
       
       if (actionsSystem?.btnDown) {
-        // ... existing code ...
-        const _entitiesSystem = this.world.findSystem('entities') as EntitiesSystem | undefined;
-        // Fix: this refers to the current action node, not available here - need to get it from context
-        // node._onTrigger({ playerId: entitiesSystem?.player?.data?.id })
-        // This code block seems incomplete, but we can't fix it without more context
+        // Action trigger UI feedback handled in createAction.update when btnDown is true
       }
     }
   }
@@ -171,7 +165,7 @@ function createAction(world: World): ClientActionHandler {
   const widthPx = 300
   const heightPx = 44
   const pxToMeters = 0.01
-  const board = createBoard(widthPx, heightPx, pxToMeters, world as unknown as World)
+  const board = createBoard(widthPx, heightPx, pxToMeters, world)
 
   const draw = (label: string, ratio: number) => {
     // console.time('draw')

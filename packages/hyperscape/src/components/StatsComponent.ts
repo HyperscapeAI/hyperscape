@@ -1,6 +1,6 @@
 import { Component } from './Component';
 import type { Entity } from '../entities/Entity';
-import type { SkillData, PrayerComponent, EquipmentComponent, CombatBonuses } from '../types/core';
+import type { SkillData, PrayerComponent, EquipmentComponent, CombatBonuses, PlayerHealth } from '../types/core';
 
 /**
  * StatsComponent - Player/Entity stats and skills
@@ -11,8 +11,7 @@ import type { SkillData, PrayerComponent, EquipmentComponent, CombatBonuses } fr
 export class StatsComponent extends Component {
   public combatLevel: number;
   public level: number;
-  public health: number;
-  public maxHealth: number;
+  public health: PlayerHealth;
   public attack: SkillData;
   public strength: SkillData;
   public defense: SkillData;
@@ -92,8 +91,7 @@ export class StatsComponent extends Component {
     // Set properties from initialData or defaults
     this.combatLevel = initialData.combatLevel || 3;
     this.level = initialData.level || 1;
-    this.health = initialData.health || 100;
-    this.maxHealth = initialData.maxHealth || 100;
+    this.health = initialData.health || { current: 100, max: 100 };
     this.attack = initialData.attack || { ...defaultSkill };
     this.strength = initialData.strength || { ...defaultSkill };
     this.defense = initialData.defense || { ...defaultSkill };
@@ -120,7 +118,6 @@ export class StatsComponent extends Component {
       combatLevel: this.combatLevel,
       level: this.level,
       health: this.health,
-      maxHealth: this.maxHealth,
       attack: this.attack,
       strength: this.strength,
       defense: this.defense,

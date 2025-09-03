@@ -52,7 +52,7 @@ export class CombatTestSystem extends VisualTestFramework {
     this.equipmentSystem = getSystem(this.world, 'rpg-equipment') as EquipmentSystem;
     
     // Listen for combat damage events to track actual damage dealt
-    this.world.on(EventType.COMBAT_DAMAGE_DEALT, (data) => {
+    this.subscribe(EventType.COMBAT_DAMAGE_DEALT, (data: { attackerId: string; targetId: string; damage: number }) => {
       const { attackerId, targetId: _targetId, damage } = data;
       
       // Find test data for this attacker
@@ -66,7 +66,7 @@ export class CombatTestSystem extends VisualTestFramework {
     });
     
     // Listen for combat miss events
-    this.world.on(EventType.COMBAT_MISS, (data) => {
+    this.subscribe(EventType.COMBAT_MISS, (data: { attackerId: string }) => {
       const { attackerId } = data;
       
       for (const [_stationId, testData] of this.testData) {

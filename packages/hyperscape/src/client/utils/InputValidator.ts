@@ -3,6 +3,8 @@
  * Provides comprehensive input validation and sanitization for client-side inputs
  */
 
+import type { ValidationResult } from '../../types/validation-types'
+
 export interface ValidationRule {
   required?: boolean;
   minLength?: number;
@@ -14,7 +16,9 @@ export interface ValidationRule {
   customValidator?: (value: unknown) => string | null; // Returns error message or null
 }
 
-export interface ValidationResult {
+// Use shared ValidationResult for cross-system consistency
+// Extended result for client input validation
+export interface InputValidationResult extends ValidationResult {
   isValid: boolean;
   errors: string[];
   sanitizedValue: unknown;
@@ -62,7 +66,7 @@ export class InputValidator {
   /**
    * Validate and sanitize input based on rules
    */
-  static validate(value: unknown, rules: ValidationRule = {}): ValidationResult {
+  static validate(value: unknown, rules: ValidationRule = {}): InputValidationResult {
     const errors: string[] = [];
     let sanitizedValue = value;
 
@@ -71,19 +75,19 @@ export class InputValidator {
       const typeResult = this.validateType(value, rules.type);
       if (!typeResult.isValid) {
         errors.push(...typeResult.errors);
-        return { isValid: false, errors, sanitizedValue: value };
+        return { isValid: false, passed: false, errors, sanitizedValue: value };
       }
       sanitizedValue = typeResult.sanitizedValue;
 
       // Required validation
       if (rules.required && this.isEmpty(sanitizedValue)) {
         errors.push('This field is required');
-        return { isValid: false, errors, sanitizedValue };
+        return { isValid: false, passed: false, errors, sanitizedValue };
       }
 
       // Skip further validation if empty and not required
       if (this.isEmpty(sanitizedValue) && !rules.required) {
-        return { isValid: true, errors: [], sanitizedValue: '' };
+        return { isValid: true, passed: true, errors: [], sanitizedValue: '' };
       }
 
       // String-specific validations
@@ -117,6 +121,7 @@ export class InputValidator {
 
       return {
         isValid: errors.length === 0,
+        passed: errors.length === 0,
         errors,
         sanitizedValue
       };
@@ -124,6 +129,7 @@ export class InputValidator {
     } catch (_error) {
       return {
         isValid: false,
+        passed: false,
         errors: ['Validation error occurred'],
         sanitizedValue: value
       };
@@ -171,9 +177,9 @@ export class InputValidator {
   /**
    * Validate and sanitize URL input
    */
-  static sanitizeUrl(input: string): ValidationResult {
+  static sanitizeUrl(input: string): InputValidationResult {
     if (typeof input !== 'string') {
-      return { isValid: false, errors: ['Invalid URL format'], sanitizedValue: '' };
+      return { isValid: false, passed: false, errors: ['Invalid URL format'], sanitizedValue: '' };
     }
 
     const trimmed = input.trim();
@@ -184,7 +190,7 @@ export class InputValidator {
     
     for (const protocol of dangerousProtocols) {
       if (lowerInput.startsWith(protocol)) {
-        return { isValid: false, errors: ['Unsafe URL protocol'], sanitizedValue: '' };
+        return { isValid: false, passed: false, errors: ['Unsafe URL protocol'], sanitizedValue: '' };
       }
     }
 
@@ -195,24 +201,24 @@ export class InputValidator {
         trimmed.startsWith('/') ||
         !trimmed.includes('://')) {
       
-      try {
+        try {
         // Additional URL validation
         if (trimmed.includes('://')) {
           new URL(trimmed); // This will throw if invalid
         }
-        return { isValid: true, errors: [], sanitizedValue: trimmed };
+          return { isValid: true, passed: true, errors: [], sanitizedValue: trimmed };
       } catch {
-        return { isValid: false, errors: ['Invalid URL format'], sanitizedValue: '' };
+          return { isValid: false, passed: false, errors: ['Invalid URL format'], sanitizedValue: '' };
       }
     }
 
-    return { isValid: false, errors: ['Invalid URL protocol'], sanitizedValue: '' };
+    return { isValid: false, passed: false, errors: ['Invalid URL protocol'], sanitizedValue: '' };
   }
 
   /**
    * Validate player name input
    */
-  static validatePlayerName(name: string): ValidationResult {
+  static validatePlayerName(name: string): InputValidationResult {
     return this.validate(name, {
       required: true,
       minLength: 2,
@@ -232,7 +238,7 @@ export class InputValidator {
   /**
    * Validate chat message input
    */
-  static validateChatMessage(message: string): ValidationResult {
+  static validateChatMessage(message: string): InputValidationResult {
     return this.validate(message, {
       required: true,
       maxLength: 500,
@@ -255,15 +261,16 @@ export class InputValidator {
     });
   }
 
-  private static validateType(value: unknown, type?: string): ValidationResult {
+  private static validateType(value: unknown, type?: string): InputValidationResult {
     if (!type) {
-      return { isValid: true, errors: [], sanitizedValue: value };
+      return { isValid: true, passed: true, errors: [], sanitizedValue: value };
     }
 
     switch (type) {
       case 'string':
         return { 
           isValid: true, 
+          passed: true,
           errors: [], 
           sanitizedValue: String(value || '') 
         };
@@ -271,14 +278,15 @@ export class InputValidator {
       case 'number': {
         const num = Number(value);
         if (isNaN(num)) {
-          return { isValid: false, errors: ['Must be a valid number'], sanitizedValue: value };
+          return { isValid: false, passed: false, errors: ['Must be a valid number'], sanitizedValue: value };
         }
-        return { isValid: true, errors: [], sanitizedValue: num };
+        return { isValid: true, passed: true, errors: [], sanitizedValue: num };
       }
         
       case 'boolean':
         return { 
           isValid: true, 
+          passed: true,
           errors: [], 
           sanitizedValue: Boolean(value) 
         };
@@ -287,20 +295,20 @@ export class InputValidator {
         const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         const emailStr = String(value || '');
         if (!emailPattern.test(emailStr)) {
-          return { isValid: false, errors: ['Must be a valid email address'], sanitizedValue: value };
+          return { isValid: false, passed: false, errors: ['Must be a valid email address'], sanitizedValue: value };
         }
-        return { isValid: true, errors: [], sanitizedValue: emailStr };
+        return { isValid: true, passed: true, errors: [], sanitizedValue: emailStr };
       }
         
       case 'url':
         return this.sanitizeUrl(String(value || ''));
         
       default:
-        return { isValid: true, errors: [], sanitizedValue: value };
+        return { isValid: true, passed: true, errors: [], sanitizedValue: value };
     }
   }
 
-  private static validateString(value: string, rules: ValidationRule): ValidationResult {
+  private static validateString(value: string, rules: ValidationRule): InputValidationResult {
     const errors: string[] = [];
     let sanitized = this.sanitizeHtml(value);
 
@@ -313,10 +321,10 @@ export class InputValidator {
       errors.push(`Must be no more than ${rules.maxLength} characters long`);
     }
 
-    return { isValid: errors.length === 0, errors, sanitizedValue: sanitized };
+    return { isValid: errors.length === 0, passed: errors.length === 0, errors, sanitizedValue: sanitized };
   }
 
-  private static validateNumber(value: number, rules: ValidationRule): ValidationResult {
+  private static validateNumber(value: number, rules: ValidationRule): InputValidationResult {
     const errors: string[] = [];
 
     if (rules.min !== undefined && value < rules.min) {
@@ -336,7 +344,7 @@ export class InputValidator {
       clampedValue = Math.min(clampedValue, rules.max);
     }
 
-    return { isValid: errors.length === 0, errors, sanitizedValue: clampedValue };
+    return { isValid: errors.length === 0, passed: errors.length === 0, errors, sanitizedValue: clampedValue };
   }
 
   private static isEmpty(value: unknown): boolean {

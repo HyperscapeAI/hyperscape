@@ -6,7 +6,7 @@
  * maintenance burden.
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 
 export interface MeshOptions {
   color?: number;

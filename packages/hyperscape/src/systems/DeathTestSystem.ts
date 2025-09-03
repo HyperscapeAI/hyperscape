@@ -53,10 +53,15 @@ export class DeathTestSystem extends VisualTestFramework {
     }
     
     // Listen for death and respawn events
-    this.world.on(EventType.PLAYER_DIED, this.handlePlayerDeath.bind(this));
-    this.world.on(EventType.PLAYER_RESPAWNED, this.handlePlayerRespawn.bind(this));
-    this.world.on(EventType.ITEM_DROPPED, this.handleItemsDropped.bind(this));
-    this.world.on(EventType.ITEMS_RETRIEVED, this.handleItemsRetrieved.bind(this));
+    this.subscribe(EventType.PLAYER_DIED, (data) => this.handlePlayerDeath(data));
+    this.subscribe(EventType.PLAYER_RESPAWNED, (data) => this.handlePlayerRespawn(data));
+    this.subscribe(EventType.ITEM_DROPPED, (data) => this.handleItemsDropped(data));
+    this.subscribe<{
+      entityId: string;
+      playerId: string;
+      items: Array<{ id: string; itemId: string; quantity: number; slot: number }>;
+      totalItems: number;
+    }>(EventType.ITEMS_RETRIEVED, (data) => this.handleItemsRetrieved(data));
     
     // Create test stations
     this.createTestStations();
@@ -877,15 +882,15 @@ export class DeathTestSystem extends VisualTestFramework {
     setTimeout(scheduleDeath, 2000);
   }
 
-  private handlePlayerDeath(data: { playerId: string; cause: string; position: { x: number; y: number; z: number } }): void {
+  private handlePlayerDeath(data: { playerId: string; deathLocation: { x: number; y: number; z: number }; cause?: string; killerId?: string | null }): void {
     // Handle player death event for testing
-    Logger.system('DeathTestSystem', `Player death detected: ${data.playerId} at position ${JSON.stringify(data.position)}`);
+    Logger.system('DeathTestSystem', `Player death detected: ${data.playerId} at position ${JSON.stringify(data.deathLocation)}`);
     
     // Find the test station for this player
     for (const [stationId, testData] of Array.from(this.testData.entries())) {
       if (testData.player.id === data.playerId) {
         testData.deathOccurred = true;
-        testData.deathLocation = { ...data.position };
+        testData.deathLocation = { ...data.deathLocation };
         testData.deathCause = data.cause || 'unknown';
         testData.deathProcessed = true;
         
@@ -895,19 +900,19 @@ export class DeathTestSystem extends VisualTestFramework {
     }
   }
 
-  private handlePlayerRespawn(data: { playerId: string; newPosition: { x: number; y: number; z: number }; respawnTime: number }): void {
+  private handlePlayerRespawn(data: { playerId: string; respawnLocation: { x: number; y: number; z: number } }): void {
     // Handle player respawn event for testing
-    Logger.system('DeathTestSystem', `Player respawn detected: ${data.playerId} at position ${JSON.stringify(data.newPosition)}`);
+    Logger.system('DeathTestSystem', `Player respawn detected: ${data.playerId} at position ${JSON.stringify(data.respawnLocation)}`);
     
     // Find the test station for this player
     for (const [stationId, testData] of Array.from(this.testData.entries())) {
       if (testData.player.id === data.playerId) {
         testData.respawnOccurred = true;
-        testData.respawnLocation = { ...data.newPosition };
-        testData.respawnTime = data.respawnTime || Date.now();
+        testData.respawnLocation = { ...data.respawnLocation };
+        testData.respawnTime = Date.now();
         
         // Check if respawned at starter town (simplified check)
-        const isNearTown = Math.abs(data.newPosition.x) < 50 && Math.abs(data.newPosition.z) < 50;
+        const isNearTown = Math.abs(data.respawnLocation.x) < 50 && Math.abs(data.respawnLocation.z) < 50;
         testData.respawnedAtTown = isNearTown;
         
         Logger.system('DeathTestSystem', `Respawn processed for station ${stationId}`);

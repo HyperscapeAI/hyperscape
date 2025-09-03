@@ -1,20 +1,19 @@
-import { SystemBase } from './SystemBase';
-import type { World } from '../types';
-import { EventType } from '../types/events';
 import { getStoreItem } from '../constants/store-data';
+import type { World } from '../types';
 import { Store } from '../types/core';
 import type {
   StoreBuyEvent,
   StoreCloseEvent,
-  StoreSellEvent,
   StoreOpenEvent
 } from '../types/events';
+import { EventType } from '../types/events';
 import { StoreID } from '../types/identifiers';
 import { calculateDistance } from '../utils/EntityUtils';
 import {
   createItemID,
   createStoreID
 } from '../utils/IdentifierUtils';
+import { SystemBase } from './SystemBase';
 
 /**
  * Store System  
@@ -120,22 +119,22 @@ export class StoreSystem extends SystemBase {
     }
     
     // Set up type-safe event subscriptions for store mechanics
-    this.subscribe<StoreOpenEvent>(EventType.STORE_OPEN, (event) => {
-      this.openStore(event.data);
+    this.subscribe(EventType.STORE_OPEN, (data) => {
+      this.openStore(data);
     });
-    this.subscribe<StoreCloseEvent>(EventType.STORE_CLOSE, (event) => {
-      this.closeStore(event.data);
+    this.subscribe(EventType.STORE_CLOSE, (data) => {
+      this.closeStore(data);
     });
-    this.subscribe<StoreBuyEvent>(EventType.STORE_BUY, (event) => {
-      this.buyItem(event.data);
+    this.subscribe(EventType.STORE_BUY, (data) => {
+      this.buyItem(data);
     });
-    this.subscribe<StoreSellEvent>(EventType.STORE_SELL, (event) => {
-      this.sellItem(event.data.playerId, event.data.itemId, event.data.quantity);
+    this.subscribe(EventType.STORE_SELL, (data) => {
+      this.sellItem(data.playerId, data.itemId, data.quantity);
     });
     
     // Listen for NPC registrations from world content system
-    this.subscribe<{ npcId: string; storeId: string; position: { x: number; y: number; z: number }; name: string; area: string }>(EventType.STORE_REGISTER_NPC, (event) => {
-      this.registerStoreNPC(event.data);
+    this.subscribe(EventType.STORE_REGISTER_NPC, (data) => {
+      this.registerStoreNPC(data);
     });
     
   }

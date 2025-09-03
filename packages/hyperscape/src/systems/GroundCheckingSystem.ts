@@ -1,5 +1,5 @@
 import type { Entity, World, WorldOptions } from '../types'
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 import { System } from './System'
 import { TerrainSystem } from './TerrainSystem'
 import { TransformComponent } from '../components/TransformComponent'

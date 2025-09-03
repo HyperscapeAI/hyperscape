@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react'
 // cloneDeep from lodash-es available but unused
 import { storage } from '../../storage'
-import type { PaneInfo } from '../../types/ui-component-types';
+import type { PaneInfo } from '../../types/ui-types';
 
 const STORAGE_KEY = 'panes'
 

@@ -10,13 +10,12 @@
  * - DOM-based UI instead of Three.js UI nodes
  */
 
-import * as THREE from '../extras/three';
-import { toTHREEVector3 } from '../extras/three';
+import THREE, { toTHREEVector3 } from '../extras/three';
+import { logger as Logger } from '../logger';
 import type { World } from '../types';
 import { EventType } from '../types/events';
 import { calculateDistance, getWorldCamera, getWorldScene } from '../utils/EntityUtils';
 import { SystemBase } from './SystemBase';
-import { logger as Logger } from '../logger';
 
 // App interface removed - using Entity-based architecture instead
 
@@ -29,10 +28,10 @@ function isValidEntityType(type: string): type is EntityType {
 
 // HTMLElement for tooltip with custom property
 import {
-  InteractableEntity as InteractableEntity,
+  InteractableEntity,
   InteractionAction,
   InteractionHover,
-  InteractionSystemEvents as InteractionSystemEvents,
+  InteractionSystemEvents,
   TooltipElement
 } from '../types/core';
 
@@ -59,14 +58,9 @@ export class InteractionSystem extends SystemBase {
   private isDragging = false;
   private actionMenu: HTMLElement | null = null;
   private tooltip: HTMLElement | null = null;
+
   
-  // Mouse tracking
-  private mousePosition = { x: 0, y: 0 };
-  private lastClickTime = 0;
-  private doubleClickThreshold = 300; // ms
-  
-  // Test system data tracking (merged from ClientInteractionSystem)
-  private testData = new Map<string, { clicks: number; movements: number; combatInitiated: number; lastInteraction: number }>();
+  // Test system data tracking
   private totalClicks = 0;
   private totalMovements = 0;
   private totalCombatInitiated = 0;
@@ -115,6 +109,7 @@ export class InteractionSystem extends SystemBase {
   }
 
   start(): void {
+    console.log('[InteractionSystem] Starting...');
     // Try to initialize when system starts
     this.tryInitialize();
   }
@@ -125,8 +120,17 @@ export class InteractionSystem extends SystemBase {
     const camera = getWorldCamera(this.world);
     const canvas = this.world.graphics?.renderer?.domElement;
 
+    console.log('[InteractionSystem] Trying to initialize:', { 
+      hasScene: !!scene, 
+      hasCamera: !!camera, 
+      hasCanvas: !!canvas 
+    });
+
     if (!scene || !camera || !canvas) {
-      throw new Error('[InteractionSystem] Required rendering context not available');
+      // Retry later instead of throwing to avoid breaking the system startup
+      console.log('[InteractionSystem] Not ready yet, will retry in 100ms');
+      setTimeout(() => this.tryInitialize(), 100);
+      return;
     }
 
     this.scene = scene;
@@ -141,12 +145,10 @@ export class InteractionSystem extends SystemBase {
     this.setupEventListeners();
     
     // Set up event subscriptions for interaction system
-    this.subscribe<{ entityId: string; interactionType: "attack" | "pickup" | "talk" | "gather" | "use" | "loot" | "bank" | "trade" }>(EventType.INTERACTION_REGISTER, (event) => {
-      const data = event.data;
+    this.subscribe<{ entityId: string; interactionType: "attack" | "pickup" | "talk" | "gather" | "use" | "loot" | "bank" | "trade" }>(EventType.INTERACTION_REGISTER, (data) => {
       this.registerInteractable({ appId: data.entityId, mesh: new THREE.Object3D() as THREE.Object3D<THREE.Object3DEventMap>, type: data.interactionType, distance: 5, description: '' });
     });
-    this.subscribe<{ entityId: string; interactionType: "attack" | "pickup" | "talk" | "gather" | "use" | "loot" | "bank" | "trade" }>(EventType.INTERACTION_UNREGISTER, (event) => {
-      const data = event.data;
+    this.subscribe<{ entityId: string; interactionType: "attack" | "pickup" | "talk" | "gather" | "use" | "loot" | "bank" | "trade" }>(EventType.INTERACTION_UNREGISTER, (data) => {
       this.unregisterInteractable({ appId: data.entityId });
     });
     
@@ -223,6 +225,7 @@ export class InteractionSystem extends SystemBase {
     // Mouse events
     this.canvas.addEventListener('mousemove', this.onMouseMove.bind(this));
     this.canvas.addEventListener('click', this.onClick.bind(this));
+    // Single-click only for movement; disable dblclick-to-move to avoid duplicate/lagged targets
     this.canvas.addEventListener('contextmenu', this.onRightClick.bind(this));
     this.canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
     this.canvas.addEventListener('mouseup', this.onMouseUp.bind(this));
@@ -265,7 +268,8 @@ export class InteractionSystem extends SystemBase {
     this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-    // Update raycaster
+    // Update raycaster and ensure camera is set (required for sprites)
+    this.raycaster.camera = this.camera;
     this.raycaster.setFromCamera(this.mouse, this.camera);
 
     // Find intersections with interactable objects
@@ -310,6 +314,10 @@ export class InteractionSystem extends SystemBase {
    * Handle mouse click for interactions
    */
   private onClick(_event: MouseEvent): void {
+    console.log('[InteractionSystem] onClick triggered');
+    // Prevent bubbling to document/UI that might also react to click
+    _event.preventDefault();
+    _event.stopPropagation();
     
     // Track total clicks for test system
     this.totalClicks++;
@@ -337,12 +345,12 @@ export class InteractionSystem extends SystemBase {
       if (primaryAction) {
         primaryAction.callback();
       } else {
-        // Fallback to legacy interaction handling
-        this.handleLegacyInteraction(entity);
+        // No enabled primary action - treat as ground click move
+        this.handleMovementClick(_event);
       }
     } else {
-      // Fallback to legacy interaction handling
-      this.handleLegacyInteraction(entity);
+      // No structured actions - if it's not actionable, move instead of no-op
+      this.handleMovementClick(_event);
     }
   }
 
@@ -395,7 +403,8 @@ export class InteractionSystem extends SystemBase {
    */
   private performRaycast(): InteractableEntity | null {
     // Camera and scene are guaranteed to be initialized
-
+    // Ensure camera is set for sprite raycasts
+    this.raycaster.camera = this.camera;
     this.raycaster.setFromCamera(this.mouse, this.camera);
     
     // Get all interactable objects
@@ -503,68 +512,464 @@ export class InteractionSystem extends SystemBase {
   private handleMovementClick(event: MouseEvent): void {
     if (!this.camera || !this.scene) return;
 
-    // Raycast against ground/terrain
-    this.raycaster.setFromCamera(this.mouse, this.camera);
+    // Get fresh references in case they've changed
+    const currentCamera = getWorldCamera(this.world) || this.camera;
+    const currentCanvas = this.world.graphics?.renderer?.domElement || this.canvas;
     
-    // Find ground intersection - check all objects recursively
-    const intersects = this.raycaster.intersectObjects(this.scene.children, true);
-    
-    // Find the first terrain/ground hit or any walkable surface
-    let groundHit: THREE.Intersection | null = null;
-    for (const hit of intersects) {
-      const userData = hit.object.userData;
-      // Accept terrain, ground, or any object marked as walkable
-      if (userData?.type === 'terrain' || 
-          userData?.type === 'ground' || 
-          userData?.walkable === true ||
-          hit.object.name?.includes('Terrain') ||
-          hit.object.name?.includes('Ground')) {
-        groundHit = hit;
-        break;
-      }
+    if (!currentCanvas) {
+      this.logger.warn('[InteractionSystem] No canvas found for raycasting');
+      return;
     }
-    
-    if (groundHit) {
-      const targetPosition = groundHit.point;
-      
-      
-      // Get local player
-      const localPlayer = this.world.getPlayer();
-      if (localPlayer) {
-        // Track movement for test system
-        this.totalMovements++;
-        
-        // Emit movement command using core movement system
-        const clientMovementSystem = this.world.getSystem('client-movement-system');
-        if (clientMovementSystem && 'movePlayer' in clientMovementSystem) {
-          // Assume movePlayer method exists
-          (clientMovementSystem as { movePlayer: (playerId: string, position: { x: number; y: number; z: number }) => void }).movePlayer(localPlayer.id, {
-            x: targetPosition.x,
-            y: targetPosition.y,
-            z: targetPosition.z
-          });
-        } else {
-          // Fallback to old event system
-          this.emitTypedEvent(EventType.MOVEMENT_CLICK_TO_MOVE, {
-            playerId: localPlayer.id,
-            targetPosition: {
-              x: targetPosition.x,
-              y: targetPosition.y,
-              z: targetPosition.z
-            },
-            currentPosition: {
-              x: localPlayer.position.x,
-              y: localPlayer.position.y,
-              z: localPlayer.position.z
-            },
-            isRunning: event.shiftKey || this.isShiftHeld // Hold shift to run
-          });
-        }
 
-        // Show movement target indicator
-        this.showMovementTarget(targetPosition);
+    // Recalculate NDC from this specific click to avoid any stale/shared mouse coords
+    const rect = currentCanvas.getBoundingClientRect();
+    // Store the exact click coordinates for debugging
+    const clickX = event.clientX;
+    const clickY = event.clientY;
+    const relativeX = clickX - rect.left;
+    const relativeY = clickY - rect.top;
+    
+    // Calculate NDC coordinates using local Vector2 (do not mutate shared this.mouse)
+    const ndcX = (relativeX / rect.width) * 2 - 1;
+    const ndcY = -(relativeY / rect.height) * 2 + 1;
+    const ndc = new THREE.Vector2(ndcX, ndcY);
+    
+    // Log canvas dimensions for debugging
+    this.logger.info(`[Raycast Debug] Canvas rect: width=${rect.width}, height=${rect.height}, left=${rect.left}, top=${rect.top}`);
+    this.logger.info(`[Raycast Debug] Click position: clientX=${clickX}, clientY=${clickY}, relativeX=${relativeX}, relativeY=${relativeY}`);
+    this.logger.info(`[Raycast Debug] Mouse NDC: x=${ndcX.toFixed(3)}, y=${ndcY.toFixed(3)}`);
+
+    // Validate camera before using it
+    if (!Number.isFinite(currentCamera.position.x) || !Number.isFinite(currentCamera.position.y) || !Number.isFinite(currentCamera.position.z)) {
+      this.logger.error(`[Raycast Debug] Camera position is invalid: x=${currentCamera.position.x}, y=${currentCamera.position.y}, z=${currentCamera.position.z}`);
+      return;
+    }
+    
+    // Validate camera matrices before using them
+    const cameraMatrix = currentCamera.matrixWorld;
+    if (!cameraMatrix || !Number.isFinite(cameraMatrix.elements[0])) {
+      this.logger.error('[Raycast Debug] Camera matrix is corrupted, skipping click');
+      return;
+    }
+    
+    // Only update matrices if they seem valid
+    if (currentCamera.updateMatrixWorld && Number.isFinite(currentCamera.position.x)) {
+      currentCamera.updateMatrixWorld(true);
+    }
+    
+    // Skip aspect ratio updates during clicks to prevent matrix corruption
+    // The graphics system should handle aspect ratio, not the interaction system
+
+    // Debug camera state before using it
+    this.logger.info(`[Raycast Debug] Camera type: ${currentCamera.type}`);
+    this.logger.info(`[Raycast Debug] Camera position: x=${currentCamera.position.x}, y=${currentCamera.position.y}, z=${currentCamera.position.z}`);
+    if ((currentCamera as any).fov) {
+      this.logger.info(`[Raycast Debug] Camera FOV: ${(currentCamera as any).fov}`);
+    }
+    if ((currentCamera as any).aspect) {
+      this.logger.info(`[Raycast Debug] Camera aspect: ${(currentCamera as any).aspect}`);
+    } else {
+      this.logger.error(`[Raycast Debug] Camera has no aspect ratio!`);
+      // Set a default aspect ratio
+      (currentCamera as any).aspect = rect.width / rect.height;
+      if ((currentCamera as any).updateProjectionMatrix) {
+        (currentCamera as any).updateProjectionMatrix();
+      }
+      this.logger.info(`[Raycast Debug] Set camera aspect to: ${(currentCamera as any).aspect}`);
+    }
+
+    // Build a camera ray from current mouse position and use PhysX raycast
+    this.raycaster.camera = currentCamera;
+    this.raycaster.setFromCamera(ndc, currentCamera);
+    
+    // Validate mouse coordinates
+    if (!Number.isFinite(ndcX) || !Number.isFinite(ndcY)) {
+      this.logger.error(`[Raycast Debug] Invalid mouse coordinates: x=${ndcX}, y=${ndcY}`);
+      return;
+    }
+    
+    const direction = this.raycaster.ray.direction.clone().normalize();
+    const baseOrigin = this.raycaster.ray.origin.clone();
+    
+    // Debug the raycaster state
+    this.logger.info(`[Raycast Debug] Raycaster ray origin: x=${this.raycaster.ray.origin.x}, y=${this.raycaster.ray.origin.y}, z=${this.raycaster.ray.origin.z}`);
+    this.logger.info(`[Raycast Debug] Raycaster ray direction (before normalize): x=${this.raycaster.ray.direction.x}, y=${this.raycaster.ray.direction.y}, z=${this.raycaster.ray.direction.z}`);
+    
+    // Validate camera ray
+    if (!Number.isFinite(baseOrigin.x) || !Number.isFinite(baseOrigin.y) || !Number.isFinite(baseOrigin.z)) {
+      this.logger.error(`[Raycast Debug] Invalid camera origin: x=${baseOrigin.x}, y=${baseOrigin.y}, z=${baseOrigin.z}`);
+      return;
+    }
+    
+    if (!Number.isFinite(direction.x) || !Number.isFinite(direction.y) || !Number.isFinite(direction.z)) {
+      this.logger.error(`[Raycast Debug] Invalid camera direction: x=${direction.x}, y=${direction.y}, z=${direction.z}`);
+      return;
+    }
+    
+    // Offset the origin slightly to avoid hitting the player's own capsule
+    const origin = baseOrigin.add(direction.clone().multiplyScalar(1.0));
+    
+    // Debug logging for raycast
+    this.logger.info(`[Raycast Debug] Mouse: x=${ndcX.toFixed(3)}, y=${ndcY.toFixed(3)}`);
+    this.logger.info(`[Raycast Debug] Origin: x=${origin.x.toFixed(2)}, y=${origin.y.toFixed(2)}, z=${origin.z.toFixed(2)}`);
+    this.logger.info(`[Raycast Debug] Direction: x=${direction.x.toFixed(3)}, y=${direction.y.toFixed(3)}, z=${direction.z.toFixed(3)}`);
+    
+    // Check if physics is initialized
+    if (!this.world.physics || !this.world.physics.scene) {
+      this.logger.warn('[Raycast Debug] Physics system not initialized');
+    }
+    
+    // Try specific ground/terrain layers first; then environment; then all except player
+    const groundMask = this.world.createLayerMask('ground', 'terrain');
+    const environmentMask = this.world.createLayerMask('environment');
+    // Create a mask that includes everything except the player layer
+    const playerMask = this.world.createLayerMask('player');
+    const allExceptPlayerMask = 0xFFFFFFFF & ~playerMask; // Exclude player layer
+    
+    this.logger.info(`[Raycast Debug] Environment mask: 0x${environmentMask.toString(16)}, All except player mask: 0x${allExceptPlayerMask.toString(16)}`);
+    
+    // Get the local player to check if we hit it
+    const localPlayer = this.world.getPlayer();
+    
+    // Try ground/terrain layer first
+    let physxHit = this.world.raycast(origin, direction, 5000, groundMask);
+    let maskUsed = 'ground';
+    
+    // Check if we hit the player and skip if so
+    if (physxHit && localPlayer) {
+      console.log('[InteractionSystem] PhysX hit:', physxHit);
+      console.log('[InteractionSystem] Player capsule handle:', (localPlayer as any).capsuleHandle);
+      console.log('[InteractionSystem] Hit point:', 
+        `(${physxHit.point.x.toFixed(2)}, ${physxHit.point.y.toFixed(2)}, ${physxHit.point.z.toFixed(2)})`);
+      console.log('[InteractionSystem] Player position:', 
+        `(${localPlayer.position.x.toFixed(2)}, ${localPlayer.position.y.toFixed(2)}, ${localPlayer.position.z.toFixed(2)})`);
+      
+      // Check if hit point is very close to player position (within 0.5 units)
+      const hitPoint = physxHit.point;
+      const playerPos = localPlayer.position;
+      const distance = Math.sqrt(
+        Math.pow(hitPoint.x - playerPos.x, 2) +
+        Math.pow(hitPoint.y - playerPos.y, 2) +
+        Math.pow(hitPoint.z - playerPos.z, 2)
+      );
+      
+      if (distance < 0.5 || physxHit.handle === (localPlayer as any).capsuleHandle) {
+        console.log('[InteractionSystem] Hit is too close to player (dist:', distance, '), retrying from further out');
+        // Move origin much further to completely skip past the player
+        const furtherOrigin = origin.clone().add(direction.clone().multiplyScalar(5.0));
+        console.log('[InteractionSystem] Retry origin:', 
+          `(${furtherOrigin.x.toFixed(2)}, ${furtherOrigin.y.toFixed(2)}, ${furtherOrigin.z.toFixed(2)})`);
+        physxHit = this.world.raycast(furtherOrigin, direction, 5000, groundMask);
+        
+        if (physxHit) {
+          console.log('[InteractionSystem] Retry hit point:', 
+            `(${physxHit.point.x.toFixed(2)}, ${physxHit.point.y.toFixed(2)}, ${physxHit.point.z.toFixed(2)})`);
+          
+          // Check if retry still hit the player
+          const retryDist = Math.sqrt(
+            Math.pow(physxHit.point.x - playerPos.x, 2) +
+            Math.pow(physxHit.point.y - playerPos.y, 2) +
+            Math.pow(physxHit.point.z - playerPos.z, 2)
+          );
+          if (retryDist < 0.5) {
+            console.log('[InteractionSystem] Retry STILL hit player! Trying Three.js fallback.');
+            physxHit = null;
+            
+            // Use Three.js raycast as fallback
+            this.raycaster.set(origin, direction);
+            const meshIntersects = this.raycaster.intersectObjects(this.scene.children, true);
+            const groundHit = meshIntersects.find(hit => {
+              const obj = hit.object;
+              // Skip player-related objects
+              if (obj.name && obj.name.includes('player')) return false;
+              // Skip our own debug/indicator visuals
+              if (obj.name && (obj.name.includes('movement_target') || obj.name.includes('debug_cube') || obj.name.includes('debug_path'))) return false;
+              if ((obj.userData as any)?.ignoreClickMove) return false;
+              // Accept ground-like objects
+              if (obj.name && (obj.name.includes('ground') || obj.name.includes('test-ground-plane'))) return true;
+              // Check distance from player
+              const hitDist = hit.point.distanceTo(playerPos);
+              return hitDist > 1.0; // Only accept hits far from player
+            });
+            
+            if (groundHit) {
+              console.log('[InteractionSystem] Three.js fallback hit at:', 
+                `(${groundHit.point.x.toFixed(2)}, ${groundHit.point.y.toFixed(2)}, ${groundHit.point.z.toFixed(2)})`);
+              // Create a fake PhysX hit from the Three.js hit with a minimal Collider
+              physxHit = {
+                point: groundHit.point.clone(),
+                normal: groundHit.face?.normal || new THREE.Vector3(0, 1, 0),
+                distance: groundHit.distance,
+                collider: { type: 'mesh', isTrigger: false },
+                handle: undefined
+              };
+            }
+          }
+      } else {
+          console.log('[InteractionSystem] Retry failed, no hit');
+        }
       }
     }
+    
+    // If that fails, try environment, then all layers except player
+    if (!physxHit) {
+      physxHit = this.world.raycast(origin, direction, 5000, environmentMask);
+      maskUsed = 'environment';
+      
+      // Check again for player hit
+      if (physxHit && localPlayer && physxHit.handle === (localPlayer as any).capsuleHandle) {
+        this.logger.info('[Raycast Debug] Hit player capsule on environment layer, retrying');
+        const furtherOrigin = origin.clone().add(direction.clone().multiplyScalar(3.0));
+        physxHit = this.world.raycast(furtherOrigin, direction, 5000, environmentMask);
+      }
+      
+      if (!physxHit) {
+        physxHit = this.world.raycast(origin, direction, 5000, allExceptPlayerMask);
+        maskUsed = 'all-except-player';
+        
+        // Final check for player hit
+        if (physxHit && localPlayer && physxHit.handle === (localPlayer as any).capsuleHandle) {
+          this.logger.info('[Raycast Debug] Still hitting player, ignoring this hit');
+          physxHit = null;
+        }
+      }
+    }
+    
+    // If that fails, try no mask (default)
+    if (!physxHit) {
+      physxHit = this.world.raycast(origin, direction, 5000);
+      maskUsed = 'default';
+    }
+    
+    this.logger.info(`[Raycast Debug] PhysX raycast result (${maskUsed}): ${physxHit ? 'hit' : 'null'}`);
+    if (physxHit) {
+      this.logger.info(`[Raycast Debug] PhysX hit details: point=${physxHit.point ? `(${physxHit.point.x}, ${physxHit.point.y}, ${physxHit.point.z})` : 'null'}, distance=${physxHit.distance}`);
+    }
+
+    // Fallbacks: we do NOT use plane fallback for movement now; if no ground/terrain hit, abort
+    let targetPosition: THREE.Vector3 | null = null;
+    let hitMethod = 'none';
+    
+    // Check if PhysX hit is valid
+    if (physxHit && physxHit.point) {
+      // PhysX sometimes returns exactly 0,0,0 for invalid hits or hits on the player
+      // Be more strict about rejecting invalid hits
+      const isInvalidHit = Math.abs(physxHit.point.x) < 0.001 && 
+                          Math.abs(physxHit.point.y) < 0.001 && 
+                          Math.abs(physxHit.point.z) < 0.001;
+      
+      const isNaNHit = !Number.isFinite(physxHit.point.x) || 
+                       !Number.isFinite(physxHit.point.y) || 
+                       !Number.isFinite(physxHit.point.z);
+      
+      if (!isInvalidHit && !isNaNHit) {
+        targetPosition = physxHit.point.clone();
+        hitMethod = 'physx';
+        this.logger.info(`[Raycast Debug] PhysX hit at: x=${physxHit.point.x.toFixed(2)}, y=${physxHit.point.y.toFixed(2)}, z=${physxHit.point.z.toFixed(2)}`);
+      } else {
+        this.logger.warn(`[Raycast Debug] PhysX returned invalid hit at (${physxHit.point.x}, ${physxHit.point.y}, ${physxHit.point.z}), trying fallback`);
+      }
+    } else {
+      this.logger.warn('[Raycast Debug] PhysX raycast missed, trying fallback');
+    }
+    
+    if (!targetPosition) {
+      // Try Three.js raycast against known ground meshes first
+      const ground = this.scene.getObjectByName('stage-ground');
+      let meshIntersects: THREE.Intersection[] = [];
+      if (ground) {
+        meshIntersects = this.raycaster.intersectObject(ground, true);
+      } else {
+        // Fallback to intersecting all children (filtered below)
+        meshIntersects = this.raycaster.intersectObjects(this.scene.children, true);
+      }
+      if (meshIntersects.length > 0) {
+        // Filter for ground-like objects (not UI, not players, etc)
+        const groundHit = meshIntersects.find(hit => {
+          const obj = hit.object;
+          // Skip UI elements, players, items
+          if (obj.name && (obj.name.includes('ui') || obj.name.includes('player') || obj.name.includes('item'))) {
+            return false;
+          }
+          // Accept terrain, ground, floor, environment objects
+          if (obj.name && (obj.name.includes('terrain') || obj.name.includes('ground') || obj.name.includes('floor') || obj.name.includes('environment'))) {
+            return true;
+          }
+          // Default: accept if no specific name
+          return !obj.name || obj.name === '';
+        });
+        
+        if (groundHit) {
+          targetPosition = groundHit.point.clone();
+          hitMethod = 'three_mesh';
+          this.logger.info(`[Raycast Debug] Three.js mesh hit at: x=${groundHit.point.x.toFixed(2)}, y=${groundHit.point.y.toFixed(2)}, z=${groundHit.point.z.toFixed(2)}, object: ${groundHit.object.name || 'unnamed'}`);
+        }
+      }
+      
+      // No plane fallback for movement; if mesh also misses, we abort
+    }
+
+    if (!targetPosition) {
+        this.logger.error(
+          `[Movement] No ground hit for click ox=${origin.x.toFixed?.(2) ?? origin.x}, oy=${origin.y.toFixed?.(2) ?? origin.y}, oz=${origin.z.toFixed?.(2) ?? origin.z}, dx=${direction.x.toFixed?.(3) ?? direction.x}, dy=${direction.y.toFixed?.(3) ?? direction.y}, dz=${direction.z.toFixed?.(3) ?? direction.z}`
+        );
+      return; // Cancel movement when no proper ground hit
+    }
+
+    // Final validation: ensure we never set an invalid target position
+    const isFinalInvalid = (Math.abs(targetPosition.x) < 0.001 && Math.abs(targetPosition.y) < 0.001 && Math.abs(targetPosition.z) < 0.001) ||
+                          !Number.isFinite(targetPosition.x) || !Number.isFinite(targetPosition.y) || !Number.isFinite(targetPosition.z);
+    
+    if (isFinalInvalid) {
+      this.logger.error(`[Movement] REJECTING final invalid target position: (${targetPosition.x}, ${targetPosition.y}, ${targetPosition.z})`);
+      return;
+    }
+
+    // Ignore targets that are effectively the player's current position to avoid toggle loops
+    if (localPlayer) {
+      const dToSelf = localPlayer.position.distanceTo(targetPosition);
+      if (dToSelf < 0.2) {
+        this.logger.info('[InteractionSystem] Ignoring click: target too close to player position');
+        return;
+      }
+    }
+
+    this.logger.info(`[Raycast Debug] Final target position (${hitMethod}): x=${targetPosition.x.toFixed(2)}, y=${targetPosition.y.toFixed(2)}, z=${targetPosition.z.toFixed(2)}`);
+    
+    // Sanity: clamp target Y to ground range if absurd
+    if (!Number.isFinite(targetPosition.y) || Math.abs(targetPosition.y) > 1000) {
+      targetPosition.y = 0
+    }
+
+    // Use the localPlayer we already got earlier
+    if (!localPlayer) return;
+
+    // Do not clear first; directly set the new target below so there is no transient 'null' state
+
+    // Track movement for test system
+    this.totalMovements++;
+
+    // Show debug cube at the exact raycast hit location
+    this.showDebugCube(targetPosition);
+
+    // Pathfinding may be enabled for visualization, but MUST NOT influence movement target
+    const pathfindingSystem = this.world.getSystem('heightmap-pathfinding') as any;
+    let finalPath: THREE.Vector3[] | null = null;
+    if (pathfindingSystem) {
+      try {
+        finalPath = pathfindingSystem.findPath(localPlayer.position, targetPosition);
+        if (finalPath && finalPath.length > 2) {
+          this.logger.info(`[InteractionSystem] Pathfinding available with ${finalPath.length} waypoints (visualization only)`);
+          this.visualizeSimplePath(finalPath);
+        } else {
+          finalPath = null;
+        }
+      } catch {
+        finalPath = null;
+      }
+    }
+    
+    // Expose last raycast target for testing/diagnostics
+    if (typeof window !== 'undefined') {
+      (window as any).__lastRaycastTarget = { x: targetPosition.x, y: targetPosition.y, z: targetPosition.z, method: hitMethod };
+    }
+
+    // Check if player is PlayerLocal with physics movement
+    if ('setClickMoveTarget' in localPlayer && typeof localPlayer.setClickMoveTarget === 'function') {
+      const playerLocal = localPlayer as { 
+        setClickMoveTarget: (target: { x: number; y: number; z: number }) => void;
+        toggleRunMode?: () => void;
+        runMode?: boolean;
+      };
+      
+      // Always set a single direct target for deterministic movement
+      // ALWAYS move to the exact clicked position, never use waypoints or pathfinding destinations
+      // This ensures there's only ONE target the avatar moves to
+      
+      playerLocal.setClickMoveTarget({ x: targetPosition.x, y: targetPosition.y, z: targetPosition.z });
+      this.logger.info(`[InteractionSystem] Set direct target: x=${targetPosition.x.toFixed(2)}, z=${targetPosition.z.toFixed(2)}`);
+      
+      // Optional: path visualization already handled above
+    } else {
+      this.logger.warn('[InteractionSystem] Player does not support physics click movement');
+    }
+
+    // Show movement target indicator where we actually intend to go
+    this.showMovementTarget(targetPosition);
+    // Mark indicator as non-interactive for future raycasts
+    const indicator = this.scene?.getObjectByName('movement_target');
+    if (indicator) {
+      (indicator.userData as any).ignoreClickMove = true;
+    }
+  }
+
+  /**
+   * Check if there are obstacles between two points
+   */
+  private hasObstaclesBetween(start: THREE.Vector3 | { x: number; y: number; z: number }, end: THREE.Vector3 | { x: number; y: number; z: number }): boolean {
+    const startVec = start instanceof THREE.Vector3 ? start : new THREE.Vector3(start.x, start.y, start.z);
+    const endVec = end instanceof THREE.Vector3 ? end : new THREE.Vector3(end.x, end.y, end.z);
+    
+    const distance = startVec.distanceTo(endVec);
+    
+    // If points are too close, no obstacles between them
+    if (distance < 0.01) {
+      return false;
+    }
+    
+    const direction = new THREE.Vector3().subVectors(endVec, startVec).normalize();
+    
+    // Check for obstacles using PhysX
+    const mask = this.world.createLayerMask('obstacle', 'building');
+    const hit = this.world.raycast(startVec, direction, distance, mask);
+    
+    return !!hit;
+  }
+  
+  /**
+   * Visualize a simple path for debugging
+   */
+  private visualizeSimplePath(path: THREE.Vector3[]): void {
+    if (!this.scene || path.length < 2) return;
+    
+    // Remove old path
+    const oldPath = this.scene.getObjectByName('debug_path');
+    if (oldPath) {
+      this.scene.remove(oldPath);
+      if (oldPath instanceof THREE.Line) {
+        oldPath.geometry?.dispose();
+        if (oldPath.material instanceof THREE.Material) {
+          oldPath.material.dispose();
+        }
+      }
+    }
+    
+    // Create path line
+    const points = path.map(p => {
+      const point = p.clone();
+      point.y += 0.1; // Slightly above ground
+      return point;
+    });
+    
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineBasicMaterial({
+      color: 0x00ff00,
+      transparent: true,
+      opacity: 0.5
+    });
+    
+    const line = new THREE.Line(geometry, material);
+    line.name = 'debug_path';
+    this.scene.add(line);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+      if (line.parent) {
+        this.scene?.remove(line);
+        geometry.dispose();
+        material.dispose();
+      }
+    }, 5000);
   }
 
   /**
@@ -614,6 +1019,78 @@ export class InteractionSystem extends SystemBase {
     };
     
     setTimeout(fadeOut, 2000); // Start fading after 2 seconds
+  }
+
+  /**
+   * Show debug cube at raycast hit location
+   */
+  private showDebugCube(position: THREE.Vector3 | { x: number; y: number; z: number }): void {
+    // Remove existing debug cubes (keep last 5 for trail)
+    const existingCubes = this.scene?.children.filter(child => child.name === 'debug_cube') || [];
+    if (existingCubes.length >= 5) {
+      const toRemove = existingCubes[0];
+      this.scene?.remove(toRemove);
+      if (toRemove instanceof THREE.Mesh) {
+        toRemove.geometry?.dispose();
+        if (toRemove.material instanceof THREE.Material) {
+          toRemove.material.dispose();
+        }
+      }
+    }
+
+    // Create debug cube
+    const cubeGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+    const cubeMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff0000, // Red
+      transparent: true,
+      opacity: 0.9,
+      wireframe: false
+    });
+
+    const debugCube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+    debugCube.name = 'debug_cube';
+    
+    if (position instanceof THREE.Vector3) {
+      debugCube.position.copy(position);
+    } else {
+      debugCube.position.set(position.x, position.y, position.z);
+    }
+    
+    // Raise cube slightly so it's visible
+    debugCube.position.y += 0.15;
+    
+    this.scene?.add(debugCube);
+
+    // Log the position for debugging
+    this.logger.info(`Debug cube placed at: x=${debugCube.position.x.toFixed(2)}, y=${debugCube.position.y.toFixed(2)}, z=${debugCube.position.z.toFixed(2)}`);
+
+    // Make it pulse for visibility
+    let scale = 1;
+    let growing = true;
+    const pulse = () => {
+      if (growing) {
+        scale += 0.02;
+        if (scale >= 1.3) growing = false;
+      } else {
+        scale -= 0.02;
+        if (scale <= 0.7) growing = true;
+      }
+      debugCube.scale.setScalar(scale);
+      
+      if (debugCube.parent) {
+        requestAnimationFrame(pulse);
+      }
+    };
+    pulse();
+
+    // Remove after 10 seconds
+    setTimeout(() => {
+      if (debugCube.parent) {
+        this.scene?.remove(debugCube);
+        cubeGeometry.dispose();
+        cubeMaterial.dispose();
+      }
+    }, 10000);
   }
 
   /**
@@ -1254,6 +1731,18 @@ export class InteractionSystem extends SystemBase {
     if (event.key === 'e' || event.key === 'E') {
       // Trigger primary interaction
       this.triggerPrimaryInteraction();
+    }
+    
+    // Toggle run/walk mode with 'R' key (RuneScape style)
+    if (event.key === 'r' || event.key === 'R') {
+      const localPlayer = this.world.entities?.getLocalPlayer?.();
+      if (localPlayer && 'toggleRunMode' in localPlayer && typeof localPlayer.toggleRunMode === 'function') {
+        (localPlayer as any).toggleRunMode();
+        
+        // TODO: Update UI to show current run/walk state
+        const runMode = (localPlayer as any).runMode;
+        this.logger.info(`[InteractionSystem] Run mode toggled: ${runMode ? 'ON' : 'OFF'}`);
+      }
     }
   }
 

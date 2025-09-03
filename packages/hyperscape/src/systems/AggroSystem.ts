@@ -43,32 +43,39 @@ export class AggroSystem extends SystemBase {
   async init(): Promise<void> {
     
     // Set up type-safe event subscriptions for aggro mechanics
-    this.subscribe(EventType.MOB_SPAWNED, (data) => {
+    this.subscribe(EventType.MOB_SPAWNED, (data: { mobId: string; mobType: string; position: { x: number; y: number; z: number } }) => {
       this.registerMob({ id: data.mobId, type: data.mobType, level: 1, position: data.position });
     });
-    this.subscribe(EventType.MOB_DESPAWN, (data) => {
+    this.subscribe(EventType.MOB_DESPAWN, (data: { mobId: string }) => {
       this.unregisterMob(data.mobId);
     });
-    this.subscribe(EventType.PLAYER_POSITION_UPDATED, (data) => {
+    this.subscribe(EventType.PLAYER_POSITION_UPDATED, (data: { playerId: string; position: Position3D }) => {
       this.updatePlayerPosition({ entityId: data.playerId, position: data.position });
     });
-    this.subscribe(EventType.COMBAT_STARTED, (data) => {
+    this.subscribe(EventType.COMBAT_STARTED, (data: { attackerId: string; targetId: string }) => {
       this.onCombatStarted({ attackerId: data.attackerId, targetId: data.targetId });
     });
-    this.subscribe(EventType.COMBAT_ENDED, (data) => {
-      this.onCombatEnded({ attackerId: data.winnerId || '', targetId: '' });
+    // COMBAT_ENDED has no entity context in typed payload; ignore in this system
+    this.subscribe(EventType.COMBAT_ENDED, (_data: { sessionId: string; winnerId: string | null }) => {
+      // no-op
     });
-    this.subscribe(EventType.MOB_POSITION_UPDATED, (data) => {
+    this.subscribe(EventType.MOB_POSITION_UPDATED, (data: { mobId: string; position: Position3D }) => {
       this.updateMobPosition({ entityId: data.mobId, position: data.position });
     });
-    this.subscribe(EventType.PLAYER_LEVEL_CHANGED, (data) => {
-      this.checkAggroUpdates(data);
-    });
+    this.subscribe(
+      EventType.PLAYER_LEVEL_CHANGED,
+      (data: { playerId: string; skill: 'attack' | 'strength' | 'defense' | 'constitution' | 'ranged' | 'woodcutting' | 'fishing' | 'firemaking' | 'cooking'; newLevel: number; oldLevel: number }) => {
+        this.checkAggroUpdates({ playerId: data.playerId, oldLevel: data.oldLevel, newLevel: data.newLevel, skill: data.skill });
+      }
+    );
 
     // Listen to skills updates for reactive patterns
-    this.subscribe(EventType.SKILLS_UPDATED, (data) => {
-      this.playerSkills.set(data.playerId, data.skills);
-    });
+    this.subscribe(
+      EventType.SKILLS_UPDATED,
+      (data: { playerId: string; skills: Record<'attack' | 'strength' | 'defense' | 'constitution' | 'ranged' | 'woodcutting' | 'fishing' | 'firemaking' | 'cooking', { level: number; xp: number }> }) => {
+        this.playerSkills.set(data.playerId, data.skills);
+      }
+    );
     
   }
 
@@ -80,6 +87,12 @@ export class AggroSystem extends SystemBase {
   }
 
   private registerMob(mobData: { id: string; type: string; level: number; position: { x: number; y: number; z: number } }): void {
+    // Validate that type exists and is a string before calling toLowerCase()
+    if (!mobData.type || typeof mobData.type !== 'string') {
+      console.warn(`[AggroSystem] Invalid mob type for mob ${mobData.id}: ${mobData.type}. Full mobData:`, mobData);
+      return;
+    }
+    
     const mobType = mobData.type.toLowerCase();
     const behavior = AGGRO_CONSTANTS.MOB_BEHAVIORS[mobType] || AGGRO_CONSTANTS.MOB_BEHAVIORS.default;
     
@@ -254,8 +267,7 @@ export class AggroSystem extends SystemBase {
     // Trigger combat system
     this.emitTypedEvent(EventType.COMBAT_START_ATTACK, {
       attackerId: mobState.mobId,
-      targetId: playerId,
-      attackStyle: 'aggressive'
+      targetId: playerId
     });
   }
 
@@ -272,7 +284,7 @@ export class AggroSystem extends SystemBase {
     // Emit chase end event
     this.emitTypedEvent(EventType.MOB_CHASE_ENDED, {
       mobId: mobState.mobId,
-      previousTarget: previousTarget
+      targetPlayerId: previousTarget as string
     });
     
     // Start returning to home position
@@ -293,7 +305,7 @@ export class AggroSystem extends SystemBase {
           z: mobState.homePosition.z
         },
         speed: mobState.chaseSpeed * 0.7, // Slower return speed
-        reason: 'returning_home'
+        reason: 'return'
       });
     }
   }
@@ -366,7 +378,7 @@ export class AggroSystem extends SystemBase {
       return;
     }
     
-    const player = this.world.getPlayer(mobState.currentTarget);
+    const player = this.world.getPlayer(mobState.currentTarget)!;
     
     const distance = calculateDistance(mobState.currentPosition, player.node.position);
     const aggroTarget = mobState.aggroTargets.get(mobState.currentTarget);
@@ -390,7 +402,7 @@ export class AggroSystem extends SystemBase {
         mobId: mobState.mobId,
         targetPosition: { x: player.node.position.x, y: player.node.position.y, z: player.node.position.z },
         speed: mobState.chaseSpeed,
-        reason: 'chasing_player'
+        reason: 'chase'
       });
     }
   }
@@ -410,7 +422,7 @@ export class AggroSystem extends SystemBase {
       mobId: mobState.mobId,
       targetPosition: patrolTarget,
       speed: mobState.chaseSpeed * 0.5, // Slow patrol speed
-      reason: 'patrolling'
+      reason: 'patrol'
     });
   }
 

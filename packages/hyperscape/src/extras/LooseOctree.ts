@@ -1,5 +1,5 @@
 import { isBoolean } from 'lodash-es'
-import * as THREE from './three'
+import THREE from './three'
 import type {
   RenderHelperItem,
   ExtendedIntersection,

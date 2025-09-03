@@ -4,17 +4,17 @@
  * to enable strong type assumptions throughout the codebase
  */
 
-import PhysX from '@hyperscape/physx-js-webidl'
-import * as THREE from '../extras/three'
+import { Entity } from '../entities/Entity'
+import THREE from '../extras/three'
 import type { CombatData } from '../systems/CombatSystem'
 import type { Item, Town } from '../types/core'
+import type { PxScene } from '../types/physics'
 import type { Player, System, World } from './index'
-import { Entity } from '../entities/Entity'
 
 // Core System Interfaces
 
 export interface PhysicsSystem extends System {
-  scene: PhysX.PxScene
+  scene: PxScene
   createLayerMask(...layers: string[]): number
   raycast(origin: THREE.Vector3, direction: THREE.Vector3, maxDistance?: number, layerMask?: number): unknown
   addActor(actor: unknown, handle: unknown): unknown
@@ -74,8 +74,20 @@ export interface DatabaseSystem extends System {
 }
 
 export interface LoaderSystem extends System {
-  preload(url: string): void
-  execPreload(): Promise<void>
+  // Basic loading methods
+  load(type: string, url: string): Promise<unknown>;
+  preload(type: string, url: string): void;
+  execPreload(): Promise<void>;
+  insert?(type: string, url: string, data: File): void;
+  get?(type: string, url: string): unknown;
+  
+  // Typed loading methods (optional for backward compatibility)
+  loadModel?(url: string): Promise<THREE.Object3D>;
+  loadTexture?(url: string): Promise<THREE.Texture>;
+  loadHDR?(url: string): Promise<THREE.DataTexture>;
+  loadAvatar?(url: string): Promise<unknown>;
+  loadEmote?(url: string): Promise<unknown>;
+  loadVideo?(url: string): Promise<unknown>;
 }
 
 export interface ActionsSystem extends System {

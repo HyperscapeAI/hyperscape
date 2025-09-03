@@ -1,11 +1,11 @@
 import { Component } from '../components/Component';
 import { Entity } from '../entities/Entity';
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import { Avatar } from '../nodes';
+import type { Node as NodeClass } from '../nodes/Node';
 import { System } from '../systems/System';
 import { World } from '../World';
 import type { EntityData, Position2D, Position3D } from './base-types';
-import type { PxTransform } from './physx';
 
 // Re-enable core imports - circular dependency should be resolved
 import type {
@@ -810,13 +810,6 @@ export interface WorldChunk {
   lastActivity: Date;
 }
 
-// Movement Types
-export enum MovementMode {
-  WASD = 'wasd',
-  CLICK_TO_MOVE = 'click_to_move',
-  HYBRID = 'hybrid'
-}
-
 export interface MovementTarget {
   playerId: string;
   targetPosition: { x: number; y: number; z: number };
@@ -872,22 +865,10 @@ export interface PlayerStats {
   deaths: number;
 }
 
-// Node Types
-export interface Node {
-  id: string;
-  type: string;
-  parent: Node | null;
-  children: Node[];
-  transform: PxTransform;
-  visible: boolean;
-  
-  add(child: Node): void;
-  remove(child: Node): void;
-  traverse(callback: (node: Node) => void): void;
-  getWorldPosition(): Vector3;
-  getWorldRotation(): Quaternion;
-  getWorldScale(): Vector3;
-}
+// Use the concrete Node base class from nodes module under a non-DOM-colliding alias
+export type HSNode = NodeClass;
+// Also export it as Node for external type imports that expect Node
+export type Node = HSNode;
 
 // Node data for serialization
 export interface NodeData {
@@ -962,14 +943,7 @@ export interface ScreenEntry {
   height: number;
 }
 
-export interface CameraEntry {
-  $camera: true;
-  position: THREE.Vector3;
-  quaternion: THREE.Quaternion;
-  rotation: THREE.Euler;
-  zoom: number;
-  write: boolean;
-}
+// CameraEntry removed; camera is controlled exclusively by ClientCameraSystem
 
 export interface PointerEntry {
   $pointer: true;
@@ -981,7 +955,7 @@ export interface PointerEntry {
   unlock: () => void;
 }
 
-export type ControlEntry = ButtonEntry | VectorEntry | ValueEntry | ScreenEntry | CameraEntry | PointerEntry;
+export type ControlEntry = ButtonEntry | VectorEntry | ValueEntry | ScreenEntry | PointerEntry;
 
 export interface ControlAction {
   id?: number;
@@ -1059,18 +1033,19 @@ export interface EnvironmentModel {
 
 // Loader Types
 export interface LoadedModel {
-  toNodes: () => Map<string, Node>; // Node type from node system
+  toNodes: () => Map<string, HSNode>; // Node type from node system
   getStats: () => { fileBytes?: number; [key: string]: unknown };
 }
 
 export interface LoadedEmote {
-  toNodes: () => Map<string, Node>;
+  toNodes: () => Map<string, HSNode>;
   getStats: () => { fileBytes?: number; [key: string]: unknown };
-  toClip: (options?: { fps?: number; name?: string }) => THREE.AnimationClip | null;
+  // Match createEmoteFactory toClip signature (VRM retarget options)
+  toClip: (options?: { rootToHips?: number; version?: string; getBoneName?: (name: string) => string }) => THREE.AnimationClip | null;
 }
 
 export interface LoadedAvatar {
-  toNodes: (customHooks?: { scene: THREE.Scene; octree?: unknown; camera?: unknown; loader?: unknown }) => Map<string, Node>;
+  toNodes: (customHooks?: { scene: THREE.Scene; octree?: unknown; camera?: unknown; loader?: unknown }) => Map<string, HSNode>;
   getStats: () => { fileBytes?: number; [key: string]: unknown };
 }
 

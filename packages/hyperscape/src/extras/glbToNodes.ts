@@ -1,5 +1,5 @@
 import { createNode } from './createNode'
-import * as THREE from './three'
+import THREE from './three'
 import CustomShaderMaterial from '../libs/three-custom-shader-material'
 import { World } from '../World';
 import type { Node } from '../nodes/Node';
@@ -103,12 +103,12 @@ export function glbToNodes(glb: GLBData, world: World) {
       parse(object3d.children as THREE.Object3D[], wrapNodeAsParent(node))
       }
       // Collider (custom node)
-      else if (props.node === 'collider' && (object3d as THREE.Object3D & { isMesh?: boolean }).isMesh) {
+      else if (props.node === 'collider' && (object3d instanceof THREE.Mesh)) {
         // NOTE: in blender if you export a single object with node:collider but it has multiple materials, it converts this into a Group with one Mesh for each material.
         // but since the Group is the one that has the collider custom property, it won't work as expected. we could hack to fix this, but i think it adds a layer of indirection.
         // colliders should not have materials on them.
         // console.error('TODO: glbToNodes collider for box/sphere in blender?')
-        const mesh = object3d as unknown as THREE.Mesh
+        const mesh = object3d
         const node = registerNode('collider', {
           id: mesh.name,
           type: 'geometry',
@@ -125,7 +125,11 @@ export function glbToNodes(glb: GLBData, world: World) {
       }
       // Mesh
       else if (object3d.type === 'Mesh') {
-        const mesh = object3d as unknown as THREE.Mesh
+        if (!(object3d instanceof THREE.Mesh)) {
+          // Not a mesh instance, skip
+          continue
+        }
+        const mesh = object3d
         // experimental splatmaps
         if (props.exp_splatmap && !world.network.isServer) {
           setupSplatmap(mesh)
@@ -385,18 +389,16 @@ function setupSplatmap(mesh: THREE.Mesh) {
   //   terrain.geometry.deleteAttribute('_color')
   //   hasVertexColors = true
   // }
-  interface CustomShaderMaterialConstructor {
-    new (options: {
-      baseMaterial: typeof THREE.MeshStandardMaterial;
-      roughness: number;
-      metalness: number;
-      uniforms: Record<string, { value: unknown }>;
-      vertexShader: string;
-      fragmentShader: string;
-    }): THREE.Material;
+  type CustomShaderMaterialOptions = {
+    baseMaterial: typeof THREE.MeshStandardMaterial;
+    roughness: number;
+    metalness: number;
+    uniforms: Record<string, { value: unknown }>;
+    vertexShader: string;
+    fragmentShader: string;
   }
 
-  mesh.material = new (CustomShaderMaterial as unknown as CustomShaderMaterialConstructor)({
+  mesh.material = new (CustomShaderMaterial as unknown as new (opts: CustomShaderMaterialOptions) => THREE.Material)({
     baseMaterial: THREE.MeshStandardMaterial,
     roughness: 1,
     metalness: 0,

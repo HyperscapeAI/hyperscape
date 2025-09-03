@@ -56,8 +56,7 @@ function createMockStatsComponent(overrides: Partial<StatsComponent> = {}): Stat
   return {
     combatLevel: 70,
     level: 70,
-    health: 99,
-    maxHealth: 99,
+    health: { current: 99, max: 99 },
     attack: createMockSkillData(60),
     strength: createMockSkillData(65),
     defense: createMockSkillData(45),

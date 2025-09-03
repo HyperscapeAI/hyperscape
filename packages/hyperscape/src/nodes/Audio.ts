@@ -1,4 +1,4 @@
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 
 import { Node } from './Node'
 import type { AudioData, DistanceModelType } from '../types/nodes'

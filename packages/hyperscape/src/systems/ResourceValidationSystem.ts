@@ -13,7 +13,7 @@
  */
 
 import { System } from './System';
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import type { World } from '../types/index';
 import { calculateDistance } from '../utils/MathUtils';
 import { TerrainValidationSystem } from './TerrainValidationSystem';
@@ -123,6 +123,7 @@ export class ResourceValidationSystem extends System {
         this.physxCollisionSystem = this.world.getSystem('physx-collision');
     
     if (!this.terrainValidationSystem) {
+      // Keep minimal console for server logs; consider migrating to SystemBase later
       console.error('[ResourceValidation] ❌ TerrainValidationSystem not found! Resource validation will be limited.');
     }
     
@@ -137,7 +138,7 @@ export class ResourceValidationSystem extends System {
     this.world.on(EventType.TERRAIN_VALIDATION_COMPLETE, (...args: unknown[]) => this.updateResourceValidation(args[0]));
     
     // Listen for validation requests
-    this.world.on(EventType.RESOURCE_VALIDATION_REQUEST, (...args: unknown[]) => this.requestValidation());
+    this.world.on(EventType.RESOURCE_VALIDATION_REQUEST, (..._args: unknown[]) => this.requestValidation());
     this.world.on(EventType.RESOURCE_PLACEMENT_VALIDATE, (...args: unknown[]) => this.validateResourcePlacement(args[0] as { definitionId: string; position: { x: number; y: number; z: number }; callback: (isValid: boolean, errors: ResourceValidationError[]) => void }));
     
   }

@@ -20,23 +20,14 @@ import { STARTING_ITEMS } from './starting-items';
 import { TREASURE_LOCATIONS, getAllTreasureLocations, getTreasureLocationsByDifficulty } from './treasure-locations';
 import { ALL_WORLD_AREAS, STARTER_TOWNS, getMobSpawnsInArea, getNPCsInArea } from './world-areas';
 
-import type { Item } from '../types/core';
-import type { MobData } from './mobs';
-import type { TreasureLocation } from './treasure-locations';
+import type { Item, MobData, TreasureLocation } from '../types/core';
+import type { DataValidationResult } from '../types/validation-types'
 import type { MobSpawnPoint, NPCLocation, WorldArea } from './world-areas';
 
 /**
  * Data validation results
  */
-export interface DataValidationResult {
-  isValid: boolean;
-  errors: string[];
-  warnings: string[];
-  itemCount: number;
-  mobCount: number;
-  areaCount: number;
-  treasureCount: number;
-}
+// DataValidationResult moved to shared types
 
 /**
  * Centralized Data Manager

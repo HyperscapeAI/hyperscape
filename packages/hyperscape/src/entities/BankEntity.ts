@@ -3,7 +3,7 @@
  * Managed by BankingSystem, inherits ECS functionality from Entity
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import type { World } from '../World';
 import type { BankEntityData, BankStorageItem, EntityInteractionData } from '../types/entities';
 import { EntityType, InteractionType } from '../types/entities';
@@ -67,8 +67,7 @@ export class BankEntity extends StorageEntity {
         combatComponent: null,
         healthComponent: null,
         visualComponent: null,
-        health: 1,
-        maxHealth: 1,
+        health: { current: 1, max: 1 },  // Use PlayerHealth object
         level: 1,
         // Bank-specific properties
         bankId: data.bankId,

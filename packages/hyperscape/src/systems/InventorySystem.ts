@@ -59,14 +59,14 @@ export class InventorySystem extends SystemBase {
     this.subscribe(EventType.PLAYER_CLEANUP, (data) => {
       this.cleanupInventory({ id: data.playerId });
     });
-    this.subscribe(EventType.INVENTORY_ITEM_REMOVED, (event) => {
-      this.removeItem(event);
+    this.subscribe(EventType.INVENTORY_ITEM_REMOVED, (data) => {
+      this.removeItem(data);
     });
-    this.subscribe(EventType.ITEM_DROP, (event) => {
-      this.dropItem(event);
+    this.subscribe(EventType.ITEM_DROP, (data) => {
+      this.dropItem(data);
     });
-    this.subscribe(EventType.INVENTORY_USE, (event) => {
-      this.useItem(event);
+    this.subscribe(EventType.INVENTORY_USE, (data) => {
+      this.useItem(data);
     });
     this.subscribe(EventType.ITEM_PICKUP, (data) => {
       this.pickupItem({ playerId: data.playerId, entityId: data.itemId });
@@ -515,22 +515,20 @@ export class InventorySystem extends SystemBase {
     const inventoryData = this.getInventoryData(playerId);
     this.emitTypedEvent(EventType.INVENTORY_UPDATED, {
       playerId,
-      inventory: {
-        items: inventoryData.items.map(item => ({
-          slot: item.slot,
-          itemId: item.itemId,
-          quantity: item.quantity,
-          item: {
-            id: item.item.id,
-            name: item.item.name,
-            type: item.item.type,
-            stackable: item.item.stackable,
-            weight: item.item.weight
-          }
-        })),
-        coins: inventoryData.coins,
-        maxSlots: inventoryData.maxSlots
-      }
+      items: inventoryData.items.map(item => ({
+        slot: item.slot,
+        itemId: item.itemId,
+        quantity: item.quantity,
+        item: {
+          id: item.item.id,
+          name: item.item.name,
+          type: item.item.type,
+          stackable: item.item.stackable,
+          weight: item.item.weight
+        }
+      })),
+      coins: inventoryData.coins,
+      maxSlots: inventoryData.maxSlots
     });
   }
 

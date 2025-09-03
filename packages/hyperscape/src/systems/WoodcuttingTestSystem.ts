@@ -105,7 +105,7 @@ export class WoodcuttingTestSystem extends VisualTestFramework {
     }, 1000)
 
     // Listen for resource gathering responses
-    this.world.on(EventType.UI_MESSAGE, (data: UIMessageEvent) => {
+    this.subscribe(EventType.UI_MESSAGE, (data: UIMessageEvent) => {
       const message = data.message
       const playerId = data.playerId
       if (
@@ -123,7 +123,7 @@ export class WoodcuttingTestSystem extends VisualTestFramework {
     })
 
     // Listen for XP gain events specifically
-    this.world.on(EventType.SKILLS_XP_GAINED, (data) => {
+    this.subscribe(EventType.SKILLS_XP_GAINED, (data) => {
       const { playerId, skill, amount } = data;
       if (skill === 'woodcutting') {
         const testStations = Array.from(this.testData.entries())
@@ -146,7 +146,7 @@ export class WoodcuttingTestSystem extends VisualTestFramework {
     })
 
     // Listen for resource gathering completion to track successful logs
-    this.world.on(EventType.RESOURCE_GATHERING_COMPLETED, (data) => {
+    this.subscribe(EventType.RESOURCE_GATHERING_COMPLETED, (data) => {
       const { playerId, skill } = data;
       if (skill === 'woodcutting') {
         const testStations = Array.from(this.testData.entries())
@@ -160,7 +160,7 @@ export class WoodcuttingTestSystem extends VisualTestFramework {
     })
     
     // Set up callback handlers for resource system checks
-    this.world.on(EventType.INVENTORY_HAS_EQUIPPED, (data: { playerId: string; slot: string; itemType: string; callback: (hasEquipped: boolean) => void }) => {
+    this.subscribe(EventType.INVENTORY_HAS_EQUIPPED, (data: { playerId: string; slot: string; itemType: string; callback: (hasEquipped: boolean) => void }) => {
       // Check if this is for one of our fake players
       const testStations = Array.from(this.testData.entries())
       for (const [_stationId, testData] of testStations) {
@@ -1039,7 +1039,7 @@ export class WoodcuttingTestSystem extends VisualTestFramework {
     }
 
     // Listen for failure messages
-    const messageHandler = (data: UIMessageEvent) => {
+    const messageSub = this.subscribe(EventType.UI_MESSAGE, (data: UIMessageEvent) => {
       const message = data.message
       const playerId = data.playerId
       if (playerId === testData.player.id && message) {
@@ -1052,7 +1052,7 @@ export class WoodcuttingTestSystem extends VisualTestFramework {
           (failureType === 'too_far' && (messageLower.includes('too far') || messageLower.includes('distance') || messageLower.includes('closer'))) ||
           (failureType === 'inventory_full' && (messageLower.includes('inventory') || messageLower.includes('full') || messageLower.includes('space')))
         ) {
-          this.world.off(EventType.UI_MESSAGE, messageHandler)
+          messageSub.unsubscribe()
 
           // Test passed - got expected failure message
           this.passTest(stationId, {
@@ -1066,9 +1066,7 @@ export class WoodcuttingTestSystem extends VisualTestFramework {
           })
         }
       }
-    }
-
-    this.world.on(EventType.UI_MESSAGE, messageHandler)
+    })
 
     // Attempt woodcutting - should fail
     setTimeout(() => {
@@ -1080,7 +1078,7 @@ export class WoodcuttingTestSystem extends VisualTestFramework {
 
       // Timeout fallback - if no message received, check if no logs were chopped
       setTimeout(() => {
-        this.world.off(EventType.UI_MESSAGE, messageHandler)
+        messageSub.unsubscribe()
 
         // If we haven't passed or failed yet, check logs count
         const station = this.testStations.get(stationId)

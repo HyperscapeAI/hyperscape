@@ -126,8 +126,7 @@ function createMockStatsComponent(overrides: Partial<StatsComponent> = {}): Stat
   return {
     combatLevel: 70,
     level: 70,
-    health: 99,
-    maxHealth: 99,
+    health: { current: 99, max: 99 },
     attack: createMockSkillData(60),
     strength: createMockSkillData(65),
     defense: createMockSkillData(45),
@@ -359,8 +358,7 @@ describe('DamageCalculator', () => {
         magic: createMockSkillData(1),
         strength: createMockSkillData(1),
         defense: createMockSkillData(1),
-        health: 10,
-        maxHealth: 10,
+        health: { current: 10, max: 10 },
         combatLevel: 3,
         level: 3
       })
@@ -373,8 +371,7 @@ describe('DamageCalculator', () => {
 
     it('should handle very high level attackers', () => {
       const highLevelAttacker: StatsComponent = createMockStatsComponent({
-        health: 99,
-        maxHealth: 99,
+        health: { current: 99, max: 99 },
         combatLevel: 126,
         level: 99,
         attack: createMockSkillData(99),

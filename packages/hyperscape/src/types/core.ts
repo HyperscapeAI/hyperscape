@@ -3,7 +3,7 @@
  * These types are specific to the game systems
  */
 
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 import type { System, SystemDependencies } from '../systems/System'
 import type { World } from '../World'
 import type { EntityData as BaseEntityData, Position3D } from './base-types'
@@ -167,7 +167,7 @@ export interface EquipmentSlot {
   slot: EquipmentSlotName
   itemId: string | number | null
   item: Item | null
-  visualMesh?: THREE.Object3D
+  visualMesh?: THREE.Object3D | THREE.Mesh
 }
 
 export interface Equipment {
@@ -387,8 +387,7 @@ export interface InventoryComponent {
 export interface StatsComponent {
   combatLevel: number
   level: number
-  health: PlayerHealth
-  maxHealth: number
+  health: PlayerHealth  // Changed from separate health/maxHealth numbers to use PlayerHealth object
   attack: SkillData
   strength: SkillData
   defense: SkillData
@@ -2001,6 +2000,17 @@ export interface MobData {
   health: number;
   maxHealth: number;
   level: number;
+}
+
+// Treasure locations shared across systems
+export interface TreasureLocation {
+  id: string;
+  position: { x: number; y: number; z: number };
+  difficulty: 1 | 2 | 3;
+  areaId: string;
+  description: string;
+  respawnTime: number; // milliseconds
+  maxItems: number;
 }
 
 // Note: MobInstance is already defined above at line 1516 with all necessary properties

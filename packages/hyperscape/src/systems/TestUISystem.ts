@@ -1,5 +1,5 @@
 import { SystemBase } from './SystemBase';
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import type { World } from '../World';
 import { EventType } from '../types/events';
 
@@ -35,8 +35,8 @@ export class TestUISystem extends SystemBase {
 
   async init(): Promise<void> {    
     // Listen for UI events
-    this.world.on(EventType.UI_CREATE, this.createTestUIElements.bind(this));
-    this.world.on(EventType.TEST_CLEAR_UI, this.clearAllUI.bind(this));
+    this.subscribe(EventType.UI_CREATE, () => this.createTestUIElements());
+    this.subscribe(EventType.TEST_CLEAR_UI, () => this.clearAllUI());
 
   }
 
@@ -59,7 +59,7 @@ export class TestUISystem extends SystemBase {
 
   private createStatusUI(): void {
     if (!THREE) {
-      console.warn('[TestUISystem] THREE.js not available');
+      this.logger.warn('[TestUISystem] THREE.js not available');
       return;
     }
     
@@ -90,7 +90,7 @@ export class TestUISystem extends SystemBase {
       context.fillText('Dynamic Content: ✓', 10, 65);
       context.fillText('Test UI: ✓', 10, 85);
     } else {
-      console.warn('[TestUISystem] Canvas 2D context not available');
+      this.logger.warn('[TestUISystem] Canvas 2D context not available');
       return;
     }
     
@@ -359,7 +359,7 @@ export class TestUISystem extends SystemBase {
     // Reset counter
     this.uiCounter = 0;
     
-    console.log('[TestUISystem] Test UI system destroyed and cleaned up');
+    this.logger.info('[TestUISystem] Test UI system destroyed and cleaned up');
     
     // Call parent cleanup
     super.destroy();

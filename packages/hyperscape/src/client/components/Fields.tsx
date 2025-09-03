@@ -518,12 +518,12 @@ export function FieldFile({ world, label, hint, kind: kindName, value, onChange 
     }
     setLoading(newValue)
     // upload file
-    if (!world.network || !('upload' in world.network)) {
+    if (!world.network || typeof (world.network as { upload?: (file: File) => Promise<unknown> }).upload !== 'function') {
       console.error('Upload functionality not available')
       setLoading(null)
       return
     }
-    await (world.network as unknown as { upload: (file: File) => Promise<unknown> }).upload(file)
+    await (world.network as { upload: (file: File) => Promise<unknown> }).upload(file)
     // ignore if new value/upload
     if (nRef.current !== n) return
     // cache file locally so this client can insta-load it

@@ -1,5 +1,5 @@
 
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 
 import { DEG2RAD } from '../extras/general'
 
@@ -7,7 +7,7 @@ import type {
   PxCapsuleControllerDesc,
   PxFilterData,
   PxRigidDynamic
-} from '../types/physx'
+} from '../types/physics'
 import { Layers } from '../extras/Layers'
 import type { PhysicsHandle } from '../systems/Physics'
 import { Node } from './Node'
@@ -33,8 +33,9 @@ declare const PHYSX: {
   PxControllerCollisionFlagEnum: Record<string, number>;
 };
 
-import type { ControllerData, PhysXActorHandle } from '../types/nodes'
-import type { PhysXController, PxControllerCollisionFlags } from '../types/physx'
+import type { ControllerData } from '../types/nodes'
+import type { ActorHandle } from '../types/physics'
+import type { PhysXController, PxControllerCollisionFlags } from '../types/physics'
 import type { ContactEvent } from '../systems/Physics'
 
 const _layers = ['environment', 'prop', 'player', 'tool']
@@ -60,7 +61,7 @@ export class Controller extends Node {
   handle?: PhysXController;
   mesh?: THREE.Mesh;
   controller?: PhysXController;
-  actorHandle?: PhysXActorHandle;
+  actorHandle?: ActorHandle;
   needsRebuild?: boolean;
   moveFlags?: PxControllerCollisionFlags;
   didMove?: boolean;
@@ -116,16 +117,16 @@ export class Controller extends Node {
     }
     desc.position = pxPosition
     
-    this.controller = this.ctx!.physics.controllerManager!.createController(desc) as unknown as PhysXController
+    this.controller = this.ctx!.physics.controllerManager!.createController(desc) as PhysXController
     PHYSX.destroy(desc)
 
     const actor = this.controller.getActor()
     const actorWithShapes = actor as typeof actor & { getNbShapes(): number; getShapes(buffer: unknown, maxShapes: number, startIndex: number): number }
     const nbShapes = actorWithShapes.getNbShapes()
-    const shapeBuffer = new PHYSX.PxArray_PxShapePtr(nbShapes) as unknown as { begin(): unknown; get(index: number): unknown }
+    const shapeBuffer = new PHYSX.PxArray_PxShapePtr(nbShapes) as { begin(): unknown; get(index: number): unknown }
     const shapesCount = actorWithShapes.getShapes(shapeBuffer.begin(), nbShapes, 0)
     for (let i = 0; i < shapesCount; i++) {
-      const shape = shapeBuffer.get(i) as unknown as { setFlags(flags: unknown): void; setQueryFilterData(data: unknown): void; setSimulationFilterData(data: unknown): void }
+      const shape = shapeBuffer.get(i) as { setFlags(flags: unknown): void; setQueryFilterData(data: unknown): void; setSimulationFilterData(data: unknown): void }
       const layer = Layers[this._layer!]
       if (!layer) {
         throw new Error(`[controller] layer not found: ${this._layer}`)
@@ -136,7 +137,7 @@ export class Controller extends Node {
         PHYSX.PxPairFlagEnum.eNOTIFY_CONTACT_POINTS
       const filterData = new PHYSX.PxFilterData(layer.group, layer.mask, pairFlags, 0)
       const shapeFlags = new PHYSX.PxShapeFlags()
-      shapeFlags.raise((PHYSX.PxShapeFlagEnum as unknown as Record<string, number>).eSCENE_QUERY_SHAPE | (PHYSX.PxShapeFlagEnum as unknown as Record<string, number>).eSIMULATION_SHAPE)
+      shapeFlags.raise( PHYSX.PxShapeFlagEnum.eSCENE_QUERY_SHAPE | PHYSX.PxShapeFlagEnum.eSIMULATION_SHAPE )
       shape.setFlags(shapeFlags)
       shape.setQueryFilterData(filterData)
       shape.setSimulationFilterData(filterData)
@@ -185,7 +186,7 @@ export class Controller extends Node {
       onTriggerLeave: undefined,
     };
     
-    this.actorHandle = this.ctx!.physics.addActor(actor as PxRigidDynamic, physicsHandle) as unknown as PhysXActorHandle ?? undefined
+    this.actorHandle = this.ctx!.physics.addActor(actor as PxRigidDynamic, physicsHandle) ?? undefined
   }
 
   commit(didMove) {
@@ -210,7 +211,7 @@ export class Controller extends Node {
       const scene = this.ctx!.stage.scene
       scene.remove(this.mesh)
     }
-    this.actorHandle?.release()
+    this.actorHandle?.destroy?.()
     this.actorHandle = undefined
     this.controller?.release()
     this.controller = undefined
@@ -296,11 +297,11 @@ export class Controller extends Node {
   }
 
   get isGrounded() {
-    return (this.moveFlags as unknown as { isSet(flag: number): boolean })?.isSet(PHYSX.PxControllerCollisionFlagEnum.eCOLLISION_DOWN) || false
+    return (this.moveFlags as { isSet(flag: number): boolean } | undefined)?.isSet(PHYSX.PxControllerCollisionFlagEnum.eCOLLISION_DOWN) || false
   }
 
   get isCeiling() {
-    return (this.moveFlags as unknown as { isSet(flag: number): boolean })?.isSet(PHYSX.PxControllerCollisionFlagEnum.eCOLLISION_UP) || false
+    return (this.moveFlags as { isSet(flag: number): boolean } | undefined)?.isSet(PHYSX.PxControllerCollisionFlagEnum.eCOLLISION_UP) || false
   }
 
   teleport(vec3) {

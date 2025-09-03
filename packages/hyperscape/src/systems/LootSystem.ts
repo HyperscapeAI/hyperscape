@@ -20,7 +20,7 @@ import { items } from '../data/items';
 import type { DroppedItem, } from '../types/systems';
 import { calculateDistance } from '../utils/EntityUtils';
 import { EntityManager } from './EntityManager';
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 
 
 export class LootSystem extends SystemBase {
@@ -53,28 +53,31 @@ export class LootSystem extends SystemBase {
     this.setupLootTables();
     
     // Subscribe to loot events using type-safe event system
-    // Listen for the official mob death event
-    this.subscribe<{ mobId: string; mobType: string; level: number; killedBy: string; position: { x: number; y: number; z: number } }>(EventType.MOB_DIED, (event) => { 
-      // Handle mob death by generating loot (from MobSystem)
-
-      this.handleMobDeath(event.data); 
+    // Listen for the official mob death event (normalize various emitters)
+    this.subscribe(EventType.MOB_DIED, (event: { mobId?: string; killerId?: string; mobType?: string; level?: number; killedBy?: string; position?: { x: number; y: number; z: number } }) => {
+      const d = event;
+      // Backfill minimal shape expected by handleMobDeath if missing
+      const payload = {
+        mobId: d.mobId as string,
+        mobType: (d.mobType || 'unknown') as string,
+        level: (d.level ?? 1) as number,
+        killedBy: (d.killerId ?? d.killedBy ?? 'unknown') as string,
+        position: d.position ?? { x: 0, y: 0, z: 0 }
+      };
+      this.handleMobDeath(payload);
     });
-    this.subscribe<{ position: { x: number; y: number; z: number }; lootEntries: { itemId: string; quantity: number }[] }>(EventType.ITEM_DROP, (event) => {
-      // Convert LootEntry[] to the expected items format
-      const items = event.data.lootEntries.map((entry) => ({ itemId: entry.itemId, quantity: entry.quantity }));
-      this.handleLootDropRequest({
-        position: event.data.position,
-        items: items
-      });
+    this.subscribe<{ position: { x: number; y: number; z: number }; lootEntries: { itemId: string; quantity: number }[] }>(EventType.ITEM_DROP, (data) => {
+      const items = data.lootEntries.map((entry) => ({ itemId: entry.itemId, quantity: entry.quantity }));
+      this.handleLootDropRequest({ position: data.position, items });
     });
-    this.subscribe<{ playerId: string; itemId: string }>(EventType.ITEM_PICKUP, (event) => { 
-      this.handleLootPickup(event.data);
+    this.subscribe<{ playerId: string; itemId: string }>(EventType.ITEM_PICKUP, (data) => { 
+      this.handleLootPickup(data);
     });
     this.subscribe<{ playerId: string; position: { x: number; y: number; z: number } }>(EventType.PLAYER_POSITION_UPDATED, (_event) => {
       // Check nearby loot - need to implement this method
 
     });
-    this.subscribe<{ playerId: string; itemId: string; quantity: number; position: { x: number; y: number; z: number } }>(EventType.ITEM_DROPPED, (event) => this.dropItem(event.data));
+    this.subscribe<{ playerId: string; itemId: string; quantity: number; position: { x: number; y: number; z: number } }>(EventType.ITEM_DROPPED, (data) => this.dropItem(data));
     
     // Start managed cleanup timer
     this.createInterval(() => {

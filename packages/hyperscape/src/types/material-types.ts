@@ -5,21 +5,24 @@
  * including the Stage system and any rendering-related functionality.
  */
 
-import type * as THREE from '../extras/three';
+import type THREE from '../extras/three';
 
 /**
  * Type-safe material interfaces for THREE.js materials
  */
 export interface MaterialWithColor extends THREE.Material {
   color: THREE.Color;
+  needsUpdate: boolean;
 }
 
 export interface MaterialWithEmissive extends THREE.Material {
   emissiveIntensity: number;
+  needsUpdate: boolean;
 }
 
 export interface MaterialWithFog extends THREE.Material {
   fog: boolean;
+  needsUpdate: boolean;
 }
 
 export interface MaterialWithTexture extends THREE.Material {

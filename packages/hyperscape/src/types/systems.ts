@@ -5,7 +5,7 @@
  * Common types have been moved to core.ts to avoid duplication.
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import type { System } from '../systems/System';
 import type { Item, MobStats, Position3D } from './core';
 

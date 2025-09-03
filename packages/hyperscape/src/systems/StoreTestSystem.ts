@@ -143,7 +143,7 @@ export class StoreTestSystem extends VisualTestFramework {
     });
 
     // Cast to proper Player type and initialize inventory
-    const player = basePlayer as unknown as PlayerEntity;
+    const player = basePlayer as PlayerEntity;
     // Remove invalid property assignments - these don't exist on Player type
     player.equipment = {
       weapon: null,
@@ -220,7 +220,7 @@ export class StoreTestSystem extends VisualTestFramework {
     });
 
     // Cast to proper Player type and initialize with items to sell
-    const player = basePlayer as unknown as PlayerEntity;
+    const player = basePlayer as PlayerEntity;
     // Remove invalid property assignments - these don't exist on Player type
     player.equipment = {
       weapon: null,
@@ -303,7 +303,7 @@ export class StoreTestSystem extends VisualTestFramework {
       });
 
       // Cast to proper Player type and give player only 10 coins
-      const player = basePlayer as unknown as PlayerEntity;
+      const player = basePlayer as PlayerEntity;
       // Remove invalid property assignments - these don't exist on Player type
       player.equipment = {
         weapon: null,
@@ -320,7 +320,7 @@ export class StoreTestSystem extends VisualTestFramework {
       } as Inventory;
 
       // Update the coins through the inventory system
-      this.world.emit(EventType.INVENTORY_UPDATE_COINS, {
+      this.emitTypedEvent(EventType.INVENTORY_UPDATE_COINS, {
         playerId: player.id,
         amount: 10
       })
@@ -396,7 +396,7 @@ export class StoreTestSystem extends VisualTestFramework {
       });
 
       // Cast to proper Player type and give player lots of coins
-      const player = basePlayer as unknown as PlayerEntity;
+      const player = basePlayer as PlayerEntity;
       // Remove invalid property assignments - these don't exist on Player type
       player.equipment = {
         weapon: null,
@@ -479,7 +479,7 @@ export class StoreTestSystem extends VisualTestFramework {
       });
 
       // Cast to proper Player type and give player coins and items for bulk operations
-      const player = basePlayer as unknown as PlayerEntity;
+      const player = basePlayer as PlayerEntity;
       // Remove invalid property assignments - these don't exist on Player type
       player.equipment = {
         weapon: null,

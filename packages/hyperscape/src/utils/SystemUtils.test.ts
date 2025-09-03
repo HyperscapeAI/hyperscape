@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Entity, EntityData, World } from '../types';
 import { System } from '../systems/System';
 import { createMockWorld } from '../__tests__/utils/mockWorld';
-import type * as THREE from '../extras/three';
+import type THREE from '../extras/three';
 import {
   type EntitiesSystem,
   type ChatSystem,
@@ -447,33 +447,13 @@ describe('SystemUtils', () => {
   })
 
   describe('getCameraSystem', () => {
-    it('should return rpg-camera system when it exists', () => {
-      const cameraSystem = new MockCameraSystem('rpg-camera')
-      mockWorld.systemsByName.set('rpg-camera', cameraSystem as unknown as System)
+    it('should return client-camera-system when it exists', () => {
+      const cameraSystem = new MockCameraSystem('client-camera-system')
+      mockWorld.systemsByName.set('client-camera-system', cameraSystem as unknown as System)
       
       const result = getCameraSystem(mockWorld)
       
       expect(result).toBe(cameraSystem)
-    })
-
-    it('should fallback to client-camera system', () => {
-      const cameraSystem = new MockCameraSystem('client-camera');
-      const mockWorld = createMockWorld({});
-      mockWorld.systemsByName.set('client-camera', cameraSystem as unknown as System);
-      const result = getCameraSystem(mockWorld);
-      expect(result).toBe(cameraSystem);
-    });
-
-    it('should prefer rpg-camera over client-camera', () => {
-      const rpgCameraSystem = new MockCameraSystem('rpg-camera')
-      const clientCameraSystem = new MockCameraSystem('client-camera')
-      
-      mockWorld.systemsByName.set('rpg-camera', rpgCameraSystem)
-      mockWorld.systemsByName.set('client-camera', clientCameraSystem)
-      
-      const result = getCameraSystem(mockWorld)
-      
-      expect(result).toBe(rpgCameraSystem)
     })
 
     it('should return null when no camera system exists', () => {
@@ -483,8 +463,8 @@ describe('SystemUtils', () => {
     });
 
     it('should work with camera target operations', () => {
-      const cameraSystem = new MockCameraSystem('rpg-camera')
-      mockWorld.systemsByName.set('rpg-camera', cameraSystem as unknown as System)
+      const cameraSystem = new MockCameraSystem('client-camera-system')
+      mockWorld.systemsByName.set('client-camera-system', cameraSystem as unknown as System)
       
       const result = getCameraSystem(mockWorld)
       expect(result).not.toBeNull()

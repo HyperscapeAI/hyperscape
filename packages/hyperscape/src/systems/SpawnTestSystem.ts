@@ -28,8 +28,8 @@ export class SpawnTestSystem extends SystemBase {
   async init(): Promise<void> {
     
     // Listen for player spawn events to validate positions
-    this.world.on(EventType.PLAYER_SPAWNED, this.validatePlayerSpawn.bind(this));
-    this.world.on(EventType.MOVEMENT_COMPLETED, this.validateTeleportPosition.bind(this));
+    this.subscribe(EventType.PLAYER_SPAWNED, (data) => this.validatePlayerSpawn(data));
+    this.subscribe(EventType.MOVEMENT_COMPLETED, (data) => this.validateTeleportPosition(data));
   }
 
   start(): void {
@@ -69,14 +69,14 @@ export class SpawnTestSystem extends SystemBase {
     }
   }
 
-  private validateTeleportPosition(event: { playerId: string; position: { x: number; y: number; z: number } }): void {
+  private validateTeleportPosition(event: { playerId: string; finalPosition: { x: number; y: number; z: number } }): void {
     // Same validation as spawn but for teleport events
-    if (event.position.x === 0 && event.position.y === 0 && event.position.z === 0) {
+    if (event.finalPosition.x === 0 && event.finalPosition.y === 0 && event.finalPosition.z === 0) {
       throw new Error(`[SpawnTestSystem] CRITICAL TELEPORT FAILURE: Player ${event.playerId} teleported to (0,0,0)!`);
     }
     
-    if (event.position.y <= 0) {
-      throw new Error(`[SpawnTestSystem] CRITICAL TELEPORT FAILURE: Player ${event.playerId} teleported below ground y=${event.position.y}!`);
+    if (event.finalPosition.y <= 0) {
+      throw new Error(`[SpawnTestSystem] CRITICAL TELEPORT FAILURE: Player ${event.playerId} teleported below ground y=${event.finalPosition.y}!`);
     }
   }
 

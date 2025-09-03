@@ -1,10 +1,10 @@
 import { isBoolean, isNumber } from 'lodash-es'
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 
 import type PhysX from '@hyperscape/physx-js-webidl'
 import type {
   PxPhysics
-} from '../types/physx'
+} from '../types/physics'
 import type {
   JointData,
   PhysXJoint,
@@ -147,7 +147,7 @@ export class Joint extends Node {
       const worldPhysics = world?.physics as { physics?: PxPhysics } | undefined;
       if (worldPhysics?.physics && (actor0 || actor1)) {
         if ('PxFixedJointCreate' in PHYSX) {
-          this.joint = (PHYSX as unknown as { PxFixedJointCreate: (physics: PxPhysics, actor0: PhysX.PxRigidActor | null, frame0: PhysX.PxTransform, actor1: PhysX.PxRigidActor | null, frame1: PhysX.PxTransform) => PhysXJoint }).PxFixedJointCreate(worldPhysics.physics, actor0 as PhysX.PxRigidActor | null, frame0, actor1 as PhysX.PxRigidActor | null, frame1);
+        this.joint = (PHYSX as { PxFixedJointCreate: (physics: PxPhysics, actor0: PhysX.PxRigidActor | null, frame0: PhysX.PxTransform, actor1: PhysX.PxRigidActor | null, frame1: PhysX.PxTransform) => PhysXJoint }).PxFixedJointCreate(worldPhysics.physics, actor0 as PhysX.PxRigidActor | null, frame0, actor1 as PhysX.PxRigidActor | null, frame1);
         }
       }
     }
@@ -164,7 +164,7 @@ export class Joint extends Node {
       }
       const plainVector = new THREE.Vector3(1, 0, 0);
       const plainAxis = new THREE.Vector3().copy(this.axis);
-      const alignRotation = (new THREE.Quaternion() as unknown as { setFromUnitVectors: (a: THREE.Vector3, b: THREE.Vector3) => THREE.Quaternion }).setFromUnitVectors(plainVector, plainAxis)
+    const alignRotation = new THREE.Quaternion().setFromUnitVectors(plainVector, plainAxis)
       const q1 = _q1.copy(this.quaternion0).multiply(alignRotation) as QuaternionWithPxTransform
       const q2 = _q2.copy(this.quaternion1).multiply(alignRotation) as QuaternionWithPxTransform
       if (q1.toPxTransform) {
@@ -178,7 +178,7 @@ export class Joint extends Node {
       const worldPhysics = world?.physics as { physics?: PxPhysics } | undefined;
       if (worldPhysics?.physics && (actor0 || actor1)) {
         if ('PxSphericalJointCreate' in PHYSX) {
-          this.joint = (PHYSX as unknown as { PxSphericalJointCreate: (physics: PxPhysics, actor0: PhysX.PxRigidActor | null, frame0: PhysX.PxTransform, actor1: PhysX.PxRigidActor | null, frame1: PhysX.PxTransform) => PhysXJoint }).PxSphericalJointCreate(worldPhysics.physics, actor0 as PhysX.PxRigidActor | null, frame0, actor1 as PhysX.PxRigidActor | null, frame1);
+        this.joint = (PHYSX as { PxSphericalJointCreate: (physics: PxPhysics, actor0: PhysX.PxRigidActor | null, frame0: PhysX.PxTransform, actor1: PhysX.PxRigidActor | null, frame1: PhysX.PxTransform) => PhysXJoint }).PxSphericalJointCreate(worldPhysics.physics, actor0 as PhysX.PxRigidActor | null, frame0, actor1 as PhysX.PxRigidActor | null, frame1);
         }
       }
       // apply cone limit
@@ -211,7 +211,7 @@ export class Joint extends Node {
       }
       const plainVector = new THREE.Vector3(1, 0, 0);
       const plainAxis = new THREE.Vector3().copy(this.axis);
-      const alignRotation = (new THREE.Quaternion() as unknown as { setFromUnitVectors: (a: THREE.Vector3, b: THREE.Vector3) => THREE.Quaternion }).setFromUnitVectors(plainVector, plainAxis)
+    const alignRotation = new THREE.Quaternion().setFromUnitVectors(plainVector, plainAxis)
       const q1 = _q1.copy(this.quaternion0).multiply(alignRotation) as QuaternionWithPxTransform
       const q2 = _q2.copy(this.quaternion1).multiply(alignRotation) as QuaternionWithPxTransform
       if (q1.toPxTransform) {
@@ -225,7 +225,7 @@ export class Joint extends Node {
       const worldPhysics = world?.physics as { physics?: PxPhysics } | undefined;
       if (worldPhysics?.physics && (actor0 || actor1)) {
         if ('PxRevoluteJointCreate' in PHYSX) {
-          this.joint = (PHYSX as unknown as { PxRevoluteJointCreate: (physics: PxPhysics, actor0: PhysX.PxRigidActor | null, frame0: PhysX.PxTransform, actor1: PhysX.PxRigidActor | null, frame1: PhysX.PxTransform) => PhysXJoint }).PxRevoluteJointCreate(worldPhysics.physics, actor0 as PhysX.PxRigidActor | null, frame0, actor1 as PhysX.PxRigidActor | null, frame1);
+        this.joint = (PHYSX as { PxRevoluteJointCreate: (physics: PxPhysics, actor0: PhysX.PxRigidActor | null, frame0: PhysX.PxTransform, actor1: PhysX.PxRigidActor | null, frame1: PhysX.PxTransform) => PhysXJoint }).PxRevoluteJointCreate(worldPhysics.physics, actor0 as PhysX.PxRigidActor | null, frame0, actor1 as PhysX.PxRigidActor | null, frame1);
         }
       }
       // apply limits
@@ -265,7 +265,7 @@ export class Joint extends Node {
       const worldPhysics = world?.physics as { physics?: PxPhysics } | undefined;
       if (worldPhysics?.physics && (actor0 || actor1)) {
         if ('PxDistanceJointCreate' in PHYSX) {
-          this.joint = (PHYSX as unknown as { PxDistanceJointCreate: (physics: PxPhysics, actor0: PhysX.PxRigidActor | null, frame0: PhysX.PxTransform, actor1: PhysX.PxRigidActor | null, frame1: PhysX.PxTransform) => PhysXJoint }).PxDistanceJointCreate(worldPhysics.physics, actor0 as PhysX.PxRigidActor | null, frame0, actor1 as PhysX.PxRigidActor | null, frame1);
+        this.joint = (PHYSX as { PxDistanceJointCreate: (physics: PxPhysics, actor0: PhysX.PxRigidActor | null, frame0: PhysX.PxTransform, actor1: PhysX.PxRigidActor | null, frame1: PhysX.PxTransform) => PhysXJoint }).PxDistanceJointCreate(worldPhysics.physics, actor0 as PhysX.PxRigidActor | null, frame0, actor1 as PhysX.PxRigidActor | null, frame1);
         }
       }
       // apply limits

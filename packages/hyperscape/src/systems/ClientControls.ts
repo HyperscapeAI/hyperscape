@@ -1,8 +1,9 @@
-import type { ButtonEntry, CameraEntry, ControlAction, ControlEntry, ControlsBinding, PointerEntry, ScreenEntry, TouchInfo, ValueEntry, VectorEntry, World, WorldOptions, XRInputSource } from '../types'
+import type { ButtonEntry, ControlAction, ControlEntry, ControlsBinding, PointerEntry, ScreenEntry, TouchInfo, ValueEntry, VectorEntry, World, WorldOptions, XRInputSource } from '../types'
 import { bindRotations } from '../extras/bindRotations'
 import { buttons, codeToProp } from '../extras/buttons'
-import * as THREE from '../extras/three'
-import { System } from './System'
+import THREE from '../extras/three'
+import { SystemBase } from './SystemBase'
+import { EventType } from '../types/events'
 
 // Interfaces moved to shared types
 
@@ -19,9 +20,7 @@ function asValueEntry(entry: ControlEntry): ValueEntry {
   return entry as ValueEntry;
 }
 
-function asCameraEntry(entry: ControlEntry): CameraEntry {
-  return entry as CameraEntry;
-}
+// Removed camera entry in favor of unified ClientCameraSystem
 
 // Control and Action interfaces moved to shared types
 
@@ -52,7 +51,6 @@ const controlTypes = {
   scrollDelta: createValue,
   pointer: createPointer,
   screen: createScreen,
-  camera: createCamera,
   xrLeftStick: createVector,
   xrLeftTrigger: createButton,
   xrLeftBtn1: createButton,
@@ -65,7 +63,7 @@ const controlTypes = {
   touchB: createButton,
 }
 
-export class ClientControls extends System {
+export class ClientControls extends SystemBase {
   controls: ControlsBinding[]
   actions: ControlAction[]
   buttonsDown: Set<string>
@@ -92,7 +90,7 @@ export class ClientControls extends System {
   rmbDown: boolean = false
   
   constructor(world: World) {
-    super(world)
+    super(world, { name: 'client-controls', dependencies: { required: [], optional: [] }, autoCleanup: true })
     this.controls = []
     this.actions = []
     this.buttonsDown = new Set()
@@ -117,7 +115,7 @@ export class ClientControls extends System {
   }
 
   start() {
-    this.world.on('xrSession', this.onXRSession)
+    this.subscribe(EventType.XR_SESSION, (session: XRSession | null) => this.onXRSession(session))
   }
 
   preFixedUpdate() {
@@ -260,24 +258,7 @@ export class ClientControls extends System {
         buttonEntry.released = false
       }
     }
-    // update camera
-    let written
-    for (const control of this.controls) {
-      const camera = control.entries.camera
-      if (camera) {
-        const cameraEntry = asCameraEntry(camera)
-        if (cameraEntry.write && !written) {
-          this.world.rig.position.copy(cameraEntry.position)
-          this.world.rig.quaternion.copy(cameraEntry.quaternion)
-          this.world.camera.position.z = cameraEntry.zoom
-          written = true
-        } else {
-          cameraEntry.position.copy(this.world.rig.position)
-          cameraEntry.quaternion.copy(this.world.rig.quaternion)
-          cameraEntry.zoom = this.world.camera.position.z
-        }
-      }
-    }
+    // Camera handled exclusively by ClientCameraSystem; no writes here
     // clear touch deltas
     for (const [_id, info] of this.touches) {
       info.delta.set(0, 0, 0)
@@ -414,7 +395,7 @@ export class ClientControls extends System {
         }
       }
     }
-    this.world.emit('actions', this.actions)
+    this.emit('actions', this.actions)
   }
 
   setTouchBtn(prop, down) {
@@ -743,23 +724,19 @@ export class ClientControls extends System {
 
   // Plugin support methods
   goto(x: number, y: number, z?: number): void {
-    // Implementation for moving to a specific position
-    console.log(`[Controls] goto: ${x}, ${y}, ${z || 0}`)
+    this.logger.info(`goto: ${x}, ${y}, ${z || 0}`)
   }
 
   async followEntity(entityId: string): Promise<void> {
-    // Implementation for following an entity
-    console.log(`[Controls] followEntity: ${entityId}`)
+    this.logger.info(`followEntity: ${entityId}`)
   }
 
   stopAll(): void {
-    // Implementation for stopping all actions
-    console.log('[Controls] stopAll')
+    this.logger.info('stopAll')
   }
 
   stopAllActions(): void {
-    // Implementation for stopping all actions
-    console.log('[Controls] stopAllActions')
+    this.logger.info('stopAllActions')
   }
 
   getIsWalkingRandomly(): boolean {
@@ -768,18 +745,15 @@ export class ClientControls extends System {
   }
 
   stopRandomWalk(): void {
-    // Implementation for stopping random walk
-    console.log('[Controls] stopRandomWalk')
+    this.logger.info('stopRandomWalk')
   }
 
   startRandomWalk(interval?: number, maxDistance?: number): void {
-    // Implementation for starting random walk
-    console.log(`[Controls] startRandomWalk: interval=${interval}, maxDistance=${maxDistance}`)
+    this.logger.info(`startRandomWalk: interval=${interval}, maxDistance=${maxDistance}`)
   }
 
   setKey(key: string, value: boolean): void {
-    // Implementation for setting key state
-    console.log(`[Controls] setKey: ${key} = ${value}`)
+    this.logger.info(`setKey: ${key} = ${value}`)
   }
 }
 
@@ -853,19 +827,4 @@ function createScreen(controls: ClientControls, _control: ControlsBinding): Scre
   }
 }
 
-function createCamera(controls: ClientControls, _control: ControlsBinding): CameraEntry {
-  const world = controls.world
-  const position = new THREE.Vector3().copy(world.rig.position)
-  const quaternion = new THREE.Quaternion().copy(world.rig.quaternion)
-  const rotation = new THREE.Euler(0, 0, 0, 'YXZ').copy(world.rig.rotation)
-  bindRotations(quaternion, rotation)
-  const zoom = world.camera.position.z
-  return {
-    $camera: true,
-    position,
-    quaternion,
-    rotation,
-    zoom,
-    write: false,
-  }
-}
+// Removed createCamera; unified camera system manages camera state

@@ -11,7 +11,7 @@ import type { ErrorReport } from '../types/error-types'
  * Service for reporting frontend errors to the backend
  */
 class ErrorReportingService {
-  private endpoint = '/api/errors/frontend';
+  private endpoint = '/errors/frontend';
   private sessionId: string;
   private userId: string;
 
@@ -77,7 +77,10 @@ class ErrorReportingService {
    * Reports an error to the backend
    */
   public async reportError(errorData: ErrorReport) {
-    const response = await fetch(this.endpoint, {
+    // Ensure no double slashes in the URL
+    const baseUrl = (import.meta.env.PUBLIC_API_URL || '').replace(/\/$/, '');
+    const endpoint = this.endpoint.startsWith('/') ? this.endpoint : '/' + this.endpoint;
+    const response = await fetch(baseUrl + endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

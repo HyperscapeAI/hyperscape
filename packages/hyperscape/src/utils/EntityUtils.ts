@@ -4,7 +4,7 @@
  */
 
 import type { Entity, Position2D, Position3D, Vector3, World } from '../types';
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 
 export interface EntityComponent {
   [key: string]: unknown;
@@ -206,11 +206,7 @@ export function getWorldCamera(world: World): THREE.Camera | null {
     return null;
   }
   
-  interface StageWithCamera {
-    camera?: THREE.Camera;
-  }
-  
-  const stageWithCamera = world.stage as unknown as StageWithCamera;
+  const stageWithCamera = world.stage as { camera?: THREE.Camera };
   if (!stageWithCamera.camera) {
     console.warn('[EntityUtils] world.stage.camera is not available - camera not initialized');
     return null;
@@ -222,7 +218,7 @@ export function getWorldCamera(world: World): THREE.Camera | null {
 /**
  * Safely add object to scene with error handling
  */
-export function safeSceneAdd(world: World, obj: THREE.Object3D): boolean {
+export function safeSceneAdd<TObj extends THREE.Object3D>(world: World, obj: TObj): boolean {
   const scene = getWorldScene(world);
   if (!scene) {
     return false;
@@ -240,7 +236,7 @@ export function safeSceneAdd(world: World, obj: THREE.Object3D): boolean {
 /**
  * Safely remove object from scene with error handling
  */
-export function safeSceneRemove(world: World, obj: THREE.Object3D): boolean {
+export function safeSceneRemove<TObj extends THREE.Object3D>(world: World, obj: TObj): boolean {
   const scene = getWorldScene(world);
   if (!scene) {
     return false;

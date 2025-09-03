@@ -1,8 +1,10 @@
-import moment from 'moment';
-import type { ChatMessage, World } from '../types/index';
+import type { ChatMessage, World, Player } from '../types/index';
 import { uuid } from '../utils';
-import { System } from './System';
+import { SystemBase } from './SystemBase';
 import { EventType } from '../types/events';
+import type { AnyEvent } from '../types/events';
+import type { EventMap } from '../types/event-system';
+import type { EventSubscription } from './EventBus';
 
 /**
  * Chat System
@@ -17,7 +19,7 @@ const CHAT_MAX_MESSAGES = 50;
 
 export type ChatListener = (messages: ChatMessage[]) => void;
 
-export class Chat extends System {
+export class Chat extends SystemBase {
   msgs: ChatMessage[];
   private chatListeners: Set<ChatListener>;
 
@@ -27,7 +29,7 @@ export class Chat extends System {
   }
 
   constructor(world: World) {
-    super(world);
+    super(world, { name: 'chat', dependencies: { required: [], optional: [] }, autoCleanup: true });
     this.msgs = [];
     this.chatListeners = new Set();
   }
@@ -46,16 +48,17 @@ export class Chat extends System {
     
     // trigger player chat animation if applicable
     if (msg.fromId) {
-      const player = this.world.entities.players?.get(msg.fromId);
-      if (player && 'chat' in player) {
-        // Assume chat method exists on player entity
-        (player as { chat: (text: string) => void }).chat(msg.body);
+      const player = this.world.entities.players?.get(msg.fromId) as Player & { chat: (text: string) => void } | undefined;
+      if (player) {
+        player.chat(msg.body);
       }
     }
     
-    // emit chat event
-    const readOnly = Object.freeze({ ...msg });
-    this.world.emit(EventType.NETWORK_MESSAGE_RECEIVED, readOnly);
+    // emit chat event (typed)
+    this.emitTypedEvent(EventType.CHAT_MESSAGE, {
+      playerId: msg.fromId || 'system',
+      text: msg.body,
+    });
     
     // maybe broadcast
     if (broadcast) {
@@ -87,7 +90,7 @@ export class Chat extends System {
     }
     
     if (!isAdminCommand) {
-      this.world.emit('command', { playerId, args });
+      this.emit('command', { playerId, args });
     }
     
     if (network.send) {
@@ -126,7 +129,7 @@ export class Chat extends System {
       body: text,
       text: text, // for interface compatibility
       timestamp: Date.now(),
-      createdAt: moment().toISOString(),
+      createdAt: new Date().toISOString(),
     };
     
     this.add(data, true);
@@ -146,13 +149,31 @@ export class Chat extends System {
     });
   }
 
-  subscribe(callback: ChatListener): () => void {
-    this.chatListeners.add(callback);
-    callback(this.msgs);
-    
-    return () => {
-      this.chatListeners.delete(callback);
-    };
+  // Overloads to remain compatible with SystemBase while supporting chat listeners
+  subscribe<K extends keyof EventMap>(
+    eventType: K,
+    handler: (data: EventMap[K]) => void | Promise<void>
+  ): EventSubscription;
+  subscribe<T = AnyEvent>(
+    eventType: string,
+    handler: (data: T) => void | Promise<void>
+  ): EventSubscription;
+  subscribe(callback: ChatListener): () => void;
+  // Implementation
+  subscribe(
+    arg1: ChatListener | keyof EventMap | string,
+    arg2?: ((data: unknown) => void | Promise<void>)
+  ): EventSubscription | (() => void) {
+    if (typeof arg1 === 'function') {
+      const callback = arg1 as ChatListener;
+      this.chatListeners.add(callback);
+      callback(this.msgs);
+      return () => {
+        this.chatListeners.delete(callback);
+      };
+    }
+    // Delegate to base typed subscribe for event bus usage
+    return super.subscribe(arg1 as string, arg2 as (data: AnyEvent) => void | Promise<void>);
   }
 
   override destroy(): void {

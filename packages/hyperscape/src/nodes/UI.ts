@@ -1,6 +1,6 @@
 import { every, isArray, isBoolean, isNumber, isString } from 'lodash-es'
 import Yoga from 'yoga-layout'
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 import type { Entity } from '../entities/Entity'
 import { fillRoundRect } from '../extras/roundRect'
 import {
@@ -201,7 +201,7 @@ export class UI extends Node implements HotReloadable {
           matrix: this.mesh.matrixWorld,
           geometry: this.geometry,
           material: this.material,
-          getEntity: () => (this.ctx!.entity as unknown as Entity | undefined) || null,
+          getEntity: () => (this.ctx!.entity as Entity | undefined) || null,
           node: this,
         }
         if (this.sItem) {
@@ -328,9 +328,9 @@ export class UI extends Node implements HotReloadable {
     }
     this.box = { left, top, width, height }
     this.children.forEach(child => {
-      // if child does not have a draw method, skip
-      if ((child as unknown as { draw: (ctx: CanvasRenderingContext2D, left: number, top: number) => void }).draw) {
-        (child as unknown as { draw: (ctx: CanvasRenderingContext2D, left: number, top: number) => void }).draw(ctx, left, top)
+      const drawable = child as { draw?: (ctx: CanvasRenderingContext2D, left: number, top: number) => void }
+      if (drawable.draw) {
+        drawable.draw(ctx, left, top)
       }
     })
     if (this.texture) this.texture.needsUpdate = true
@@ -338,7 +338,7 @@ export class UI extends Node implements HotReloadable {
   }
 
   mount() {
-    if ((this.ctx! as unknown as { network?: { isServer?: boolean } })?.network?.isServer) return
+    if (this.ctx?.network?.isServer) return
     const parentUI = (this.parent as Node & { ui?: unknown })?.ui
     if (parentUI) return console.error('ui: cannot be nested inside another ui')
     this.yogaNode = Yoga.Node.create()
@@ -408,12 +408,12 @@ export class UI extends Node implements HotReloadable {
       const pos = v3
       const qua = q1
       const sca = v4
-      this.matrixWorld.decompose(pos as unknown as THREE.Vector3, qua, sca as unknown as THREE.Vector3)
+      this.matrixWorld.decompose(pos as THREE.Vector3, qua, sca as THREE.Vector3)
       if (this._billboard === 'full') {
         if (world.xr?.session) {
           // full in XR means lookAt camera (excludes roll)
           v5.subVectors(camPosition, pos).normalize()
-          qua.setFromUnitVectors(FORWARD as unknown as THREE.Vector3, v5)
+          qua.setFromUnitVectors(FORWARD, v5)
           e1.setFromQuaternion(qua)
           e1.z = 0
           qua.setFromEuler(e1)
@@ -425,7 +425,7 @@ export class UI extends Node implements HotReloadable {
         if (world.xr?.session) {
           // full in XR means lookAt camera (only y)
           v5.subVectors(camPosition, pos).normalize()
-          qua.setFromUnitVectors(FORWARD as unknown as THREE.Vector3, v5)
+          qua.setFromUnitVectors(FORWARD, v5)
           e1.setFromQuaternion(qua)
           e1.x = 0
           e1.z = 0
@@ -449,7 +449,7 @@ export class UI extends Node implements HotReloadable {
         // if (world.xr?.session) scaleFactor *= 0.3 // roughly matches desktop fov etc
         sca.setScalar(scaleFactor)
       }
-      this.matrixWorld.compose(pos as unknown as THREE.Vector3, qua, sca as unknown as THREE.Vector3)
+      this.matrixWorld.compose(pos as THREE.Vector3, qua, sca as THREE.Vector3)
       this.transform.position = pos
       if (this.mesh) {
         this.mesh.matrixWorld.copy(this.matrixWorld)

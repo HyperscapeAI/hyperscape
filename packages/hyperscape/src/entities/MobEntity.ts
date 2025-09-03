@@ -3,7 +3,7 @@
  * Replaces mob-based Apps with server-authoritative entities
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import type { MeshUserData, MobEntityData, Position3D } from '../types';
 import { AttackType } from '../types/core';
 import type {

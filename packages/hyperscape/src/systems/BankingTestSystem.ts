@@ -23,7 +23,7 @@ import type { PlayerEntity } from '../types/index';
 import type { BankingSystem } from './BankingSystem';
 import type { InventorySystem } from './InventorySystem';
 import { VisualTestFramework } from './VisualTestFramework';
-// Logger utility for test reporting
+import { Logger } from '../utils/Logger';
 
 export class BankingTestSystem extends VisualTestFramework {
   private testData = new Map<string, BankingTestData>()
@@ -44,37 +44,37 @@ export class BankingTestSystem extends VisualTestFramework {
   async init(): Promise<void> {
     await super.init();
     
-    console.log('BankingTestSystem', 'Initializing banking test system...');
+    Logger.system('BankingTestSystem', 'Initializing banking test system...');
     
     this.bankingSystem = this.world.getSystem('rpg-banking') as BankingSystem;
     this.inventorySystem = this.world.getSystem('rpg-inventory') as InventorySystem;
 
     if (!this.bankingSystem) {
-      console.error('BankingTestSystem', 'Banking system not found');
+      Logger.systemError('BankingTestSystem', 'Banking system not found');
       return;
     } else {
-      console.log('BankingTestSystem', 'Banking system found successfully');
+      Logger.system('BankingTestSystem', 'Banking system found successfully');
     }
 
     if (!this.inventorySystem) {
-      console.error('BankingTestSystem', 'Inventory system not found');
+      Logger.systemError('BankingTestSystem', 'Inventory system not found');
       return;
     } else {
-      console.log('BankingTestSystem', 'Inventory system found successfully');
+      Logger.system('BankingTestSystem', 'Inventory system found successfully');
     }
 
     // Create test stations
     this.createTestStations();
-          console.log('BankingTestSystem', 'Test stations created');
+          Logger.system('BankingTestSystem', 'Test stations created');
     
     // Set up event listeners for banking tests
     this.setupEventListeners();
-          console.log('BankingTestSystem', 'Event listeners set up');
+          Logger.system('BankingTestSystem', 'Event listeners set up');
   }
 
   private setupEventListeners(): void {
     // Listen for inventory updates
-    this.world.on(EventType.INVENTORY_UPDATED, (data: { playerId: string; items: InventoryItem[] }) => {
+    this.subscribe(EventType.INVENTORY_UPDATED, (data: { playerId: string; items: InventoryItem[] }) => {
       for (const [_stationId, testData] of this.testData) {
         if (testData.player.id === data.playerId) {
           testData.player.inventory.items = data.items;
@@ -83,7 +83,7 @@ export class BankingTestSystem extends VisualTestFramework {
     });
 
     // Listen for inventory check requests to provide fake player inventory
-    this.world.on(EventType.INVENTORY_CHECK, (event: InventoryCheckEvent) => {
+    this.subscribe(EventType.INVENTORY_CHECK, (event: InventoryCheckEvent) => {
       for (const testData of this.testData.values()) {
         if (testData.player.id === event.playerId) {
           // Check if fake player has the item
@@ -109,7 +109,7 @@ export class BankingTestSystem extends VisualTestFramework {
     });
 
     // Listen for inventory remove requests from fake players
-    this.world.on(EventType.INVENTORY_ITEM_REMOVED, (data: InventoryRemoveEvent) => {
+    this.subscribe(EventType.INVENTORY_ITEM_REMOVED, (data: InventoryRemoveEvent) => {
       for (const testData of this.testData.values()) {
         if (testData.player.id === data.playerId) {
           const inventory = testData.player.inventory;
@@ -192,10 +192,10 @@ export class BankingTestSystem extends VisualTestFramework {
 
   private async runBasicDepositTest(stationId: string): Promise<void> {
     try {
-      console.log('BankingTestSystem', 'Starting basic deposit test...');
+      Logger.system('BankingTestSystem', 'Starting basic deposit test...');
       const station = this.testStations.get(stationId);
       if (!station) {
-        console.error('BankingTestSystem', `Test station not found: ${stationId}`);
+        Logger.systemError('BankingTestSystem', `Test station not found: ${stationId}`);
         return;
       }
 
@@ -327,7 +327,7 @@ export class BankingTestSystem extends VisualTestFramework {
           itemId,
           quantity
         };
-        this.world.emit(EventType.BANK_DEPOSIT_SUCCESS, event);
+        this.emitTypedEvent(EventType.BANK_DEPOSIT_SUCCESS, event);
       }
 
       // Start withdraw sequence
@@ -419,7 +419,7 @@ export class BankingTestSystem extends VisualTestFramework {
 
   private async runBankIndependenceTest(stationId: string): Promise<void> {
     try {
-      console.log('BankingTestSystem', 'Starting bank independence test setup...');
+      Logger.system('BankingTestSystem', 'Starting bank independence test setup...');
       const station = this.testStations.get(stationId);
       if (!station) return;
 
@@ -504,7 +504,7 @@ export class BankingTestSystem extends VisualTestFramework {
         bulkTested: false
       });
 
-      console.log('BankingTestSystem', 'Starting bank independence test...');
+      Logger.system('BankingTestSystem', 'Starting bank independence test...');
       
       // Test sequence:
       // 1. Player 1 deposits at Bank 1
@@ -590,11 +590,11 @@ export class BankingTestSystem extends VisualTestFramework {
   private startDepositSequence(stationId: string): void {
     const testData = this.testData.get(stationId);
     if (!testData) {
-      console.error('BankingTestSystem', `No test data found for: ${stationId}`);
+      Logger.systemError('BankingTestSystem', `No test data found for: ${stationId}`);
       return;
     }
 
-    console.log('BankingTestSystem', `Starting deposit sequence for player: ${testData.player.id}`);
+    Logger.system('BankingTestSystem', `Starting deposit sequence for player: ${testData.player.id}`);
 
     // Move player to bank
     this.movePlayer(testData.player.id, {
@@ -605,7 +605,7 @@ export class BankingTestSystem extends VisualTestFramework {
 
     // Open bank and deposit items
     setTimeout(() => {
-      console.log('BankingTestSystem', `Opening bank for player: ${testData.player.id}`);
+      Logger.system('BankingTestSystem', `Opening bank for player: ${testData.player.id}`);
       // First open the bank
       this.emitTypedEvent(EventType.BANK_OPEN, {
         playerId: testData.player.id,
@@ -615,9 +615,9 @@ export class BankingTestSystem extends VisualTestFramework {
 
       // Then deposit items after bank is open
       setTimeout(() => {
-        console.log('BankingTestSystem', `Attempting to deposit ${testData.testItems.length} items`);
+        Logger.system('BankingTestSystem', `Attempting to deposit ${testData.testItems.length} items`);
         for (const testItem of testData.testItems) {
-          console.log('BankingTestSystem', `Emitting deposit event for: ${testItem.itemId}, quantity: ${testItem.quantity}`);
+          Logger.system('BankingTestSystem', `Emitting deposit event for: ${testItem.itemId}, quantity: ${testItem.quantity}`);
           this.emitTypedEvent(EventType.BANK_DEPOSIT, {
             playerId: testData.player.id,
             bankId: 'bank_town_0',
@@ -627,25 +627,22 @@ export class BankingTestSystem extends VisualTestFramework {
         }
 
         // Monitor for deposit success
-        const successHandler = (data: { playerId: string; itemId: string; quantity: number }) => {
-          console.log('BankingTestSystem', 'Deposit success event received', { data });
+        const depositSub = this.subscribe(EventType.BANK_DEPOSIT_SUCCESS, (data: { playerId: string; itemId: string; quantity: number }) => {
+          Logger.system('BankingTestSystem', 'Deposit success event received');
           if (data.playerId === testData.player.id) {
             testData.depositedItems++;
             testData.bankBalance[data.itemId] = (testData.bankBalance[data.itemId] || 0) + data.quantity;
-            console.log('BankingTestSystem', `Deposit successful! Total deposits: ${testData.depositedItems}/${testData.testItems.length}`);
-            
+            Logger.system('BankingTestSystem', `Deposit successful! Total deposits: ${testData.depositedItems}/${testData.testItems.length}`);
             if (testData.depositedItems >= testData.testItems.length) {
-              this.world.off(EventType.BANK_DEPOSIT_SUCCESS, successHandler);
+              depositSub.unsubscribe();
               this.completeDepositTest(stationId);
             }
           }
-        };
-
-        this.world.on(EventType.BANK_DEPOSIT_SUCCESS, successHandler);
+        });
 
         // Timeout fallback
         setTimeout(() => {
-          this.world.off(EventType.BANK_DEPOSIT_SUCCESS, successHandler);
+          depositSub.unsubscribe();
           this.completeDepositTest(stationId);
         }, 5000);
       }, 1000); // Wait 1s after bank open
@@ -675,33 +672,31 @@ export class BankingTestSystem extends VisualTestFramework {
       // Then withdraw items after bank is open
       setTimeout(() => {
         // Add items to fake player's inventory as they're withdrawn
-        const withdrawHandler = (data: { playerId: string; itemId: string; quantity: number }) => {
-          if (data.playerId === testData.player.id) {
-            testData.withdrawnItems++;
-
-            // Add to fake player inventory
-            if (testData.player.inventory.items) {
-              const existingItem = testData.player.inventory.items.find(item => item.itemId === data.itemId);
-              if (existingItem) {
-                existingItem.quantity = (existingItem.quantity || 0) + data.quantity;
-              } else {
-                testData.player.inventory.items.push({
-                  id: `${testData.player.id}_${data.itemId}`,
-                  itemId: data.itemId,
-                  quantity: data.quantity,
-                  slot: testData.player.inventory.items.length
-                } as InventoryItem);
-              }
-            }
-
-            if (testData.withdrawnItems >= testData.testItems.length) {
-              this.world.off(EventType.BANK_WITHDRAW_SUCCESS, withdrawHandler);
-              this.completeWithdrawTest(stationId);
+      const withdrawSub = this.subscribe(EventType.BANK_WITHDRAW_SUCCESS, (data: { playerId: string; itemId: string; quantity: number }) => {
+        if (data.playerId === testData.player.id) {
+          testData.withdrawnItems++;
+          
+          // Add to fake player inventory
+          if (testData.player.inventory.items) {
+            const existingItem = testData.player.inventory.items.find(item => item.itemId === data.itemId);
+            if (existingItem) {
+              existingItem.quantity = (existingItem.quantity || 0) + data.quantity;
+            } else {
+              testData.player.inventory.items.push({
+                id: `${testData.player.id}_${data.itemId}`,
+                itemId: data.itemId,
+                quantity: data.quantity,
+                slot: testData.player.inventory.items.length
+              } as InventoryItem);
             }
           }
-        };
-
-        this.world.on(EventType.BANK_WITHDRAW_SUCCESS, withdrawHandler);
+          
+          if (testData.withdrawnItems >= testData.testItems.length) {
+            withdrawSub.unsubscribe();
+            this.completeWithdrawTest(stationId);
+          }
+        }
+      });
 
         // Attempt to withdraw each item
         let withdrawIndex = 0;
@@ -723,7 +718,7 @@ export class BankingTestSystem extends VisualTestFramework {
 
         // Timeout fallback
         setTimeout(() => {
-          this.world.off(EventType.BANK_WITHDRAW_SUCCESS, withdrawHandler);
+          withdrawSub.unsubscribe();
           this.completeWithdrawTest(stationId);
         }, 10000);
       }, 1000); // Wait 1s after bank open
@@ -734,7 +729,7 @@ export class BankingTestSystem extends VisualTestFramework {
     const testData = this.testData.get(stationId);
     if (!testData) return;
 
-          console.log('BankingTestSystem', 'Starting bulk banking test...');
+          Logger.system('BankingTestSystem', 'Starting bulk banking test...');
 
     // Move player to bank
     this.movePlayer(testData.player.id, {
@@ -749,21 +744,19 @@ export class BankingTestSystem extends VisualTestFramework {
     let withdrawsAttempted = 0;
 
     // Listen for bank interface open (the actual event emitted by banking system)
-    const bankOpenHandler = (data: { playerId: string; bankId: string }) => {
+    const bankOpenSub = this.subscribe(EventType.BANK_OPEN, (data: { playerId: string; bankId: string }) => {
       if (data.playerId === testData.player.id) {
-        console.log('BankingTestSystem', 'Bank opened successfully');
+        Logger.system('BankingTestSystem', 'Bank opened successfully');
         bankOpened = true;
-        this.world.off(EventType.BANK_OPEN, bankOpenHandler);
-        
+        bankOpenSub.unsubscribe();
         // Now start deposits
         performDeposits();
       }
-    };
-    this.world.on(EventType.BANK_OPEN, bankOpenHandler);
+    });
 
     // Open the bank first (required by BankingSystem)
     setTimeout(() => {
-      console.log('BankingTestSystem', 'Opening bank for bulk test...');
+      Logger.system('BankingTestSystem', 'Opening bank for bulk test...');
       this.emitTypedEvent(EventType.BANK_OPEN, {
         playerId: testData.player.id,
                    bankId: 'bank_town_0',
@@ -777,47 +770,45 @@ export class BankingTestSystem extends VisualTestFramework {
       // Fallback if bank doesn't open
       setTimeout(() => {
         if (!bankOpened) {
-          console.log('BankingTestSystem', 'Bank open timeout, proceeding anyway...');
-          this.world.off(EventType.BANK_OPEN, bankOpenHandler);
+          Logger.system('BankingTestSystem', 'Bank open timeout, proceeding anyway...');
+          bankOpenSub.unsubscribe();
           performDeposits();
         }
       }, 3000);
     }, 2000);
 
     const performDeposits = () => {
-      console.log('BankingTestSystem', 'Starting bulk deposits...');
+      Logger.system('BankingTestSystem', 'Starting bulk deposits...');
       let depositsCompleted = 0;
       const totalItems = testData.testItems.length;
       
       // Listen for deposit success events
-      const depositHandler = (data: { playerId: string; itemId: string; quantity: number; bankId?: string }) => {
+      const depositSub = this.subscribe(EventType.BANK_DEPOSIT_SUCCESS, (data: { playerId: string; itemId: string; quantity: number; bankId?: string }) => {
         if (data.playerId === testData.player.id) {
           depositsCompleted++;
           testData.depositedItems++;
-          console.log('BankingTestSystem', `Deposit ${depositsCompleted}/${totalItems} completed: ${data.itemId}`);
-          
+          Logger.system('BankingTestSystem', `Deposit ${depositsCompleted}/${totalItems} completed: ${data.itemId}`);
           if (depositsCompleted >= totalItems) {
-            this.world.off(EventType.BANK_DEPOSIT_SUCCESS, depositHandler);
+            depositSub.unsubscribe();
             performWithdrawals();
           }
         }
-      };
+      });
       
       // Listen for deposit failure events
-      const depositFailHandler = (data: { playerId: string; reason: string }) => {
+      const depositFailSub = this.subscribe(EventType.BANK_DEPOSIT_FAIL, (data: { playerId: string; reason: string }) => {
         if (data.playerId === testData.player.id) {
-          console.log('BankingTestSystem', `Deposit failed: ${data.reason}`);
+          Logger.system('BankingTestSystem', `Deposit failed: ${data.reason}`);
         }
-      };
+      });
       
-      this.world.on(EventType.BANK_DEPOSIT_SUCCESS, depositHandler);
-      this.world.on(EventType.BANK_DEPOSIT_FAIL, depositFailHandler);
+      // subscriptions already set above
       
       // Deposit all items with a small delay between each
       testData.testItems.forEach((testItem, index) => {
         setTimeout(() => {
           depositsAttempted++;
-          console.log('BankingTestSystem', `Attempting deposit ${depositsAttempted}/${totalItems}: ${testItem.itemId}`);
+          Logger.system('BankingTestSystem', `Attempting deposit ${depositsAttempted}/${totalItems}: ${testItem.itemId}`);
           this.emitTypedEvent(EventType.BANK_DEPOSIT, {
             playerId: testData.player.id,
             bankId: 'bank_town_0', 
@@ -829,17 +820,17 @@ export class BankingTestSystem extends VisualTestFramework {
       
       // Timeout for all deposits
       setTimeout(() => {
-        this.world.off(EventType.BANK_DEPOSIT_SUCCESS, depositHandler);
-        this.world.off(EventType.BANK_DEPOSIT_FAIL, depositFailHandler);
+        depositSub.unsubscribe();
+        depositFailSub.unsubscribe();
         if (depositsCompleted < totalItems) {
-          console.log('BankingTestSystem', `Deposit phase incomplete: ${depositsCompleted}/${totalItems}`);
+          Logger.system('BankingTestSystem', `Deposit phase incomplete: ${depositsCompleted}/${totalItems}`);
         }
         performWithdrawals();
       }, 8000);
     };
 
     const performWithdrawals = () => {
-      console.log('BankingTestSystem', 'Starting bulk withdrawals...');
+      Logger.system('BankingTestSystem', 'Starting bulk withdrawals...');
       let withdrawsCompleted = 0;
       const totalItems = testData.testItems.length;
       
@@ -847,30 +838,33 @@ export class BankingTestSystem extends VisualTestFramework {
         if (data.playerId === testData.player.id) {
           withdrawsCompleted++;
           testData.withdrawnItems++;
-          console.log('BankingTestSystem', `Withdraw ${withdrawsCompleted}/${totalItems} completed: ${data.itemId}`);
+          Logger.system('BankingTestSystem', `Withdraw ${withdrawsCompleted}/${totalItems} completed: ${data.itemId}`);
           
           if (withdrawsCompleted >= totalItems) {
-            this.world.off(EventType.BANK_WITHDRAW_SUCCESS, withdrawHandler);
+            withdrawSub.unsubscribe();
             this.completeBulkTest(stationId);
           }
         }
       };
+      const withdrawSub = this.subscribe<{ playerId: string; itemId: string; quantity: number; bankId?: string }>(
+        EventType.BANK_WITHDRAW_SUCCESS,
+        withdrawHandler
+      );
       
       // Listen for withdraw failure events
-      const withdrawFailHandler = (data: { playerId: string; reason: string }) => {
+      const withdrawFailSub = this.subscribe(EventType.BANK_WITHDRAW_FAIL, (data: { playerId: string; reason: string }) => {
         if (data.playerId === testData.player.id) {
-          console.log('BankingTestSystem', `Withdraw failed: ${data.reason}`);
+          Logger.system('BankingTestSystem', `Withdraw failed: ${data.reason}`);
         }
-      };
+      });
       
-      this.world.on(EventType.BANK_WITHDRAW_SUCCESS, withdrawHandler);
-      this.world.on(EventType.BANK_WITHDRAW_FAIL, withdrawFailHandler);
+      // subscriptions already set above
       
       // Withdraw all items with a small delay between each
       testData.testItems.forEach((testItem, index) => {
         setTimeout(() => {
           withdrawsAttempted++;
-          console.log('BankingTestSystem', `Attempting withdraw ${withdrawsAttempted}/${totalItems}: ${testItem.itemId}`);
+          Logger.system('BankingTestSystem', `Attempting withdraw ${withdrawsAttempted}/${totalItems}: ${testItem.itemId}`);
           this.emitTypedEvent(EventType.BANK_WITHDRAW, {
             playerId: testData.player.id,
             bankId: 'bank_town_0',
@@ -882,9 +876,9 @@ export class BankingTestSystem extends VisualTestFramework {
       
       // Timeout for all withdrawals
       setTimeout(() => {
-        this.world.off(EventType.BANK_WITHDRAW_SUCCESS, withdrawHandler);
-        this.world.off(EventType.BANK_WITHDRAW_FAIL, withdrawFailHandler);
-        console.log('BankingTestSystem', `Bulk test complete - deposits: ${testData.depositedItems}, withdrawals: ${testData.withdrawnItems}`);
+        try { this.world.off(EventType.BANK_WITHDRAW_SUCCESS, withdrawHandler); } catch {}
+        try { withdrawFailSub.unsubscribe(); } catch {}
+        Logger.system('BankingTestSystem', `Bulk test complete - deposits: ${testData.depositedItems}, withdrawals: ${testData.withdrawnItems}`);
         this.completeBulkTest(stationId);
       }, 8000);
     };
@@ -903,7 +897,7 @@ export class BankingTestSystem extends VisualTestFramework {
 
     // Phase 1: Both players deposit at their respective banks
     const depositPhase = () => {
-      console.log('BankingTestSystem', 'Independence test phase 1: Deposits');
+      Logger.system('BankingTestSystem', 'Independence test phase 1: Deposits');
 
       // Move players to their banks
       this.movePlayer(player1.id, {
@@ -919,19 +913,16 @@ export class BankingTestSystem extends VisualTestFramework {
       });
 
       // Listen for deposit successes
-      const depositHandler = (data: { playerId: string; bankId: string }) => {
+      const depositSub = this.subscribe(EventType.BANK_DEPOSIT_SUCCESS, (data: { playerId: string; bankId: string }) => {
         if (data.playerId === player1.id || data.playerId === player2.id) {
           depositsCompleted++;
-          console.log('BankingTestSystem', `Player deposit completed: ${data.playerId} at ${data.bankId}`);
-          
+          Logger.system('BankingTestSystem', `Player deposit completed: ${data.playerId} at ${data.bankId}`);
           if (depositsCompleted >= 2) {
-            this.world.off(EventType.BANK_DEPOSIT_SUCCESS, depositHandler);
+            depositSub.unsubscribe();
             setTimeout(crossWithdrawPhase, 2000);
           }
         }
-      };
-
-      this.world.on(EventType.BANK_DEPOSIT_SUCCESS, depositHandler);
+      });
 
       // Open banks and deposit
       setTimeout(() => {
@@ -970,7 +961,7 @@ export class BankingTestSystem extends VisualTestFramework {
 
     // Phase 2: Try cross-withdrawals (should fail)
     const crossWithdrawPhase = () => {
-      console.log('BankingTestSystem', 'Independence test phase 2: Cross-withdrawals');
+      Logger.system('BankingTestSystem', 'Independence test phase 2: Cross-withdrawals');
       
       // Move players to opposite banks
       this.movePlayer(player1.id, {
@@ -986,17 +977,14 @@ export class BankingTestSystem extends VisualTestFramework {
       });
 
       // Listen for withdrawal failures
-      const withdrawFailHandler = (data: { playerId: string; reason: string }) => {
+      const withdrawFailSub = this.subscribe(EventType.BANK_WITHDRAW_FAIL, (data: { playerId: string; reason: string }) => {
         withdrawalAttempts++;
-                  console.log('BankingTestSystem', `Expected withdrawal failure: ${data.playerId} - ${data.reason}`);
-        
+        Logger.system('BankingTestSystem', `Expected withdrawal failure: ${data.playerId} - ${data.reason}`);
         if (withdrawalAttempts >= 2) {
-          this.world.off(EventType.BANK_WITHDRAW_FAIL, withdrawFailHandler);
+          withdrawFailSub.unsubscribe();
           setTimeout(ownWithdrawPhase, 2000);
         }
-      };
-
-      this.world.on(EventType.BANK_WITHDRAW_FAIL, withdrawFailHandler);
+      });
 
       // Try to withdraw from wrong banks
       setTimeout(() => {
@@ -1034,7 +1022,7 @@ export class BankingTestSystem extends VisualTestFramework {
 
     // Phase 3: Withdraw from own banks (should succeed)
     const ownWithdrawPhase = () => {
-      console.log('BankingTestSystem', 'Independence test phase 3: Own withdrawals');
+      Logger.system('BankingTestSystem', 'Independence test phase 3: Own withdrawals');
       
       // Move players back to their own banks
       this.movePlayer(player1.id, {
@@ -1050,19 +1038,16 @@ export class BankingTestSystem extends VisualTestFramework {
       });
 
       // Listen for withdrawal successes
-      const withdrawSuccessHandler = (data: { playerId: string; bankId: string }) => {
+      const withdrawSuccessSub = this.subscribe(EventType.BANK_WITHDRAW_SUCCESS, (data: { playerId: string; bankId: string }) => {
         if (data.playerId === player1.id || data.playerId === player2.id) {
           successfulWithdrawals++;
-          console.log('BankingTestSystem', `Successful withdrawal: ${data.playerId} from ${data.bankId}`);
-          
+          Logger.system('BankingTestSystem', `Successful withdrawal: ${data.playerId} from ${data.bankId}`);
           if (successfulWithdrawals >= 2) {
-            this.world.off(EventType.BANK_WITHDRAW_SUCCESS, withdrawSuccessHandler);
+            withdrawSuccessSub.unsubscribe();
             this.completeIndependenceTest(stationId, true);
           }
         }
-      };
-
-      this.world.on(EventType.BANK_WITHDRAW_SUCCESS, withdrawSuccessHandler);
+      });
 
       // Withdraw from own banks
       setTimeout(() => {
@@ -1128,17 +1113,15 @@ export class BankingTestSystem extends VisualTestFramework {
 
       // Track deposit successes
       let successCount = 0;
-      const depositHandler = (data: { playerId: string }) => {
+      const depositSub = this.subscribe(EventType.BANK_DEPOSIT_SUCCESS, (data: { playerId: string }) => {
         if (data.playerId === testData.player.id) {
           successCount++;
           if (successCount >= testData.testItems.length) {
-            this.world.off(EventType.BANK_DEPOSIT_SUCCESS, depositHandler);
+            depositSub.unsubscribe();
             this.completeStorageLimitTest(stationId, true);
           }
         }
-      };
-
-      this.world.on(EventType.BANK_DEPOSIT_SUCCESS, depositHandler);
+      });
 
       // Deposit all items at once
       setTimeout(() => {
@@ -1154,7 +1137,7 @@ export class BankingTestSystem extends VisualTestFramework {
 
       // Timeout fallback
       setTimeout(() => {
-        this.world.off(EventType.BANK_DEPOSIT_SUCCESS, depositHandler);
+        depositSub.unsubscribe();
         this.completeStorageLimitTest(stationId, successCount === testData.testItems.length);
       }, 10000);
     }, 2000);

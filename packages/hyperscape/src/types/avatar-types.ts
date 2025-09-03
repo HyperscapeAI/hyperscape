@@ -4,8 +4,8 @@
  * Shared types for avatar system functionality
  */
 
-import * as THREE from '../extras/three';
-import type { Node, World } from './index';
+import THREE from '../extras/three';
+import type { HSNode as Node, World } from './index';
 
 // Avatar node interface for AvatarPreview
 export interface AvatarNode extends Node {

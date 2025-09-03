@@ -5,7 +5,7 @@ import { EquipmentSlot, EquipmentSystem } from '../../systems/EquipmentSystem'
 import type { Item } from '../../types/core'
 import { EquipmentSlotName } from '../../types/core'
 import { EventType } from '../../types/events'
-import type { WindowProps } from '../../types/ui-component-types';
+import type { WindowProps } from '../../types/ui-types';
 
 // Using emojis for icons to avoid lucide-react version issues
 

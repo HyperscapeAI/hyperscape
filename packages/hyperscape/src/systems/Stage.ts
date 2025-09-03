@@ -1,8 +1,8 @@
 import { isNumber } from 'lodash-es';
 
 import { LooseOctree } from '../extras/LooseOctree';
-import * as THREE from '../extras/three';
-import { System } from './System';
+import THREE from '../extras/three';
+import { SystemBase } from './SystemBase';
 import { World } from '../World';
 
 import type { SkyHandle } from '../types';
@@ -56,7 +56,7 @@ const vec2 = new THREE.Vector2();
  * - This is a logical scene graph, no rendering etc is handled here.
  *
  */
-export class Stage extends System {
+export class Stage extends SystemBase {
   scene: THREE.Scene;
   environment: unknown;
   private models: Map<string, Model>;
@@ -80,7 +80,7 @@ export class Stage extends System {
   private viewport?: HTMLElement;
 
   constructor(world: World) {
-    super(world);
+    super(world, { name: 'stage', dependencies: { required: [], optional: [] }, autoCleanup: true });
     this.scene = new THREE.Scene();
     this.models = new Map();
     this.octree = new LooseOctree({
@@ -98,6 +98,55 @@ export class Stage extends System {
     this.viewport = stageOptions.viewport;
     if (this.world.rig) {
       this.scene.add(this.world.rig);
+    }
+  }
+
+  start(): void {
+
+    
+    // Add a grid for visual reference
+    const gridHelper = new THREE.GridHelper(1000, 100, 0x444444, 0x222222);
+    gridHelper.position.y = 0.01; // Slightly above ground
+    // Ensure helper is ignored by click-to-move raycasts
+    gridHelper.name = 'stage-grid-helper';
+    gridHelper.userData.ignoreClickMove = true;
+    this.scene.add(gridHelper);
+    
+    this.logger.info('Created visible ground plane');
+  }
+
+  private removeConflictingGroundPlanes(): void {
+    // Remove any existing test ground planes that might be causing z-fighting
+    const objectsToRemove: THREE.Object3D[] = [];
+    
+    this.scene.traverse((object) => {
+      if (object instanceof THREE.Mesh) {
+        // Remove test ground planes by name
+        if (object.name === 'test-ground-plane') {
+          objectsToRemove.push(object);
+          return;
+        }
+        
+        // Remove gray ground planes that might be from PrecisionPhysicsTestSystem
+        if (object.geometry instanceof THREE.PlaneGeometry && 
+            object.material instanceof THREE.MeshBasicMaterial) {
+          const material = object.material as THREE.MeshBasicMaterial;
+          // Check for gray color (0x808080) and position near ground level
+          if (material.color.getHex() === 0x808080 && 
+              Math.abs(object.position.y) < 0.1) {
+            objectsToRemove.push(object);
+            this.logger.info(`Removing conflicting gray ground plane at position (${object.position.x}, ${object.position.y}, ${object.position.z})`);
+          }
+        }
+      }
+    });
+    
+    // Remove found objects
+    for (const obj of objectsToRemove) {
+      if (obj.parent) {
+        obj.parent.remove(obj);
+        this.logger.info(`Removed conflicting ground plane: ${obj.name || 'unnamed'}`);
+      }
     }
   }
 
@@ -388,13 +437,55 @@ export class Stage extends System {
 
   // IStage interface methods
   add(object: unknown): void {
-    const threeObject = object as THREE.Object3D;
-    this.scene.add(threeObject);
+    // Check if the object is a Hyperscape Node
+    if (object && typeof object === 'object' && 'id' in object && 'type' in object && 'children' in object) {
+      // This appears to be a Hyperscape Node, not a THREE.Object3D
+      console.warn('[Stage] Attempted to add a Hyperscape Node to the scene. Nodes should be converted to THREE.Object3D first.');
+      
+      // If it's a Node with a mesh property, add the mesh instead
+      if ('mesh' in object) {
+        const objectWithMesh = object as { mesh: THREE.Object3D };
+        if (objectWithMesh.mesh instanceof THREE.Object3D) {
+          this.scene.add(objectWithMesh.mesh);
+          return;
+        }
+      }
+      
+      // Otherwise, skip adding it
+      console.warn('[Stage] Skipping Node object:', object);
+      return;
+    }
+    
+    // Check if it's actually a THREE.Object3D
+    if (object instanceof THREE.Object3D) {
+      this.scene.add(object);
+    } else {
+      console.warn('[Stage] Object is not an instance of THREE.Object3D:', object);
+    }
   }
 
   remove(object: unknown): void {
-    const threeObject = object as THREE.Object3D;
-    this.scene.remove(threeObject);
+    // Check if the object is a Hyperscape Node
+    if (object && typeof object === 'object' && 'id' in object && 'type' in object && 'children' in object) {
+      // If it's a Node with a mesh property, remove the mesh instead
+      if ('mesh' in object) {
+        const objectWithMesh = object as { mesh: THREE.Object3D };
+        if (objectWithMesh.mesh instanceof THREE.Object3D) {
+          this.scene.remove(objectWithMesh.mesh);
+          return;
+        }
+      }
+      
+      console.warn('[Stage] Attempted to remove a Hyperscape Node from the scene.');
+      return;
+    }
+    
+    // Check if it's actually a THREE.Object3D
+    if (object instanceof THREE.Object3D) {
+      this.scene.remove(object);
+    } else {
+      console.warn('[Stage] Object is not an instance of THREE.Object3D:', object);
+    }
   }
 
   setEnvironment(texture: unknown): void {

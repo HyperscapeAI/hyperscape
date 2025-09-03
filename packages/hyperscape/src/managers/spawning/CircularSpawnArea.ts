@@ -2,7 +2,7 @@
 import type { Vector3D as Vector3, Position3D } from '../../types';
 import type { SpawnArea } from '../../types/components';
 import { calculateDistance2D } from '../../utils/EntityUtils';
-import * as THREE from '../../extras/three';
+import THREE from '../../extras/three';
 
 /**
  * Circular spawn area implementation

@@ -11,7 +11,7 @@
  * - Error conditions are handled
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import { EventType } from '../types/events';
 import type { World } from '../types/index';
 import type { LootSystem } from './LootSystem';
@@ -54,15 +54,18 @@ export class LootDropTestSystem extends VisualTestFramework {
     await super.init();
     
     // Listen for loot events from both mob systems using proper event bus subscription
-    this.subscribe<{ mobId: string; mobType: string; level: number; killedBy: string; position: { x: number; y: number; z: number } }>(EventType.MOB_DIED, (event) => this.handleMobDeath(event.data));
-    this.subscribe<{ itemId: string; position: { x: number; y: number; z: number } }>(EventType.LOOT_DROPPED, (event) => this.handleLootDropped(event.data));
-    this.subscribe<{ playerId: string; itemId: string }>(EventType.ITEM_PICKUP, (event) => this.handlePickupRequest(event.data));
-    this.subscribe<{ playerId: string; item: { id: string; name: string; stackable?: boolean; quantity?: number } }>(EventType.INVENTORY_ITEM_ADDED, (event) => this.handleInventoryAdd(event.data));
+    this.subscribe<{ mobId: string; mobType: string; level: number; killedBy: string; position: { x: number; y: number; z: number } }>(EventType.MOB_DIED, (data) => this.handleMobDeath(data));
+    this.subscribe<{ itemId: string; position: { x: number; y: number; z: number } }>(EventType.LOOT_DROPPED, (data) => this.handleLootDropped(data));
+    this.subscribe<{ playerId: string; itemId: string }>(EventType.ITEM_PICKUP, (data) => this.handlePickupRequest(data));
+    this.subscribe<{ playerId: string; item: { id: string; name: string; stackable?: boolean; quantity?: number } }>(EventType.INVENTORY_ITEM_ADDED, (data) => this.handleInventoryAdd(data));
+    // Allow tests to be triggered explicitly
+    this.subscribe(EventType.TEST_RUN_ALL, () => this.runAllTests());
     
     this.createTestStations();
   }
 
   start(): void {
+    // Auto-run once on start
     this.runAllTests();
   }
 
@@ -417,7 +420,7 @@ export class LootDropTestSystem extends VisualTestFramework {
       if (dropId) {
         processedDropIds.add(dropId);
         // Use the correct event for loot pickup with the drop ID
-        this.world.emit(EventType.ITEM_PICKUP, {
+        this.emitTypedEvent(EventType.ITEM_PICKUP, {
           playerId: testData.playerId,
           itemId: dropId
         });
@@ -479,7 +482,7 @@ export class LootDropTestSystem extends VisualTestFramework {
       if (dropId) {
         processedDropIds.add(dropId);
         // Use the correct event for loot pickup with the drop ID
-        this.world.emit(EventType.ITEM_PICKUP, {
+        this.emitTypedEvent(EventType.ITEM_PICKUP, {
           playerId: testData.playerId,
           itemId: dropId
         });

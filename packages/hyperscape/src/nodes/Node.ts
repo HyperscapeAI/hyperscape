@@ -1,4 +1,4 @@
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 import type { NodeData } from '../types/index'
 import type { World } from '../World'
 
@@ -222,7 +222,7 @@ export class Node {
     const children = this.children
     for (let i = 0, l = children.length; i < l; i++) {
       const child = children[i]
-      if (child) {
+      if (child && child instanceof Node) {
         child.activate(ctx)
       }
     }
@@ -234,7 +234,7 @@ export class Node {
     const children = this.children
     for (let i = 0, l = children.length; i < l; i++) {
       const child = children[i]
-      if (child) {
+      if (child && child instanceof Node) {
         child.deactivate()
       }
     }
@@ -246,6 +246,10 @@ export class Node {
 
   add(node: Node) {
     if (!node) return console.error('no node to add')
+    if (!(node instanceof Node)) {
+      console.error('[Node] Attempted to add non-Node child. Ignoring.', node)
+      return this
+    }
     if (node.parent) {
       node.parent.remove(node)
     }
@@ -431,7 +435,7 @@ export class Node {
 
   // todo: getWorldQuaternion etc
   getWorldPosition(vec3 = _v1) {
-    this.matrixWorld.decompose(vec3 as unknown as THREE.Vector3, _q1, _v2 as unknown as THREE.Vector3)
+    this.matrixWorld.decompose(vec3 as THREE.Vector3, _q1, _v2 as THREE.Vector3)
     return vec3
   }
 

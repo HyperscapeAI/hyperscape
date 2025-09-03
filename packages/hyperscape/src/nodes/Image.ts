@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 import CustomShaderMaterial from '../libs/three-custom-shader-material'
 import { Node } from './Node'
 import type { LoaderResult } from '../types'

@@ -46,13 +46,13 @@ export class PlayerTestSystem extends VisualTestFramework {
     this.databaseSystem = this.world.getSystem<DatabaseSystem>('rpg-database')!;
 
     // Set up event listeners
-    this.world.on(EventType.PLAYER_REGISTERED, this.handlePlayerRegistered.bind(this));
-    this.world.on(EventType.PLAYER_UNREGISTERED, this.handlePlayerUnregistered.bind(this));
-    this.world.on(EventType.PLAYER_POSITION_UPDATED, this.handlePositionUpdate.bind(this));
-    this.world.on(EventType.PLAYER_DATA_LOADED, this.handleDataLoaded.bind(this));
-    this.world.on(EventType.PLAYER_DATA_SAVED, this.handleDataSaved.bind(this));
-    this.world.on(EventType.PLAYER_SESSION_STARTED, this.handleSessionStarted.bind(this));
-    this.world.on(EventType.PLAYER_SESSION_ENDED, this.handleSessionEnded.bind(this));
+    this.subscribe(EventType.PLAYER_REGISTERED, (data) => this.handlePlayerRegistered(data));
+    this.subscribe(EventType.PLAYER_UNREGISTERED, (data) => this.handlePlayerUnregistered(data));
+    this.subscribe(EventType.PLAYER_POSITION_UPDATED, (data) => this.handlePositionUpdate(data));
+    this.subscribe(EventType.PLAYER_DATA_LOADED, (data) => this.handleDataLoaded(data));
+    this.subscribe(EventType.PLAYER_DATA_SAVED, (data) => this.handleDataSaved(data));
+    this.subscribe(EventType.PLAYER_SESSION_STARTED, (data) => this.handleSessionStarted(data));
+    this.subscribe(EventType.PLAYER_SESSION_ENDED, (data) => this.handleSessionEnded(data));
 
     this.createTestStations();
     this.testStationsCreated = true;
@@ -120,8 +120,8 @@ export class PlayerTestSystem extends VisualTestFramework {
     const testData = this.testData.get(stationId);
     
     if (!testData) {
-      console.error(`[PlayerTestSystem] No test data found for station: ${stationId}`);
-      console.error(`[PlayerTestSystem] Available stations:`, Array.from(this.testData.keys()));
+      this.logger.error(`[PlayerTestSystem] No test data found for station: ${stationId}`);
+      this.logger.error(`[PlayerTestSystem] Available stations: ${Array.from(this.testData.keys()).join(', ')}`);
       this.failTest(stationId, `No test data found for station: ${stationId}`);
       return;
     }
@@ -512,11 +512,11 @@ export class PlayerTestSystem extends VisualTestFramework {
   }
 
   // Event handlers
-  private handlePlayerRegistered(data: { id: string }): void {
+  private handlePlayerRegistered(data: { playerId: string }): void {
     // Track player registrations
     for (const testData of this.testData.values()) {
-      if (testData.playersCreated.includes(data.id)) {
-        testData.playersRegistered.push(data.id);
+      if (testData.playersCreated.includes(data.playerId)) {
+        testData.playersRegistered.push(data.playerId);
       }
     }
   }
@@ -692,8 +692,10 @@ export class PlayerTestSystem extends VisualTestFramework {
   }
 
   private updatePlayerPosition(playerId: string, position: { x: number; y: number; z: number }): void {
-    // Update player position
-    this.playerSystem.updatePlayerPosition(playerId, position);
+    // Update player position (method returns a Promise)
+    const playerSystem = this.playerSystem;
+    if (!playerSystem || typeof playerSystem.updatePlayerPosition !== 'function') return;
+    void playerSystem.updatePlayerPosition(playerId, position);
   }
 
   private async savePlayer(playerId: string, data: Partial<PlayerRow>): Promise<void> {

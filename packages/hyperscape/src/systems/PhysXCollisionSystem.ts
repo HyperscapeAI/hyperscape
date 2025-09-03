@@ -12,60 +12,18 @@
 
 import { EventType } from '../types/events';
 import type { Entity } from '../types/index';
-import { Object3D, Raycaster, toTHREEVector3 } from '../extras/three';
 import { World } from '../World';
 import { Physics } from './Physics';
-import { System } from './System';
+import { SystemBase } from './SystemBase';
 import { TerrainValidationSystem } from './TerrainValidationSystem';
 
-import * as THREE from '../extras/three'
+import THREE from '../extras/three';
+import type { CollisionValidationResult, CollisionError, GroundClampingOptions, EntityGroundState } from '../types/physics'
 
-export interface CollisionValidationResult {
-  isValid: boolean;
-  errors: CollisionError[];
-  totalChecks: number;
-  successfulChecks: number;
-  averageHeight: number;
-  maxHeightDifference: number;
-  validationTime: number;
-}
+// Moved shared collision types to be globally reusable
+// Types moved to shared physics types
 
-export interface CollisionError {
-  type: 'missing_collision' | 'height_mismatch' | 'invalid_geometry' | 'underground_entity' | 'floating_entity';
-  position: { x: number; y: number; z: number }
-  severity: 'critical' | 'warning' | 'info';
-  message: string;
-  timestamp: number;
-  expectedHeight?: number;
-  actualHeight?: number;
-  heightDifference?: number;
-  entityId?: string;
-}
-
-export interface GroundClampingOptions {
-  raycastDistance?: number;
-  verticalOffset?: number;
-  layerMask?: number;
-  allowUnderground?: boolean;
-  snapToSurface?: boolean;
-  smoothing?: boolean;
-  smoothingFactor?: number;
-}
-
-export interface EntityGroundState {
-  entityId: string;
-  position: { x: number; y: number; z: number }
-  groundHeight: number;
-  isOnGround: boolean;
-  isUnderground: boolean;
-  isFloating: boolean;
-  lastGroundContact: number;
-  verticalVelocity: number;
-  groundNormal: { x: number; y: number; z: number }
-  surfaceType: string;
-}
-
-export class PhysXCollisionSystem extends System {
+export class PhysXCollisionSystem extends SystemBase {
   private collisionErrors: CollisionError[] = [];
   private entityGroundStates = new Map<string, EntityGroundState>();
   private terrainValidationSystem!: TerrainValidationSystem;
@@ -73,12 +31,11 @@ export class PhysXCollisionSystem extends System {
   private lastValidationTime = 0;
   private isValidating = false;
   
-  // Raycasting pools for performance
-  private raycastPool: Raycaster[] = [];
-  private raycastPoolIndex = 0;
+  // Interval handles
+  private validationIntervalId: ReturnType<typeof setInterval> | null = null;
+  private groundMonitorIntervalId: ReturnType<typeof setInterval> | null = null;
   
   // Constants
-  private static readonly RAY_POOL_SIZE = 20;
   private static readonly VALIDATION_INTERVAL = 3000;
   private static readonly RAYCAST_DISTANCE = 1000;
   private static readonly GROUND_TOLERANCE = 0.1;
@@ -90,7 +47,7 @@ export class PhysXCollisionSystem extends System {
   private static readonly BATCH_SIZE = 10;
 
   constructor(world: World) {
-    super(world);
+    super(world, { name: 'physx-collision', dependencies: { required: [], optional: [] }, autoCleanup: true });
   }
 
   async init(): Promise<void> {
@@ -98,22 +55,31 @@ export class PhysXCollisionSystem extends System {
     this.terrainValidationSystem = this.world.getSystem('terrain-validation') as TerrainValidationSystem;
     this.physicsSystem = this.world.getSystem('physics') as Physics;
     
-    // Initialize raycast pool
-    this.initializeRaycastPool();
-    
-    // Listen for entity events
-    this.world.on(EventType.ENTITY_POSITION_CHANGED, (data) => this.onEntityMoved(data));
-    this.world.on(EventType.ENTITY_SPAWNED, (data) => this.onEntitySpawned(data));
-    this.world.on(EventType.ENTITY_DEATH, (data) => this.onEntityDestroyed(data));
-    
+    // Listen for entity events via event bus (typed payloads)
+    this.subscribe(EventType.ENTITY_POSITION_CHANGED, (data: { entityId: string; position: { x: number; y: number; z: number } }) => {
+      this.onEntityMoved({ entityId: data.entityId, position: data.position, oldPosition: { x: data.position.x, y: data.position.y, z: data.position.z } });
+    });
+    this.subscribe(EventType.ENTITY_SPAWNED, (_data: { entityId: string; entityType: 'player' | 'mob' | 'item' | 'npc' | 'resource' }) => {
+      // Ground state initializes on first ENTITY_POSITION_CHANGED
+    });
+    this.subscribe(EventType.ENTITY_DEATH, (data: { entityId: string }) => this.onEntityDestroyed(data));
     // Listen for validation requests
-    this.world.on(EventType.PHYSICS_VALIDATION_REQUEST, () => this.requestValidation());
-    this.world.on(EventType.PHYSICS_GROUND_CLAMP, (data) => this.clampEntityToGround(data));
+    this.subscribe(EventType.PHYSICS_VALIDATION_REQUEST, () => this.requestValidation());
+    this.subscribe(
+      EventType.PHYSICS_GROUND_CLAMP,
+      (payload: { entityId: string; position?: { x: number; y: number; z: number }; options?: Partial<GroundClampingOptions> }) => {
+        void this.clampEntityToGround({
+          entityId: payload.entityId,
+          position: payload.position,
+          options: payload.options as GroundClampingOptions | undefined
+        });
+      }
+    );
   }
 
   start(): void {
     // Start periodic collision validation
-    setInterval(() => {
+    this.validationIntervalId = setInterval(() => {
       if (!this.isValidating) {
         this.validateCollisionIntegrity();
       }
@@ -123,30 +89,14 @@ export class PhysXCollisionSystem extends System {
     this.startGroundStateMonitoring();
   }
 
-  /**
-   * Initialize raycast pool for performance
-   */
-  private initializeRaycastPool(): void {
-    for (let i = 0; i < PhysXCollisionSystem.RAY_POOL_SIZE; i++) {
-      this.raycastPool.push(new THREE.Raycaster());
-    }
-  }
-
-  /**
-   * Get a raycaster from the pool
-   */
-  private getRaycaster(): Raycaster {
-    const raycaster = this.raycastPool[this.raycastPoolIndex];
-    this.raycastPoolIndex = (this.raycastPoolIndex + 1) % PhysXCollisionSystem.RAY_POOL_SIZE;
-    return raycaster;
-  }
+  // Removed Three.js Raycaster pool in favor of PhysX raycasts
 
   /**
    * Start ground state monitoring for all entities
    */
   private startGroundStateMonitoring(): void {
-    // Monitor entity ground states at 30fps
-    setInterval(() => {
+    // Monitor entity ground states at ~30fps
+    this.groundMonitorIntervalId = setInterval(() => {
       this.updateAllEntityGroundStates();
     }, 33); // ~30fps
   }
@@ -233,7 +183,7 @@ export class PhysXCollisionSystem extends System {
     result.isValid = result.errors.filter((e) => e.severity === 'critical').length === 0;
     
     // Emit validation complete event
-    this.world.emit(EventType.PHYSICS_VALIDATION_COMPLETE, result);
+    this.emitTypedEvent(EventType.PHYSICS_VALIDATION_COMPLETE, result);
     
     this.isValidating = false;
     this.lastValidationTime = Date.now();
@@ -255,13 +205,13 @@ export class PhysXCollisionSystem extends System {
     
     // Perform PhysX raycast
     const physxHeight = await this.performPhysXRaycast(x, z);
-    
-    const heightDifference = Math.abs(terrainHeight - physxHeight);
+    const isValid = !Number.isNaN(physxHeight);
+    const heightDifference = isValid ? Math.abs(terrainHeight - physxHeight) : 0;
     
     return {
-      success: true,
+      success: isValid,
       terrainHeight,
-      physxHeight,
+      physxHeight: isValid ? physxHeight : terrainHeight,
       heightDifference
     };
   }
@@ -270,25 +220,14 @@ export class PhysXCollisionSystem extends System {
    * Perform PhysX raycast to get collision height
    */
   private async performPhysXRaycast(x: number, z: number, startHeight: number = 500): Promise<number> {
-    // Use Three.js raycaster as PhysX interface
-    const raycaster = this.getRaycaster();
-    const origin = toTHREEVector3(new THREE.Vector3(x, startHeight, z));
-    const direction = toTHREEVector3(new THREE.Vector3(0, -1, 0));
-    
-    raycaster.set(origin, direction);
-    raycaster.far = PhysXCollisionSystem.RAYCAST_DISTANCE;
-    
-    // Get collision meshes from physics system
-    const collisionMeshes = this.getCollisionMeshes();
-    
-    const intersections = raycaster.intersectObjects(collisionMeshes, true);
-    
-    if (intersections.length > 0) {
-      return intersections[0].point.y;
+    const origin = new THREE.Vector3(x, startHeight, z);
+    const direction = new THREE.Vector3(0, -1, 0);
+    const mask = this.world.createLayerMask ? this.world.createLayerMask('environment') : 0xFFFFFFFF;
+    const hit = this.physicsSystem.raycastWithMask(origin, direction, PhysXCollisionSystem.RAYCAST_DISTANCE, mask);
+    if (hit && hit.point) {
+      return hit.point.y;
     }
-    
-    // Default to ground level if no collision found
-    return 0;
+    return Number.NaN;
   }
 
   /**
@@ -340,9 +279,8 @@ export class PhysXCollisionSystem extends System {
     // Apply position if snap to surface is enabled
     if (options.snapToSurface) {
       entity.position.set(newPosition.x, newPosition.y, newPosition.z);
-      
       // Emit position correction event
-      this.world.emit(EventType.ENTITY_POSITION_CORRECTED, {
+      this.emitTypedEvent(EventType.ENTITY_POSITION_CORRECTED, {
         entityId: data.entityId,
         oldPosition: position,
         newPosition: newPosition,
@@ -410,13 +348,14 @@ export class PhysXCollisionSystem extends System {
     // Check ground if requested
     if (data.checkGround && groundState.position) {
       this.performPhysXRaycast(groundState.position.x, groundState.position.z).then(height => {
-        if (groundState) {
-          groundState.groundHeight = height;
-          groundState.isOnGround = Math.abs(groundState.position.y - height) < PhysXCollisionSystem.GROUND_TOLERANCE;
-          
-          if (groundState.isOnGround) {
-            groundState.lastGroundContact = Date.now();
-          }
+        const validHeight = !Number.isNaN(height) ? height : groundState!.groundHeight;
+        groundState!.groundHeight = validHeight;
+        const delta = groundState!.position.y - validHeight;
+        groundState!.isOnGround = Math.abs(delta) < PhysXCollisionSystem.GROUND_TOLERANCE;
+        groundState!.isUnderground = delta < PhysXCollisionSystem.UNDERGROUND_THRESHOLD;
+        groundState!.isFloating = delta > PhysXCollisionSystem.FLOATING_THRESHOLD;
+        if (groundState!.isOnGround) {
+          groundState!.lastGroundContact = Date.now();
         }
       });
     }
@@ -462,9 +401,7 @@ export class PhysXCollisionSystem extends System {
     return this.terrainValidationSystem.getTerrainHeight(x, z) || 0;
   }
 
-  private getCollisionMeshes(): Object3D[] {
-    return []; // Physics system collision meshes
-  }
+  // Three.js meshes are not used for collision; PhysX manages colliders
 
   private getEntity(entityId: string): Entity | null {
     return this.world.entities.get(entityId);
@@ -574,7 +511,6 @@ export class PhysXCollisionSystem extends System {
       floatingEntities,
       groundedEntities,
       collisionErrors: this.collisionErrors.length,
-      raycastPoolSize: PhysXCollisionSystem.RAY_POOL_SIZE,
       lastValidationTime: this.lastValidationTime
     };
   }
@@ -587,7 +523,10 @@ export class PhysXCollisionSystem extends System {
   destroy(): void {
     this.collisionErrors = [];
     this.entityGroundStates.clear();
-    this.raycastPool = [];
+    if (this.validationIntervalId) clearInterval(this.validationIntervalId);
+    if (this.groundMonitorIntervalId) clearInterval(this.groundMonitorIntervalId);
+    this.validationIntervalId = null;
+    this.groundMonitorIntervalId = null;
   }
 
   // Required System interface methods

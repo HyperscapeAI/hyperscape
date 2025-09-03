@@ -4,32 +4,11 @@
  */
 
 import type {
-  MobStats,
-  MobBehavior,
+  MobData,
   MobDropItem
 } from '../types/core';
 
-// Use the correct MobData interface from core.ts (the one at line 1924)
-export interface MobData {
-  id: string;
-  name: string;
-  description: string;
-  difficultyLevel: 1 | 2 | 3;
-  mobType: string;
-  stats: MobStats;
-  behavior: MobBehavior;
-  drops: MobDropItem[];
-  spawnBiomes: string[];
-  modelPath: string;
-  animationSet: {
-    idle: string;
-    walk: string;
-    attack: string;
-    death: string;
-  };
-  respawnTime: number;
-  xpReward: number;
-}
+// MobData comes from shared core types
 
 /**
  * Level 1 Mobs (Beginner Areas)
@@ -40,6 +19,7 @@ export const LEVEL_1_MOBS: Record<string, MobData> = {
     name: 'Goblin',
     description: 'Small green humanoids with crude weapons. The classic first enemy.',
     mobType: 'humanoid',
+    type: 'humanoid',
     difficultyLevel: 1,
     stats: {
       level: 2,
@@ -72,8 +52,11 @@ export const LEVEL_1_MOBS: Record<string, MobData> = {
       attack: '/assets/animations/goblin_attack.glb',
       death: '/assets/animations/goblin_death.glb'
     },
-    respawnTime: 900000, // 15 minutes per GDD
-    xpReward: 8
+    respawnTime: 900000,
+    xpReward: 8,
+    health: 5,
+    maxHealth: 5,
+    level: 2
   },
 
   bandit: {
@@ -81,6 +64,7 @@ export const LEVEL_1_MOBS: Record<string, MobData> = {
     name: 'Desperate Bandit',
     description: 'Humans who turned to crime after the Calamity. More desperate than evil.',
     mobType: 'humanoid',
+    type: 'humanoid',
     difficultyLevel: 1,
     stats: {
       level: 3,
@@ -113,7 +97,10 @@ export const LEVEL_1_MOBS: Record<string, MobData> = {
       death: '/assets/animations/human_death.glb'
     },
     respawnTime: 900000,
-    xpReward: 12
+    xpReward: 12,
+    health: 8,
+    maxHealth: 8,
+    level: 3
   },
 
   barbarian: {
@@ -121,6 +108,7 @@ export const LEVEL_1_MOBS: Record<string, MobData> = {
     name: 'Barbarian Warrior',
     description: 'Primitive humans living in the wilderness who reject civilization.',
     mobType: 'humanoid',
+    type: 'humanoid',
     difficultyLevel: 1,
     stats: {
       level: 4,
@@ -154,7 +142,10 @@ export const LEVEL_1_MOBS: Record<string, MobData> = {
       death: '/assets/animations/barbarian_death.glb'
     },
     respawnTime: 900000,
-    xpReward: 18
+    xpReward: 18,
+    health: 12,
+    maxHealth: 12,
+    level: 4
   }
 };
 
@@ -167,6 +158,7 @@ export const LEVEL_2_MOBS: Record<string, MobData> = {
     name: 'Hobgoblin',
     description: 'Larger, militaristic cousins of goblins with organized fighting discipline.',
     mobType: 'humanoid',
+    type: 'humanoid',
     difficultyLevel: 2,
     stats: {
       level: 8,
@@ -201,7 +193,10 @@ export const LEVEL_2_MOBS: Record<string, MobData> = {
       death: '/assets/animations/hobgoblin_death.glb'
     },
     respawnTime: 900000,
-    xpReward: 35
+    xpReward: 35,
+    health: 25,
+    maxHealth: 25,
+    level: 8
   },
 
   guard: {
@@ -209,6 +204,7 @@ export const LEVEL_2_MOBS: Record<string, MobData> = {
     name: 'Corrupted Guard',
     description: 'Former kingdom soldiers serving dark masters, well-trained but fallen.',
     mobType: 'humanoid',
+    type: 'humanoid',
     difficultyLevel: 2,
     stats: {
       level: 10,
@@ -244,7 +240,10 @@ export const LEVEL_2_MOBS: Record<string, MobData> = {
       death: '/assets/animations/guard_death.glb'
     },
     respawnTime: 900000,
-    xpReward: 45
+    xpReward: 45,
+    health: 30,
+    maxHealth: 30,
+    level: 10
   },
 
   dark_warrior: {
@@ -252,6 +251,7 @@ export const LEVEL_2_MOBS: Record<string, MobData> = {
     name: 'Dark Warrior',
     description: 'Warriors who embraced darkness after the Calamity, choosing power over honor.',
     mobType: 'humanoid',
+    type: 'humanoid',
     difficultyLevel: 2,
     stats: {
       level: 12,
@@ -285,7 +285,10 @@ export const LEVEL_2_MOBS: Record<string, MobData> = {
       death: '/assets/animations/dark_warrior_death.glb'
     },
     respawnTime: 900000,
-    xpReward: 55
+    xpReward: 55,
+    health: 35,
+    maxHealth: 35,
+    level: 12
   }
 };
 
@@ -298,6 +301,7 @@ export const LEVEL_3_MOBS: Record<string, MobData> = {
     name: 'Black Knight',
     description: 'The most feared human enemies, elite dark warriors in pitch-black armor.',
     mobType: 'humanoid',
+    type: 'humanoid',
     difficultyLevel: 3,
     stats: {
       level: 20,
@@ -333,7 +337,10 @@ export const LEVEL_3_MOBS: Record<string, MobData> = {
       death: '/assets/animations/black_knight_death.glb'
     },
     respawnTime: 900000,
-    xpReward: 100
+    xpReward: 100,
+    health: 60,
+    maxHealth: 60,
+    level: 20
   },
 
   ice_warrior: {
@@ -341,6 +348,7 @@ export const LEVEL_3_MOBS: Record<string, MobData> = {
     name: 'Ice Warrior',
     description: 'Ancient warriors of Valorhall, frozen but still fighting with incredible defense.',
     mobType: 'undead',
+    type: 'undead',
     difficultyLevel: 3,
     stats: {
       level: 18,
@@ -375,7 +383,10 @@ export const LEVEL_3_MOBS: Record<string, MobData> = {
       death: '/assets/animations/ice_warrior_death.glb'
     },
     respawnTime: 900000,
-    xpReward: 90
+    xpReward: 90,
+    health: 80,
+    maxHealth: 80,
+    level: 18
   },
 
   dark_ranger: {
@@ -383,6 +394,7 @@ export const LEVEL_3_MOBS: Record<string, MobData> = {
     name: 'Dark Ranger',
     description: 'Master bowmen who turned to darkness, deadly accurate with powerful longbows.',
     mobType: 'humanoid',
+    type: 'humanoid',
     difficultyLevel: 3,
     stats: {
       level: 22,
@@ -417,7 +429,10 @@ export const LEVEL_3_MOBS: Record<string, MobData> = {
       death: '/assets/animations/dark_ranger_death.glb'
     },
     respawnTime: 900000,
-    xpReward: 110
+    xpReward: 110,
+    health: 50,
+    maxHealth: 50,
+    level: 22
   }
 };
 

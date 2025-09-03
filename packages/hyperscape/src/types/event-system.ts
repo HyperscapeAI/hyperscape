@@ -5,10 +5,29 @@
  * all events are properly typed throughout the codebase.
  */
 
-import { EventType } from './events';
+import { EventType, type AnyEvent } from './events';
 import * as Payloads from './event-payloads';
 import { Player, EquipmentSlotName } from './core';
 import { Position3D } from './index';
+
+// Shared event system types
+export interface SystemEvent<T = AnyEvent> {
+  readonly type: EventType;
+  readonly data: T;
+  readonly source: string;
+  readonly timestamp: number;
+  readonly id: string;
+}
+
+export interface EventHandler<T = AnyEvent> {
+  (event: SystemEvent<T>): void | Promise<void>;
+}
+
+export interface EventSubscription {
+  unsubscribe(): void;
+  readonly active: boolean;
+}
+import type { SkillsData } from './systems';
 import type {
   InventoryCanAddEvent,
   InventoryRemoveCoinsEvent,
@@ -20,7 +39,8 @@ import type {
   UIMessageEvent,
   StoreOpenEvent,
   StoreCloseEvent,
-  StoreBuyEvent
+  StoreBuyEvent,
+  StoreSellEvent
 } from './events';
 
 /**
@@ -49,9 +69,17 @@ export interface EventMap {
   [EventType.UI_TOAST]: { message: string; type: 'info' | 'success' | 'warning' | 'error' };
   [EventType.UI_SIDEBAR_CHAT_TOGGLE]: void;
   [EventType.UI_ACTIONS_UPDATE]: Array<{ id: string; name: string; enabled: boolean; hotkey: string | null }>;
-  [EventType.CAMERA_SET_TARGET]: { target: { entityId: string; offset: { x: number; y: number; z: number } } };
+  // Camera Events
+  [EventType.CAMERA_SET_MODE]: { mode: 'first_person' | 'third_person' | 'top_down' };
+  // Camera target accepts any object that exposes a THREE.Vector3 position
+  [EventType.CAMERA_SET_TARGET]: { target: { position: { x: number; y: number; z: number } } };
+  [EventType.CAMERA_CLICK_WORLD]: { screenPosition: { x: number; y: number }; normalizedPosition: { x: number; y: number }; target: { position?: Position3D } };
+  // Biome Visualization Events
+  [EventType.BIOME_TOGGLE_VISUALIZATION]: void;
+  [EventType.BIOME_SHOW_AREA]: { areaId: string };
+  [EventType.BIOME_HIDE_AREA]: { areaId: string };
   [EventType.PLAYER_REGISTERED]: { playerId: string };
-  [EventType.PLAYER_AVATAR_READY]: { playerId: string; avatar: { vrm: string; scale: number }; camHeight: number };
+  [EventType.PLAYER_AVATAR_READY]: { playerId: string; avatar: { base?: {} } | {}; camHeight: number };
   [EventType.GRAPHICS_RESIZE]: { width: number; height: number };
   [EventType.NETWORK_CONNECTED]: void;
   [EventType.NETWORK_DISCONNECTED]: { code: number; reason: string };
@@ -102,6 +130,7 @@ export interface EventMap {
   [EventType.PLAYER_CREATE]: { playerId: string; playerData: Player };
   [EventType.PLAYER_SPAWN_COMPLETE]: { playerId: string; position: Position3D };
   [EventType.PLAYER_HEALTH_UPDATED]: { playerId: string; health: number; maxHealth: number };
+  [EventType.PLAYER_SKILLS_UPDATED]: { playerId: string; skills: SkillsData };
   [EventType.PLAYER_TELEPORT_REQUEST]: { playerId: string; position: Position3D; rotationY: number };
   [EventType.PLAYER_DAMAGE]: { playerId: string; damage: number; source: 'combat' | 'fall' | 'drowning' | 'poison' | 'fire' | 'other' };
   [EventType.PLAYER_UPDATED]: { 
@@ -126,6 +155,7 @@ export interface EventMap {
       position?: Position3D;
     };
   };
+  [EventType.MOVEMENT_COMPLETED]: { playerId: string; finalPosition: Position3D };
   [EventType.PLAYER_RESPAWN_REQUEST]: { playerId: string };
   [EventType.PLAYER_EQUIPMENT_UPDATED]: { 
     playerId: string; 
@@ -147,9 +177,9 @@ export interface EventMap {
   [EventType.COMBAT_RANGED_ATTACK]: { attackerId: string; targetId: string; projectileId: string };
   [EventType.COMBAT_MOB_ATTACK]: { mobId: string; targetId: string };
   [EventType.COMBAT_ATTACK_FAILED]: { attackerId: string; targetId: string; reason: 'out_of_range' | 'no_ammo' | 'target_dead' | 'cooldown' | 'invalid_target' };
-  [EventType.COMBAT_XP_CALCULATE]: { attackerId: string; targetId: string; damage: number };
-  [EventType.COMBAT_DAMAGE_CALCULATE]: { attackerId: string; targetId: string; baseDamage: number };
-  [EventType.COMBAT_ACCURACY_CALCULATE]: { attackerId: string; targetId: string; accuracy: number };
+  [EventType.COMBAT_XP_CALCULATE]: { playerId: string; baseXP: number; skill: string; callback: (xpAmount: number) => void };
+  [EventType.COMBAT_DAMAGE_CALCULATE]: { playerId: string; baseDamage: number; callback: (damage: number) => void };
+  [EventType.COMBAT_ACCURACY_CALCULATE]: { playerId: string; baseAccuracy: number; callback: (accuracy: number) => void };
   [EventType.COMBAT_START_ATTACK]: { attackerId: string; targetId: string };
   [EventType.COMBAT_HEAL]: { playerId: string; amount: number; source: 'food' | 'potion' | 'spell' | 'natural' };
   [EventType.COMBAT_MISS]: { attackerId: string; targetId: string };
@@ -225,13 +255,14 @@ export interface EventMap {
   [EventType.NPC_DIALOGUE]: { playerId: string; npcId: string; dialogueId: string };
 
   // Mob Events
-  [EventType.MOB_SPAWNED]: { mobId: string; mobType: 'goblin' | 'orc' | 'skeleton' | 'troll'; position: { x: number; y: number; z: number } };
-  [EventType.MOB_SPAWN_REQUEST]: { mobType: 'goblin' | 'orc' | 'skeleton' | 'troll'; position: { x: number; y: number; z: number } };
+  [EventType.MOB_SPAWNED]: { mobId: string; mobType: string; position: { x: number; y: number; z: number } };
+  [EventType.MOB_SPAWN_REQUEST]: { mobType: string; position: { x: number; y: number; z: number } };
   [EventType.MOB_DESPAWN]: { mobId: string };
   [EventType.MOB_RESPAWN_ALL]: void;
   [EventType.AGGRO_MOB_AGGROED]: { mobId: string; targetId: string };
   [EventType.MOB_POSITION_UPDATED]: { mobId: string; position: { x: number; y: number; z: number } };
   [EventType.MOB_ATTACKED]: { mobId: string; attackerId: string; damage: number };
+  [EventType.MOB_DAMAGED]: { mobId: string; damage: number; attackerId: string };
   [EventType.MOB_DIED]: Payloads.MobDiedPayload;
 
   // Bank Events
@@ -243,13 +274,14 @@ export interface EventMap {
   [EventType.BANK_DEPOSIT_SUCCESS]: BankDepositSuccessEvent;
 
   // UI Events
-  [EventType.UI_ATTACK_STYLE_GET]: { playerId: string; callbackId: string };
+  [EventType.UI_ATTACK_STYLE_GET]: { playerId: string; callback?: (info: Record<string, unknown> | null) => void };
   [EventType.UI_MESSAGE]: UIMessageEvent;
 
   // Camera Events
   [EventType.CAMERA_FOLLOW_PLAYER]: { playerId: string; entity: { id: string; mesh: object }; camHeight: number };
 
   // Resource Events
+  [EventType.RESOURCE_SPAWNED]: { id: string; type: 'tree' | 'fishing_spot' | 'ore' | 'herb_patch' | 'mine'; position: { x: number; y: number; z: number } };
   [EventType.RESOURCE_GATHERED]: { playerId: string; resourceType: 'tree' | 'rock' | 'ore' | 'herb' | 'fish'; skill: 'woodcutting' | 'mining' | 'fishing' | 'herbalism' };
   [EventType.RESOURCE_DEPLETED]: { resourceId: string };
   [EventType.RESOURCE_RESPAWNED]: { resourceId: string };
@@ -270,8 +302,16 @@ export interface EventMap {
   [EventType.CHAT_MESSAGE]: { playerId: string; text: string };
 
   // Item Actions
-  [EventType.ITEM_USE_ON_FIRE]: { playerId: string; itemId: string; fireId: string };
-  [EventType.ITEM_USE_ON_ITEM]: { playerId: string; itemId: string; targetItemId: string };
+  [EventType.ITEM_USE_ON_FIRE]: { playerId: string; itemId: number; itemSlot?: number; fireId: string };
+  [EventType.ITEM_USE_ON_ITEM]: {
+    playerId: string;
+    // Two producer variants exist; we support both field names
+    primaryItemId?: number;
+    primarySlot?: number;
+    itemId?: number;
+    targetItemId: number;
+    targetSlot?: number;
+  };
   [EventType.ITEM_ON_ITEM]: { playerId: string; sourceItemId: string; targetItemId: string };
   [EventType.ITEM_RIGHT_CLICK]: { playerId: string; itemId: string; slot: number };
   [EventType.ITEM_ACTION_EXECUTE]: { playerId: string; action: 'eat' | 'drink' | 'light' | 'use' | 'wield' | 'wear'; itemId: string };
@@ -296,6 +336,8 @@ export interface EventMap {
   [EventType.STORE_OPEN]: StoreOpenEvent;
   [EventType.STORE_CLOSE]: StoreCloseEvent;
   [EventType.STORE_BUY]: StoreBuyEvent;
+  [EventType.STORE_SELL]: StoreSellEvent;
+  [EventType.STORE_REGISTER_NPC]: { npcId: string; storeId: string; position: { x: number; y: number; z: number }; name: string; area: string };
   [EventType.STORE_PLAYER_COINS]: { playerId: string; coins: number };
 
   // Additional UI Events
@@ -305,7 +347,10 @@ export interface EventMap {
   [EventType.UI_COMPLEX_INTERACTION]: { playerId: string; action: 'drag' | 'doubleclick' | 'rightclick' | 'hover'; target: string };
 
   [EventType.UI_CREATE]: { uiId: string; uiType: 'inventory' | 'equipment' | 'skills' | 'chat' | 'bank' | 'store' | 'dialog'; data: Record<string, string | number | boolean> };
-  [EventType.UI_OPEN_MENU]: { playerId: string; actions: Array<'use' | 'drop' | 'examine' | 'equip' | 'unequip'>; menuType: 'context' | 'main' | 'options' };
+  [EventType.UI_OPEN_MENU]: (
+    { playerId: string; inventoryElement: HTMLElement; equipmentElement?: HTMLElement } |
+    { playerId: string; actions: Array<'use' | 'drop' | 'examine' | 'equip' | 'unequip'>; menuType: 'context' | 'main' | 'options' }
+  );
   [EventType.UI_CLOSE_MENU]: { playerId: string; menuType: 'context' | 'main' | 'options' };
   [EventType.UI_CLOSE_ALL]: { playerId: string };
   [EventType.UI_SET_VIEWPORT]: { width: number; height: number };
@@ -315,6 +360,9 @@ export interface EventMap {
   [EventType.UI_HEALTH_UPDATE]: { playerId: string; health: number; maxHealth: number };
   [EventType.UI_PLAYER_UPDATE]: { playerId: string; playerData: { health: number; maxHealth: number; level: number; xp: number } };
   [EventType.UI_EQUIPMENT_UPDATE]: { playerId: string; equipment: Record<EquipmentSlotName, { itemId: string; name: string } | null> };
+
+  // XR Events
+  [EventType.XR_SESSION]: XRSession | null;
 
   // Stats System
   [EventType.STATS_UPDATE]: { playerId: string; stats: Record<'attack' | 'strength' | 'defense' | 'constitution' | 'ranged' | 'woodcutting' | 'fishing' | 'firemaking' | 'cooking', { level: number; xp: number }> };
@@ -334,6 +382,44 @@ export interface EventMap {
   // General Test Events
   [EventType.TEST_RUN_ALL]: void;
   [EventType.TEST_PLAYER_REMOVE]: { id: string };
+
+  // Physics Validation Events
+  [EventType.PHYSICS_VALIDATION_REQUEST]: void;
+  [EventType.PHYSICS_VALIDATION_COMPLETE]: {
+    isValid: boolean;
+    errors: Array<{
+      type: 'missing_collision' | 'height_mismatch' | 'invalid_geometry' | 'underground_entity' | 'floating_entity';
+      position: { x: number; y: number; z: number };
+      severity: 'critical' | 'warning' | 'info';
+      message: string;
+      timestamp: number;
+      expectedHeight?: number;
+      actualHeight?: number;
+      heightDifference?: number;
+      entityId?: string;
+    }>;
+    totalChecks: number;
+    successfulChecks: number;
+    averageHeight: number;
+    maxHeightDifference: number;
+    validationTime: number;
+  };
+  [EventType.PHYSICS_GROUND_CLAMP]: {
+    entityId: string;
+    position?: Position3D;
+    options?: {
+      raycastDistance?: number;
+      verticalOffset?: number;
+      layerMask?: number;
+      allowUnderground?: boolean;
+      snapToSurface?: boolean;
+      smoothing?: boolean;
+      smoothingFactor?: number;
+    };
+  };
+  // Visual Test Framework
+  [EventType.TEST_STATION_CREATED]: { station: Record<string, unknown> };
+  [EventType.TEST_RESULT]: { stationId: string; result: { success: boolean; error?: string; duration: number; details?: Record<string, unknown> } };
 }
 
 /**

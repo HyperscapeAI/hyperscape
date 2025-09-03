@@ -58,8 +58,8 @@ export class WorldGenerationSystem extends SystemBase {
   async init(): Promise<void> {
     
     // Set up type-safe event subscriptions for world generation
-    this.subscribe<{ seed?: number; config?: Record<string, unknown> }>(EventType.WORLD_GENERATE, (_event) => this.generateWorld());
-    this.subscribe<{ type: string; position: { x: number; y: number; z: number }; config?: Record<string, unknown> }>(EventType.WORLD_SPAWN_STRUCTURE, (event) => this.spawnStructure(event.data));
+    this.subscribe<{ seed?: number; config?: Record<string, unknown> }>(EventType.WORLD_GENERATE, (_data) => this.generateWorld());
+    this.subscribe<{ type: string; position: { x: number; y: number; z: number }; config?: Record<string, unknown> }>(EventType.WORLD_SPAWN_STRUCTURE, (data) => this.spawnStructure(data));
     
     // Generate world content immediately
     this.generateTowns();
@@ -262,7 +262,7 @@ export class WorldGenerationSystem extends SystemBase {
     
     // Generate spawn points within each area
     for (const area of spawnAreas) {
-      const pointsPerArea = 8; // Multiple spawn points per area
+      const pointsPerArea = 1; // Minimal spawn points to avoid memory issues
       
       for (let i = 0; i < pointsPerArea; i++) {
         const angle = (i / pointsPerArea) * Math.PI * 2;
@@ -297,7 +297,7 @@ export class WorldGenerationSystem extends SystemBase {
   private generateResourceSpawnPoints(): void {
     
     // Generate tree spawn points
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < 10; i++) { // Reduced from 50 to avoid memory issues
       const x = (Math.random() - 0.5) * 400; // Spread across 400x400 world
       const z = (Math.random() - 0.5) * 400;
       

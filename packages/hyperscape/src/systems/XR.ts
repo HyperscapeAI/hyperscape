@@ -1,6 +1,7 @@
-import * as THREE from '../extras/three'
-import { System } from './System'
+import THREE from '../extras/three'
+import { SystemBase } from './SystemBase'
 import type { World } from '../types'
+import { EventType } from '../types/events'
 
 import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory.js'
 
@@ -11,17 +12,17 @@ import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerM
  * - Keeps track of XR sessions
  *
  */
-export class XR extends System {
+export class XR extends SystemBase {
   session: XRSession | null
   camera: THREE.Camera | null
-  controller1Model: THREE.Object3D | null
-  controller2Model: THREE.Object3D | null
+  controller1Model: THREE.Group | null
+  controller2Model: THREE.Group | null
   supportsVR: boolean
   supportsAR: boolean
   controllerModelFactory: XRControllerModelFactory
 
   constructor(world: World) {
-    super(world)
+    super(world, { name: 'xr', dependencies: { required: [], optional: [] }, autoCleanup: true })
     this.session = null
     this.camera = null
     this.controller1Model = null
@@ -32,9 +33,27 @@ export class XR extends System {
   }
 
   override async init() {
-    // Strong type assumption - we're in a browser environment with XR support
-    this.supportsVR = await navigator.xr!.isSessionSupported('immersive-vr')
-    this.supportsAR = await navigator.xr!.isSessionSupported('immersive-ar')
+    // Check XR availability and handle permissions gracefully
+    if (!navigator.xr) {
+      console.log('[XR] WebXR not available in this browser');
+      this.supportsVR = false;
+      this.supportsAR = false;
+      return;
+    }
+    
+    try {
+      this.supportsVR = await navigator.xr.isSessionSupported('immersive-vr')
+    } catch (error) {
+      console.log('[XR] VR permissions not available, VR support disabled');
+      this.supportsVR = false;
+    }
+    
+    try {
+      this.supportsAR = await navigator.xr.isSessionSupported('immersive-ar')
+    } catch (error) {
+      console.log('[XR] AR permissions not available, AR support disabled');
+      this.supportsAR = false;
+    }
   }
 
   async enter() {
@@ -42,11 +61,12 @@ export class XR extends System {
     const session = await navigator.xr!.requestSession('immersive-vr', {
       requiredFeatures: ['local-floor'],
     })
-    try {
-      session.updateTargetFrameRate(72)
-    } catch (_err) {
-      console.error(_err)
-      console.error('xr session.updateTargetFrameRate(72) failed')
+    if (typeof session.updateTargetFrameRate === 'function') {
+      try {
+        session.updateTargetFrameRate(72)
+      } catch (_err) {
+        // optional API; ignore failures
+      }
     }
     // Get the local player and unmount avatar for XR
     const localPlayer = this.world.entities.getLocalPlayer()!
@@ -60,24 +80,20 @@ export class XR extends System {
       
     // Strong type assumption - controllers are available in XR session
     const grip1 = this.world.graphics!.renderer!.xr.getControllerGrip(0)
-    this.controller1Model = grip1 as unknown as THREE.Object3D
+    this.controller1Model = new THREE.Group()
     const model1 = this.controllerModelFactory.createControllerModel(grip1)
-    if (model1) {
-      this.controller1Model.add(model1)
-    }
-    this.world.rig!.add(this.controller1Model)
+    if (model1) this.controller1Model.add(model1)
+    if (this.world.rig && this.controller1Model) this.world.rig.add?.(this.controller1Model)
 
     const grip2 = this.world.graphics!.renderer!.xr.getControllerGrip(1)
-    this.controller2Model = grip2 as unknown as THREE.Object3D
+    this.controller2Model = new THREE.Group()
     const model2 = this.controllerModelFactory.createControllerModel(grip2)
-    if (model2) {
-      this.controller2Model.add(model2)
-    }
-    this.world.rig!.add(this.controller2Model)
+    if (model2) this.controller2Model.add(model2)
+    if (this.world.rig && this.controller2Model) this.world.rig.add?.(this.controller2Model)
 
-    session.addEventListener('end', this.onSessionEnd)
+    ;(session as unknown as { addEventListener: (type: string, listener: () => void) => void }).addEventListener('end', this.onSessionEnd)
     this.session = session
-    this.world.emit('xrSession', session)
+    this.emitTypedEvent(EventType.XR_SESSION, session)
   }
 
   onSessionEnd = () => {
@@ -89,12 +105,12 @@ export class XR extends System {
     }
     this.world.camera!.position.set(0, 0, 0)
     this.world.camera!.rotation.set(0, 0, 0)
-    this.world.rig!.remove(this.controller1Model!)
-    this.world.rig!.remove(this.controller2Model!)
+    if (this.world.rig && this.controller1Model) this.world.rig.remove?.(this.controller1Model)
+    if (this.world.rig && this.controller2Model) this.world.rig.remove?.(this.controller2Model)
     this.session = null
     this.camera = null
     this.controller1Model = null
     this.controller2Model = null
-    this.world.emit('xrSession', null)
+    this.emitTypedEvent(EventType.XR_SESSION, null)
   }
 }

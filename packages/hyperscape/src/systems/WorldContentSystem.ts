@@ -3,10 +3,11 @@
  * Generates and manages the actual world content: biomes, NPCs, resources, and positioned entities
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import { World } from '../World';
 import { EventType } from '../types/events';
-import { ALL_MOBS, MobData as DataMobData } from '../data/mobs';
+import { ALL_MOBS } from '../data/mobs';
+import type { MobData as DataMobData } from '../types/core';
 import {
   ALL_WORLD_AREAS,
   BiomeResource,
@@ -509,7 +510,7 @@ export class WorldContentSystem extends SystemBase {
     return {
       id: `mob_${mobData.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       mobData: rpgMobData,
-      mesh: mesh as unknown as THREE.Object3D,
+      mesh: (mesh as unknown) as THREE.Object3D,
       area: area,
       spawnPoint: spawnPoint,
       currentHealth: mobData.stats.health,
@@ -558,7 +559,7 @@ export class WorldContentSystem extends SystemBase {
     const chunk = this.chunks.get(chunkId);
     if (!chunk || chunk.isLoaded) return;
     
-    const scene = this.world.stage.scene;
+    const scene = this.world.stage.scene as unknown as import('three').Scene;
     
     // Add terrain to world
     if (chunk.terrainMesh) {
@@ -567,20 +568,20 @@ export class WorldContentSystem extends SystemBase {
     
     // Add NPCs to world
     for (const npc of chunk.npcs) {
-      scene.add(npc.mesh);
+      scene.add(npc.mesh as unknown as import('three').Object3D);
     }
     
     // Add resources to world
     for (const resource of chunk.resources) {
       if (resource.isActive) {
-        scene.add(resource.mesh);
+        scene.add(resource.mesh as unknown as import('three').Object3D);
       }
     }
     
     // Add mobs to world
     for (const mob of chunk.mobs) {
       if (mob.isAlive) {
-        scene.add(mob.mesh);
+        scene.add(mob.mesh as unknown as import('three').Object3D);
       }
     }
     
@@ -596,26 +597,26 @@ export class WorldContentSystem extends SystemBase {
     const chunk = this.chunks.get(chunkId);
     if (!chunk || !chunk.isLoaded) return;
     
-    const scene = this.world.stage.scene;
+    const scene = this.world.stage.scene as unknown as import('three').Scene;
     
     // Remove terrain from world
     if (chunk.terrainMesh) {
-      scene.remove(chunk.terrainMesh);
+      scene.remove(chunk.terrainMesh as unknown as import('three').Object3D);
     }
     
     // Remove NPCs from world
     for (const npc of chunk.npcs) {
-      scene.remove(npc.mesh);
+      scene.remove(npc.mesh as unknown as import('three').Object3D);
     }
     
     // Remove resources from world
     for (const resource of chunk.resources) {
-      scene.remove(resource.mesh);
+      scene.remove(resource.mesh as unknown as import('three').Object3D);
     }
     
     // Remove mobs from world
     for (const mob of chunk.mobs) {
-      scene.remove(mob.mesh);
+      scene.remove(mob.mesh as unknown as import('three').Object3D);
     }
     
     chunk.isLoaded = false;

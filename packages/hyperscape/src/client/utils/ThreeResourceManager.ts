@@ -3,7 +3,7 @@
  * Provides safe and comprehensive cleanup of Three.js resources to prevent memory leaks
  */
 
-import * as THREE from '../../extras/three';
+import THREE from '../../extras/three';
 
 export class ThreeResourceManager {
   private static disposedObjects = new WeakSet();

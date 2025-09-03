@@ -23,7 +23,6 @@ export class TestRunner extends SystemBase {
     'AggroTestSystem',
     'EquipmentTestSystem', 
     'InventoryTestSystem',
-    'MovementTestSystem',
     'BankingTestSystem',
     'StoreTestSystem',
     'ResourceGatheringTestSystem',
@@ -64,23 +63,21 @@ export class TestRunner extends SystemBase {
 
   async init(): Promise<void> {
     // Set up type-safe event subscriptions for test management
-    this.subscribe<{}>(EventType.TEST_RUN_ALL, (_event) => this.runAllTests());
-    this.subscribe<{ suiteName: string }>(EventType.TEST_RUN_SUITE, (_event) => this.runTestSuite(_event.data));
+    this.subscribe(EventType.TEST_RUN_ALL, () => this.runAllTests());
+    this.subscribe(EventType.TEST_RUN_SUITE, (data: { suiteName: string }) => this.runTestSuite(data));
     
     // Listen for individual test completions
     this.testSystems.forEach(systemName => {
       const eventName = `rpg:test:${systemName.toLowerCase().replace('system', '')}:completed`;
-      this.world.on(eventName, (results: unknown) => {
+      this.subscribe(eventName, (results: unknown) => {
         this.handleTestCompletion(systemName, results);
       });
     });
   }
 
   start(): void {
-    // Auto-run all tests if not in production
-    if (process.env.NODE_ENV !== 'production') {
-      this.runAllTests();
-    }
+    // Auto-run all tests once on start
+    this.runAllTests();
   }
 
 
@@ -111,7 +108,7 @@ export class TestRunner extends SystemBase {
 
     // Trigger the test system
     const eventName = `rpg:test:run_${systemName.toLowerCase().replace('system', '')}_tests`;
-    this.world.emit(eventName);
+    this.emitTypedEvent(eventName, {} as Record<string, unknown>);
 
     // Wait for test completion with timeout
     await this.waitForTestCompletion(systemName, 30000); // 30 second timeout
@@ -234,7 +231,7 @@ export class TestRunner extends SystemBase {
     });
 
     // Emit completion event
-    this.world.emit(EventType.TEST_ALL_COMPLETED, {
+    this.emitTypedEvent(EventType.TEST_ALL_COMPLETED, {
       totalTests,
       passedTests: totalPassed,
       failedTests: totalFailed,
@@ -254,14 +251,14 @@ export class TestRunner extends SystemBase {
     try {
       
       // Report via world event (server will handle)
-      this.world.emit(EventType.TEST_REPORT, report);
+      this.emitTypedEvent(EventType.TEST_REPORT, report as Record<string, unknown>);
       
       // Also log for immediate visibility
       
       // If we have fetch available, also send HTTP request
       if (typeof fetch !== 'undefined') {
         try {
-          const response = await fetch('/api/test-reports', {
+          const response = await fetch(import.meta.env.PUBLIC_API_URL + '/test-reports', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

@@ -11,7 +11,7 @@
  */
 
 // Removed unused import: System
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import { ItemType } from '../types';
 import { EventType } from '../types/events';
 import type { World, EntityData, Entities } from '../types/index';
@@ -58,20 +58,21 @@ export class ItemActionTestSystem extends SystemBase {
     // Initialize the data manager before running tests
     await dataManager.initialize();
     
-    // Listen for item action events
-    this.world.on(EventType.ITEM_RIGHT_CLICK, this.handleItemRightClick.bind(this));
-    this.world.on(EventType.UI_OPEN_MENU, this.handleContextMenuShown.bind(this));
-    this.world.on(EventType.UI_CLOSE_MENU, this.handleContextMenuHidden.bind(this));
-    this.world.on(EventType.ITEM_ACTION_EXECUTE, this.handleActionExecuted.bind(this));
-    this.world.on(EventType.ITEM_EXAMINE, this.handleItemExamine.bind(this));
-    this.world.on(EventType.EQUIPMENT_EQUIP, this.handleItemEquip.bind(this));
-    this.world.on(EventType.ITEM_DROP, this.handleItemDrop.bind(this));
-    this.world.on(EventType.ITEM_CONSUME, this.handleItemConsume.bind(this));
+    // Listen for item action events via EventBus
+    this.subscribe(EventType.ITEM_RIGHT_CLICK, (data) => this.handleItemRightClick(data));
+    this.subscribe(EventType.UI_OPEN_MENU, (data) => this.handleContextMenuShown(data));
+    this.subscribe(EventType.UI_CLOSE_MENU, (data) => this.handleContextMenuHidden(data));
+    this.subscribe(EventType.ITEM_ACTION_EXECUTE, (data) => this.handleActionExecuted(data));
+    this.subscribe(EventType.ITEM_EXAMINE, (data) => this.handleItemExamine(data));
+    this.subscribe(EventType.EQUIPMENT_EQUIP, (data) => this.handleItemEquip(data));
+    this.subscribe(EventType.ITEM_DROP, (data) => this.handleItemDrop(data));
+    this.subscribe(EventType.ITEM_CONSUME, (data) => this.handleItemConsume(data));
     
     this.createTestStations();
   }
 
   start(): void {
+    // Auto-run once on start
     this.runAllTests();
   }
 

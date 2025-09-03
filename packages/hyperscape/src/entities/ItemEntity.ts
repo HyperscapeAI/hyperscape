@@ -3,7 +3,7 @@
  * Replaces item-based Apps with server-authoritative entities
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import type { World } from '../World';
 import type { ItemType, MeshUserData, Item } from '../types/core';
 import { EquipmentSlotName, WeaponType } from '../types/core';
@@ -111,7 +111,7 @@ export class ItemEntity extends InteractableEntity {
     super.serverUpdate(deltaTime);
 
     // Floating animation
-    if (this.mesh) {
+    if (this.mesh && this.mesh.position && this.mesh.rotation) {
       const time = this.world.getTime() * 0.001;
       this.mesh.position.y = this.config.position.y + 0.5 + Math.sin(time * 2) * 0.1;
       this.mesh.rotation.y += deltaTime * 0.5;
@@ -125,7 +125,7 @@ export class ItemEntity extends InteractableEntity {
     super.clientUpdate(deltaTime);
 
     // Same floating animation on client
-    if (this.mesh) {
+    if (this.mesh && this.mesh.position && this.mesh.rotation) {
       const time = this.world.getTime() * 0.001;
       this.mesh.position.y = this.config.position.y + 0.5 + Math.sin(time * 2) * 0.1;
       this.mesh.rotation.y += deltaTime * 0.5;

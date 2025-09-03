@@ -2,7 +2,7 @@
 import type { Item } from '../types/core';
 import { AttackType, EquipmentSlotName, ItemType, WeaponType } from '../types/core';
 import { ItemRarity, MobType } from '../types/entities';
-import { AnyEvent, EventType } from '../types/events';
+import { EventType } from '../types/events';
 import type { Player, World } from '../types/index';
 import { SystemBase } from './SystemBase';
 // World eliminated - using base World instead
@@ -81,10 +81,12 @@ export class MobSystem extends SystemBase {
 
   async init(): Promise<void> {
     // Set up type-safe event subscriptions
-    this.subscribe<{ entityId: string; killedBy: string; entityType: 'player' | 'mob' }>(EventType.ENTITY_DEATH, (event) => this.handleMobDeath(event.data));
-    this.subscribe<{ entityId: string; damage: number; damageSource: string; entityType: 'player' | 'mob' }>(EventType.ENTITY_DAMAGE_TAKEN, (event) => this.handleMobDamage(event.data));
-    this.subscribe<{ playerId: string }>(EventType.PLAYER_REGISTERED, (_event) => this.onPlayerEnter());
-    this.subscribe<{ mobType: string; position: { x: number; y: number; z: number } }>(EventType.MOB_SPAWN_REQUEST, (event) => this.spawnMobAtLocation(event.data));
+    // ENTITY_DEATH is in EventMap but only has entityId
+    this.subscribe(EventType.ENTITY_DEATH, (data) => this.handleMobDeath({ entityId: data.entityId, killedBy: '', entityType: 'mob' }));
+    // ENTITY_DAMAGE_TAKEN is not in EventMap, so it receives the full event
+    this.subscribe(EventType.ENTITY_DAMAGE_TAKEN, (data) => this.handleMobDamage(data as { entityId: string; damage: number; damageSource: string; entityType: 'player' | 'mob' }));
+    this.subscribe(EventType.PLAYER_REGISTERED, (_data) => this.onPlayerEnter());
+    this.subscribe(EventType.MOB_SPAWN_REQUEST, (data) => this.spawnMobAtLocation(data));
     
     // Initialize spawn points (these would normally be loaded from world data)
     this.initializeSpawnPoints();
@@ -94,14 +96,14 @@ export class MobSystem extends SystemBase {
   }
 
   start(): void {
-
     
     // Get reference to EntityManager
     this.entityManager = this.world.getSystem<EntityManager>('rpg-entity-manager');
-    if (this.entityManager) {
-      // Spawn initial mobs if EntityManager is available
-      this.spawnAllMobs();
-    }
+    // DISABLED: MobSpawnerSystem already handles spawning all mobs
+    // Having both systems spawn causes duplicates and memory issues
+    // if (this.entityManager) {
+    //   this.spawnAllMobs();
+    // }
   }
 
   private initializeSpawnPoints(): void {
@@ -135,7 +137,15 @@ export class MobSystem extends SystemBase {
 
   private spawnAllMobs(): void {
     for (const [spawnId, spawnData] of this.spawnPoints.entries()) {
-      this.spawnMobInternal(spawnId, spawnData.config, spawnData.position);
+      // Emit spawn request instead of directly spawning
+      // This allows EntityManager to handle the actual entity creation
+      this.emitTypedEvent(EventType.MOB_SPAWN_REQUEST, {
+        mobType: spawnData.config.type,
+        position: spawnData.position,
+        level: spawnData.config.level,
+        name: spawnData.config.name,
+        customId: `mob_${spawnId}_${Date.now()}`
+      });
     }
   }
 
@@ -210,31 +220,8 @@ export class MobSystem extends SystemBase {
 
     this.mobs.set(mobId, mobData);
     
-    // Register mob with combat system and AI system
-    this.emitTypedEvent(EventType.MOB_SPAWNED, { 
-      id: mobId,
-      type: config.type,
-      level: config.level,
-      position: { x: position.x, y: position.y, z: position.z },
-      name: config.name,
-      health: mobData.health,
-      maxHealth: mobData.maxHealth,
-      mobType: config.type,
-      customId: mobId,
-      // Additional data that some systems might need
-      mob: {
-        id: mobId,
-        mobData: config,
-        currentHealth: mobData.health,
-        isAlive: true,
-        homePosition: { x: position.x, y: position.y, z: position.z },
-        spawnPoint: {
-          respawnTime: config.respawnTime,
-          spawnRadius: config.aggroRange
-        },
-        mesh: null // Will be set by the mob app
-      }
-    } as unknown as AnyEvent);
+    // EntityManager will emit MOB_SPAWNED after creating the entity
+    // We don't need to emit it here anymore
     
     // Wait for entity to be created by EntityManager
     await new Promise<void>((resolve) => {
@@ -332,10 +319,8 @@ export class MobSystem extends SystemBase {
     // Emit mob death event with all necessary data for LootSystem
     this.emitTypedEvent(EventType.MOB_DIED, {
       mobId: data.entityId,
-      mobType: mob.type,
-      level: mob.level,
-      killedBy: data.killedBy,
-      position: { x: mob.position.x, y: mob.position.y, z: mob.position.z }
+      killerId: data.killedBy,
+      loot: []
     });
   }
 
@@ -355,43 +340,20 @@ export class MobSystem extends SystemBase {
     // Clear respawn timer
     this.respawnTimers.delete(mobId);
     
-    // Create mob entity via EntityManager
+    // Request mob respawn via EntityManager
     if (this.entityManager) {
       const config = this.MOB_CONFIGS[mob.type];
       if (config) {
-        this.emitTypedEvent(EventType.MOB_SPAWNED, {
+        // Emit a spawn request - EntityManager will create the entity and emit MOB_SPAWNED
+        this.emitTypedEvent(EventType.MOB_SPAWN_REQUEST, {
           mobType: config.type,
+          position: { x: mob.position.x, y: mob.position.y, z: mob.position.z },
           level: config.level,
-          position: { x: mob.position.x, y: mob.position.y, z: mob.position.z }
+          name: config.name,
+          customId: mobId
         });
       }
     }
-    
-    // Re-register with combat system and AI system
-    const mobConfig = this.MOB_CONFIGS[mob.type];
-    this.emitTypedEvent(EventType.MOB_SPAWNED, { 
-      id: mobId,
-      type: mob.type,
-      level: mob.level,
-      position: { x: mob.homePosition.x, y: mob.homePosition.y, z: mob.homePosition.z },
-      name: mobConfig?.name || mob.name,
-      health: mob.health,
-      maxHealth: mob.maxHealth,
-      mobType: mob.type,
-      customId: mobId,
-      // Additional data that some systems might need
-      mob: {
-        id: mobId,
-        mobData: mobConfig,
-        currentHealth: mob.health,
-        isAlive: true,
-        homePosition: { x: mob.homePosition.x, y: mob.homePosition.y, z: mob.homePosition.z },
-        spawnPoint: {
-          respawnTime: mob.respawnTime,
-          spawnRadius: mob.aggroRange
-        }
-      }
-    });
   }
 
   private generateLoot(mob: MobInstance): void {
@@ -774,7 +736,7 @@ export class MobSystem extends SystemBase {
   }
 
   private findNearbyPlayer(mob: MobInstance): Player | null {
-    const players = this.world.entities.getPlayers();
+    const players = this.world.getPlayers();
     
     for (const player of players) {
       const distance = calculateDistance(mob.position, player.node.position);

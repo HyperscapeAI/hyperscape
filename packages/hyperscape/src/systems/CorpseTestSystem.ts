@@ -10,11 +10,12 @@
  * - Multiple corpses can exist simultaneously
  */
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import { SystemBase } from './SystemBase';
 import type { World } from '../types/index';
 import type { CorpseTestData } from '../types/test';
 import { EventType } from '../types/events';
+import type { EventPayload } from '../types/event-system';
 import { Logger } from '../utils/Logger';
 
 export class CorpseTestSystem extends SystemBase {
@@ -39,31 +40,22 @@ export class CorpseTestSystem extends SystemBase {
 
   async init(): Promise<void> {
     
-    // Listen for corpse-related events
-    this.world.on(EventType.CORPSE_SPAWNED, this.handleCorpseSpawned.bind(this));
-    this.world.on(EventType.CORPSE_CLICK, this.handleCorpseInteraction.bind(this));
-    this.world.on(EventType.CORPSE_LOOT_REQUEST, this.handleCorpseLooted.bind(this));
-    this.world.on(EventType.CORPSE_CLEANUP, this.handleCorpseCleanup.bind(this));
-    this.world.on(EventType.MOB_DIED, this.handleMobDeath.bind(this));
+    // Listen for corpse-related events via EventBus
+    this.subscribe(EventType.CORPSE_SPAWNED, (data) => this.handleCorpseSpawned(data));
+    this.subscribe(EventType.CORPSE_CLICK, (data) => this.handleCorpseInteraction(data));
+    this.subscribe(EventType.CORPSE_LOOT_REQUEST, (data) => this.handleCorpseLooted(data));
+    this.subscribe(EventType.CORPSE_CLEANUP, (data) => this.handleCorpseCleanup(data));
+    this.subscribe(EventType.MOB_DIED, (data) => this.handleMobDeath(data));
     
     this.createTestStations();
   }
 
   start(): void {
-    // Wait for scene to be ready before running tests
-    this.waitForSceneAndRunTests();
-  }
-
-  private waitForSceneAndRunTests(): void {
-    if (!this.world.stage || !this.world.stage.scene) {
-      Logger.system('CorpseTestSystem', 'Waiting for scene to be ready...');
-      setTimeout(() => this.waitForSceneAndRunTests(), 100);
-      return;
-    }
-    
-    Logger.system('CorpseTestSystem', 'Scene ready, starting tests');
+    // Auto-run once on start
     this.runAllTests();
   }
+
+  // Removed auto-run sequence; expose runAllTests via events if needed
 
   protected createTestStations(): void {
     this.testPositions.forEach((pos, index) => {
@@ -629,15 +621,15 @@ export class CorpseTestSystem extends SystemBase {
   }
 
   // Event handlers
-  private handleCorpseSpawned(_data: Record<string, unknown>): void {
+  private handleCorpseSpawned(_data: EventPayload<typeof EventType.CORPSE_SPAWNED>): void {
     // TODO: Add corpse spawned event handling if needed
   }
 
-  private handleCorpseInteraction(data: Record<string, unknown>): void {
+  private handleCorpseInteraction(data: EventPayload<typeof EventType.CORPSE_CLICK>): void {
     Logger.system('CorpseTestSystem', 'handleCorpseInteraction called with', { data });
     
     // Mark corpse as clicked for testing
-    const corpseId = data.corpseId as string;
+    const corpseId = data.corpseId;
     const corpse = this.findCorpseById(corpseId);
     
     if (corpse) {
@@ -659,20 +651,20 @@ export class CorpseTestSystem extends SystemBase {
     }
   }
 
-  private handleCorpseLooted(_data: Record<string, unknown>): void {
+  private handleCorpseLooted(_data: EventPayload<typeof EventType.CORPSE_LOOT_REQUEST>): void {
     // TODO: Add corpse looted event handling if needed
   }
 
-  private handleCorpseCleanup(data: Record<string, unknown>): void {
+  private handleCorpseCleanup(data: EventPayload<typeof EventType.CORPSE_CLEANUP>): void {
     
     // Remove corpse from scene
-    const corpse = this.findCorpseById(data.corpseId as string);
+    const corpse = this.findCorpseById(data.corpseId);
     if (corpse && corpse.parent) {
       corpse.parent.remove(corpse);
     }
   }
 
-  private handleMobDeath(_data: Record<string, unknown>): void {
+  private handleMobDeath(_data: EventPayload<typeof EventType.MOB_DIED>): void {
     // TODO: Add mob death event handling if needed
   }
 

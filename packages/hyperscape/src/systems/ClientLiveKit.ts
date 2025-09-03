@@ -56,8 +56,13 @@ export class ClientLiveKit extends System {
       // @ts-ignore - setSpeaking might not exist
       this.world.entities.player?.setSpeaking(speaking)
     })
-    const windowEnv = ('env' in window) ? (window as { env?: { LIVEKIT_URL?: string } }).env : undefined;
-    await this.room.connect(windowEnv?.LIVEKIT_URL || process.env.LIVEKIT_URL || '', token)
+    const windowEnv = (window as { env?: { LIVEKIT_URL?: string } }).env
+    const livekitUrl = windowEnv?.LIVEKIT_URL || process.env.LIVEKIT_URL || ''
+    if (!livekitUrl) {
+      console.warn('[ClientLiveKit] LIVEKIT_URL is not defined')
+      return
+    }
+    await this.room.connect(livekitUrl, token)
   }
 
   async enableAudio() {

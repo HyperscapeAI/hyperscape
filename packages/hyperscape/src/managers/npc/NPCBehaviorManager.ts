@@ -14,8 +14,8 @@ import {
 } from '../../types/core';
 import { EntityCombatComponent } from '../../types/entities';
 import { calculateDistance, getEntity } from '../../utils/EntityUtils';
-import { MovementSystem } from '../../systems/MovementSystem';
-import * as THREE from '../../extras/three';
+// MovementSystem removed (RPG server-side). NPCs move by directly updating positions or via pathfinding.
+import THREE from '../../extras/three';
 
 export class NPCBehaviorManager {
   private world: World;
@@ -42,14 +42,16 @@ export class NPCBehaviorManager {
    */
   private updateNPCData(npc: NPCEntity, updates: Partial<NPCComponent>): void {
     if (!npc.config.properties) {
-      npc.config.properties = {
-        movementComponent: null,
-        combatComponent: null,
-        healthComponent: null,
-        visualComponent: null,
-        health: 100,
-        maxHealth: 100,
-        level: 1,
+          npc.config.properties = {
+      movementComponent: null,
+      combatComponent: null,
+      healthComponent: null,
+      visualComponent: null,
+      health: {
+        current: 100,
+        max: 100
+      },
+      level: 1,
         npcComponent: {
           behavior: NPCBehavior.PATROL,
           state: NPCState.IDLE,
@@ -266,7 +268,11 @@ export class NPCBehaviorManager {
       return;
     }
 
-    this.world.getSystem<MovementSystem>('rpg-movement')?.moveEntity(npc.id, movement.targetPosition);
+    // In unified core, we move NPCs directly (or integrate with pathfinding when available)
+    const entityInWorld = this.world.entities.get(npc.id)
+    if (entityInWorld && entityInWorld.node?.position) {
+      entityInWorld.node.position.set(movement.targetPosition.x, movement.targetPosition.y, movement.targetPosition.z)
+    }
     
     movement.isMoving = true;
   }
@@ -411,7 +417,7 @@ export class NPCBehaviorManager {
    */
   private canAttackPlayer(npc: NPCEntity, player: PlayerEntity): boolean {
     // Check if player is alive
-    const stats = player.getComponent('stats') as unknown as StatsComponent | null;
+    const stats = player.getComponent('stats') as StatsComponent | null;
     if (stats?.health !== undefined && stats.health.current <= 0) return false;
     
     // Check combat level difference for aggression

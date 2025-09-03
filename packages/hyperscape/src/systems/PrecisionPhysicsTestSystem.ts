@@ -1,6 +1,6 @@
 import { SystemBase } from './SystemBase';
-import * as THREE from '../extras/three';
-import type { PhysXModule } from '../types/physx';
+import THREE from '../extras/three';
+import type { PhysXModule } from '../types/physics';
 import type { Vector3, World } from '../types/index';
 import { EventType } from '../types/events';
 import { Logger } from '../utils/Logger';
@@ -134,6 +134,7 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
   private testStartTime = 0;
   private updateCounter = 0;
   private lastPosition?: THREE.Vector3;
+  private scenariosInitialized = false;
   private enabled = true; // Flag to disable system if physics not available
   
   constructor(world: World) {
@@ -149,30 +150,13 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
 
   async init(): Promise<void> {
     Logger.system('PrecisionPhysics', 'System initialized');
-    // Listen for precision test requests  
-    // TODO: Add PRECISION_PHYSICS_TEST to EventType enum
-    this.world.on('precision_physics_test', (testType: string) => {
-      Logger.system('PrecisionPhysics', `Received test request: ${testType}`)
-      this.runSpecificTest(testType);
-    });
+    // Listen for precision test requests via typed events
+    this.subscribe(EventType.PHYSICS_PRECISION_RUN_ALL, () => this.runAllPrecisionTests());
+    this.subscribe(EventType.PHYSICS_PRECISION_PROJECTILE, () => this.testProjectileMotion());
   }
 
   start(): void {
-          Logger.system('PrecisionPhysics', 'Starting precision physics tests')
-    
-    // Create ground plane first
-    this.createGroundPlane();
-    
-    // Create all test scenarios
-    this.createProjectileMotionTest();
-    this.createCollisionResponseTest();
-    this.createEnergyConservationTest();
-    this.createFrictionTest();
-    this.createAngularMomentumTest();
-    
-    Logger.system('PrecisionPhysics', 'All test scenarios created')
-
-    // Run tests immediately after setup
+    // Auto-run precision physics tests once on start
     this.runAllPrecisionTests();
   }
 
@@ -232,18 +216,18 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
     
           Logger.system('PrecisionPhysics', 'Ground plane created successfully');
     
-    // Also create a visual representation of the ground
-    const groundVisualGeometry = new THREE.PlaneGeometry(100, 100);
-    const groundVisualMaterial = new THREE.MeshBasicMaterial({ 
-      color: 0x808080, 
-      side: THREE.DoubleSide,
-      opacity: 0.5,
-      transparent: true
-    });
-    const groundVisual = new THREE.Mesh(groundVisualGeometry, groundVisualMaterial);
-    groundVisual.rotation.x = -Math.PI / 2; // Rotate to be horizontal
-    groundVisual.position.y = -0.01; // Slightly below physics plane to avoid z-fighting
-    this.world.stage.scene.add(groundVisual);
+    // Skip visual ground plane creation - use existing Stage ground plane to avoid z-fighting
+    // const groundVisualGeometry = new THREE.PlaneGeometry(100, 100);
+    // const groundVisualMaterial = new THREE.MeshBasicMaterial({ 
+    //   color: 0x808080, 
+    //   side: THREE.DoubleSide,
+    //   opacity: 0.5,
+    //   transparent: true
+    // });
+    // const groundVisual = new THREE.Mesh(groundVisualGeometry, groundVisualMaterial);
+    // groundVisual.rotation.x = -Math.PI / 2; // Rotate to be horizontal
+    // groundVisual.position.y = -0.01; // Slightly below physics plane to avoid z-fighting
+    // this.world.stage.scene.add(groundVisual);
   }
 
   /**
@@ -335,8 +319,12 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
       // Attach shape to actor
       actor.attachShape(pxShape);
       
-      // Set mass
-      PHYSX.PxRigidBodyExt.setMassAndUpdateInertia(actor, 1.0);
+      // Set mass - use direct method if available, otherwise fall back to extension
+      if (actor.setMass) {
+        actor.setMass(1.0);
+      } else if (PHYSX?.PxRigidBodyExt?.setMassAndUpdateInertia) {
+        PHYSX.PxRigidBodyExt.setMassAndUpdateInertia(actor, 1.0);
+      }
       
       // Set damping to prevent energy loss
       actor.setLinearDamping(0.0);
@@ -986,6 +974,21 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
    * Run all precision physics tests in sequence
    */
   private runAllPrecisionTests(): void {
+    // Ensure ground and scenarios are created lazily on first run
+    if (!this.scenariosInitialized) {
+      try {
+        this.createGroundPlane();
+      } catch (_e) {
+        // PhysX not ready; rely on caller to retry later
+      }
+      // Create scenarios once
+      this.createProjectileMotionTest();
+      this.createCollisionResponseTest();
+      this.createEnergyConservationTest();
+      this.createFrictionTest();
+      this.createAngularMomentumTest();
+      this.scenariosInitialized = true;
+    }
     Logger.system('PrecisionPhysics', 'Running all precision tests')
     setTimeout(() => this.testProjectileMotion(), 500);
     setTimeout(() => this.testCollisionResponse(), 4000);

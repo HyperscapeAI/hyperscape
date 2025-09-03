@@ -187,18 +187,11 @@ export function createMockWorld(overrides: Partial<World> = {}): World {
       }))
     },
     
-    // Camera system (or client)
-    'rpg-camera': {
+    // Camera system (client)
+    'client-camera-system': {
       currentTarget: null,
       setTarget: vi.fn((data) => {
-        mockWorld['rpg-camera'].currentTarget = data.target;
-      })
-    },
-    
-    'client-camera': {
-      currentTarget: null,
-      setTarget: vi.fn((data) => {
-        mockWorld['client-camera'].currentTarget = data.target;
+        mockWorld['client-camera-system'].currentTarget = data.target;
       })
     },
     

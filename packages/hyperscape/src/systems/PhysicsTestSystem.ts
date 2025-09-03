@@ -1,5 +1,5 @@
 
-import * as THREE from '../extras/three';
+import THREE from '../extras/three';
 import type { SystemDependencies } from './System';
 import type { World } from '../types';
 import { EventType } from '../types/events';
@@ -43,16 +43,13 @@ export class PhysicsTestSystem extends SystemBase {
   async init(): Promise<void> {
     
     // Wait for physics system to be ready
-    this.world.on(EventType.TEST_RUN_ALL, this.runAllTests.bind(this));
+    this.subscribe(EventType.TEST_RUN_ALL, () => this.runAllTests());
     
   }
 
   start(): void {
-    
-    // Auto-run tests after a short delay
-    setTimeout(() => {
-      this.runAllTests();
-    }, 2000);
+    // Auto-run once on start
+    this.runAllTests();
   }
 
   private async runAllTests(): Promise<void> {

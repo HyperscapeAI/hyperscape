@@ -1,10 +1,9 @@
-import type { World } from '../types/index';
-import { EventType } from '../types/events';
-import type { MobData } from '../data/mobs';
 import { ALL_MOBS, getMobsByDifficulty } from '../data/mobs';
 import { ALL_WORLD_AREAS as WORLD_AREAS } from '../data/world-areas';
-import type { MobSpawnStats } from '../types/core';
-import type { EntitySpawnedEvent, MobSpawnRequest } from '../types/systems';
+import type { MobData, MobSpawnStats } from '../types/core';
+import { EventType } from '../types/events';
+import type { World } from '../types/index';
+import type { EntitySpawnedEvent } from '../types/systems';
 import { SystemBase } from './SystemBase';
 
 // Types are now imported from shared type files
@@ -33,17 +32,14 @@ export class MobSpawnerSystem extends SystemBase {
 
   async init(): Promise<void> {
     
-    // Set up event subscriptions for mob spawning (4 listeners!)
-    this.subscribe<MobSpawnRequest>(EventType.MOB_SPAWN_REQUEST, (event) => this.spawnMobAtLocation(event.data));
-    this.subscribe<{ mobId: string }>(EventType.MOB_DESPAWN, (event) => {
-      const data = event.data;
+    // Set up event subscriptions for mob lifecycle (do not consume MOB_SPAWN_REQUEST to avoid re-emission loops)
+    this.subscribe<{ mobId: string }>(EventType.MOB_DESPAWN, (data) => {
       this.despawnMob(data.mobId);
     });
     this.subscribe(EventType.MOB_RESPAWN_ALL, (_event) => this.respawnAllMobs());
     
     // Listen for entity spawned events to track our mobs
-    this.subscribe<EntitySpawnedEvent>(EventType.ENTITY_SPAWNED, (event) => {
-      const data = event.data;
+    this.subscribe<EntitySpawnedEvent>(EventType.ENTITY_SPAWNED, (data) => {
       // Only handle mob entities
       if (data.entityType === 'mob') {
         this.handleEntitySpawned(data);
@@ -109,8 +105,17 @@ export class MobSpawnerSystem extends SystemBase {
   private spawnMobFromData(mobData: MobData, position: { x: number; y: number; z: number }): void {
     const mobId = `gdd_${mobData.id}_${this.mobIdCounter++}`;
     
+    // Check if we already spawned this mob to prevent duplicates
+    if (this.spawnedMobs.has(mobId)) {
+      console.log(`[MobSpawnerSystem] Mob ${mobId} already spawned, skipping duplicate`);
+      return;
+    }
+    
+    // Track this spawn BEFORE emitting to prevent race conditions
+    this.spawnedMobs.set(mobId, mobData.id);
+    
     // Use EntityManager to spawn mob via event system
-    this.world.emit(EventType.MOB_SPAWN_REQUEST, {
+    this.emitTypedEvent(EventType.MOB_SPAWN_REQUEST, {
       mobType: mobData.id,
       level: mobData.stats.level,
       position: position,
@@ -132,20 +137,13 @@ export class MobSpawnerSystem extends SystemBase {
     }
   }
 
-  private spawnMobAtLocation(data: MobSpawnRequest): void {
-    const mobData = ALL_MOBS[data.mobType];
-    if (!mobData) {
-      console.error(`[MobSpawnerSystem] Unknown mob type: ${data.mobType}`);
-      return;
-    }
-    
-    this.spawnMobFromData(mobData, data.position);
-  }
+  // Note: This system intentionally does not handle MOB_SPAWN_REQUEST events to prevent
+  // recursive re-emission loops. It only produces spawn requests via spawnMobFromData.
 
   private despawnMob(mobId: string): void {
     const entityId = this.spawnedMobs.get(mobId);
     if (entityId) {
-      this.world.emit(EventType.ENTITY_DEATH, { entityId });
+      this.emitTypedEvent(EventType.ENTITY_DEATH, { entityId });
       this.spawnedMobs.delete(mobId);
       
     }
@@ -155,7 +153,7 @@ export class MobSpawnerSystem extends SystemBase {
     
     // Clear existing mobs
     for (const [_mobId, entityId] of this.spawnedMobs) {
-      this.world.emit(EventType.ENTITY_DEATH, { entityId });
+      this.emitTypedEvent(EventType.ENTITY_DEATH, { entityId });
     }
     this.spawnedMobs.clear();
     

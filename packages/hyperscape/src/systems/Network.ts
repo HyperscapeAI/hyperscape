@@ -1,4 +1,5 @@
-import { System } from './System';
+import { SystemBase } from './SystemBase';
+import { EventType } from '../types/events';
 import type { World } from '../types';
 import type {
   NetworkMessage,
@@ -11,7 +12,7 @@ import type {
   NetworkEntity
 } from '../types/network-types';
 
-export class Network extends System {
+export class Network extends SystemBase {
   private connections: Map<string, NetworkConnection> = new Map();
   private messageQueue: NetworkMessage[] = [];
   private outgoingQueue: NetworkMessage[] = [];
@@ -22,7 +23,7 @@ export class Network extends System {
   private syncInterval: number = 50; // 20Hz sync rate
   
   constructor(world: World) {
-    super(world);
+    super(world, { name: 'network', dependencies: { required: [], optional: [] }, autoCleanup: true });
   }
   
   override async init(): Promise<void> {
@@ -91,7 +92,7 @@ export class Network extends System {
       this.sendInitialState(connection);
     }
     
-    this.world.emit('network:connection', {
+      this.emitTypedEvent('network:connection', {
       connectionId: connection.id,
       timestamp: Date.now()
     });
@@ -105,7 +106,7 @@ export class Network extends System {
     connection.disconnect();
     this.connections.delete(connectionId);
     
-    this.world.emit('network:disconnection', {
+     this.emitTypedEvent('network:disconnection', {
       connectionId,
       timestamp: Date.now()
     });
@@ -145,13 +146,13 @@ export class Network extends System {
           try {
             handler(message);
           } catch (error) {
-            console.error(`Error handling network message ${message.type}:`, error);
+            this.logger.error(`Error handling network message ${message.type}: ${error instanceof Error ? error.message : String(error)}`);
           }
         }
       }
       
       // Emit as event
-      this.world.emit(`network:${message.type}`, message);
+      this.emitTypedEvent(EventType.NETWORK_MESSAGE_RECEIVED, { type: message.type, data: message.data as Record<string, string | number | boolean> });
     }
   }
   

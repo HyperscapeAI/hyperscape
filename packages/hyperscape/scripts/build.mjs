@@ -1,10 +1,10 @@
-import 'dotenv-flow/config'
+import 'dotenv/config'
 import fs from 'fs-extra'
 import path from 'path'
-import { fork, execSync } from 'child_process'
+import { fork, execSync, spawn } from 'child_process'
 import * as esbuild from 'esbuild'
 import { fileURLToPath } from 'url'
-import { polyfillNode } from 'esbuild-plugin-polyfill-node'
+import { build as viteBuild, createServer as createViteServer } from 'vite'
 
 const dev = process.argv.includes('--dev')
 const typecheck = !process.argv.includes('--no-typecheck')
@@ -15,7 +15,9 @@ const buildDir = path.join(rootDir, 'build')
 
 // Ensure build directories exist
 await fs.ensureDir(buildDir)
-await fs.emptyDir(path.join(buildDir, 'public'))
+if (!serverOnly) {
+  await fs.ensureDir(path.join(buildDir, 'public'))
+}
 
 /**
  * TypeScript Plugin for ESBuild
@@ -69,6 +71,8 @@ const excludeTestsPlugin = {
   }
 }
 
+
+
 /**
  * Run TypeScript Type Checking
  */
@@ -77,7 +81,7 @@ async function runTypeCheck() {
   
   console.log('Running TypeScript type checking...')
   try {
-    execSync('npx tsc --noEmit -p tsconfig.build.json', { 
+    execSync('bunx --yes tsc --noEmit -p tsconfig.build.json', { 
       stdio: 'inherit',
       cwd: rootDir 
     })
@@ -91,127 +95,137 @@ async function runTypeCheck() {
 }
 
 /**
- * Build Client
+ * Build Client with Vite
  */
 const clientPublicDir = path.join(rootDir, 'src/client/public')
 const clientBuildDir = path.join(rootDir, 'build/public')
-const clientHtmlSrc = path.join(rootDir, 'src/client/public/index.html')
-const clientHtmlDest = path.join(rootDir, 'build/public/index.html')
 
 async function buildClient() {
-  const clientCtx = await esbuild.context({
-    entryPoints: [
-      'src/client/index.tsx',
-      'src/client/particles.ts'
-    ],
-    entryNames: '/[name]-[hash]',
-    outdir: clientBuildDir,
-    platform: 'browser',
-    format: 'esm',
-    bundle: true,
-    treeShaking: true,
-    minify: !dev,
-    sourcemap: true,
-    metafile: true,
-    jsx: 'automatic',
-    jsxImportSource: 'react',
-    external: [
-      'better-sqlite3',
-      'knex',
-      'fs',
-      'path',
-      'crypto',
-      'stream',
-      'util',
-      'os',
-      'child_process'
-    ],
-    define: {
-      'process.env.NODE_ENV': dev ? '"development"' : '"production"',
-      'import.meta.env.PUBLIC_WS_URL': JSON.stringify(process.env.PUBLIC_WS_URL || ''),
-      'import.meta.env.LIVEKIT_URL': JSON.stringify(process.env.LIVEKIT_URL || ''),
-      'import.meta.env.LIVEKIT_API_KEY': JSON.stringify(process.env.LIVEKIT_API_KEY || ''),
-      // Don't include API secret in client bundle - it should only be on server
-      // 'import.meta.env.LIVEKIT_API_SECRET': JSON.stringify(process.env.LIVEKIT_API_SECRET || ''),
-      // Also define window versions for backward compatibility
-      'window.PUBLIC_WS_URL': JSON.stringify(process.env.PUBLIC_WS_URL || ''),
-      'window.LIVEKIT_URL': JSON.stringify(process.env.LIVEKIT_URL || ''),
-    },
-    loader: {
-      '.ts': 'ts',
-      '.tsx': 'tsx',
-      '.js': 'jsx',
-      '.jsx': 'jsx',
-    },
-    alias: {
-      react: 'react',
-    },
-    plugins: [
-      polyfillNode({}),
-      typescriptPlugin,
-
-      {
-        name: 'client-finalize-plugin',
-        setup(build) {
-          build.onEnd(async result => {
-            if (result.errors.length > 0) return
-            
-            // Copy public files
-            await fs.copy(clientPublicDir, clientBuildDir)
-            
-            // Copy PhysX WASM from physx-js-webidl npm package
-            // Try local node_modules first, then fallback to root workspace
-            let physxWasmSrc = path.join(rootDir, 'node_modules/@hyperscape/physx-js-webidl/dist/physx-js-webidl.wasm')
-            if (!await fs.pathExists(physxWasmSrc)) {
-              physxWasmSrc = path.join(rootDir, '../../node_modules/@hyperscape/physx-js-webidl/dist/physx-js-webidl.wasm')
-            }
-            const physxWasmDest = path.join(rootDir, 'build/public/physx-js-webidl.wasm')
-            
-            // Ensure WASM file exists
-            if (await fs.pathExists(physxWasmSrc)) {
-              await fs.copy(physxWasmSrc, physxWasmDest)
-              console.log('✓ Copied PhysX WASM file from node_modules to build/public/')
-            } else {
-              console.error('✗ PhysX WASM file not found at:', physxWasmSrc)
-              console.error('  Make sure physx-js-webidl npm package is installed')
-              throw new Error('PhysX WASM file missing from node_modules')
-            }
-            
-            // Find output files
-            const metafile = result.metafile
-            const outputFiles = Object.keys(metafile.outputs)
-            const jsPath = outputFiles
-              .find(file => file.includes('/index-') && file.endsWith('.js'))
-              ?.split('build/public')[1]
-            const particlesPath = outputFiles
-              .find(file => file.includes('/particles-') && file.endsWith('.js'))
-              ?.split('build/public')[1]
-            
-            if (jsPath && particlesPath) {
-              // Inject into HTML
-              let htmlContent = await fs.readFile(clientHtmlSrc, 'utf-8')
-              htmlContent = htmlContent.replace('{jsPath}', jsPath)
-              htmlContent = htmlContent.replace('{particlesPath}', particlesPath)
-              htmlContent = htmlContent.replaceAll('{buildId}', Date.now().toString())
-              await fs.writeFile(clientHtmlDest, htmlContent)
-            }
-          })
-        },
-      },
-    ],
-  })
+  console.log('Building client with Vite...')
   
   if (dev) {
-    await clientCtx.watch()
+    // In dev mode, create a Vite dev server
+    const viteServer = await createViteServer({
+      configFile: path.join(rootDir, 'vite.config.ts'),
+      server: {
+        port: process.env.VITE_PORT,
+        hmr: {
+          port: process.env.VITE_PORT
+        }
+      }
+    })
+    
+    await viteServer.listen()
+    console.log(`✓ Vite dev server running on port ${process.env.VITE_PORT}`)
+    
+    // Ensure PhysX assets are available to Vite dev server under / in public dir
+    try {
+      const devPublicDir = path.join(rootDir, 'src/client/public')
+      await fs.ensureDir(devPublicDir)
+
+      let physxWasmSrc = path.join(rootDir, 'node_modules/@hyperscape/physx-js-webidl/dist/physx-js-webidl.wasm')
+      let physxJsSrc = path.join(rootDir, 'node_modules/@hyperscape/physx-js-webidl/dist/physx-js-webidl.js')
+
+      if (!await fs.pathExists(physxWasmSrc)) {
+        physxWasmSrc = path.join(rootDir, '../../node_modules/@hyperscape/physx-js-webidl/dist/physx-js-webidl.wasm')
+        physxJsSrc = path.join(rootDir, '../../node_modules/@hyperscape/physx-js-webidl/dist/physx-js-webidl.js')
+      }
+
+      // Fallback to checked-in prebuilt files if npm package isn't available
+      if (!await fs.pathExists(physxWasmSrc)) {
+        const fallbackWasm = path.join(rootDir, 'src/server/public/physx-js-webidl.wasm')
+        const fallbackJs = path.join(rootDir, 'src/server/public/physx-js-webidl.js')
+        if (await fs.pathExists(fallbackWasm)) {
+          physxWasmSrc = fallbackWasm
+        }
+        if (await fs.pathExists(fallbackJs)) {
+          physxJsSrc = fallbackJs
+        }
+      }
+
+      const physxWasmDest = path.join(devPublicDir, 'physx-js-webidl.wasm')
+      const physxJsDest = path.join(devPublicDir, 'physx-js-webidl.js')
+
+      if (await fs.pathExists(physxWasmSrc) && !await fs.pathExists(physxWasmDest)) {
+        await fs.copy(physxWasmSrc, physxWasmDest)
+        console.log('✓ Dev: Copied PhysX WASM to src/client/public')
+      }
+      if (await fs.pathExists(physxJsSrc) && !await fs.pathExists(physxJsDest)) {
+        await fs.copy(physxJsSrc, physxJsDest)
+        console.log('✓ Dev: Copied PhysX JS to src/client/public')
+      }
+    } catch (e) {
+      console.warn('⚠️  Dev: Failed to ensure PhysX assets in Vite public dir', e)
+    }
+    
+    return viteServer
+  } else {
+    // Production build with Vite
+    await viteBuild({
+      configFile: path.join(rootDir, 'vite.config.ts'),
+      mode: 'production'
+    })
+    
+    console.log('✓ Client built successfully with Vite')
+    
+    // Copy additional static assets that might not be in public dir
+    const staticAssets = [
+      'physx-js-webidl.wasm',
+      'base-environment.glb',
+      'day2.hdr',
+      'day2-2k.jpg',
+      'particle.png',
+      'tiny.mp4'
+    ]
+    
+    for (const asset of staticAssets) {
+      const srcPath = path.join(clientPublicDir, asset)
+      const destPath = path.join(clientBuildDir, asset)
+      if (await fs.pathExists(srcPath) && !await fs.pathExists(destPath)) {
+        await fs.copy(srcPath, destPath)
+        console.log(`  Copied ${asset}`)
+      }
+    }
+    
+    // Copy PhysX WASM and JS from node_modules if needed
+    let physxWasmSrc = path.join(rootDir, 'node_modules/@hyperscape/physx-js-webidl/dist/physx-js-webidl.wasm')
+    let physxJsSrc = path.join(rootDir, 'node_modules/@hyperscape/physx-js-webidl/dist/physx-js-webidl.js')
+    if (!await fs.pathExists(physxWasmSrc)) {
+      physxWasmSrc = path.join(rootDir, '../../node_modules/@hyperscape/physx-js-webidl/dist/physx-js-webidl.wasm')
+      physxJsSrc = path.join(rootDir, '../../node_modules/@hyperscape/physx-js-webidl/dist/physx-js-webidl.js')
+    }
+    // Fallback to src/server/public if npm package not found
+    if (!await fs.pathExists(physxWasmSrc)) {
+      physxWasmSrc = path.join(rootDir, 'src/server/public/physx-js-webidl.wasm')
+      physxJsSrc = path.join(rootDir, 'src/server/public/physx-js-webidl.js')
+    }
+    const physxWasmDest = path.join(clientBuildDir, 'physx-js-webidl.wasm')
+    const physxJsDest = path.join(clientBuildDir, 'physx-js-webidl.js')
+    
+    if (await fs.pathExists(physxWasmSrc)) {
+      await fs.copy(physxWasmSrc, physxWasmDest)
+      console.log('✓ Copied PhysX WASM file to client build')
+    } else {
+      console.error('✗ PhysX WASM file not found!')
+    }
+    
+    if (await fs.pathExists(physxJsSrc)) {
+      await fs.copy(physxJsSrc, physxJsDest)
+      console.log('✓ Copied PhysX JS file to client build')
+    } else {
+      console.error('✗ PhysX JS file not found!')
+    }
+    
+    // Create env.js file for runtime configuration
+    const envJs = `window.env = {
+  PUBLIC_WS_URL: '${process.env.PUBLIC_WS_URL || ''}',
+  PUBLIC_ASSETS_URL: '${process.env.PUBLIC_ASSETS_URL || '/world-assets/'}',
+  LIVEKIT_URL: '${process.env.LIVEKIT_URL || ''}'
+};`
+    await fs.writeFile(path.join(clientBuildDir, 'env.js'), envJs)
+    
+    return null
   }
-  
-  const buildResult = await clientCtx.rebuild()
-  await fs.writeFile(
-    path.join(buildDir, 'client-meta.json'), 
-    JSON.stringify(buildResult.metafile, null, 2)
-  )
-  
-  return clientCtx
 }
 
 /**
@@ -275,30 +289,60 @@ async function buildServer() {
           build.onEnd(async result => {
             if (result.errors.length > 0) return
             
-            // PhysX JS is now loaded from npm package, no need to copy JS file
+            // Copy PhysX files from npm package for browser loading
             
-            // Copy WASM from physx-js-webidl npm package
+            // Copy WASM and JS from physx-js-webidl npm package
             // Try local node_modules first, then fallback to root workspace
-            let physxWasmSrc = path.join(rootDir, 'node_modules/@hyperscape/physx-js-webidl/dist/physx-js-webidl.wasm')
-            if (!await fs.pathExists(physxWasmSrc)) {
-              physxWasmSrc = path.join(rootDir, '../../node_modules/@hyperscape/physx-js-webidl/dist/physx-js-webidl.wasm')
+            // In production with full client build, the client builder handles copying.
+            // To avoid race conditions with Vite's emptyOutDir, only copy here in dev or server-only mode.
+            if (dev || serverOnly) {
+              let physxWasmSrc = path.join(rootDir, 'node_modules/@hyperscape/physx-js-webidl/dist/physx-js-webidl.wasm')
+              let physxJsSrc = path.join(rootDir, 'node_modules/@hyperscape/physx-js-webidl/dist/physx-js-webidl.js')
+              if (!await fs.pathExists(physxWasmSrc)) {
+                physxWasmSrc = path.join(rootDir, '../../node_modules/@hyperscape/physx-js-webidl/dist/physx-js-webidl.wasm')
+                physxJsSrc = path.join(rootDir, '../../node_modules/@hyperscape/physx-js-webidl/dist/physx-js-webidl.js')
+              }
+              // Fallback to checked-in prebuilt files if npm package isn't available
+              if (!await fs.pathExists(physxWasmSrc)) {
+                const fallbackWasm = path.join(rootDir, 'src/server/public/physx-js-webidl.wasm')
+                const fallbackJs = path.join(rootDir, 'src/server/public/physx-js-webidl.js')
+                if (await fs.pathExists(fallbackWasm)) {
+                  physxWasmSrc = fallbackWasm
+                }
+                if (await fs.pathExists(fallbackJs)) {
+                  physxJsSrc = fallbackJs
+                }
+              }
+
+              const physxWasmDest = path.join(rootDir, 'build/public/physx-js-webidl.wasm')
+              const physxJsDest = path.join(rootDir, 'build/public/physx-js-webidl.js')
+
+              await fs.ensureDir(path.join(rootDir, 'build/public'))
+
+              if (await fs.pathExists(physxWasmSrc)) {
+                await fs.copy(physxWasmSrc, physxWasmDest)
+                console.log('✓ Copied PhysX WASM file to build/public/')
+              } else {
+                console.error('✗ PhysX WASM file not found (node_modules or fallback)')
+              }
+
+              if (await fs.pathExists(physxJsSrc)) {
+                await fs.copy(physxJsSrc, physxJsDest)
+                console.log('✓ Copied PhysX JS file to build/public/')
+              } else {
+                console.error('✗ PhysX JS file not found (node_modules or fallback)')
+              }
             }
-            const physxWasmDest = path.join(rootDir, 'build/public/physx-js-webidl.wasm')
             
-            // Ensure WASM file exists
-            if (await fs.pathExists(physxWasmSrc)) {
-              await fs.copy(physxWasmSrc, physxWasmDest)
-              console.log('✓ Copied PhysX WASM file from node_modules to build/public/')
-            } else {
-              console.error('✗ PhysX WASM file not found at:', physxWasmSrc)
-              console.error('  Make sure physx-js-webidl npm package is installed')
-              throw new Error('PhysX WASM file missing from node_modules')
-            }
-            
-            // Restart server in dev mode
+            // Restart server in dev mode using Bun runtime
             if (dev) {
-              serverProcess?.kill('SIGTERM')
-              serverProcess = fork(path.join(rootDir, 'build/index.js'))
+              try {
+                serverProcess?.kill('SIGTERM')
+              } catch {}
+              serverProcess = spawn('bun', [path.join(rootDir, 'build/index.js')], {
+                stdio: 'inherit',
+                cwd: rootDir,
+              })
             }
           })
         },
@@ -323,28 +367,110 @@ async function generateDeclarations() {
   
   console.log('Generating TypeScript declarations...')
   try {
-    execSync('npx tsc -p tsconfig.build.json', {
+    // First, ensure build directory exists
+    await fs.ensureDir(path.join(rootDir, 'build'))
+    
+    // Generate declaration files using tsc
+    console.log('Creating type definitions...')
+    execSync('bunx --yes tsc -p tsconfig.build.json', {
       stdio: 'inherit',
       cwd: rootDir
     })
     
-    // Create proper framework.d.ts by re-exporting from the compiled index.d.ts
+    // Sanitize generated three.d.ts to avoid API Extractor pulling in all of three's exports
+    try {
+      const threeDtsPath = path.join(rootDir, 'build/extras/three.d.ts')
+      if (await fs.pathExists(threeDtsPath)) {
+        let dts = await fs.readFile(threeDtsPath, 'utf8')
+        const original = dts
+        // Remove any star re-exports of three types which trigger unsupported exports like LightShadow
+        dts = dts.replace(/\n?export\s+\*\s+from\s+['\"]three['\"];?\s*\n?/g, '\n')
+        // Remove sourceMappingURL comments which can make API Extractor try to follow .ts sources
+        dts = dts.replace(/\n?\/\/#[^\n]*sourceMappingURL[^\n]*\n?/g, '\n')
+        if (dts !== original) {
+          await fs.writeFile(threeDtsPath, dts)
+          console.log('Sanitized build/extras/three.d.ts (removed export * from "three")')
+        }
+      }
+    } catch (stripErr) {
+      console.warn('Warning: failed to sanitize build/extras/three.d.ts', stripErr)
+    }
+
+    // Remove sourceMappingURL comments from all .d.ts to ensure API Extractor does not try to analyze .ts files
+    try {
+      const stripSourceMapComments = async (dir) => {
+        const entries = await fs.readdir(dir)
+        for (const entry of entries) {
+          const full = path.join(dir, entry)
+          const stat = await fs.lstat(full)
+          if (stat.isDirectory()) {
+            await stripSourceMapComments(full)
+          } else if (entry.endsWith('.d.ts')) {
+            const content = await fs.readFile(full, 'utf8')
+            const cleaned = content.replace(/\n?\/\/#[^\n]*sourceMappingURL[^\n]*\n?/g, '\n')
+            if (cleaned !== content) {
+              await fs.writeFile(full, cleaned)
+            }
+          }
+        }
+      }
+      await stripSourceMapComments(path.join(rootDir, 'build'))
+    } catch (e) {
+      console.warn('Warning: failed to strip sourceMappingURL comments from declarations', e)
+    }
+    
+    // Copy physx.d.ts file since tsc doesn't copy .d.ts files
+    const physxSourcePath = path.join(rootDir, 'src/types/physics.d.ts')
+    const physxDestPath = path.join(rootDir, 'build/types/physics.d.ts')
+    if (await fs.pathExists(physxSourcePath)) {
+      await fs.ensureDir(path.join(rootDir, 'build/types'))
+      await fs.copy(physxSourcePath, physxDestPath)
+      console.log('Copied physx.d.ts to build directory')
+    }
+    
+    // Bundle type definitions using API Extractor
+    console.log('Bundling type definitions with API Extractor...')
+    try {
+      execSync('bunx --yes api-extractor run --local --verbose', {
+        stdio: 'inherit',
+        cwd: rootDir
+      })
+      console.log('Created bundled type file: build/hyperscape.d.ts')
+    } catch (bundleError) {
+      console.log('Type bundling with API Extractor failed, trying Rollup...')
+      try {
+        const rollupConfigPath = path.join(rootDir, 'rollup.dts.config.mjs')
+        if (await fs.pathExists(rollupConfigPath)) {
+          execSync('bunx --yes rollup -c rollup.dts.config.mjs', {
+            stdio: 'pipe',
+            cwd: rootDir
+          })
+          console.log('Created bundled type files with Rollup')
+        } else {
+          console.log('Rollup DTS config not found, skipping Rollup bundling')
+        }
+      } catch (rollupError) {
+        console.log('Type bundling failed, using regular .d.ts files')
+      }
+    }
+    
+    // Create framework.d.ts as an alias for backward compatibility
     const frameworkDeclaration = `// TypeScript declarations for Hyperscape Framework
 // Re-export everything from the main index module
 export * from './index';
 `
     await fs.writeFile(path.join(rootDir, 'build/framework.d.ts'), frameworkDeclaration)
     
-    // Create a simple server index.d.ts that points to the generated declarations
-    const serverIndexDeclaration = `// TypeScript declarations for Hyperscape
-// Server entry point (startup script)
-export {};
-
+    // Create server-index.d.ts for backward compatibility
+    const serverIndexDeclaration = `// TypeScript declarations for Hyperscape Server
+// Re-exports CLI types
+export * from './cli';
 `
     await fs.writeFile(path.join(rootDir, 'build/server-index.d.ts'), serverIndexDeclaration)
+    
     console.log('Declaration files generated ✓')
   } catch (error) {
-    console.error('Declaration generation failed!')
+    console.error('Declaration generation failed!', error)
     if (!dev) {
       process.exit(1)
     }
@@ -358,7 +484,7 @@ async function watchTypeScript() {
   if (!dev || !typecheck) return
   
   const { spawn } = await import('child_process')
-  const tscWatch = spawn('npx', ['tsc', '--noEmit', '--watch', '--preserveWatchOutput'], {
+  const tscWatch = spawn('bunx', ['--yes', 'tsc', '--noEmit', '--watch', '--preserveWatchOutput'], {
     stdio: 'inherit',
     cwd: rootDir
   })

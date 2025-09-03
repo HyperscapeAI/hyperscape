@@ -1,4 +1,4 @@
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 import type { World, Entity } from '../types'
 import { TransformComponent } from '../components/TransformComponent'
 import { TerrainSystem } from './TerrainSystem'

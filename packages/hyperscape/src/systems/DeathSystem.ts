@@ -1,4 +1,4 @@
-import { System } from './System';
+import { SystemBase } from './SystemBase';
 import type { World } from '../World';
 import { EventType } from '../types/events';
 import { getNearestTown, WORLD_CONSTANTS } from '../data/world-structure';
@@ -17,7 +17,7 @@ import { WorldGenerationSystem } from './WorldGenerationSystem';
  * - Items despawn after 5 minutes if not retrieved
  * - Must retrieve items from death location
  */
-export class DeathSystem extends System {
+export class DeathSystem extends SystemBase {
   private deathLocations = new Map<string, DeathLocationData>();
   private respawnTimers = new Map<string, NodeJS.Timeout>();
   private itemDespawnTimers = new Map<string, NodeJS.Timeout>();
@@ -28,38 +28,38 @@ export class DeathSystem extends System {
     private playerInventories = new Map<string, { items: InventoryItem[]; coins: number }>();
 
   constructor(world: World) {
-    super(world);
+    super(world, { name: 'rpg-death', dependencies: { required: [], optional: [] }, autoCleanup: true });
   }
 
   async init(): Promise<void> {
     
-    // Listen for death events
-    this.world.on(EventType.ENTITY_DEATH, this.handlePlayerDeath.bind(this));
-    this.world.on(EventType.PLAYER_RESPAWN_REQUEST, this.handleRespawnRequest.bind(this));
-    this.world.on(EventType.DEATH_LOOT_COLLECT, this.handleLootCollection.bind(this));
-    this.world.on(EventType.PLAYER_UNREGISTERED, this.cleanupPlayerDeath.bind(this));
-    this.world.on(EventType.DEATH_HEADSTONE_EXPIRED, this.handleHeadstoneExpired.bind(this));
+    // Listen for death events via event bus
+    this.subscribe(EventType.ENTITY_DEATH, (data: { entityId: string; killedBy: string; entityType: 'player' | 'mob' }) => this.handlePlayerDeath(data));
+    this.subscribe(EventType.PLAYER_RESPAWN_REQUEST, (data: { playerId: string }) => this.handleRespawnRequest(data));
+    this.subscribe(EventType.DEATH_LOOT_COLLECT, (data: { playerId: string }) => this.handleLootCollection(data));
+    this.subscribe(EventType.PLAYER_UNREGISTERED, (data: { id: string }) => this.cleanupPlayerDeath(data));
+    this.subscribe(EventType.DEATH_HEADSTONE_EXPIRED, (data: { headstoneId: string; playerId: string }) => this.handleHeadstoneExpired(data));
 
     // Listen to position updates for reactive patterns
-    this.world.on(EventType.PLAYER_POSITION_UPDATED, (data: { playerId: string; position: { x: number; y: number; z: number } }) => {
+    this.subscribe(EventType.PLAYER_POSITION_UPDATED, (data: { playerId: string; position: { x: number; y: number; z: number } }) => {
       this.playerPositions.set(data.playerId, data.position);
     });
 
     // Listen to inventory updates for reactive patterns
-    this.world.on(EventType.INVENTORY_UPDATED, (data) => {
+    this.subscribe(EventType.INVENTORY_UPDATED, (data: { playerId: string; items: InventoryItem[]; coins: number }) => {
       const inventory = this.playerInventories.get(data.playerId) || { items: [], coins: 0 };
       inventory.items = data.items;
       this.playerInventories.set(data.playerId, inventory);
     });
 
-    this.world.on(EventType.INVENTORY_COINS_UPDATED, (data) => {
+    this.subscribe(EventType.INVENTORY_COINS_UPDATED, (data: { playerId: string; newAmount: number }) => {
       const inventory = this.playerInventories.get(data.playerId) || { items: [], coins: 0 };
       inventory.coins = data.newAmount;
       this.playerInventories.set(data.playerId, inventory);
     });
 
     // Clean up inventory cache when player unregisters
-    this.world.on(EventType.PLAYER_UNREGISTERED, (data: { id: string }) => {
+    this.subscribe(EventType.PLAYER_UNREGISTERED, (data: { id: string }) => {
       this.playerInventories.delete(data.id);
     });
     
@@ -140,7 +140,7 @@ export class DeathSystem extends System {
     this.deathLocations.set(playerId, deathData);
     
     // Drop all items at death location per GDD
-    this.world.emit(EventType.INVENTORY_DROP_ALL, {
+    this.emitTypedEvent(EventType.INVENTORY_DROP_ALL, {
       playerId,
       position: deathPosition
     });
@@ -156,7 +156,7 @@ export class DeathSystem extends System {
     this.itemDespawnTimers.set(playerId, despawnTimer);
     
     // Set player as dead and disable movement
-    this.world.emit(EventType.PLAYER_SET_DEAD, {
+    this.emitTypedEvent(EventType.PLAYER_SET_DEAD, {
       playerId,
       isDead: true,
       deathPosition
@@ -170,7 +170,7 @@ export class DeathSystem extends System {
     this.respawnTimers.set(playerId, respawnTimer);
     
         // Notify player of death
-    this.world.emit(EventType.UI_DEATH_SCREEN, {
+    this.emitTypedEvent(EventType.UI_DEATH_SCREEN, {
       playerId,
       message: `You have died! You will respawn in ${WORLD_CONSTANTS.RESPAWN_TIME / 1000} seconds.`,
       deathLocation: deathPosition,
@@ -199,7 +199,7 @@ export class DeathSystem extends System {
     };
 
     // Create headstone entity in world
-    this.world.emit(EventType.ENTITY_CREATE_HEADSTONE, {
+    this.emitTypedEvent(EventType.ENTITY_CREATE_HEADSTONE, {
       id: headstoneId,
       name: `${playerName}'s Grave`,
       position: { x: position.x, y: position.y, z: position.z },
@@ -213,13 +213,13 @@ export class DeathSystem extends System {
         return Promise.resolve();
       },
       destroy: () => {
-        this.world.emit(EventType.ENTITY_REMOVE, { entityId: headstoneId });
+        this.emitTypedEvent(EventType.ENTITY_REMOVE, { entityId: headstoneId });
       },
       update: (_dt: number) => {
         // Update headstone state if needed
         const remaining = this.getRemainingDespawnTime(playerId);
         if (remaining <= 0 && this.deathLocations.has(playerId)) {
-          this.world.emit(EventType.DEATH_HEADSTONE_EXPIRED, { headstoneId, playerId });
+          this.emitTypedEvent(EventType.DEATH_HEADSTONE_EXPIRED, { headstoneId, playerId });
         }
       },
       getHeadstoneData: () => headstoneData
@@ -259,37 +259,37 @@ export class DeathSystem extends System {
 
   private respawnPlayer(playerId: string, spawnPosition: { x: number; y: number; z: number }, townName: string): void {
     // Restore player to alive state
-    this.world.emit(EventType.PLAYER_SET_DEAD, {
+    this.emitTypedEvent(EventType.PLAYER_SET_DEAD, {
       playerId,
       isDead: false
     });
 
     // Teleport player to spawn position
-    this.world.emit(EventType.PLAYER_TELEPORT_REQUEST, {
+    this.emitTypedEvent(EventType.PLAYER_TELEPORT_REQUEST, {
       playerId,
       position: spawnPosition
     });
 
     // Restore health to full per GDD
-    this.world.emit(EventType.PLAYER_HEALTH_UPDATED, {
+    this.emitTypedEvent(EventType.PLAYER_HEALTH_UPDATED, {
       playerId,
       amount: 999, // Full heal
       source: 'respawn'
     });
 
     // Notify player of respawn
-    this.world.emit(EventType.UI_MESSAGE, {
+    this.emitTypedEvent(EventType.UI_MESSAGE, {
       playerId,
       message: `You have respawned in ${townName}. Your items remain at your death location.`,
       type: 'info'
     });
     
     // Close death screen
-    this.world.emit(EventType.UI_DEATH_SCREEN_CLOSE, { playerId });
+    this.emitTypedEvent(EventType.UI_DEATH_SCREEN_CLOSE, { playerId });
 
 
     // Emit respawn event for other systems
-    this.world.emit(EventType.PLAYER_RESPAWNED, {
+    this.emitTypedEvent(EventType.PLAYER_RESPAWNED, {
       playerId,
       spawnPosition,
       townName,
@@ -316,7 +316,7 @@ export class DeathSystem extends System {
     // Check if player is near their death location (within 3 meters) - reactive pattern
     const playerPosition = this.playerPositions.get(data.playerId);
     if (!playerPosition) {
-      console.error(`[DeathSystem] Could not get position for player ${data.playerId}`);
+      this.logger.error(`Could not get position for player ${data.playerId}`);
       return;
     }
 
@@ -326,7 +326,7 @@ export class DeathSystem extends System {
     );
 
     if (distance > 3) {
-      this.world.emit(EventType.UI_MESSAGE, {
+      this.emitTypedEvent(EventType.UI_MESSAGE, {
         playerId: data.playerId,
         message: 'You need to be closer to your grave to collect your items.',
         type: 'error'
@@ -337,19 +337,19 @@ export class DeathSystem extends System {
     // Return all items to player
     let returnedItems = 0;
     for (const item of deathData.items) {
-      this.world.emit(EventType.INVENTORY_CAN_ADD, {
+      this.emitTypedEvent(EventType.INVENTORY_CAN_ADD, {
         playerId: data.playerId,
         item: item,
         callback: (canAdd: boolean) => {
           if (canAdd) {
-            this.world.emit(EventType.INVENTORY_ITEM_ADDED, {
+            this.emitTypedEvent(EventType.INVENTORY_ITEM_ADDED, {
               playerId: data.playerId,
               item: item
             });
             returnedItems++;
           } else {
             // If inventory full, create ground item
-            this.world.emit(EventType.WORLD_CREATE_GROUND_ITEM, {
+            this.emitTypedEvent(EventType.WORLD_CREATE_GROUND_ITEM, {
               position: playerPosition,
               item: item
             });
@@ -361,7 +361,7 @@ export class DeathSystem extends System {
     // Clear death location and timers
     this.clearDeathLocation(data.playerId);
 
-    this.world.emit(EventType.UI_MESSAGE, {
+    this.emitTypedEvent(EventType.UI_MESSAGE, {
       playerId: data.playerId,
       message: `Retrieved ${returnedItems} items from your grave.`,
       type: 'success'
@@ -384,7 +384,7 @@ export class DeathSystem extends System {
     this.clearDeathLocation(playerId);
 
     // Notify player if online
-    this.world.emit(EventType.UI_MESSAGE, {
+    this.emitTypedEvent(EventType.UI_MESSAGE, {
       playerId,
       message: 'Your death items have despawned due to timeout.',
       type: 'warning'

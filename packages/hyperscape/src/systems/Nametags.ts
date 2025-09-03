@@ -1,8 +1,7 @@
 import { fillRoundRect } from '../extras/roundRect'
-import * as THREE from '../extras/three'
-import { toTHREEVector3 } from '../extras/three'
+import THREE, { toTHREEVector3 } from '../extras/three'
 import CustomShaderMaterial from '../libs/three-custom-shader-material'
-import { System } from './System'
+import { SystemBase } from './SystemBase'
 import type { World } from '../types'
 import { EventType } from '../types/events'
 import type { Nametag } from '../types/ui-types'
@@ -35,7 +34,7 @@ const MAX_INSTANCES = PER_ROW * PER_COLUMN
 const defaultQuaternion = new THREE.Quaternion(0, 0, 0, 1)
 const defaultScale = toTHREEVector3(new THREE.Vector3(1, 1, 1))
 
-export class Nametags extends System {
+export class Nametags extends SystemBase {
   nametags: Nametag[]
   canvas: HTMLCanvasElement
   ctx: CanvasRenderingContext2D
@@ -46,7 +45,7 @@ export class Nametags extends System {
   mesh: THREE.InstancedMesh
   
   constructor(world: World) {
-    super(world)
+    super(world, { name: 'nametags', dependencies: { required: ['stage'], optional: [] }, autoCleanup: true })
     this.nametags = []
     this.canvas = document.createElement('canvas')
     this.canvas.width = NAMETAG_WIDTH * PER_ROW
@@ -64,7 +63,8 @@ export class Nametags extends System {
     this.uniforms = {
       uAtlas: { value: this.texture },
       uXR: { value: 0 },
-      uOrientation: { value: this.world.rig.quaternion },
+      // Use camera quaternion which always exists on THREE.PerspectiveCamera
+      uOrientation: { value: this.world.camera.quaternion },
     }
     this.material = new CustomShaderMaterial({
       baseMaterial: THREE.MeshBasicMaterial,
@@ -196,7 +196,7 @@ export class Nametags extends System {
 
   start() {
     this.world.stage.scene.add(this.mesh)
-    this.world.on(EventType.XR_SESSION, this.onXRSession)
+    this.subscribe(EventType.XR_SESSION, (session: XRSession | null) => this.onXRSession(session as unknown))
   }
 
   add({ name, health }: { name: string; health: number }): Nametag | null {

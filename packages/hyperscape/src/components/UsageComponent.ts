@@ -4,16 +4,10 @@
  */
 
 import { Component } from './Component';
+import type { UsageComponentData } from '../types/components'
 import type { Entity } from '../entities/Entity';
 
-export interface UsageComponentData {
-  usesRemaining?: number;
-  maxUses?: number;
-  isExhausted?: boolean;
-  resetTime?: number | null;
-  lastResetTime?: number;
-  regenerateRate?: number; // Uses regenerated per hour
-}
+// Type moved to shared types/components.ts
 
 export class UsageComponent extends Component {
   constructor(entity: Entity, data?: UsageComponentData) {

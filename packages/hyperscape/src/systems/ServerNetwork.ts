@@ -31,7 +31,24 @@ export type { ChatMessage, ConnectionParams, ServerStats, SpawnData, User } from
 
 type QueueItem = [Socket, string, unknown];
 
+// Handler data types for network messages
+interface EntityModifiedData {
+  id: string;
+  changes: unknown;
+}
 
+interface EntityEventData {
+  id: string;
+  event: string;
+  payload?: unknown;
+}
+
+interface EntityRemovedData {
+  id: string;
+}
+
+// Base handler function type - allows any data type for flexibility
+type NetworkHandler = (socket: Socket, data: unknown) => void | Promise<void>;
 
 /**
  * Server Network System
@@ -53,8 +70,8 @@ export class ServerNetwork extends System implements NetworkWithSocket {
   spawn: SpawnData;
   maxUploadSize: number;
 
-  // Handler method registry - using any for data parameter to allow specific type handlers
-  private handlers: Record<string, (socket: Socket, data: any) => void | Promise<void>> = {};
+  // Handler method registry - using NetworkHandler type for flexibility
+  private handlers: Record<string, NetworkHandler> = {};
 
   constructor(world: World) {
     super(world);
@@ -174,7 +191,8 @@ export class ServerNetwork extends System implements NetworkWithSocket {
 
   onDisconnect(socket: Socket, code?: number | string): void {
     // Handle socket disconnection
-    console.log(`[ServerNetwork] Socket ${socket.id} disconnected with code:`, code);
+      // Use world logger if available via SystemBase in future refactor; keep minimal console for server context
+      console.log(`[ServerNetwork] Socket ${socket.id} disconnected with code:`, code);
     
     // Remove socket from our tracking
     this.sockets.delete(socket.id);
@@ -326,12 +344,37 @@ export class ServerNetwork extends System implements NetworkWithSocket {
         network: this 
       });
 
-      // spawn player
+      // spawn player at proper terrain height
+      const spawnX = this.spawn.position[0];
+      const spawnZ = this.spawn.position[2];
+      
+      // Use TerrainSystem directly like PlayerLocal does
+      const terrainSystem = this.world.systems.find(s => s.constructor.name === 'TerrainSystem') as any;
+      let spawnY = this.spawn.position[1] || 0;
+      
+      if (terrainSystem && terrainSystem.getHeightAt) {
+        const terrainHeight = terrainSystem.getHeightAt(spawnX, spawnZ);
+        if (typeof terrainHeight === 'number' && !isNaN(terrainHeight)) {
+          spawnY = terrainHeight + 1.8; // Player height offset
+          console.log(`[ServerNetwork] Spawning player ${user.id} on terrain at height: ${spawnY}`);
+        } else {
+          console.warn('[ServerNetwork] Could not get terrain height for player spawn, using fallback');
+        }
+      } else {
+        console.warn('[ServerNetwork] No terrain system found for player spawn, using fallback');
+      }
+      
+      console.log(`[ServerNetwork] Spawning player ${user.id} at (${spawnX.toFixed(2)}, ${spawnY.toFixed(2)}, ${spawnZ.toFixed(2)})`);
+      
       const addedEntity = this.world.entities.add ? this.world.entities.add(
         {
           id: user.id,
           type: 'player',
-          position: [...this.spawn.position] as [number, number, number],
+                  position: [
+          spawnX,
+          spawnY,
+          spawnZ
+        ] as [number, number, number],
           quaternion: [...this.spawn.quaternion] as [number, number, number, number],
           owner: socket.id, // deprecated, same as userId
           userId: user.id, // deprecated, same as userId
@@ -349,7 +392,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       socket.send('snapshot', {
         id: socket.id,
         serverTime: performance.now(),
-        assetsUrl: process.env.PUBLIC_ASSETS_URL,
+        assetsUrl: this.world.assetsUrl,  // Use the world's configured assetsUrl
         apiUrl: process.env.PUBLIC_API_URL,
         maxUploadSize: process.env.PUBLIC_MAX_UPLOAD_SIZE,
         settings: this.world.settings.serialize() || {},
@@ -363,15 +406,30 @@ export class ServerNetwork extends System implements NetworkWithSocket {
 
       // enter events on the server are sent after the snapshot.
       // on the client these are sent during PlayerRemote.js entity instantiation!
-      if (socket.player && socket.player.data?.id) {
-        this.world.emit('enter', { playerId: socket.player.data.id });
+      if (socket.player) {
+        // Use the user.id which was used to create the player entity
+        const playerId = user.id;
+        console.log('[ServerNetwork] Emitting player events with playerId:', playerId, 'user.id:', user.id);
+        if (!playerId) {
+          console.error('[ServerNetwork] WARNING: playerId is undefined!', {
+            userId: user?.id,
+            userName: user?.name,
+            socketId: socket.id,
+            hasPlayer: !!socket.player
+          });
+        }
+        // Emit both events for compatibility
+        this.world.emit('enter', { playerId });
+        // Emit the event that PlayerSpawnSystem expects
+        this.world.emit('player:joined', { playerId });
       }
     } catch (_err) {
       console.error(_err);
     }
   }
 
-  onChatAdded = async (socket: Socket, msg: ChatMessage): Promise<void> => {
+  onChatAdded = async (socket: Socket, data: unknown): Promise<void> => {
+    const msg = data as ChatMessage;
     // Add message to chat if method exists
     if (this.world.chat.add) {
       this.world.chat.add(msg, false);
@@ -379,7 +437,8 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     this.send('chatAdded', msg, socket.id);
   };
 
-  onCommand = async (socket: Socket, args: string[]): Promise<void> => {
+  onCommand = async (socket: Socket, data: unknown): Promise<void> => {
+    const args = data as string[];
     // TODO: check for spoofed messages, permissions/roles etc
     // handle slash commands
     const player = socket.player;
@@ -400,7 +459,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
           removeRole(roles, 'admin');
         }
         player.modify({ roles });
-        this.send('entityModified', { id, roles });
+        this.send('entityModified', { id, changes: { roles } });
         socket.send('chatAdded', {
           id: uuid(),
           from: null,
@@ -424,7 +483,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
         const userId = player.data.userId;
         player.data.name = name;
         player.modify({ name });
-        this.send('entityModified', { id, name });
+        this.send('entityModified', { id, changes: { name } });
         socket.send('chatAdded', {
           id: uuid(),
           from: null,
@@ -436,6 +495,36 @@ export class ServerNetwork extends System implements NetworkWithSocket {
           await this.db('users').where('id', userId).update({ name });
         }
       }
+    }
+
+    // Server-driven movement: move this socket's player entity randomly and broadcast
+    if (cmd === 'move') {
+      const mode = arg1 || 'random'
+      if (!player) return
+      const entity = player as unknown as Entity
+      const curr = entity.position
+      let nx = curr.x
+      let ny = curr.y
+      let nz = curr.z
+      if (mode === 'random') {
+        const radius = 3
+        const dx = (Math.random() * 2 - 1) * radius
+        const dz = (Math.random() * 2 - 1) * radius
+        nx = curr.x + dx
+        nz = curr.z + dz
+      } else if (mode === 'to' && args.length >= 4) {
+        // move to specified coordinates: /move to x y z
+        const x = parseFloat(args[2])
+        const y = parseFloat(args[3])
+        const z = parseFloat(args[4])
+        if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
+          nx = x; ny = y; nz = z
+        }
+      }
+      // Apply on server entity
+      entity.position.set(nx, ny, nz)
+      // Broadcast to all clients, including the origin, using normalized shape
+      this.send('entityModified', { id: entity.id, changes: { p: [nx, ny, nz] } })
     }
     
     if (cmd === 'spawn') {
@@ -474,19 +563,32 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     }
   }
 
-  onEntityModified(socket: Socket, data: { id: string; changes: unknown }): void {
-    // Handle entity modification
-    console.log('[ServerNetwork] Entity modified:', data);
+  onEntityModified(socket: Socket, data: unknown): void {
+    // Accept either { id, changes: {...} } or a flat payload { id, ...changes }
+    const incoming = data as { id: string; changes?: Record<string, unknown> } & Record<string, unknown>;
+    const id = incoming.id;
+    const changes = incoming.changes ?? Object.fromEntries(Object.entries(incoming).filter(([k]) => k !== 'id'));
+
+    // Apply to local entity if present
+    const entity = this.world.entities.get(id) as Entity | null;
+    if (entity && changes) {
+      entity.modify(changes);
+    }
+
+    // Broadcast normalized shape
+    this.send('entityModified', { id, changes }, socket.id);
   }
 
-  onEntityEvent(socket: Socket, data: { id: string; event: string; payload?: unknown }): void {
+  onEntityEvent(socket: Socket, data: unknown): void {
+    const eventData = data as EntityEventData;
     // Handle entity event
-    console.log('[ServerNetwork] Entity event:', data);
+    console.log('[ServerNetwork] Entity event:', eventData);
   }
 
-  onEntityRemoved(socket: Socket, data: { id: string }): void {
+  onEntityRemoved(socket: Socket, data: unknown): void {
+    const removedData = data as EntityRemovedData;
     // Handle entity removal
-    console.log('[ServerNetwork] Entity removed:', data);
+    console.log('[ServerNetwork] Entity removed:', removedData);
   }
 
   onSettings(socket: Socket, data: unknown): void {

@@ -1,9 +1,10 @@
 
-import * as THREE from '../extras/three'
+import THREE from '../extras/three'
 
 import { getRef, Node } from './Node'
 import type { LODData, LODItem } from '../types/nodes';
 import { isBoolean } from '../utils/validation'
+import type { World } from '../World'
 
 
 const v0 = new THREE.Vector3()
@@ -41,13 +42,15 @@ export class LOD extends Node {
   }
 
   mount() {
-    (this.ctx as unknown as { lods?: { register: (lod: LOD) => void } })!.lods?.register(this)
+    // Register with LODs system if present (typed cast through World extension)
+    const worldWithLods = this.ctx as (World & { lods?: import('../systems/LODs').LODs }) | null
+    worldWithLods?.lods?.register?.(this)
     this.check()
   }
 
   check() {
     if (this.prevLod) {
-      (this.prevLod.node as unknown as { active: boolean }).active = false
+      this.prevLod.node.active = false
       this.prevLod = null
     }
     const cameraPos = v0.setFromMatrixPosition(this.ctx!.camera.matrixWorld)
@@ -58,12 +61,12 @@ export class LOD extends Node {
       const avgScale = (v2.x + v2.y + v2.z) / 3
       distance = distance / avgScale
     }
-    const lod = this.lods.find(lod => distance <= lod.maxDistance)
+    const lod = this.lods.find(lodItem => distance <= lodItem.maxDistance)
     // if this lod hasnt change, stop here
     if (this.lod === lod) return
     // if we have a new lod, lets activate it immediately
     if (lod) {
-      (lod.node as unknown as { active: boolean }).active = true
+      lod.node.active = true
     }
     // if we have a pre-existing active lod, queue to remove it next frame
     if (this.lod) {
@@ -74,7 +77,8 @@ export class LOD extends Node {
   }
 
   unmount() {
-    (this.ctx as unknown as { lods?: { unregister: (lod: LOD) => void } })!.lods?.unregister(this)
+    const worldWithLods = this.ctx as (World & { lods?: import('../systems/LODs').LODs }) | null
+    worldWithLods?.lods?.unregister?.(this)
   }
 
   copy(source: LOD, recursive: boolean) {

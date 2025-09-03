@@ -42,7 +42,6 @@ export function Interface({ world }: { world: World }) {
   const [inventory, setInventory] = useState<InventoryItem[]>([])
   const [equipment, setEquipment] = useState<PlayerEquipmentItems | null>(null)
   const [showInventory, setShowInventory] = useState(false)
-  const [showEquipment, setShowEquipment] = useState(false)
   const [showBank, setShowBank] = useState(false)
   const [showStore, setShowStore] = useState(false)
   const [bankData, setBankData] = useState<BankEntityData & { items: BankItem[] } | null>(null)
@@ -232,20 +231,16 @@ export function Interface({ world }: { world: World }) {
     typedWorld.on(EventType.COMBAT_MISS, handleCombatEvent)
 
     // Keyboard shortcuts
-    const control = world.controls?.bind({ priority: 100 }) as unknown as {
+    const control = world.controls?.bind({ priority: 100 }) as {
       keyI?: { onPress: () => void };
-      keyE?: { onPress: () => void };
       keyB?: { onPress: () => void };
       keyT?: { onPress: () => void };
       keyC?: { onPress: () => void };
       unbind: () => void;
-    }
+    } | undefined
     if (control) {
       if (control.keyI) {
-        control.keyI.onPress = () => setShowInventory(!showInventory)
-      }
-      if (control.keyE) {
-        control.keyE.onPress = () => setShowEquipment(!showEquipment)
+        control.keyI.onPress = () => setShowInventory(prev => !prev)
       }
     }
 
@@ -268,7 +263,7 @@ export function Interface({ world }: { world: World }) {
       typedWorld.off(EventType.COMBAT_HEAL, handleCombatEvent)
       typedWorld.off(EventType.SKILLS_XP_GAINED, handleCombatEvent)
       typedWorld.off(EventType.COMBAT_MISS, handleCombatEvent)
-      if (control && control.unbind) {
+      if (control?.unbind) {
         control.unbind()
       }
     }
@@ -341,17 +336,11 @@ export function Interface({ world }: { world: World }) {
     <>
       {playerStats && <Hud stats={playerStats} />}
       {showInventory && (
-        <Inventory
+        <UnifiedInventoryEquipment
           items={inventory}
-          onClose={() => setShowInventory(false)}
-          world={world}
-        />
-      )}
-      {showEquipment && equipment && (
-        <EquipmentPanel
           equipment={equipment}
           stats={playerStats}
-          onClose={() => setShowEquipment(false)}
+          onClose={() => setShowInventory(false)}
           world={world}
         />
       )}
@@ -396,9 +385,7 @@ export function Interface({ world }: { world: World }) {
       )}
       <ButtonPanel
         onInventoryClick={() => setShowInventory(!showInventory)}
-        onEquipmentClick={() => setShowEquipment(!showEquipment)}
         showInventory={showInventory}
-        showEquipment={showEquipment}
         world={world}
       />
       <DamageNumbers damageNumbers={damageNumbers} />
@@ -411,15 +398,11 @@ export function Interface({ world }: { world: World }) {
 // Button Panel Component (Bottom-Right UI)
 function ButtonPanel({
   onInventoryClick,
-  onEquipmentClick,
   showInventory,
-  showEquipment,
   world: _world,
 }: {
   onInventoryClick: () => void
-  onEquipmentClick: () => void
   showInventory: boolean
-  showEquipment: boolean
   world: World
 }) {
   const buttonStyle = {
@@ -483,30 +466,6 @@ function ButtonPanel({
         🎒
       </button>
 
-      {/* Equipment Button */}
-      <button
-        onClick={onEquipmentClick}
-        style={showEquipment ? activeButtonStyle : buttonStyle}
-        onMouseEnter={(e) => {
-          if (!showEquipment) {
-            e.currentTarget.style.background = 'rgba(11, 10, 21, 0.95)'
-            e.currentTarget.style.borderColor = '#3b82f6'
-            e.currentTarget.style.transform = 'scale(1.05)'
-          }
-        }}
-        onMouseLeave={(e) => {
-          if (!showEquipment) {
-            e.currentTarget.style.background = 'rgba(11, 10, 21, 0.9)'
-            e.currentTarget.style.borderColor = '#2a2b39'
-            e.currentTarget.style.transform = 'scale(1)'
-          }
-        }}
-        title="Equipment (E)"
-      >
-        ⚔️
-      </button>
-
-
       {/* Settings Button */}
       <button
         style={buttonStyle}
@@ -522,7 +481,10 @@ function ButtonPanel({
         }}
         title="Settings"
         onClick={() => {
-          console.log('Settings button clicked')
+          const player = _world.getPlayer()
+          if (!player) return
+          // Open the preferences pane in the sidebar
+          _world.emit(EventType.UI_OPEN_PANE, { pane: 'prefs' })
         }}
       >
         ⚙️
@@ -678,6 +640,451 @@ function Hud({ stats }: { stats: PlayerStats & {
         </div>
       </div>
     </div>
+  )
+}
+
+// Unified Inventory & Equipment Component
+function UnifiedInventoryEquipment({
+  items,
+  equipment,
+  stats,
+  onClose,
+  world,
+}: {
+  items: InventoryItem[]
+  equipment: PlayerEquipmentItems | null
+  stats: PlayerStats & {
+    id: string
+    name: string
+    stamina: number
+    maxStamina: number
+    xp: number
+    maxXp: number
+    coins: number
+    combatStyle: 'attack' | 'strength' | 'defense' | 'ranged'
+  } | null
+  onClose: () => void
+  world: World
+}) {
+  const [selectedSlot, setSelectedSlot] = useState<number | null>(null)
+  const [hoveredSlot, setHoveredSlot] = useState<number | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; slot: number; item: InventoryItem } | null>(null)
+
+  const handleItemClick = (e: React.MouseEvent, slot: number, item: InventoryItem | null) => {
+    e.stopPropagation()
+    if (!item) {
+      setSelectedSlot(null)
+      return
+    }
+    setSelectedSlot(slot)
+    setContextMenu(null)
+  }
+
+  const handleItemRightClick = (e: React.MouseEvent, slot: number, item: InventoryItem | null) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!item) return
+    
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      slot,
+      item
+    })
+  }
+
+  const handleContextMenuAction = (action: string) => {
+    if (!contextMenu) return
+    
+    const localPlayer = world.getPlayer()
+    if (!localPlayer) return
+
+    const { slot, item } = contextMenu
+    
+    switch (action) {
+      case 'use':
+        world.emit(EventType.INVENTORY_USE, {
+          playerId: localPlayer.id,
+          itemId: item.id,
+          slot,
+        })
+        break
+      case 'equip':
+        world.emit(EventType.EQUIPMENT_TRY_EQUIP, {
+          playerId: localPlayer.id,
+          itemId: item.id,
+        })
+        break
+      case 'drop':
+        world.emit(EventType.ITEM_DROP, {
+          playerId: localPlayer.id,
+          itemId: item.id,
+          slot,
+          quantity: 1,
+        })
+        break
+      case 'examine':
+        world.emit(EventType.ITEM_EXAMINE, {
+          playerId: localPlayer.id,
+          itemId: item.id,
+        })
+        break
+    }
+    
+    setContextMenu(null)
+    setSelectedSlot(null)
+  }
+
+  const handleUnequip = (slot: EquipmentSlotName) => {
+    const localPlayer = world.getPlayer()
+    if (!localPlayer) return
+
+    world.emit(EventType.EQUIPMENT_UNEQUIP, {
+      playerId: localPlayer.id,
+      slot,
+    })
+  }
+
+  const getItemTypeColor = (type: string | undefined) => {
+    if (!type) return '#6b7280'
+    switch (type.toLowerCase()) {
+      case 'weapon': return '#ef4444'
+      case 'armor': return '#3b82f6'
+      case 'consumable': return '#10b981'
+      case 'tool': return '#f59e0b'
+      case 'resource': return '#8b5cf6'
+      default: return '#6b7280'
+    }
+  }
+
+  const slots = Array(28).fill(null)
+  items.forEach((item, index) => {
+    if (index < 28) slots[index] = item
+  })
+
+  const equipmentSlots = [
+    { key: EquipmentSlotName.HELMET, label: 'Helmet', icon: '🎩' },
+    { key: EquipmentSlotName.BODY, label: 'Body', icon: '🎽' },
+    { key: EquipmentSlotName.LEGS, label: 'Legs', icon: '👖' },
+    { key: EquipmentSlotName.WEAPON, label: 'Weapon', icon: '⚔️' },
+    { key: EquipmentSlotName.SHIELD, label: 'Shield', icon: '🛡️' },
+    { key: EquipmentSlotName.ARROWS, label: 'Arrows', icon: '🏹' },
+  ]
+
+  return (
+    <>
+      <div
+        className="rpg-inventory-equipment"
+        style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: '40rem',
+          background: 'rgba(11, 10, 21, 0.95)',
+          border: '0.0625rem solid #2a2b39',
+          borderRadius: '0.5rem',
+          padding: '1rem',
+          pointerEvents: 'auto',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          gap: '1rem',
+        }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setContextMenu(null)
+          }
+        }}
+      >
+        {/* Equipment Section (Left) */}
+        <div style={{ width: '14rem' }}>
+          <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem' }}>Equipment</h3>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
+            {equipmentSlots.map(({ key, label, icon }) => {
+              const item = equipment?.[key]
+              return (
+                <div
+                  key={key}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '0.5rem',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    borderRadius: '0.25rem',
+                    border: item ? '1px solid #3b82f6' : '1px solid transparent',
+                  }}
+                >
+                  <div style={{ fontSize: '1.2rem', width: '2rem', textAlign: 'center' }}>{icon}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{label}</div>
+                    {item ? (
+                      <div style={{ fontSize: '0.875rem', fontWeight: 'bold' }}>
+                        {item.name || `Item ${item.itemId}`}
+                        {key === 'arrows' && item?.quantity && ` (${item.quantity})`}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>(empty)</div>
+                    )}
+                  </div>
+                  {item && (
+                    <button
+                      onClick={() => handleUnequip(key)}
+                      style={{
+                        background: '#6b7280',
+                        border: 'none',
+                        borderRadius: '0.25rem',
+                        color: 'white',
+                        padding: '0.125rem 0.375rem',
+                        cursor: 'pointer',
+                        fontSize: '0.75rem',
+                      }}
+                      title="Unequip"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Combat Stats */}
+          {stats && (
+            <div
+              style={{
+                padding: '0.75rem',
+                background: 'rgba(0, 0, 0, 0.3)',
+                borderRadius: '0.25rem',
+              }}
+            >
+              <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem' }}>Combat Stats</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem', fontSize: '0.8rem' }}>
+                <div>⚔️ ATK: {stats.skills?.attack?.level || 0}</div>
+                <div>💪 STR: {stats.skills?.strength?.level || 0}</div>
+                <div>🛡️ DEF: {stats.skills?.defense?.level || 0}</div>
+                <div>🏹 RNG: {stats.skills?.ranged?.level || 0}</div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Inventory Section (Right) */}
+        <div style={{ flex: 1 }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '1rem',
+            }}
+          >
+            <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Inventory</h3>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.875rem', color: '#9ca3af' }}>
+                {items.length}/28 slots
+              </span>
+              <button
+                onClick={onClose}
+                style={{
+                  background: '#ef4444',
+                  border: 'none',
+                  borderRadius: '0.25rem',
+                  color: 'white',
+                  padding: '0.25rem 0.5rem',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                }}
+              >
+                Close (I)
+              </button>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(7, 1fr)',
+              gap: '0.25rem',
+              marginBottom: '1rem',
+            }}
+          >
+            {slots.map((item, index) => (
+              <div
+                key={index}
+                onClick={(e) => handleItemClick(e, index, item)}
+                onContextMenu={(e) => handleItemRightClick(e, index, item)}
+                onMouseEnter={() => setHoveredSlot(index)}
+                onMouseLeave={() => setHoveredSlot(null)}
+                style={{
+                  width: '3rem',
+                  height: '3rem',
+                  background: selectedSlot === index ? '#3b82f6' : hoveredSlot === index ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.5)',
+                  border: `0.0625rem solid ${item ? getItemTypeColor(getItemDisplayProps(item).type) : '#1f2937'}`,
+                  borderRadius: '0.25rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: item ? 'pointer' : 'default',
+                  fontSize: '0.65rem',
+                  position: 'relative',
+                  transition: 'all 0.2s ease',
+                  transform: hoveredSlot === index ? 'scale(1.05)' : 'scale(1)',
+                }}
+              >
+                {item && (
+                  <>
+                    <div style={{ 
+                      textAlign: 'center', 
+                      lineHeight: '1',
+                      fontWeight: 'bold',
+                      textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)' 
+                    }}>
+                      {getItemDisplayProps(item).name.substring(0, 8)}
+                    </div>
+                    {item.quantity > 1 && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          bottom: '0.125rem',
+                          right: '0.125rem',
+                          color: '#fbbf24',
+                          fontWeight: 'bold',
+                          fontSize: '0.55rem',
+                          background: 'rgba(0, 0, 0, 0.7)',
+                          borderRadius: '0.125rem',
+                          padding: '0.125rem 0.25rem',
+                        }}
+                      >
+                        {item.quantity}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {selectedSlot !== null && slots[selectedSlot] && (
+            <div style={{ 
+              padding: '0.75rem', 
+              background: 'rgba(0, 0, 0, 0.3)', 
+              borderRadius: '0.25rem',
+              border: `1px solid ${getItemTypeColor(slots[selectedSlot].type)}` 
+            }}>
+              <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
+                {slots[selectedSlot].name}
+              </div>
+              <div style={{ fontSize: '0.875rem', color: '#9ca3af', marginBottom: '0.5rem' }}>
+                Type: {slots[selectedSlot].type} • Quantity: {slots[selectedSlot].quantity}
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => handleContextMenuAction('use')}
+                  style={{
+                    background: '#10b981',
+                    border: 'none',
+                    borderRadius: '0.25rem',
+                    color: 'white',
+                    padding: '0.375rem 0.75rem',
+                    cursor: 'pointer',
+                    fontSize: '0.875rem',
+                  }}
+                >
+                  Use
+                </button>
+                <button
+                  onClick={() => handleContextMenuAction('equip')}
+                  style={{
+                    background: '#3b82f6',
+                    border: 'none',
+                    borderRadius: '0.25rem',
+                    color: 'white',
+                    padding: '0.375rem 0.75rem',
+                    cursor: 'pointer',
+                    fontSize: '0.875rem',
+                  }}
+                >
+                  Equip
+                </button>
+                <button
+                  onClick={() => handleContextMenuAction('drop')}
+                  style={{
+                    background: '#ef4444',
+                    border: 'none',
+                    borderRadius: '0.25rem',
+                    color: 'white',
+                    padding: '0.375rem 0.75rem',
+                    cursor: 'pointer',
+                    fontSize: '0.875rem',
+                  }}
+                >
+                  Drop
+                </button>
+                <button
+                  onClick={() => handleContextMenuAction('examine')}
+                  style={{
+                    background: '#6b7280',
+                    border: 'none',
+                    borderRadius: '0.25rem',
+                    color: 'white',
+                    padding: '0.375rem 0.75rem',
+                    cursor: 'pointer',
+                    fontSize: '0.875rem',
+                  }}
+                >
+                  Examine
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          style={{
+            position: 'fixed',
+            left: `${contextMenu.x}px`,
+            top: `${contextMenu.y}px`,
+            background: 'rgba(11, 10, 21, 0.95)',
+            border: '0.0625rem solid #2a2b39',
+            borderRadius: '0.25rem',
+            padding: '0.25rem',
+            pointerEvents: 'auto',
+            backdropFilter: 'blur(5px)',
+            minWidth: '8rem',
+            zIndex: 1000,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {['use', 'equip', 'drop', 'examine'].map((action) => (
+            <div
+              key={action}
+              onClick={() => handleContextMenuAction(action)}
+              style={{
+                padding: '0.5rem 0.75rem',
+                cursor: 'pointer',
+                borderRadius: '0.25rem',
+                transition: 'background 0.1s',
+                textTransform: 'capitalize',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent'
+              }}
+            >
+              {action}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   )
 }
 

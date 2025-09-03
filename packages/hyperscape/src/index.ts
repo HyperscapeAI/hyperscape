@@ -77,8 +77,8 @@ export function getPhysXAssetPath(assetName: string): string {
   return path.join(__dirname, '..', 'vendor', assetName);
 }
 
-// Export THREE separately to avoid naming conflicts
-export * as THREE from './extras/three';
+// Export THREE namespace as a default-only module export
+export { default as THREE } from './extras/three';
 
 // Export Vector3 compatibility utilities for plugin use
 export { 
@@ -91,4 +91,7 @@ export {
 } from './extras/vector3-compatibility';
 
 // Export PhysX types
-export type { PxVec3, PxTransform, PxQuat } from './types/physx';
+export type { PxVec3, PxTransform, PxQuat } from './types/physics';
+
+// Re-export types referenced by API Extractor warnings
+export type { PhysXInfo, PhysXModule } from './types/physics';

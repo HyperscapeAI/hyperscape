@@ -58,8 +58,7 @@ export class CombatSystem extends SystemBase {
     this.mobSystem = this.world.getSystem<MobSystem>('rpg-mob');
 
     // Set up event listeners - required for combat to function
-    this.subscribe(EventType.COMBAT_ATTACK_REQUEST, (event) => {
-      const data = event as { playerId: string; targetId: string; attackType?: AttackType };
+    this.subscribe(EventType.COMBAT_ATTACK_REQUEST, (data: { playerId: string; targetId: string; attackType?: AttackType }) => {
       this.handleAttack({
         attackerId: data.playerId,
         targetId: data.targetId,
@@ -68,14 +67,19 @@ export class CombatSystem extends SystemBase {
         attackType: data.attackType || AttackType.MELEE
       });
     });
-    this.subscribe<{ attackerId: string; targetId: string; attackerType: 'player' | 'mob'; targetType: 'player' | 'mob' }>(EventType.COMBAT_MELEE_ATTACK, (event) => {
-      this.handleMeleeAttack(event.data);
-    });
-    this.subscribe<{ attackerId: string; targetId: string; attackerType: 'player' | 'mob'; targetType: 'player' | 'mob' }>(EventType.COMBAT_RANGED_ATTACK, (event) => {
-      this.handleRangedAttack(event.data);
-    });
-    this.subscribe(EventType.COMBAT_MOB_ATTACK, (event) => {
-      const data = event as { mobId: string; targetId: string };
+    this.subscribe<{ attackerId: string; targetId: string; attackerType: 'player' | 'mob'; targetType: 'player' | 'mob' }>(
+      EventType.COMBAT_MELEE_ATTACK,
+      (data) => {
+        this.handleMeleeAttack(data);
+      }
+    );
+    this.subscribe<{ attackerId: string; targetId: string; attackerType: 'player' | 'mob'; targetType: 'player' | 'mob' }>(
+      EventType.COMBAT_RANGED_ATTACK,
+      (data) => {
+        this.handleRangedAttack(data);
+      }
+    );
+    this.subscribe(EventType.COMBAT_MOB_ATTACK, (data: { mobId: string; targetId: string }) => {
       this.handleMobAttack(data);
     });
 

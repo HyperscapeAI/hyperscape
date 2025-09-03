@@ -127,7 +127,7 @@ export function InteractionHandler({ world }: InteractionHandlerProps) {
         
         actions.push({
           id: 'gather',
-          label: `Gather ${target.name}`,
+          label: (target.name && target.name.toLowerCase().includes('tree')) ? 'Chop Tree' : `Gather ${target.name}`,
           icon: getResourceIcon(target.name),
           enabled: hasRequiredTool,
           onClick: () => {
