@@ -157,7 +157,14 @@ export class PlayerRemote extends Entity implements HotReloadable {
         return
       }
       
-      const nodeMap = src.toNodes()
+      // Pass VRM hooks so the avatar can add itself to the scene
+      const vrmHooks = {
+        scene: this.world.stage.scene,
+        octree: this.world.stage.octree,
+        camera: this.world.camera,
+        loader: this.world.loader
+      }
+      const nodeMap = (src as { toNodes: (hooks?: unknown) => Map<string, Avatar> }).toNodes(vrmHooks)
       console.log('[PlayerRemote] NodeMap type:', nodeMap?.constructor?.name, 'keys:', nodeMap instanceof Map ? Array.from(nodeMap.keys()) : 'not a map')
       
       // Check if nodeMap is actually a Map
@@ -275,6 +282,7 @@ export class PlayerRemote extends Entity implements HotReloadable {
           instance.move(baseAny.matrixWorld)
         }
       }
+      // Call update for animation updates (mixer, skeleton, etc)
       if (instance && typeof instance.update === 'function') {
         instance.update(delta)
       }

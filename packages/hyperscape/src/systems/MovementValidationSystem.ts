@@ -284,6 +284,20 @@ export class MovementValidationSystem extends System {
           isSync ? undefined : `Desync by ${syncDistance.toFixed(3)}m`, timestamp)
       }
     }
+
+    // Test 3: Grounding against terrain height (within tolerance)
+    try {
+      const terrainSystem = this.world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number } | undefined
+      if (terrainSystem?.getHeightAt) {
+        const groundY = terrainSystem.getHeightAt(localPlayer.position.x, localPlayer.position.z) + 0.1
+        const yDelta = Math.abs(localPlayer.position.y - groundY)
+        const grounded = yDelta < 0.3
+        this.addResult('Physics', 'Grounded On Terrain', grounded,
+          grounded ? undefined : `Y delta ${yDelta.toFixed(2)} at (${localPlayer.position.x.toFixed(1)}, ${localPlayer.position.z.toFixed(1)})`, timestamp)
+      }
+    } catch (_err) {
+      // Terrain system may be unavailable in some scenes
+    }
   }
 
   private findLocalPlayer(): PlayerLocal | null {

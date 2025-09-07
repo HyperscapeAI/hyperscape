@@ -21,13 +21,13 @@ export { System } from './systems/System';
 
 // Export all types from types/index.ts
 export type {
-    Anchors, Chat, ChatMessage, Component, Entities,
+    Anchors, Chat, ChatMessage, Component,
     // Entity Component System Types
     Entity as EntityInterface, Events,
     // UI and control types
     HotReloadable, Matrix4,
     // Network Types
-    NetworkConnection, Physics,
+    NetworkConnection,
     // Physics Types
     PhysicsOptions,
     // Player Types
@@ -41,16 +41,38 @@ export type {
     // Math Types
     Vector3, World as WorldInterface,
     // Core World Types
-    WorldOptions
+    WorldOptions,
+    // Additional interfaces without corresponding classes
+    ClientMonitor,
+    ServerDB
 } from './types/index';
 
 // Export EventType enum
 export { EventType } from './types/events';
 
+// Export system classes to fix API extractor warnings
+export { Entities } from './systems/Entities';
+export { Physics } from './systems/Physics';
+export { Particles } from './systems/Particles';
+export { LODs } from './systems/LODs';
+export { ClientUI } from './systems/ClientUI';
+export { ClientLoader } from './systems/ClientLoader';
+export { ServerNetwork } from './systems/ServerNetwork';
+export { ClientEnvironment } from './systems/ClientEnvironment';
+export { ClientGraphics } from './systems/ClientGraphics';
+export { ClientPrefs } from './systems/ClientPrefs';
+export { ClientAudio } from './systems/ClientAudio';
+export { ClientLiveKit } from './systems/ClientLiveKit';
+export { ClientStats } from './systems/ClientStats';
+export { Server } from './systems/Server';
+export { ClientActions } from './systems/ClientActions';
+export { XR } from './systems/XR';
+
+// Export MockNetwork from World
+export { MockNetwork } from './World';
+
 // Export node client components directly from their source modules
 export { createNodeClientWorld } from './createNodeClientWorld';
-export { ClientControls } from './systems/ClientControls';
-export { ClientNetwork } from './systems/ClientNetwork';
 export { ServerLoader } from './systems/ServerLoader';
 export { NodeClient } from './systems/NodeClient';
 export { NodeEnvironment } from './systems/NodeEnvironment';

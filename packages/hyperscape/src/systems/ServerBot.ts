@@ -2,7 +2,6 @@ import { System } from './System'
 import { Logger } from '../utils/Logger'
 import type { World } from '../World'
 import * as THREE from 'three'
-import { PlayerEntity } from '../entities/PlayerEntity'
 import { PlayerCombatStyle } from '../types/entities'
 import type { Entity } from '../entities/Entity'
 
@@ -28,7 +27,7 @@ interface BotStats {
  * Simulates a real player to stress-test server systems
  */
 export class ServerBot extends System {
-  private bot: PlayerEntity | null = null
+  private bot: Entity | null = null
   private behaviors: BotBehavior[] = []
   private currentBehavior: BotBehavior | null = null
   private isActive: boolean = false
@@ -120,11 +119,13 @@ export class ServerBot extends System {
       }
       
       // Use entities.add with local=true to properly create and broadcast the entity
-      this.bot = this.world.entities.add(botData, true) as PlayerEntity
+      this.bot = this.world.entities.add(botData, true) as Entity
       
       if (!this.bot) {
         throw new Error('Failed to create bot entity')
       }
+      
+      Logger.info(`[ServerBot] Bot entity created with ID: ${this.bot.id}, Type: ${this.bot.constructor.name}`)
       
       this.lastPosition.copy(this.bot.position)
       this.stats.startTime = Date.now()

@@ -24,6 +24,14 @@ export class RaycastTestSystem extends System {
   }
 
   start(): void {
+    // Only run in test environments
+    const isTestEnv = (typeof process !== 'undefined' && (process.env.NODE_ENV === 'test' || (process as any).env?.VITEST))
+      || ((this.world as unknown as { config?: { isTest?: boolean } }).config?.isTest === true)
+      || ((this.world.systems as unknown as { testRunner?: { isTestRunning?: () => boolean } }).testRunner?.isTestRunning?.() === true);
+    if (!isTestEnv) {
+      console.log('[RaycastTest] Skipping raycast tests (not in test mode)');
+      return;
+    }
     console.log('[RaycastTest] Starting raycast test system');
     
     // Use the existing stage ground plane instead of creating our own to avoid z-fighting

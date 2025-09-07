@@ -16,6 +16,7 @@ import type { World } from '../types';
 import { EventType } from '../types/events';
 import { calculateDistance, getWorldCamera, getWorldScene } from '../utils/EntityUtils';
 import { SystemBase } from './SystemBase';
+import type { PlayerLocal } from '../entities/PlayerLocal';
 
 // App interface removed - using Entity-based architecture instead
 
@@ -112,6 +113,79 @@ export class InteractionSystem extends SystemBase {
     console.log('[InteractionSystem] Starting...');
     // Try to initialize when system starts
     this.tryInitialize();
+    
+    // Listen for resource mesh creation to auto-register them
+    this.world.on('resource:mesh:created', (data: {
+      mesh: THREE.Object3D;
+      resourceId: string;
+      resourceType: string;
+      worldPosition: { x: number; y: number; z: number };
+    }) => {
+      this.registerResource(data.mesh, {
+        id: data.resourceId,
+        name: data.resourceType === 'tree' ? 'Tree' : 
+              data.resourceType === 'rock' ? 'Rock' : 
+              data.resourceType === 'fish' ? 'Fishing Spot' : 
+              data.resourceType === 'herb' ? 'Herb' : 'Resource',
+        type: data.resourceType as 'tree' | 'rock' | 'fish',
+        requiredTool: data.resourceType === 'tree' ? 'bronze_hatchet' : 
+                      data.resourceType === 'rock' ? 'bronze_pickaxe' : 
+                      data.resourceType === 'fish' ? 'fishing_rod' : undefined,
+        canGather: true
+      });
+      
+      console.log(`[InteractionSystem] Registered resource: ${data.resourceId} (${data.resourceType})`);
+    });
+    
+    // Connect interaction:gather to resource gathering
+    this.world.on('interaction:gather', (data: { 
+      targetId: string; 
+      resourceType: string; 
+      tool?: string;
+    }) => {
+      const localPlayer = this.world.getPlayer();
+      if (!localPlayer) return;
+      
+      const playerId = localPlayer.id;
+      const resource = this.interactables.get(data.targetId);
+      
+      if (resource) {
+        console.log(`[InteractionSystem] Moving to resource ${data.targetId} at position:`, resource.position);
+        
+        // Calculate target position near the resource (not on top of it)
+        const targetPos = {
+          x: resource.position.x - 1.5, // Stand 1.5m away
+          y: resource.position.y,
+          z: resource.position.z
+        };
+        
+      // Move player to resource
+      const playerLocal = localPlayer as unknown as PlayerLocal;
+      playerLocal.setClickMoveTarget(targetPos);
+        
+        // Wait for player to get close, then start gathering
+        const checkDistance = setInterval(() => {
+          const dist = Math.sqrt(
+            Math.pow(localPlayer.position.x - resource.position.x, 2) +
+            Math.pow(localPlayer.position.z - resource.position.z, 2)
+          );
+          
+          if (dist < 3) { // Within gathering range
+            clearInterval(checkDistance);
+            console.log(`[InteractionSystem] Player reached resource, starting gathering`);
+            
+            this.emitTypedEvent(EventType.RESOURCE_GATHERING_STARTED, {
+              playerId,
+              resourceId: data.targetId,
+              playerPosition: localPlayer.position
+            });
+          }
+        }, 200);
+        
+        // Timeout after 10 seconds
+        setTimeout(() => clearInterval(checkDistance), 10000);
+      }
+    });
   }
 
   private tryInitialize(): void {
@@ -569,13 +643,13 @@ export class InteractionSystem extends SystemBase {
     if ((currentCamera as any).aspect) {
       this.logger.info(`[Raycast Debug] Camera aspect: ${(currentCamera as any).aspect}`);
     } else {
-      this.logger.error(`[Raycast Debug] Camera has no aspect ratio!`);
-      // Set a default aspect ratio
+      // Handle edge case where camera aspect ratio isn't set (shouldn't happen with proper initialization)
+      this.logger.debug(`[Raycast Debug] Camera aspect ratio not set, using viewport dimensions`);
       (currentCamera as any).aspect = rect.width / rect.height;
       if ((currentCamera as any).updateProjectionMatrix) {
         (currentCamera as any).updateProjectionMatrix();
       }
-      this.logger.info(`[Raycast Debug] Set camera aspect to: ${(currentCamera as any).aspect}`);
+      this.logger.debug(`[Raycast Debug] Set camera aspect to: ${(currentCamera as any).aspect}`);
     }
 
     // Build a camera ray from current mouse position and use PhysX raycast
@@ -852,6 +926,14 @@ export class InteractionSystem extends SystemBase {
     // Show debug cube at the exact raycast hit location
     this.showDebugCube(targetPosition);
 
+    // Ensure target Y is at terrain height
+    const terrainSystem = this.world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number };
+    if (terrainSystem?.getHeightAt) {
+      const terrainHeight = terrainSystem.getHeightAt(targetPosition.x, targetPosition.z);
+      targetPosition.y = terrainHeight;
+      this.logger.info(`[InteractionSystem] Adjusted target Y to terrain height: ${terrainHeight.toFixed(2)}`);
+    }
+    
     // Pathfinding may be enabled for visualization, but MUST NOT influence movement target
     const pathfindingSystem = this.world.getSystem('heightmap-pathfinding') as any;
     let finalPath: THREE.Vector3[] | null = null;
@@ -874,25 +956,10 @@ export class InteractionSystem extends SystemBase {
       (window as any).__lastRaycastTarget = { x: targetPosition.x, y: targetPosition.y, z: targetPosition.z, method: hitMethod };
     }
 
-    // Check if player is PlayerLocal with physics movement
-    if ('setClickMoveTarget' in localPlayer && typeof localPlayer.setClickMoveTarget === 'function') {
-      const playerLocal = localPlayer as { 
-        setClickMoveTarget: (target: { x: number; y: number; z: number }) => void;
-        toggleRunMode?: () => void;
-        runMode?: boolean;
-      };
-      
-      // Always set a single direct target for deterministic movement
-      // ALWAYS move to the exact clicked position, never use waypoints or pathfinding destinations
-      // This ensures there's only ONE target the avatar moves to
-      
-      playerLocal.setClickMoveTarget({ x: targetPosition.x, y: targetPosition.y, z: targetPosition.z });
-      this.logger.info(`[InteractionSystem] Set direct target: x=${targetPosition.x.toFixed(2)}, z=${targetPosition.z.toFixed(2)}`);
-      
-      // Optional: path visualization already handled above
-    } else {
-      this.logger.warn('[InteractionSystem] Player does not support physics click movement');
-    }
+    // Set direct target on PlayerLocal
+    const playerLocal = localPlayer as unknown as PlayerLocal;
+    playerLocal.setClickMoveTarget({ x: targetPosition.x, y: targetPosition.y, z: targetPosition.z });
+    this.logger.info(`[InteractionSystem] Set direct target: x=${targetPosition.x.toFixed(2)}, z=${targetPosition.z.toFixed(2)}`);
 
     // Show movement target indicator where we actually intend to go
     this.showMovementTarget(targetPosition);
@@ -1311,7 +1378,7 @@ export class InteractionSystem extends SystemBase {
   public registerResource(object: THREE.Object3D, resourceData: {
     id: string;
     name: string;
-    type: 'tree' | 'rock' | 'fish';
+    type: 'tree' | 'rock' | 'fish' | string;
     requiredTool?: string;
     canGather: boolean;
   }): void {
@@ -1321,39 +1388,57 @@ export class InteractionSystem extends SystemBase {
       let actionLabel = 'Gather';
       switch (resourceData.type) {
         case 'tree':
-          actionLabel = 'Chop';
+          actionLabel = 'Chop Wood';
           break;
         case 'rock':
-          actionLabel = 'Mine';
+          actionLabel = 'Mine Rock';
           break;
         case 'fish':
           actionLabel = 'Fish';
           break;
+        case 'herb':
+          actionLabel = 'Pick Herb';
+          break;
+        default:
+          actionLabel = 'Gather';
       }
 
       actions.push({
         id: 'gather',
         label: actionLabel,
         enabled: true,
-        callback: () => this.emitInteraction('interaction:gather', {
-          targetId: resourceData.id,
-          resourceType: resourceData.type,
-          tool: resourceData.requiredTool
-        })
+        callback: () => {
+          console.log(`[InteractionSystem] Gather action clicked for ${resourceData.id}`);
+          this.emitInteraction('interaction:gather', {
+            targetId: resourceData.id,
+            resourceType: resourceData.type,
+            tool: resourceData.requiredTool
+          });
+        }
       });
     }
 
-    this.registerInteractableEntity({
+    // Store the interactable entity
+    const entity: InteractableEntity = {
       object,
       type: 'resource',
       id: resourceData.id,
       name: resourceData.name,
       description: resourceData.name,
       position: { x: object.position.x, y: object.position.y, z: object.position.z },
-      interactionDistance: 2.0,
-      distance: 2.0,
-      actions: actions.map(action => action.id)
-    });
+      interactionDistance: 3.0,  // Increased for easier interaction
+      distance: 0,
+      actions: actions
+    };
+    
+    this.interactables.set(resourceData.id, entity);
+    
+    // Add the object to the scene's interaction layer
+    if (object.userData) {
+      object.userData.interactionEntity = entity;
+    }
+    
+    console.log(`[InteractionSystem] Resource registered: ${resourceData.id} with actions:`, actions.map(a => a.label));
   }
 
   /**

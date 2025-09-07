@@ -709,7 +709,14 @@ export class PlayerLocal extends Entity implements HotReloadable {
           this._avatar.deactivate()
         }
 
-        const nodeMap = avatarSrc.toNodes()
+        // Pass VRM hooks so the avatar can add itself to the scene
+        const vrmHooks = {
+          scene: this.world.stage.scene,
+          octree: this.world.stage.octree,
+          camera: this.world.camera,
+          loader: this.world.loader
+        }
+        const nodeMap = (avatarSrc as { toNodes: (hooks?: unknown) => Map<string, Avatar> }).toNodes(vrmHooks)
         console.log('[PlayerLocal] NodeMap type:', nodeMap?.constructor?.name, 'keys:', nodeMap instanceof Map ? Array.from(nodeMap.keys()) : 'not a map')
         
         // Check if nodeMap is actually a Map
@@ -1403,16 +1410,15 @@ export class PlayerLocal extends Entity implements HotReloadable {
             }
           }
         }
-        // move with platform
+        // move with platform, only when kinematic/dynamic (not static ground)
         if (
           this.platform.actor &&
           'getGlobalPose' in this.platform.actor &&
           typeof this.platform.actor.getGlobalPose === 'function'
         ) {
-          // Only apply platform movement if it's actually moving (not static ground)
           const PHYSX = getPhysX()
-          const isStatic = PHYSX && this.platform.actor instanceof PHYSX.PxRigidStatic
           const actor = this.platform.actor
+          const isStatic = PHYSX && actor instanceof PHYSX.PxRigidStatic
           const isKinematic = PHYSX && actor && 'getRigidBodyFlags' in actor && typeof actor.getRigidBodyFlags === 'function'
             ? (() => {
                 const flags = actor.getRigidBodyFlags()
@@ -1421,10 +1427,9 @@ export class PlayerLocal extends Entity implements HotReloadable {
                   : false
               })()
             : false
-          
-          // Only apply platform transform if it's a moving platform (kinematic or dynamic)
-          // Static platforms like the ground don't need this
-          if (!isStatic) {
+          // CRITICAL FIX: Only apply platform movement for actual moving platforms (kinematic)
+          // Static ground should NOT apply any rotation transforms
+          if (!isStatic && isKinematic) {
             // get current platform transform
             const currTransform = m1
             const platformPose = this.platform.actor.getGlobalPose()
@@ -1741,6 +1746,20 @@ export class PlayerLocal extends Entity implements HotReloadable {
         const slopeRotation = q1.setFromUnitVectors(upVec, groundVec)
         const moveForce = v1.copy(this.moveDir).multiplyScalar(moveSpeed * 10).applyQuaternion(slopeRotation) // prettier-ignore
         
+        // Clamp to terrain if not grounded
+        const terrainSystem = this.world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number };
+        if (!this.grounded && terrainSystem?.getHeightAt && this.capsule) {
+          const terrainHeight = terrainSystem.getHeightAt(this.position.x, this.position.z);
+          const playerGroundY = this.position.y - 1.8; // Account for player height
+          
+          // If player is below terrain, apply upward force
+          if (playerGroundY < terrainHeight - 0.5) {
+            const upwardForce = (terrainHeight - playerGroundY) * 50;
+            moveForce.y += upwardForce;
+            console.log(`[PlayerLocal] Applying terrain clamping force: ${upwardForce.toFixed(2)}`);
+          }
+        }
+        
         // Log force application periodically
         if (Math.random() < 0.05) { // Log ~5% of physics frames
           console.log(`[PlayerLocal] Physics Force: dir=(${this.moveDir.x.toFixed(2)}, ${this.moveDir.z.toFixed(2)}), force=(${moveForce.x.toFixed(1)}, ${moveForce.z.toFixed(1)}), grounded=${this.grounded}`)
@@ -1882,23 +1901,42 @@ export class PlayerLocal extends Entity implements HotReloadable {
           console.log(`[PlayerLocal] Position updated from physics: moved ${moved.toFixed(3)} to (${physicsPos.x.toFixed(2)}, ${physicsPos.y.toFixed(2)}, ${physicsPos.z.toFixed(2)})`)
         }
         
-        // Drive avatar instance directly from base transform to keep visuals aligned
-          const avatarNode = this._avatar as any
+        // Update avatar instance position from base transform
+        // NOTE: This is required because the VRM factory doesn't automatically track the base node
+        const avatarNode = this._avatar as any
+        if (avatarNode && avatarNode.instance) {
           const instance = avatarNode.instance
           if (instance && typeof instance.move === 'function' && this.base) {
             // Ensure base matrices are up-to-date
             this.base.updateMatrix()
             this.base.updateMatrixWorld(true)
+            // Move the avatar to match the base transform
             instance.move(this.base.matrixWorld)
           }
+          // Call update for animation updates (mixer, skeleton, etc)
           if (instance && typeof instance.update === 'function') {
             instance.update(delta)
           }
+        }
       }
     
         // RuneScape-style point-and-click movement only
     if (this.clickMoveTarget) {
-      const distance = this.position.distanceTo(this.clickMoveTarget)
+      // Update target Y to match terrain height at target position (strict: no fallback)
+      const terrainSystem = this.world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number };
+      if (!terrainSystem || typeof terrainSystem.getHeightAt !== 'function') {
+        throw new Error('[PlayerLocal] TerrainSystem.getHeightAt unavailable when setting clickMoveTarget');
+      }
+      const targetHeight = terrainSystem.getHeightAt(this.clickMoveTarget.x, this.clickMoveTarget.z);
+      if (!Number.isFinite(targetHeight)) {
+        throw new Error(`[PlayerLocal] Invalid terrain height for target (${this.clickMoveTarget.x.toFixed(2)}, ${this.clickMoveTarget.z.toFixed(2)})`);
+      }
+      this.clickMoveTarget.y = (targetHeight as number) + 0.1;
+      
+      // Use horizontal (XZ) distance to determine arrival to avoid Y mismatches
+      const dx = this.position.x - this.clickMoveTarget.x;
+      const dz = this.position.z - this.clickMoveTarget.z;
+      const distanceXZ = Math.sqrt(dx * dx + dz * dz);
       
       // Check if we've reached the target
       const velocity = this.capsule?.getLinearVelocity()
@@ -1907,11 +1945,11 @@ export class PlayerLocal extends Entity implements HotReloadable {
       // Stop if we're very close
       // OR if we're somewhat close AND we've been moving but are now slow (to avoid oscillation)
       // Don't stop if we haven't started moving yet (speed near 0 but not at target)
-      if (distance < 0.3 || (distance < 0.8 && speed < 0.2 && this.moving)) {
+      if (distanceXZ < 0.3 || (distanceXZ < 0.8 && speed < 0.2 && this.moving)) {
         console.log('[PlayerLocal] === REACHED DESTINATION ===')
         console.log(`[PlayerLocal] Final position: (${this.position.x.toFixed(2)}, ${this.position.y.toFixed(2)}, ${this.position.z.toFixed(2)})`)
         console.log(`[PlayerLocal] Target was: (${this.clickMoveTarget.x.toFixed(2)}, ${this.clickMoveTarget.y.toFixed(2)}, ${this.clickMoveTarget.z.toFixed(2)})`)
-        console.log(`[PlayerLocal] Distance: ${distance.toFixed(2)}, Speed: ${speed.toFixed(2)}`)
+        console.log(`[PlayerLocal] DistanceXZ: ${distanceXZ.toFixed(2)}, Speed: ${speed.toFixed(2)}`)
         
         // IMPORTANT: Preserve the final rotation before clearing movement state
         // This prevents the avatar from rotating back after movement completes
@@ -1925,13 +1963,15 @@ export class PlayerLocal extends Entity implements HotReloadable {
         this.moving = false
         this.moveDir.set(0, 0, 0) // Clear move direction to prevent residual rotation
         
-        // Zero out horizontal velocity to stop immediately
+        // Zero out horizontal velocity AND lock rotation until next movement target
         if (velocity && this.capsule) {
-          velocity.x *= 0.1  // Apply strong damping
-          velocity.z *= 0.1
+          velocity.x = 0
+          velocity.z = 0
           this.capsule.setLinearVelocity(velocity)
         }
-      } else if (distance < 1.0) {
+        // Clear moveDir to prevent any residual facing updates
+        this.moveDir.set(0, 0, 0)
+      } else if (distanceXZ < 1.0) {
         // Getting close - apply proportional braking
         const direction = new THREE.Vector3()
           .subVectors(this.clickMoveTarget, this.position)
@@ -1939,7 +1979,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
         direction.normalize()
         
         // Scale movement force based on distance (closer = less force)
-        const scaleFactor = Math.max(0.1, distance / 2.0)
+        const scaleFactor = Math.max(0.1, distanceXZ / 2.0)
         direction.multiplyScalar(scaleFactor)
         this.moveDir.copy(direction)
         this.moving = true
@@ -1957,9 +1997,36 @@ export class PlayerLocal extends Entity implements HotReloadable {
         // Always use the persistent runMode setting
         this.running = this.runMode
         
+        // Clamp player strictly to terrain height while moving (no fallback)
+        if (this.capsule) {
+          const terrainSystemMove = this.world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number };
+          if (!terrainSystemMove || typeof terrainSystemMove.getHeightAt !== 'function') {
+            throw new Error('[PlayerLocal] TerrainSystem.getHeightAt unavailable during movement');
+          }
+          const h = terrainSystemMove.getHeightAt(this.position.x, this.position.z);
+          if (!Number.isFinite(h)) {
+            throw new Error(`[PlayerLocal] Invalid terrain height during movement at (${this.position.x.toFixed(2)}, ${this.position.z.toFixed(2)})`);
+          }
+          const desiredY = (h as number) + 0.1;
+          const yDelta = desiredY - this.position.y;
+          if (Math.abs(yDelta) > 0.2) {
+            const pose = this.capsule.getGlobalPose();
+            if (pose && pose.p) {
+              pose.p.y = desiredY;
+              this.capsuleHandle?.snap(pose);
+              this.position.y = desiredY;
+            }
+            const vel = this.capsule.getLinearVelocity();
+            if (vel) {
+              vel.y = 0;
+              this.capsule.setLinearVelocity(vel);
+            }
+          }
+        }
+        
         // Log movement state (but not every frame)
         if (Math.random() < 0.02) { // Log ~2% of frames
-          console.log(`[PlayerLocal] Moving: distance=${distance.toFixed(2)}, target=(${this.clickMoveTarget.x.toFixed(2)}, ${this.clickMoveTarget.z.toFixed(2)}), pos=(${this.position.x.toFixed(2)}, ${this.position.z.toFixed(2)}), dir=(${direction.x.toFixed(2)}, ${direction.z.toFixed(2)})`)
+          console.log(`[PlayerLocal] Moving: distanceXZ=${distanceXZ.toFixed(2)}, target=(${this.clickMoveTarget.x.toFixed(2)}, ${this.clickMoveTarget.z.toFixed(2)}), pos=(${this.position.x.toFixed(2)}, ${this.position.z.toFixed(2)}), dir=(${direction.x.toFixed(2)}, ${direction.z.toFixed(2)})`)
         }
       }
     } // End of clickMoveTarget check
@@ -1977,41 +2044,27 @@ export class PlayerLocal extends Entity implements HotReloadable {
       // Important: Check this.moving instead of moveDir.length() to prevent rotation after stopping
       if (this.base && this.moving && this.moveDir.length() > 0) {
         const forward = new THREE.Vector3(0, 0, -1)
-        const targetQuaternion = new THREE.Quaternion().setFromUnitVectors(forward, this.moveDir)
+        const targetQuaternion = new THREE.Quaternion().setFromUnitVectors(forward, this.moveDir.normalize())
+        
         // Only rotate if angle delta is meaningful to reduce tiny jitter
-        // For unit quaternions, dot = cos(halfAngle). Angle = 2 * acos(|dot|)
         const dot = this.base.quaternion.clone().dot(targetQuaternion)
         const angle = 2 * Math.acos(Math.min(1, Math.max(-1, Math.abs(dot))))
-        if (angle > 0.005) {
-          // Smooth rotation (smaller blend to reduce visible shaking)
-          this.base.quaternion.slerp(targetQuaternion, 0.06)
-          // Prevent any later sync from pulling yaw back
+        
+        // Increased threshold to 0.02 radians (~1 degree) to reduce micro-jitter
+        if (angle > 0.02) {
+          // Smoother rotation with reduced speed to prevent shaking
+          // Using 0.03 for very smooth turns (was 0.06)
+          this.base.quaternion.slerp(targetQuaternion, 0.03)
+          
+          // Sync lastState and node quaternion to prevent fighting
           this.lastState.q?.copy(this.base.quaternion)
+          this.node.quaternion.copy(this.base.quaternion)
         }
-        // Keep entity node quaternion aligned to visual/base orientation while moving
-        this.node.quaternion.copy(this.base.quaternion)
       }
     } else {
       // Not moving - use idle animation
       newEmote = 'idle';
-      // IMPORTANT: When idle, maintain the current rotation - don't reset it
-      // This prevents the avatar from snapping back to a default rotation
-      // The rotation should only change when actively moving or when explicitly set
-      
-      // Debug: Check if something is resetting rotation
-      if (this.base && this.lastState.q) {
-        const currentQuat = this.base.quaternion
-        const storedQuat = this.lastState.q
-        const angle = currentQuat.angleTo(storedQuat)
-        if (angle > 0.01) {
-          console.warn(`[PlayerLocal] WARNING: Rotation changed while idle! Angle diff: ${angle.toFixed(3)}`)
-          console.warn(`[PlayerLocal] Current: ${JSON.stringify(currentQuat.toArray())}`)
-          console.warn(`[PlayerLocal] Stored: ${JSON.stringify(storedQuat.toArray())}`)
-          // Force keep the stored rotation to prevent drift
-          this.base.quaternion.copy(this.lastState.q)
-          this.node.quaternion.copy(this.lastState.q)
-        }
-      }
+      // Do not enforce any rotation while idle to avoid fighting other systems
     }
     
     // Only update emote if it changed to avoid animation restarts
@@ -2055,47 +2108,28 @@ export class PlayerLocal extends Entity implements HotReloadable {
       }
     }
     
-    // ROTATION VALIDATION - Check if rotation changed unexpectedly
-    if (rotationBefore && this.base) {
-      const rotationAfter = this.base.quaternion
-      const angle = rotationBefore.angleTo(rotationAfter)
-      
-      // Only validate if we're not actively moving (movement is expected to change rotation)
-      if (!this.moving && angle > 0.01) {
-        const euler = new THREE.Euler().setFromQuaternion(rotationAfter, 'YXZ')
-        const beforeEuler = new THREE.Euler().setFromQuaternion(rotationBefore, 'YXZ')
-        
-        // Log detailed error
-        const errorMsg = `[ROTATION ERROR] Unexpected rotation while idle! Angle: ${angle.toFixed(3)} rad (${(angle * 180 / Math.PI).toFixed(1)}°)
-          Before: yaw=${(beforeEuler.y * 180 / Math.PI).toFixed(1)}° pitch=${(beforeEuler.x * 180 / Math.PI).toFixed(1)}°
-          After:  yaw=${(euler.y * 180 / Math.PI).toFixed(1)}° pitch=${(euler.x * 180 / Math.PI).toFixed(1)}°
-          Position: (${this.position.x.toFixed(1)}, ${this.position.y.toFixed(1)}, ${this.position.z.toFixed(1)})
-          clickMoveTarget: ${this.clickMoveTarget ? `(${this.clickMoveTarget.x.toFixed(1)}, ${this.clickMoveTarget.z.toFixed(1)})` : 'null'}
-          Platform: ${this.platform.actor ? 'yes' : 'no'}`
-        
-        console.error(errorMsg)
-        
-        // Report to server
-        this.world.network.send('rotationError', {
-          playerId: this.data.id,
-          error: errorMsg,
-          angle: angle,
-          moving: this.moving,
-          position: this.position.toArray(),
-          beforeQuat: rotationBefore.toArray(),
-          afterQuat: rotationAfter.toArray(),
-          timestamp: Date.now()
-        })
-        
-        // Force correct the rotation to prevent drift
-        console.warn('[PlayerLocal] Forcing rotation back to last known good state')
-        this.base.quaternion.copy(rotationBefore)
-        this.node.quaternion.copy(rotationBefore)
-        if (this.lastState.q) {
-          this.lastState.q.copy(rotationBefore)
+    // Ensure player remains grounded while idle
+    if (!this.moving && this.capsule) {
+      const terrainSystemIdle = this.world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number };
+      if (!terrainSystemIdle || typeof terrainSystemIdle.getHeightAt !== 'function') {
+        throw new Error('[PlayerLocal] TerrainSystem.getHeightAt unavailable while idle');
+      }
+      const hIdle = terrainSystemIdle.getHeightAt(this.position.x, this.position.z);
+      if (!Number.isFinite(hIdle)) {
+        throw new Error(`[PlayerLocal] Invalid terrain height while idle at (${this.position.x.toFixed(2)}, ${this.position.z.toFixed(2)})`);
+      }
+      const groundY = (hIdle as number) + 0.1;
+      if (Math.abs(this.position.y - groundY) > 0.2) {
+        const pose = this.capsule.getGlobalPose();
+        if (pose && pose.p) {
+          pose.p.y = groundY;
+          this.capsuleHandle?.snap(pose);
+          this.position.y = groundY;
         }
       }
     }
+
+    // Skip rotation validation/forcing to avoid fighting legitimate updates while idle
 
     // Send network updates if needed
     this.sendNetworkUpdate()
@@ -2151,16 +2185,19 @@ export class PlayerLocal extends Entity implements HotReloadable {
     const anchor = this.getAnchorMatrix()
     // if we're anchored, force into that pose
     if (anchor && this.capsule) {
-      console.warn('[PlayerLocal] Anchor is overriding rotation in lateUpdate!')
-      this.position.setFromMatrixPosition(anchor)
-      this.base!.quaternion.setFromRotationMatrix(anchor)
-      const pose = this.capsule.getGlobalPose()
-      if (pose && pose.p) {
-        // Manually set position to avoid type casting issues
-        pose.p.x = this.position.x
-        pose.p.y = this.position.y
-        pose.p.z = this.position.z
-        this.capsuleHandle?.snap(pose)
+      // Only apply anchor in XR mode - in normal gameplay, anchor should not override rotation
+      if (isXR) {
+        console.warn('[PlayerLocal] XR Anchor is overriding rotation in lateUpdate!')
+        this.position.setFromMatrixPosition(anchor)
+        this.base!.quaternion.setFromRotationMatrix(anchor)
+        const pose = this.capsule.getGlobalPose()
+        if (pose && pose.p) {
+          // Manually set position to avoid type casting issues
+          pose.p.x = this.position.x
+          pose.p.y = this.position.y
+          pose.p.z = this.position.z
+          this.capsuleHandle?.snap(pose)
+        }
       }
     }
     if (this._avatar) {

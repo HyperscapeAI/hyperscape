@@ -25,7 +25,7 @@ import { System, SystemConstructor } from './systems/System';
 import { XR } from './systems/XR';
 import { ClientAudio, ClientControls, ClientEnvironment, ClientGraphics, ClientLoader, ClientMonitor, ClientNetwork, ClientPrefs, ClientStats, ClientUI, HotReloadable, Player, RaycastHit, ServerDB, ServerServer, WorldOptions } from './types';
 
-class MockNetwork extends System {
+export class MockNetwork extends System {
   // Common network properties
   ids = -1;
   id: string | null = null;
@@ -355,7 +355,8 @@ export class World extends EventEmitter {
     this.rig = new THREE.Object3D() as HyperscapeObject3D;
     // NOTE: camera near is slightly smaller than spherecast. far is slightly more than skybox.
     // this gives us minimal z-fighting without needing logarithmic depth buffers
-    this.camera = new THREE.PerspectiveCamera(70, 0, 0.2, 1200);
+    // Initialize with default aspect ratio of 16:9 (will be updated by graphics system)
+    this.camera = new THREE.PerspectiveCamera(70, 16/9, 0.2, 1200);
     this.rig.add?.(this.camera);
 
     // Register core systems

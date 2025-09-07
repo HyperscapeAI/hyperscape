@@ -170,19 +170,29 @@ export class ResourceSystem extends SystemBase {
         levelRequired = 5;
         break;
         
+      case 'herb':
+        skillRequired = 'herbalism';
+        toolRequired = ''; // No tool required for herbs
+        respawnTime = 45000; // 45 second respawn
+        levelRequired = 1;
+        break;
+        
       default:
         throw new Error(`Unknown resource type: ${type}`);
     }
     
-    const resourceType: 'tree' | 'fishing_spot' | 'ore' = 
+    const resourceType: 'tree' | 'fishing_spot' | 'ore' | 'herb_patch' = 
       type === 'rock' ? 'ore' : 
       type === 'fish' ? 'fishing_spot' : 
+      type === 'herb' ? 'herb_patch' :
       'tree';
       
     const resource: Resource = {
       id: `${type}_${position.x.toFixed(0)}_${position.z.toFixed(0)}`,
       type: resourceType,
-      name: type === 'fish' ? 'Fishing Spot' : type === 'tree' ? 'Tree' : 'Rock',
+      name: type === 'fish' ? 'Fishing Spot' : 
+            type === 'tree' ? 'Tree' : 
+            type === 'herb' ? 'Herb' : 'Rock',
       position: {
         x: position.x,
         y: position.y,
@@ -207,12 +217,14 @@ export class ResourceSystem extends SystemBase {
     const { resources } = data;
     
     if (resources && resources.length > 0) {
+      console.log(`[ResourceSystem] Processing ${resources.length} resources from terrain tile`);
       for (const terrainResource of resources) {
         const resource = this.createResourceFromTerrainResource(terrainResource);
         if (resource) {
           this.resources.set(createResourceID(resource.id), resource);
           // Emit spawn event for each resource to show cubes
           this.emitTypedEvent(EventType.RESOURCE_SPAWNED, resource);
+          console.log(`[ResourceSystem] Added resource: ${resource.id} (${resource.type}) at (${resource.position.x.toFixed(0)}, ${resource.position.z.toFixed(0)})`);
         }
       }
     }

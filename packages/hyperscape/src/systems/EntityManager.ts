@@ -268,6 +268,11 @@ export class EntityManager extends SystemBase {
       Logger.system('EntityManager', ` Entity not found: ${data.entityId}`);
       return;
     }
+    // Do not override local player physics-driven movement. Let PlayerLocal handle motion.
+    const isLocalPlayer = entity.isPlayer && this.world.entities.player && entity.id === this.world.entities.player.id;
+    if (isLocalPlayer) {
+      return;
+    }
     entity.setPosition(data.position.x, data.position.y, data.position.z);
   }
 

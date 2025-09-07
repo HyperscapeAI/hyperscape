@@ -344,37 +344,12 @@ export class ServerNetwork extends System implements NetworkWithSocket {
         network: this 
       });
 
-      // spawn player at proper terrain height
-      const spawnX = this.spawn.position[0];
-      const spawnZ = this.spawn.position[2];
-      
-      // Use TerrainSystem directly like PlayerLocal does
-      const terrainSystem = this.world.systems.find(s => s.constructor.name === 'TerrainSystem') as any;
-      let spawnY = this.spawn.position[1] || 0;
-      
-      if (terrainSystem && terrainSystem.getHeightAt) {
-        const terrainHeight = terrainSystem.getHeightAt(spawnX, spawnZ);
-        if (typeof terrainHeight === 'number' && !isNaN(terrainHeight)) {
-          spawnY = terrainHeight + 1.8; // Player height offset
-          console.log(`[ServerNetwork] Spawning player ${user.id} on terrain at height: ${spawnY}`);
-        } else {
-          console.warn('[ServerNetwork] Could not get terrain height for player spawn, using fallback');
-        }
-      } else {
-        console.warn('[ServerNetwork] No terrain system found for player spawn, using fallback');
-      }
-      
-      console.log(`[ServerNetwork] Spawning player ${user.id} at (${spawnX.toFixed(2)}, ${spawnY.toFixed(2)}, ${spawnZ.toFixed(2)})`);
-      
+      // spawn player
       const addedEntity = this.world.entities.add ? this.world.entities.add(
         {
           id: user.id,
           type: 'player',
-                  position: [
-          spawnX,
-          spawnY,
-          spawnZ
-        ] as [number, number, number],
+          position: [...this.spawn.position] as [number, number, number],
           quaternion: [...this.spawn.quaternion] as [number, number, number, number],
           owner: socket.id, // deprecated, same as userId
           userId: user.id, // deprecated, same as userId

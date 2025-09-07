@@ -21,6 +21,13 @@ import { MeshFactory } from '../utils/MeshFactory';
 import type { BiomeData } from '../types/core';
 import type { ResourceNode, RoadSegment, TerrainTile } from '../types/terrain';
 
+interface BiomeCenter {
+    x: number;
+    z: number;
+    type: string;
+    influence: number;
+}
+
 export class TerrainSystem extends System {
     private terrainTiles = new Map<string, TerrainTile>();
     private terrainContainer!: THREE.Group;
@@ -28,6 +35,7 @@ export class TerrainSystem extends System {
     private lastPlayerTile = { x: 0, z: 0 };
     private updateTimer = 0;
     private noise!: NoiseGenerator;
+    private biomeCenters: BiomeCenter[] = [];
     private databaseSystem!: { 
         saveWorldChunk(chunkData: unknown): void;
     }; // DatabaseSystem reference
@@ -82,12 +90,71 @@ export class TerrainSystem extends System {
     
     // Deterministic noise seeding
     private computeSeedFromWorldId(): number {
-        const id = String((this.world as { id?: string }).id || 'hyperscape');
-        let hash = 0;
-        for (let i = 0; i < id.length; i++) {
-            hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+        // Check for explicit seed in world config or environment
+        const worldConfig = (this.world as { config?: { terrainSeed?: number } }).config;
+        if (worldConfig?.terrainSeed !== undefined) {
+            console.log(`[TerrainSystem] Using explicit terrain seed: ${worldConfig.terrainSeed}`);
+            return worldConfig.terrainSeed;
         }
-        return hash || 12345;
+        
+        // Check environment variable
+        if (typeof process !== 'undefined' && process.env?.TERRAIN_SEED) {
+            const envSeed = parseInt(process.env.TERRAIN_SEED, 10);
+            if (!isNaN(envSeed)) {
+                console.log(`[TerrainSystem] Using environment terrain seed: ${envSeed}`);
+                return envSeed;
+            }
+        }
+        
+        // Use world ID as fallback for deterministic generation
+        const id = String((this.world as { id?: string }).id || 'hyperscape-world');
+        let hash = 5381; // Start with prime for better distribution
+        for (let i = 0; i < id.length; i++) {
+            hash = ((hash << 5) + hash) + id.charCodeAt(i); // hash * 33 + char
+            hash = hash >>> 0; // Convert to unsigned 32-bit
+        }
+        const finalSeed = hash || 42; // Fallback to a known constant
+        console.log(`[TerrainSystem] Using deterministic seed from world ID '${id}': ${finalSeed}`);
+        return finalSeed;
+    }
+    
+    private initializeBiomeCenters(): void {
+        const worldSize = this.CONFIG.WORLD_SIZE * this.CONFIG.TILE_SIZE; // 10km x 10km
+        const numCenters = Math.floor(worldSize * worldSize / 1000000); // Roughly 100 centers for 10km x 10km
+        
+        // Use deterministic PRNG for reproducible biome placement
+        const baseSeed = this.computeSeedFromWorldId();
+        let randomState = baseSeed;
+        
+        const nextRandom = () => {
+            // Linear congruential generator for deterministic random
+            randomState = (randomState * 1664525 + 1013904223) >>> 0;
+            return randomState / 0xFFFFFFFF;
+        };
+        
+        const biomeTypes = [
+            'darkwood_forest', 'mistwood_valley', 'goblin_wastes', 
+            'northern_reaches', 'plains', 'lakes'
+        ];
+        
+        // Clear any existing centers
+        this.biomeCenters = [];
+        
+        for (let i = 0; i < numCenters; i++) {
+            const x = (nextRandom() - 0.5) * worldSize;
+            const z = (nextRandom() - 0.5) * worldSize;
+            const typeIndex = Math.floor(nextRandom() * biomeTypes.length);
+            const influence = 200 + nextRandom() * 400; // 200-600m influence radius
+            
+            this.biomeCenters.push({
+                x,
+                z,
+                type: biomeTypes[typeIndex],
+                influence
+            });
+        }
+        
+        console.log(`[TerrainSystem] Initialized ${this.biomeCenters.length} biome centers with seed ${baseSeed}`);
     }
     
     // World Configuration - Your Specifications
@@ -109,8 +176,8 @@ export class TerrainSystem extends System {
         
         // Features
         ROAD_WIDTH: 4,            // 4m wide roads
-        RESOURCE_DENSITY: 0.08,   // 8% chance per area for resources
-        TREE_DENSITY: 0.15,       // 15% chance for trees in forest biomes
+        RESOURCE_DENSITY: 0.15,   // 15% chance per area for resources (increased for more resources)
+        TREE_DENSITY: 0.25,       // 25% chance for trees in forest biomes (increased for visibility)
         TOWN_RADIUS: 25,          // Safe radius around towns
     };
     
@@ -343,6 +410,10 @@ export class TerrainSystem extends System {
         
         // Initialize deterministic noise from world id
         this.noise = new NoiseGenerator(this.computeSeedFromWorldId());
+        
+        // Initialize biome centers using deterministic random placement
+        this.initializeBiomeCenters();
+        
         // Get systems references
         // Check if database system exists and has the required method
         const dbSystem = this.world.getSystem('rpg-database') as { saveWorldChunk(chunkData: unknown): void } | undefined;
@@ -372,6 +443,13 @@ export class TerrainSystem extends System {
 
     async start(): Promise<void> {
         console.log('[TerrainSystem] Starting terrain system...');
+        
+        // Initialize noise generator if not already initialized (failsafe)
+        if (!this.noise) {
+            console.log('[TerrainSystem] Initializing noise generator with deterministic seed...');
+            this.noise = new NoiseGenerator(this.computeSeedFromWorldId());
+            this.initializeBiomeCenters();
+        }
         
         // Final environment detection
         const isServer = this.world.network?.isServer || false;
@@ -516,18 +594,29 @@ export class TerrainSystem extends System {
             this.terrainContainer.add(mesh);
         }
         
-        // Generate collision if server-side and physics is initialized
+        // Generate collision for both client and server if physics is initialized
         let collision: PMeshHandle | null = null;
-        if (this.world.network.isServer && this.world.physics && this.world.physics.isInitialized()) {
+        if (this.world.physics && this.world.physics.isInitialized()) {
             try {
-                const meshHandle = geometryToPxMesh(this.world, geometry, false);
+                // Create a transformed geometry that matches the mesh position
+                const transformedGeometry = geometry.clone();
+                transformedGeometry.translate(
+                    tileX * this.CONFIG.TILE_SIZE,
+                    0,
+                    tileZ * this.CONFIG.TILE_SIZE
+                );
+                
+                const meshHandle = geometryToPxMesh(this.world, transformedGeometry, false);
             if (meshHandle) {
                 // PMeshHandle already has the correct structure
                 collision = meshHandle;
+                    console.log(`[TerrainSystem] Created physics collision for tile ${key} at (${tileX * this.CONFIG.TILE_SIZE}, ${tileZ * this.CONFIG.TILE_SIZE})`);
             }
             } catch (error) {
-                console.warn(`[UnifiedTerrain] ⚠️ Failed to generate collision for tile ${key}:`, error);
+                console.warn(`[TerrainSystem] ⚠️ Failed to generate collision for tile ${key}:`, error);
             }
+        } else {
+            console.warn(`[TerrainSystem] Physics not initialized, skipping collision for tile ${key}`);
         }
         
         // Create tile object
@@ -566,23 +655,57 @@ export class TerrainSystem extends System {
             for (const resource of tile.resources) {
                 if (resource.mesh) continue;
                 let m: THREE.Mesh | null = null;
+                let resourceColor = 0x2f7d32;
+                let resourceSize = { x: 1.2, y: 3.0, z: 1.2 };
+                
                 if (resource.type === 'tree') {
-                    m = MeshFactory.createResourceMesh({ color: 0x2f7d32, size: { x: 1.2, y: 3.0, z: 1.2 } });
+                    resourceColor = 0x2f7d32; // Green for trees
+                    resourceSize = { x: 1.2, y: 3.0, z: 1.2 };
+                    m = MeshFactory.createResourceMesh({ color: resourceColor, size: resourceSize });
                 } else if (resource.type === 'fish') {
                     m = MeshFactory.createSphereMesh({ color: 0x3aa7ff, radius: 0.6, transparent: true, opacity: 0.7 });
                 } else if (resource.type === 'rock' || resource.type === 'ore' || resource.type === 'rare_ore') {
-                    m = MeshFactory.createResourceMesh({ color: 0x8a8a8a, size: { x: 1.0, y: 1.0, z: 1.0 } });
+                    resourceColor = 0x8a8a8a;
+                    resourceSize = { x: 1.0, y: 1.0, z: 1.0 };
+                    m = MeshFactory.createResourceMesh({ color: resourceColor, size: resourceSize });
                 } else if (resource.type === 'herb') {
-                    m = MeshFactory.createResourceMesh({ color: 0x66bb6a, size: { x: 0.6, y: 0.8, z: 0.6 } });
+                    resourceColor = 0x66bb6a;
+                    resourceSize = { x: 0.6, y: 0.8, z: 0.6 };
+                    m = MeshFactory.createResourceMesh({ color: resourceColor, size: resourceSize });
                 }
+                
                 if (m) {
                     const pos = resource.position instanceof THREE.Vector3
                         ? resource.position
                         : new THREE.Vector3(resource.position.x, resource.position.y, resource.position.z);
                     m.position.set(pos.x, pos.y, pos.z);
                     m.name = `resource_${resource.id}`;
+                    
+                    // Add userData for interaction detection
+                    m.userData = {
+                        type: 'resource',
+                        resourceType: resource.type,
+                        resourceId: resource.id,
+                        walkable: false,
+                        clickable: true,
+                        interactable: true,
+                        harvestable: resource.harvestable
+                    };
+                    
                     tile.mesh.add(m);
                     resource.mesh = m;
+                    
+                    // Emit resource created event for InteractionSystem registration
+                    this.world.emit('resource:mesh:created', {
+                        mesh: m,
+                        resourceId: resource.id,
+                        resourceType: resource.type,
+                        worldPosition: {
+                            x: tile.x * this.CONFIG.TILE_SIZE + pos.x,
+                            y: pos.y,
+                            z: tile.z * this.CONFIG.TILE_SIZE + pos.z
+                        }
+                    });
                 }
             }
         }
@@ -606,7 +729,27 @@ export class TerrainSystem extends System {
                 tileZ,
                 resources: resourcesPayload
             });
-        } catch (_err) {}
+            
+            // Also emit resource spawn points for ResourceSystem
+            if (tile.resources.length > 0) {
+                console.log(`[TerrainSystem] Registering ${tile.resources.length} resources for tile ${tile.key}`);
+                this.world.emit(EventType.RESOURCE_SPAWN_POINTS_REGISTERED, {
+                    spawnPoints: tile.resources.map(r => {
+                        const worldPos = r.position instanceof THREE.Vector3
+                            ? { x: originX + r.position.x, y: r.position.y, z: originZ + r.position.z }
+                            : { x: originX + r.position.x, y: r.position.y, z: originZ + r.position.z };
+                        return {
+                            id: r.id,
+                            type: r.type,
+                            subType: r.type === 'tree' ? 'normal_tree' : r.type,
+                            position: worldPos
+                        };
+                    })
+                });
+            }
+        } catch (_err) {
+            console.error('[TerrainSystem] Error emitting events:', _err);
+        }
 
         // Store tile
         this.terrainTiles.set(key, tile);
@@ -663,10 +806,8 @@ export class TerrainSystem extends System {
             positions.setY(i, height);
             heightData.push(height);
             
-            // Get biome for this specific vertex position
-            const vertexTileX = Math.floor(x / this.CONFIG.TILE_SIZE);
-            const vertexTileZ = Math.floor(z / this.CONFIG.TILE_SIZE);
-            const vertexBiomeKey = this.getBiomeAt(vertexTileX, vertexTileZ);
+            // Get biome for this specific vertex position using smooth transitions
+            const vertexBiomeKey = this.getBiomeAtWorldPosition(x, z);
             const vertexBiome = this.BIOMES[vertexBiomeKey] || defaultBiomeData;
             
             // Start with base biome color
@@ -895,52 +1036,82 @@ export class TerrainSystem extends System {
             if (distance < 3) return 'starter_towns';
         }
         
-        // Get height to determine elevation-based biome
+        return this.getBiomeAtWorldPosition(worldX, worldZ);
+    }
+    
+    private getBiomeAtWorldPosition(worldX: number, worldZ: number): string {
+        // Get height and moisture values
         const height = this.getHeightAt(worldX, worldZ);
-        const normalizedHeight = height / 80; // Normalize to 0-1 based on max height
+        const normalizedHeight = height / 80;
         
-        // Get moisture value for this position
-        const moistureScale = 0.002;
-        const moistureNoise = this.noise.fractal2D(
-            worldX * moistureScale,
-            worldZ * moistureScale,
-            3, 0.5, 2.0
-        );
-        const moisture = (moistureNoise + 1) * 0.5; // Normalize to 0-1
+        // Use Voronoi-based biome determination with smooth transitions
+        const biomeInfluences: Array<{ type: string; weight: number }> = [];
         
-        // Biome selection based on height and moisture
-        // Ocean/water bodies (below sea level)
-        if (normalizedHeight < 0.15) {
-            return 'lakes';
-        }
-        
-        // Low elevation (0.15 - 0.35)
-        if (normalizedHeight < 0.35) {
-            if (moisture > 0.7) {
-                return 'mistwood_valley'; // Wet lowlands = misty swamp
-            } else if (moisture < 0.3) {
-                return 'goblin_wastes'; // Dry lowlands = wasteland
-            } else {
-                return 'plains'; // Moderate moisture = grasslands
+        // Calculate influence from each biome center
+        for (const center of this.biomeCenters) {
+            const distance = Math.sqrt(
+                (worldX - center.x) ** 2 + 
+                (worldZ - center.z) ** 2
+            );
+            
+            if (distance < center.influence * 2) {
+                // Smooth falloff using exponential decay
+                const normalizedDistance = distance / center.influence;
+                const weight = Math.exp(-normalizedDistance * normalizedDistance * 2);
+                
+                // Adjust weight based on height appropriateness for the biome
+                let heightMultiplier = 1.0;
+                
+                if (center.type === 'lakes' && normalizedHeight < 0.2) {
+                    heightMultiplier = 2.0; // Lakes more likely in low areas
+                } else if (center.type === 'northern_reaches' && normalizedHeight > 0.6) {
+                    heightMultiplier = 2.0; // Mountains more likely at high elevation
+                } else if (center.type === 'darkwood_forest' && normalizedHeight > 0.3 && normalizedHeight < 0.7) {
+                    heightMultiplier = 1.5; // Forests at mid elevation
+                } else if (center.type === 'plains' && normalizedHeight > 0.2 && normalizedHeight < 0.4) {
+                    heightMultiplier = 1.5; // Plains at low-mid elevation
+                }
+                
+                if (weight > 0.01) {
+                    biomeInfluences.push({
+                        type: center.type,
+                        weight: weight * heightMultiplier
+                    });
+                }
             }
         }
         
-        // Mid elevation (0.35 - 0.6)
-        if (normalizedHeight < 0.6) {
-            if (moisture > 0.5) {
-                return 'darkwood_forest'; // Wet mid-elevation = forest
-            } else {
-                return 'goblin_wastes'; // Dry mid-elevation = wastes
+        // If no biome centers are close enough, use height-based fallback
+        if (biomeInfluences.length === 0) {
+            if (normalizedHeight < 0.15) return 'lakes';
+            if (normalizedHeight < 0.35) return 'plains';
+            if (normalizedHeight < 0.6) return 'darkwood_forest';
+            return 'northern_reaches';
+        }
+        
+        // Add noise to biome weights for more organic transitions
+        const noiseScale = 0.005;
+        const blendNoise = this.noise.simplex2D(worldX * noiseScale, worldZ * noiseScale);
+        
+        // Sort by weight and select the dominant biome
+        biomeInfluences.sort((a, b) => b.weight - a.weight);
+        
+        // If the top two biomes are close in weight, blend based on noise
+        if (biomeInfluences.length >= 2) {
+            const topWeight = biomeInfluences[0].weight;
+            const secondWeight = biomeInfluences[1].weight;
+            const ratio = secondWeight / topWeight;
+            
+            // If weights are similar (within 30%), use noise to decide
+            if (ratio > 0.7) {
+                const blendFactor = (blendNoise + 1) * 0.5; // Normalize to 0-1
+                if (blendFactor > 0.5) {
+                    return biomeInfluences[1].type;
+                }
             }
         }
         
-        // High elevation (0.6 - 0.8)
-        if (normalizedHeight < 0.8) {
-            return 'northern_reaches'; // Mountains
-        }
-        
-        // Very high elevation (> 0.8)
-        return 'northern_reaches'; // Snow-capped peaks
+        return biomeInfluences[0].type;
     }
     
     private getBiomeNoise(x: number, z: number): number {
