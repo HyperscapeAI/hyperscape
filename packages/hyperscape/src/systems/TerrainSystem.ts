@@ -93,7 +93,7 @@ export class TerrainSystem extends System {
         // Check for explicit seed in world config or environment
         const worldConfig = (this.world as { config?: { terrainSeed?: number } }).config;
         if (worldConfig?.terrainSeed !== undefined) {
-            console.log(`[TerrainSystem] Using explicit terrain seed: ${worldConfig.terrainSeed}`);
+            console.log(`[TerrainSystem] Using explicit terrain seed from config: ${worldConfig.terrainSeed}`);
             return worldConfig.terrainSeed;
         }
         
@@ -106,7 +106,12 @@ export class TerrainSystem extends System {
             }
         }
         
-        // Use world ID as fallback for deterministic generation
+        // Always use fixed seed of 0 for deterministic terrain on both client and server
+        const FIXED_SEED = 0;
+        console.log(`[TerrainSystem] Using fixed deterministic seed: ${FIXED_SEED}`);
+        return FIXED_SEED;
+        
+        // Use world ID for per-world unique terrain (disabled by default)
         const id = String((this.world as { id?: string }).id || 'hyperscape-world');
         let hash = 5381; // Start with prime for better distribution
         for (let i = 0; i < id.length; i++) {
@@ -114,7 +119,7 @@ export class TerrainSystem extends System {
             hash = hash >>> 0; // Convert to unsigned 32-bit
         }
         const finalSeed = hash || 42; // Fallback to a known constant
-        console.log(`[TerrainSystem] Using deterministic seed from world ID '${id}': ${finalSeed}`);
+        console.log(`[TerrainSystem] Using seed from world ID '${id}': ${finalSeed}`);
         return finalSeed;
     }
     
@@ -776,11 +781,11 @@ export class TerrainSystem extends System {
         // Default biome fallback for coloring
         const defaultBiomeData = this.BIOMES['plains'] || { color: 0x7fb069, name: 'Plains' };
         
-        // Pre-calculate nearby road data in world coordinates
-        const roadColor = new THREE.Color(0x8B7355); // Brown road color
-        const nearbyRoads = this.getNearbyRoadSegmentsWorld(tileX, tileZ);
+        // No longer using road segments - paths are generated with noise
         
         // Generate heightmap and vertex colors
+        const resolution = this.CONFIG.TILE_RESOLUTION;
+        
         for (let i = 0; i < positions.count; i++) {
             const localX = positions.getX(i);
             const localZ = positions.getZ(i);
@@ -792,8 +797,22 @@ export class TerrainSystem extends System {
                 continue;
             }
             
-            const x = localX + (tileX * this.CONFIG.TILE_SIZE);
-            const z = localZ + (tileZ * this.CONFIG.TILE_SIZE);
+            // Ensure edge vertices align exactly between tiles
+            // Snap edge vertices to exact tile boundaries to prevent seams
+            let x = localX + (tileX * this.CONFIG.TILE_SIZE);
+            let z = localZ + (tileZ * this.CONFIG.TILE_SIZE);
+            
+            // Snap to grid at tile boundaries for seamless edges
+            const epsilon = 0.001;
+            const tileMinX = tileX * this.CONFIG.TILE_SIZE;
+            const tileMaxX = (tileX + 1) * this.CONFIG.TILE_SIZE;
+            const tileMinZ = tileZ * this.CONFIG.TILE_SIZE;
+            const tileMaxZ = (tileZ + 1) * this.CONFIG.TILE_SIZE;
+            
+            if (Math.abs(x - tileMinX) < epsilon) x = tileMinX;
+            if (Math.abs(x - tileMaxX) < epsilon) x = tileMaxX;
+            if (Math.abs(z - tileMinZ) < epsilon) z = tileMinZ;
+            if (Math.abs(z - tileMaxZ) < epsilon) z = tileMaxZ;
             
             // Generate height using our improved noise function
             let height = this.getHeightAt(x, z);
@@ -806,54 +825,71 @@ export class TerrainSystem extends System {
             positions.setY(i, height);
             heightData.push(height);
             
-            // Get biome for this specific vertex position using smooth transitions
-            const vertexBiomeKey = this.getBiomeAtWorldPosition(x, z);
-            const vertexBiome = this.BIOMES[vertexBiomeKey] || defaultBiomeData;
-            
-            // Start with base biome color
-            const color = new THREE.Color(vertexBiome.color);
-            
-            // Add height-based shading
+            // Get biome influences for smooth color blending
+            const biomeInfluences = this.getBiomeInfluencesAtPosition(x, z);
             const normalizedHeight = height / 80; // Max height is 80
             
-            // Snow on high peaks
-            if (normalizedHeight > 0.75) {
-                const snowColor = new THREE.Color(0xf0f8ff);
-                const snowFactor = (normalizedHeight - 0.75) / 0.25;
-                color.lerp(snowColor, snowFactor * 0.8);
-            }
-            // Rock exposure on steep slopes
-            else if (normalizedHeight > 0.6) {
-                const rockColor = new THREE.Color(0x6b6b6b);
-                const rockFactor = (normalizedHeight - 0.6) / 0.2;
-                color.lerp(rockColor, rockFactor * 0.3);
-            }
-            // Water coloring for low areas
-            else if (normalizedHeight < 0.15) {
-                const waterColor = new THREE.Color(0x1e3a5f);
-                const depth = 0.15 - normalizedHeight;
-                color.lerp(waterColor, Math.min(1, depth * 5));
+            // Blend biome colors based on influences
+            const color = new THREE.Color(0, 0, 0);
+            
+            for (const influence of biomeInfluences) {
+                const biomeData = this.BIOMES[influence.type] || defaultBiomeData;
+                const biomeColor = new THREE.Color(biomeData.color);
+                
+                // Weight the color contribution
+                color.r += biomeColor.r * influence.weight;
+                color.g += biomeColor.g * influence.weight;
+                color.b += biomeColor.b * influence.weight;
             }
             
-            // Add lighting/shading based on height
-            const brightness = 0.7 + normalizedHeight * 0.4;
+            // Apply height-based environmental effects
+            // Snow on high peaks
+            if (normalizedHeight > 0.7) {
+                const snowColor = new THREE.Color(0xfafcff);
+                const snowFactor = Math.pow((normalizedHeight - 0.7) / 0.3, 1.5);
+                color.lerp(snowColor, snowFactor * 0.85);
+            }
+            // Rock exposure on slopes
+            else if (normalizedHeight > 0.55) {
+                const rockColor = new THREE.Color(0x8a8583);
+                const rockFactor = (normalizedHeight - 0.55) / 0.45;
+                color.lerp(rockColor, rockFactor * 0.2);
+            }
+            // Water tinting for low areas
+            else if (normalizedHeight < 0.18) {
+                const waterColor = new THREE.Color(0x3a5570);
+                const depth = Math.max(0, 0.18 - normalizedHeight);
+                color.lerp(waterColor, Math.min(0.7, depth * 3.5));
+            }
+            
+            // Smooth lighting gradient based on height
+            const brightness = 0.8 + normalizedHeight * 0.3;
             color.multiplyScalar(brightness);
             
-            // Add subtle noise variation
-            const colorVariation = 0.9 + Math.random() * 0.2;
+            // Add organic variation using smooth noise
+            const noiseScale = 0.008;
+            const colorNoise = this.noise.simplex2D(x * noiseScale, z * noiseScale);
+            const colorVariation = 1.0 + colorNoise * 0.08;
             color.multiplyScalar(colorVariation);
             
-            // Check for road influence at this vertex
-            const roadInfluence = this.sampleRoadInfluenceAt(x, z, nearbyRoads);
+            // Apply road-like patterns using noise (no actual road segments)
+            // Create organic path-like patterns
+            const roadNoiseScale = 0.002;
+            const roadPattern1 = this.noise.simplex2D(x * roadNoiseScale, z * roadNoiseScale * 0.5);
+            const roadPattern2 = this.noise.simplex2D(x * roadNoiseScale * 0.5, z * roadNoiseScale);
             
-            if (roadInfluence > 0) {
-                // Blend road color with terrain color
-                color.lerp(roadColor, roadInfluence);
-                
-                // Flatten terrain slightly for roads
-                const flattenedHeight = height * (1 - roadInfluence * 0.1);
-                positions.setY(i, flattenedHeight);
-                heightData[heightData.length - 1] = flattenedHeight;
+            // Create path-like patterns that connect areas
+            const pathInfluence = Math.max(0, 
+                Math.pow(Math.max(0, 1.0 - Math.abs(roadPattern1) * 4), 3) +
+                Math.pow(Math.max(0, 1.0 - Math.abs(roadPattern2) * 4), 3)
+            ) * 0.5;
+            
+            if (pathInfluence > 0.1 && normalizedHeight < 0.5) { // Only on lower terrain
+                const pathColor = new THREE.Color(0x8a7050); // Natural dirt path color
+                // Add some variation to the path color
+                const pathVariation = 0.9 + this.noise.simplex2D(x * 0.01, z * 0.01) * 0.2;
+                pathColor.multiplyScalar(pathVariation);
+                color.lerp(pathColor, pathInfluence * 0.6);
             }
             
             colors[i * 3] = color.r;
@@ -870,39 +906,7 @@ export class TerrainSystem extends System {
         return geometry;
     }
 
-    // Build list of nearby road segments in world coordinates for blending across tile seams
-    private getNearbyRoadSegmentsWorld(tileX: number, tileZ: number): Array<{ start: THREE.Vector2; end: THREE.Vector2; halfWidth: number }>{
-        const segments: Array<{ start: THREE.Vector2; end: THREE.Vector2; halfWidth: number }> = [];
-        for (let dx = -1; dx <= 1; dx++) {
-            for (let dz = -1; dz <= 1; dz++) {
-                const key = `${tileX + dx}_${tileZ + dz}`;
-                const tile = this.terrainTiles.get(key);
-                if (!tile) continue;
-                for (const r of tile.roads) {
-                    const sx = (tile.x * this.CONFIG.TILE_SIZE) + (r.start instanceof THREE.Vector2 ? r.start.x : r.start.x);
-                    const sz = (tile.z * this.CONFIG.TILE_SIZE) + (r.start instanceof THREE.Vector2 ? r.start.y : r.start.z);
-                    const ex = (tile.x * this.CONFIG.TILE_SIZE) + (r.end instanceof THREE.Vector2 ? r.end.x : r.end.x);
-                    const ez = (tile.z * this.CONFIG.TILE_SIZE) + (r.end instanceof THREE.Vector2 ? r.end.y : r.end.z);
-                    segments.push({ start: new THREE.Vector2(sx, sz), end: new THREE.Vector2(ex, ez), halfWidth: r.width * 0.5 });
-                }
-            }
-        }
-        return segments;
-    }
-
-    // Sample influence of world-space road segments at a world position
-    private sampleRoadInfluenceAt(worldX: number, worldZ: number, segments: Array<{ start: THREE.Vector2; end: THREE.Vector2; halfWidth: number }>): number {
-        const p = new THREE.Vector2(worldX, worldZ);
-        let influence = 0;
-        for (const s of segments) {
-            const d = this.distanceToLineSegment(p, s.start, s.end);
-            if (d <= s.halfWidth) {
-                const local = 1 - (d / s.halfWidth);
-                if (local > influence) influence = local;
-            }
-        }
-        return influence;
-    }
+    // DEPRECATED: Road methods are no longer used - using noise-based paths instead
 
     getHeightAt(worldX: number, worldZ: number): number {
         // Ensure valid coordinates
@@ -1039,12 +1043,11 @@ export class TerrainSystem extends System {
         return this.getBiomeAtWorldPosition(worldX, worldZ);
     }
     
-    private getBiomeAtWorldPosition(worldX: number, worldZ: number): string {
-        // Get height and moisture values
+    private getBiomeInfluencesAtPosition(worldX: number, worldZ: number): Array<{ type: string; weight: number }> {
+        // Get height for biome weighting
         const height = this.getHeightAt(worldX, worldZ);
         const normalizedHeight = height / 80;
         
-        // Use Voronoi-based biome determination with smooth transitions
         const biomeInfluences: Array<{ type: string; weight: number }> = [];
         
         // Calculate influence from each biome center
@@ -1054,25 +1057,26 @@ export class TerrainSystem extends System {
                 (worldZ - center.z) ** 2
             );
             
-            if (distance < center.influence * 2) {
-                // Smooth falloff using exponential decay
+            // Use smoother falloff for more organic blending
+            if (distance < center.influence * 3) {
+                // Use a smoother gaussian falloff
                 const normalizedDistance = distance / center.influence;
-                const weight = Math.exp(-normalizedDistance * normalizedDistance * 2);
+                const weight = Math.exp(-normalizedDistance * normalizedDistance * 0.5);
                 
                 // Adjust weight based on height appropriateness for the biome
                 let heightMultiplier = 1.0;
                 
                 if (center.type === 'lakes' && normalizedHeight < 0.2) {
-                    heightMultiplier = 2.0; // Lakes more likely in low areas
+                    heightMultiplier = 1.8;
                 } else if (center.type === 'northern_reaches' && normalizedHeight > 0.6) {
-                    heightMultiplier = 2.0; // Mountains more likely at high elevation
+                    heightMultiplier = 1.8;
                 } else if (center.type === 'darkwood_forest' && normalizedHeight > 0.3 && normalizedHeight < 0.7) {
-                    heightMultiplier = 1.5; // Forests at mid elevation
+                    heightMultiplier = 1.4;
                 } else if (center.type === 'plains' && normalizedHeight > 0.2 && normalizedHeight < 0.4) {
-                    heightMultiplier = 1.5; // Plains at low-mid elevation
+                    heightMultiplier = 1.4;
                 }
                 
-                if (weight > 0.01) {
+                if (weight > 0.001) {
                     biomeInfluences.push({
                         type: center.type,
                         weight: weight * heightMultiplier
@@ -1081,37 +1085,48 @@ export class TerrainSystem extends System {
             }
         }
         
-        // If no biome centers are close enough, use height-based fallback
-        if (biomeInfluences.length === 0) {
-            if (normalizedHeight < 0.15) return 'lakes';
-            if (normalizedHeight < 0.35) return 'plains';
-            if (normalizedHeight < 0.6) return 'darkwood_forest';
-            return 'northern_reaches';
+        // Normalize weights
+        const totalWeight = biomeInfluences.reduce((sum, b) => sum + b.weight, 0);
+        if (totalWeight > 0) {
+            for (const influence of biomeInfluences) {
+                influence.weight /= totalWeight;
+            }
+        } else {
+            // Fallback to height-based biome
+            const fallbackBiome = normalizedHeight < 0.15 ? 'lakes' :
+                                 normalizedHeight < 0.35 ? 'plains' :
+                                 normalizedHeight < 0.6 ? 'darkwood_forest' :
+                                 'northern_reaches';
+            biomeInfluences.push({ type: fallbackBiome, weight: 1.0 });
         }
         
-        // Add noise to biome weights for more organic transitions
+        return biomeInfluences;
+    }
+    
+    private getBiomeAtWorldPosition(worldX: number, worldZ: number): string {
+        const influences = this.getBiomeInfluencesAtPosition(worldX, worldZ);
+        
+        // Add some noise for variation at boundaries
         const noiseScale = 0.005;
         const blendNoise = this.noise.simplex2D(worldX * noiseScale, worldZ * noiseScale);
         
-        // Sort by weight and select the dominant biome
-        biomeInfluences.sort((a, b) => b.weight - a.weight);
+        // Sort by weight
+        influences.sort((a, b) => b.weight - a.weight);
         
-        // If the top two biomes are close in weight, blend based on noise
-        if (biomeInfluences.length >= 2) {
-            const topWeight = biomeInfluences[0].weight;
-            const secondWeight = biomeInfluences[1].weight;
-            const ratio = secondWeight / topWeight;
+        // If top biomes are close, use noise to blend
+        if (influences.length >= 2) {
+            const topWeight = influences[0].weight;
+            const secondWeight = influences[1].weight;
             
-            // If weights are similar (within 30%), use noise to decide
-            if (ratio > 0.7) {
-                const blendFactor = (blendNoise + 1) * 0.5; // Normalize to 0-1
-                if (blendFactor > 0.5) {
-                    return biomeInfluences[1].type;
+            if (secondWeight / topWeight > 0.6) {
+                const blendFactor = (blendNoise + 1) * 0.5;
+                if (blendFactor > 0.55) {
+                    return influences[1].type;
                 }
             }
         }
         
-        return biomeInfluences[0].type;
+        return influences[0].type;
     }
     
     private getBiomeNoise(x: number, z: number): number {
@@ -1153,7 +1168,7 @@ export class TerrainSystem extends System {
         
         this.generateTreesForTile(tile, biomeData);
         this.generateOtherResourcesForTile(tile, biomeData);
-        this.generateRoadsForTile(tile);
+        // Roads are now generated using noise patterns instead of segments
         
     }
     
@@ -1274,46 +1289,9 @@ export class TerrainSystem extends System {
         }
     }
     
+    // DEPRECATED: Roads are now generated using noise patterns instead of segments
     private generateRoadsForTile(tile: TerrainTile): void {
-        // Generate roads connecting to nearby starter towns
-        const towns = [
-            { x: 0, z: 0 }, { x: 10, z: 0 }, { x: -10, z: 0 },
-            { x: 0, z: 10 }, { x: 0, z: -10 }
-        ];
-        
-        for (const town of towns) {
-            const distance = Math.sqrt((tile.x - town.x) ** 2 + (tile.z - town.z) ** 2);
-            
-            // Generate road segments for tiles within reasonable distance of towns
-            if (distance < 8 && distance > 0.5) {
-                const roadDirection = {
-                    x: (town.x - tile.x) / distance,
-                    z: (town.z - tile.z) / distance
-                };
-                
-                const roadStart = new THREE.Vector2(
-                    -roadDirection.x * this.CONFIG.TILE_SIZE * 0.5,
-                    -roadDirection.z * this.CONFIG.TILE_SIZE * 0.5
-                );
-                
-                const roadEnd = new THREE.Vector2(
-                    roadDirection.x * this.CONFIG.TILE_SIZE * 0.5,
-                    roadDirection.z * this.CONFIG.TILE_SIZE * 0.5
-                );
-                
-                const road: RoadSegment = {
-                    start: { x: roadStart.x, z: roadStart.y },
-                    end: { x: roadEnd.x, z: roadEnd.y },
-                    width: this.CONFIG.ROAD_WIDTH,
-                    mesh: null,
-                    material: 'stone',
-                    condition: 1.0
-                };
-                
-                tile.roads.push(road);
-                break; // Only one road per tile
-            }
-        }
+        // No longer generating road segments - using noise-based paths instead
     }
     
     /**
@@ -1344,7 +1322,7 @@ export class TerrainSystem extends System {
             lastUpdate: Date.now()
         };
         
-        this.generateRoadsForTile(tempTile);
+        // Roads are now generated using noise patterns
         
         // Calculate influence for each vertex position
         const resolution = this.CONFIG.TILE_RESOLUTION;
@@ -1698,8 +1676,7 @@ export class TerrainSystem extends System {
      * Generate visual features (road meshes, lake meshes) for a tile
      */
     private generateVisualFeatures(tile: TerrainTile): void {
-        // Generate road meshes
-        this.generateRoadMeshes(tile);
+        // Roads are rendered as noise-based color paths; no mesh generation
         
         // Generate lake meshes for water bodies
         this.generateLakeMeshes(tile);
@@ -1709,72 +1686,7 @@ export class TerrainSystem extends System {
     /**
      * Generate visual road meshes for better visibility
      */
-    private generateRoadMeshes(tile: TerrainTile): void {
-        for (const road of tile.roads) {
-            if (road.mesh) continue; // Already has mesh
-            
-            // Create road geometry
-            const startVec = road.start instanceof THREE.Vector2 ? road.start : new THREE.Vector2(road.start.x, road.start.z);
-            const endVec = road.end instanceof THREE.Vector2 ? road.end : new THREE.Vector2(road.end.x, road.end.z);
-            const roadLength = startVec.distanceTo(endVec);
-            const roadGeometry = new THREE.PlaneGeometry(road.width, roadLength);
-            
-            // Create road material (darker color for visibility)
-            const roadMaterial = new THREE.MeshLambertMaterial({
-                color: 0x4a4a4a, // Dark gray
-                transparent: true,
-                opacity: 0.8,
-                side: THREE.DoubleSide
-            });
-            
-            // Create road mesh
-            const roadMesh = new THREE.Mesh(roadGeometry, roadMaterial);
-            
-            // Position road mesh
-            const startX = road.start instanceof THREE.Vector2 ? road.start.x : road.start.x;
-            const startZ = road.start instanceof THREE.Vector2 ? road.start.y : road.start.z;
-            const endX = road.end instanceof THREE.Vector2 ? road.end.x : road.end.x;
-            const endZ = road.end instanceof THREE.Vector2 ? road.end.y : road.end.z;
-            const centerX = (startX + endX) / 2;
-            const centerZ = (startZ + endZ) / 2;
-            const worldX = (tile.x * this.CONFIG.TILE_SIZE) + centerX;
-            const worldZ = (tile.z * this.CONFIG.TILE_SIZE) + centerZ;
-            const height = this.getHeightAt(worldX, worldZ);
-            
-            roadMesh.position.set(centerX, height + 0.01, centerZ); // Slightly above terrain
-            
-            // Rotate road to match direction
-            const roadDirection = new THREE.Vector2().subVectors(endVec, startVec);
-            
-            // Only rotate if road has a valid direction (not zero length)
-            if (roadDirection.lengthSq() > 0.0001) {
-                roadDirection.normalize();
-                const roadAngle = Math.atan2(roadDirection.y, roadDirection.x);
-                roadMesh.rotation.y = roadAngle;
-            } else {
-                // Default rotation for zero-length roads
-                roadMesh.rotation.y = 0;
-            }
-            roadMesh.rotation.x = -Math.PI / 2; // Lay flat
-            
-            // Add userData for interaction detection
-            roadMesh.userData = {
-                type: 'terrain',
-                walkable: true,
-                clickable: true,
-                subType: 'road',
-                tileKey: tile.key
-            };
-            
-            // Add to terrain container
-            if (tile.mesh) {
-                tile.mesh.add(roadMesh);
-            }
-            
-            // Store mesh reference
-            road.mesh = roadMesh;
-        }
-    }
+    private generateRoadMeshes(_tile: TerrainTile): void {}
     
     /**
      * Generate water meshes for low areas
@@ -1789,8 +1701,8 @@ export class TerrainSystem extends System {
             for (let z = -this.CONFIG.TILE_SIZE/2; z < this.CONFIG.TILE_SIZE/2; z += sampleStep) {
                 const worldX = tile.x * this.CONFIG.TILE_SIZE + x;
                 const worldZ = tile.z * this.CONFIG.TILE_SIZE + z;
-                const height = this.getHeightAt(worldX, worldZ);
-                
+            const height = this.getHeightAt(worldX, worldZ);
+            
                 if (height < waterLevel) {
                     waterAreas.push({
                         x: x,

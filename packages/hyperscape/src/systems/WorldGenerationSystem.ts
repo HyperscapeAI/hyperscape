@@ -61,10 +61,9 @@ export class WorldGenerationSystem extends SystemBase {
     this.subscribe<{ seed?: number; config?: Record<string, unknown> }>(EventType.WORLD_GENERATE, (_data) => this.generateWorld());
     this.subscribe<{ type: string; position: { x: number; y: number; z: number }; config?: Record<string, unknown> }>(EventType.WORLD_SPAWN_STRUCTURE, (data) => this.spawnStructure(data));
     
-    // Generate world content immediately
+    // Generate world content immediately (resources come from TerrainSystem)
     this.generateTowns();
     this.generateMobSpawnPoints();
-    this.generateResourceSpawnPoints();
     
   }
 
@@ -75,12 +74,11 @@ export class WorldGenerationSystem extends SystemBase {
     // Generate all starter towns
     this.generateTowns();
     
-    // Generate other world features
+    // Generate other world features (no explicit roads/resources here)
     this.generateWorldFeatures();
     
-    // Generate spawn points
+    // Generate spawn points (resources handled by TerrainSystem)
     this.generateMobSpawnPoints();
-    this.generateResourceSpawnPoints();
     
   }
 
@@ -194,34 +192,14 @@ export class WorldGenerationSystem extends SystemBase {
   }
 
   private generateWorldFeatures(): void {
-    // Generate roads between towns
-    this.generateRoads();
+    // (Road visuals are handled by TerrainSystem via noise-based paths)
     
     // Generate zone boundaries
     this.generateZoneBoundaries();
   }
 
-  private generateRoads(): void {
-    // Simple road generation between adjacent towns
-    const townPairs = [
-      ['town_central', 'town_eastern'],
-      ['town_central', 'town_western'],
-      ['town_central', 'town_northern'],
-      ['town_central', 'town_southern'],
-    ];
-    
-    for (const [townA, townB] of townPairs) {
-      const startTown = this.towns.get(townA);
-      const endTown = this.towns.get(townB);
-      
-      if (startTown && endTown) {
-        this.emitTypedEvent(EventType.ENTITY_SPAWNED, {
-          entityId: `road_${townA}_to_${townB}`,
-          entityType: 'road'
-        });
-      }
-    }
-  }
+  // DEPRECATED: Roads are now rendered by TerrainSystem as noise-based paths
+  private generateRoads(): void {}
 
   private generateZoneBoundaries(): void {
     // Visual indicators for different difficulty zones

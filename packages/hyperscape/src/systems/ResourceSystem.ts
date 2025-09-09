@@ -102,8 +102,7 @@ export class ResourceSystem extends SystemBase {
     this.subscribe<{ playerId: string; resourceId: string }>(EventType.RESOURCE_GATHERING_STOPPED, (data) => this.stopGathering(data));
     this.subscribe<{ id: string }>(EventType.PLAYER_UNREGISTERED, (data) => this.cleanupPlayerGathering(data.id));
     
-    // Set up terrain system event subscriptions for resource generation
-    this.subscribe<TerrainTileData>(EventType.TERRAIN_TILE_GENERATED, (data) => this.onTerrainTileGenerated(data));
+    // Terrain resources now flow through RESOURCE_SPAWN_POINTS_REGISTERED only
     this.subscribe<{ tileId: string }>('terrain:tile:unloaded', (data) => this.onTerrainTileUnloaded(data));
 
     // Listen to skills updates for reactive patterns

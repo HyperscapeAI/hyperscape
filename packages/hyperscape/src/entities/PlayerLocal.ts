@@ -1318,11 +1318,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
       return
     }
     
-    // Sync base position with entity position at start of physics update
-    // This ensures avatar stays attached to player
-    if (this.base && !this.position.equals(this.base.position)) {
-      this.base.position.copy(this.position)
-    }
+    // Player transform is driven by physics interpolation callback (onInterpolate)
 
     const anchor = this.getAnchorMatrix()
     const snare = this.data.effect?.snare || 0
@@ -1887,11 +1883,9 @@ export class PlayerLocal extends Entity implements HotReloadable {
         const physicsPos = new THREE.Vector3(pose.p.x, pose.p.y, pose.p.z)
         const prevPos = this.position.clone()
         const moved = prevPos.distanceTo(physicsPos)
-        
-        // Update entity position from physics
+
+        // Mirror physics pose to entity/base as a fallback to ensure camera/rig sync
         this.position.copy(physicsPos)
-        
-        // Also update base position so avatar follows
         if (this.base) {
           this.base.position.copy(physicsPos)
         }
@@ -2014,7 +2008,6 @@ export class PlayerLocal extends Entity implements HotReloadable {
             if (pose && pose.p) {
               pose.p.y = desiredY;
               this.capsuleHandle?.snap(pose);
-              this.position.y = desiredY;
             }
             const vel = this.capsule.getLinearVelocity();
             if (vel) {
@@ -2124,7 +2117,6 @@ export class PlayerLocal extends Entity implements HotReloadable {
         if (pose && pose.p) {
           pose.p.y = groundY;
           this.capsuleHandle?.snap(pose);
-          this.position.y = groundY;
         }
       }
     }

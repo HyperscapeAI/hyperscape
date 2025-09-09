@@ -136,6 +136,14 @@ export class ServerBot extends System {
       this.isActive = true
       Logger.info(`[ServerBot] Bot spawned at (${this.bot.position.x.toFixed(1)}, ${this.bot.position.z.toFixed(1)})`)
       
+      // Immediately sync initial transform so clients place the bot correctly on terrain
+      ;(this.world.network as any)?.send?.('entityModified', {
+        id: this.bot.id,
+        p: [this.bot.position.x, this.bot.position.y, this.bot.position.z],
+        q: [0, 0, 0, 1],
+        e: 'idle'
+      })
+
       // Start behavior loop
       this.behaviorLoop()
       
@@ -446,6 +454,22 @@ export class ServerBot extends System {
           id: this.bot.id,
           e: 'idle'
         })
+      }
+    } else {
+      // Even when idle, keep the bot clamped to terrain and sync if needed
+      const terrainSystem = this.world.systems.find(s => s.constructor.name === 'TerrainSystem') as any
+      if (terrainSystem && terrainSystem.getHeightAt) {
+        const height = terrainSystem.getHeightAt(this.bot.position.x, this.bot.position.z)
+        if (typeof height === 'number' && !isNaN(height)) {
+          const desiredY = height + 1.8
+          if (Math.abs(this.bot.position.y - desiredY) > 0.01) {
+            this.bot.position.y = desiredY
+            ;(this.world.network as any)?.send?.('entityModified', {
+              id: this.bot.id,
+              p: [this.bot.position.x, this.bot.position.y, this.bot.position.z]
+            })
+          }
+        }
       }
     }
     

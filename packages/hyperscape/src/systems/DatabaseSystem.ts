@@ -13,6 +13,8 @@ import {
 } from '../types/database'
 import type { World } from '../types/index'
 import { SystemBase } from './SystemBase'
+import path from 'node:path'
+import fs from 'fs-extra'
 // Helper functions to extract bonuses from either simple or complex bonus structures
 function getAttackBonus(bonuses: ItemBonuses | CombatBonuses | null | undefined): number {
   if (!bonuses) return 0
@@ -82,67 +84,141 @@ export class DatabaseSystem extends SystemBase {
 
     // Use appropriate database path based on environment
     const serverWorld = this.world as { isServer?: boolean }
-    this.dbPath = serverWorld.isServer ? './world/rpg.sqlite' : ':memory:'
+    if (serverWorld.isServer) {
+      const envWorld = process.env['WORLD'] || 'world'
+      const worldDir = path.isAbsolute(envWorld) ? envWorld : path.join(process.cwd(), envWorld)
+      // Ensure the world directory exists before opening the database
+      try {
+        fs.ensureDirSync(worldDir)
+      } catch (_err) {
+        // best effort; opening DB will throw if still missing
+      }
+      // Align DB filename with server usage
+      this.dbPath = path.join(worldDir, 'db.sqlite')
+    } else {
+      this.dbPath = ':memory:'
+    }
   }
 
   private async initializeDependencies(): Promise<void> {
     const serverWorld = this.world as { isServer?: boolean }
     if (serverWorld.isServer) {
-      const bunSqlite = (await import('bun:sqlite')) as unknown as { Database: new (path: string) => unknown }
-      const BunDatabase = bunSqlite.Database
-      const bunDb = new BunDatabase(this.dbPath) as unknown as {
-        prepare?: (sql: string) => unknown
-        query?: (sql: string) => unknown
-        exec: (sql: string) => unknown
-        close: () => unknown
-      }
+      const isBun = typeof process !== 'undefined' && !!(process as unknown as { versions?: { bun?: string } }).versions?.bun
+      // Ensure directory still exists (in case constructor path resolution changed)
+      try {
+        fs.ensureDirSync(path.dirname(this.dbPath))
+      } catch {}
+      if (isBun) {
+        const bunSqlite = (await import('bun:sqlite')) as unknown as { Database: new (path: string) => unknown }
+        const BunDatabase = bunSqlite.Database
+        const bunDb = new BunDatabase(this.dbPath) as unknown as {
+          prepare?: (sql: string) => unknown
+          query?: (sql: string) => unknown
+          exec: (sql: string) => unknown
+          close: () => unknown
+        }
 
-      // Create a thin adapter to our SQLiteDatabase interface
-      const adapter: SQLiteDatabase = {
-        prepare: (sql: string) => {
-          const stmt = (bunDb.prepare ? bunDb.prepare(sql) : bunDb.query!(sql)) as unknown as {
-            get: (...params: unknown[]) => unknown
-            all: (...params: unknown[]) => unknown[]
-            run: (...params: unknown[]) => unknown
-          }
-          return {
-            get: <T = Record<string, unknown>>(...params: unknown[]): T | undefined => stmt.get(...params) as T | undefined,
-            all: <T = Record<string, unknown>>(...params: unknown[]): T[] => stmt.all(...params) as T[],
-            run: (...params: unknown[]) => {
-              const result = stmt.run(...params) as { changes?: number; lastInsertRowid?: number } | void
-              if (result && typeof result === 'object') {
-                return {
-                  changes: Number((result as { changes?: number }).changes ?? 0),
-                  lastInsertRowid: Number((result as { lastInsertRowid?: number }).lastInsertRowid ?? 0),
+        // Create a thin adapter to our SQLiteDatabase interface
+        const adapter: SQLiteDatabase = {
+          prepare: (sql: string) => {
+            const stmt = (bunDb.prepare ? bunDb.prepare(sql) : bunDb.query!(sql)) as unknown as {
+              get: (...params: unknown[]) => unknown
+              all: (...params: unknown[]) => unknown[]
+              run: (...params: unknown[]) => unknown
+            }
+            return {
+              get: <T = Record<string, unknown>>(...params: unknown[]): T | undefined => stmt.get(...params) as T | undefined,
+              all: <T = Record<string, unknown>>(...params: unknown[]): T[] => stmt.all(...params) as T[],
+              run: (...params: unknown[]) => {
+                const result = stmt.run(...params) as { changes?: number; lastInsertRowid?: number } | void
+                if (result && typeof result === 'object') {
+                  return {
+                    changes: Number((result as { changes?: number }).changes ?? 0),
+                    lastInsertRowid: Number((result as { lastInsertRowid?: number }).lastInsertRowid ?? 0),
+                  }
                 }
-              }
-              return { changes: 0, lastInsertRowid: 0 }
-            },
-          }
-        },
-        exec: (sql: string) => {
-          bunDb.exec(sql)
-        },
-        close: () => {
-          bunDb.close()
-        },
-        pragma: <T = unknown>(name: string, value?: string | number | boolean): T => {
-          const sql = value === undefined ? `PRAGMA ${name}` : `PRAGMA ${name}=${String(value)}`
-          try {
-            const stmt = (bunDb.prepare ? bunDb.prepare(sql) : bunDb.query!(sql)) as unknown as { get: () => T }
-            return stmt.get()
-          } catch {
+                return { changes: 0, lastInsertRowid: 0 }
+              },
+            }
+          },
+          exec: (sql: string) => {
             bunDb.exec(sql)
-            return undefined as unknown as T
-          }
-        },
-      }
+          },
+          close: () => {
+            bunDb.close()
+          },
+          pragma: <T = unknown>(name: string, value?: string | number | boolean): T => {
+            const sql = value === undefined ? `PRAGMA ${name}` : `PRAGMA ${name}=${String(value)}`
+            try {
+              const stmt = (bunDb.prepare ? bunDb.prepare(sql) : bunDb.query!(sql)) as unknown as { get: () => T }
+              return stmt.get()
+            } catch {
+              bunDb.exec(sql)
+              return undefined as unknown as T
+            }
+          },
+        }
 
-      this.db = adapter
-      this.db.pragma('journal_mode = WAL')
-      this.db.pragma('synchronous = NORMAL')
-      this.db.pragma('foreign_keys = ON')
-      console.log('DatabaseSystem', 'Initialized SQLite via bun:sqlite')
+        this.db = adapter
+        this.db.pragma('journal_mode = WAL')
+        this.db.pragma('synchronous = NORMAL')
+        this.db.pragma('foreign_keys = ON')
+        console.log('DatabaseSystem', 'Initialized SQLite via bun:sqlite')
+      } else {
+        // Node.js runtime: use better-sqlite3
+        const better = (await import('better-sqlite3')) as unknown as { default?: new (path: string) => unknown } & (new (path: string) => unknown)
+        const BetterSqlite3 = (better as unknown as { default?: new (path: string) => unknown }).default ?? (better as unknown as new (path: string) => unknown)
+        const nodeDb = new (BetterSqlite3 as new (path: string) => unknown)(this.dbPath) as unknown as {
+          prepare: (sql: string) => unknown
+          exec: (sql: string) => unknown
+          close: () => unknown
+          pragma: (name: string) => unknown
+        }
+
+        const adapter: SQLiteDatabase = {
+          prepare: (sql: string) => {
+            const stmt = nodeDb.prepare(sql) as unknown as {
+              get: (...params: unknown[]) => unknown
+              all: (...params: unknown[]) => unknown[]
+              run: (...params: unknown[]) => unknown
+            }
+            return {
+              get: <T = Record<string, unknown>>(...params: unknown[]): T | undefined => stmt.get(...params) as T | undefined,
+              all: <T = Record<string, unknown>>(...params: unknown[]): T[] => stmt.all(...params) as T[],
+              run: (...params: unknown[]) => {
+                const result = stmt.run(...params) as { changes?: number; lastInsertRowid?: number } | void
+                if (result && typeof result === 'object') {
+                  return {
+                    changes: Number((result as { changes?: number }).changes ?? 0),
+                    lastInsertRowid: Number((result as { lastInsertRowid?: number }).lastInsertRowid ?? 0),
+                  }
+                }
+                return { changes: 0, lastInsertRowid: 0 }
+              },
+            }
+          },
+          exec: (sql: string) => {
+            nodeDb.exec(sql)
+          },
+          close: () => {
+            nodeDb.close()
+          },
+          pragma: <T = unknown>(name: string, value?: string | number | boolean): T => {
+            // better-sqlite3 supports .pragma("key = value") or .pragma("key")
+            if (value === undefined) {
+              return (nodeDb.pragma(`PRAGMA ${name}`) as unknown) as T
+            }
+            nodeDb.exec(`PRAGMA ${name}=${String(value)}`)
+            return undefined as unknown as T
+          },
+        }
+
+        this.db = adapter
+        this.db.pragma('journal_mode', 'WAL')
+        this.db.pragma('synchronous', 'NORMAL')
+        this.db.pragma('foreign_keys', 'ON')
+        console.log('DatabaseSystem', 'Initialized SQLite via better-sqlite3')
+      }
     } else {
       console.warn('DatabaseSystem', 'Running on client - creating mock database')
       this.db = this.createMockDatabase()

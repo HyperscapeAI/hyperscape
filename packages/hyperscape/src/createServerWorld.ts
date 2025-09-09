@@ -55,10 +55,5 @@ export async function createServerWorld() {
   
   console.log('[Server World] Server world created successfully');
   
-  // Start all systems
-  console.log('[Server World] Starting all systems...');
-  world.start();
-  console.log('[Server World] All systems started');
-  
   return world;
 }

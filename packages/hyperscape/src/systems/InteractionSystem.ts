@@ -930,8 +930,8 @@ export class InteractionSystem extends SystemBase {
     const terrainSystem = this.world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number };
     if (terrainSystem?.getHeightAt) {
       const terrainHeight = terrainSystem.getHeightAt(targetPosition.x, targetPosition.z);
-      targetPosition.y = terrainHeight;
-      this.logger.info(`[InteractionSystem] Adjusted target Y to terrain height: ${terrainHeight.toFixed(2)}`);
+      targetPosition.y = terrainHeight + 0.1;
+      this.logger.info(`[InteractionSystem] Adjusted target Y to terrain height+offset: ${(terrainHeight + 0.1).toFixed(2)}`);
     }
     
     // Pathfinding may be enabled for visualization, but MUST NOT influence movement target
