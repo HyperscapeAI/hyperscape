@@ -18,6 +18,8 @@ import { EventType } from '../types/events';
 import type { EventPayload } from '../types/event-system';
 import { Logger } from '../utils/Logger';
 
+const _v3_1 = new THREE.Vector3()
+
 export class CorpseTestSystem extends SystemBase {
   private testData = new Map<string, CorpseTestData>();
   private testPositions = [
@@ -686,7 +688,7 @@ export class CorpseTestSystem extends SystemBase {
     if (!this.world.stage.scene) return [];
     
     const corpses: THREE.Object3D[] = [];
-    const center = new THREE.Vector3(position.x, position.y, position.z);
+    const center = _v3_1.set(position.x, position.y, position.z);
     
     this.world.stage.scene.traverse((obj) => {
       if (obj.userData.type === 'corpse') {

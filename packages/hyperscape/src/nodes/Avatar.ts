@@ -10,6 +10,8 @@ const defaults = {
   onLoad: null,
 }
 
+const v1 = new THREE.Vector3()
+
 export class Avatar extends Node {
   factory: VRMAvatarFactory | null = null
   hooks: AvatarHooks | null = null
@@ -63,7 +65,7 @@ export class Avatar extends Node {
         // CRITICAL: Update matrix before passing to factory
         // The avatar node needs its world transform updated to match its parent
         this.updateTransform()
-        const worldPos = new THREE.Vector3()
+        const worldPos = v1
         worldPos.setFromMatrixPosition(this.matrixWorld)
         console.log('[Avatar] Creating VRM at world position:', worldPos.x, worldPos.y, worldPos.z)
         

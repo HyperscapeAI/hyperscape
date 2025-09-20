@@ -3,6 +3,10 @@ import type { World, Entity } from '../types'
 import { TransformComponent } from '../components/TransformComponent'
 import { TerrainSystem } from './TerrainSystem'
 
+const _v3_1 = new THREE.Vector3()
+const _v2_1 = new THREE.Vector2()
+const _v2_2 = new THREE.Vector2()
+
 /**
  * Utility functions for positioning entities on the ground
  * This provides a clean interface for all systems to use ground positioning
@@ -60,13 +64,13 @@ export class GroundPositioningUtils {
       
       for (const pos of positions) {
         if (this.isPositionWalkable(world, pos.x, pos.y)) {
-          return pos
+          return _v2_1.copy(pos)
         }
       }
     }
 
     // Return center position as fallback
-    return new THREE.Vector2(centerX, centerZ)
+    return _v2_1.set(centerX, centerZ)
   }
 
   /**
@@ -74,7 +78,7 @@ export class GroundPositioningUtils {
    */
   private static getPositionsInRing(centerX: number, centerZ: number, radius: number, resolution: number): THREE.Vector2[] {
     if (radius === 0) {
-      return [new THREE.Vector2(centerX, centerZ)]
+      return [_v2_2.set(centerX, centerZ)]
     }
 
     const positions: THREE.Vector2[] = []
@@ -123,7 +127,7 @@ export class GroundPositioningUtils {
     const heightOffset = heightOffsets[entityType]
     const groundHeight = this.getGroundHeightAt(world, baseX, baseZ)
 
-    return new THREE.Vector3(baseX, groundHeight + heightOffset, baseZ)
+    return _v3_1.set(baseX, groundHeight + heightOffset, baseZ)
   }
 
   /**

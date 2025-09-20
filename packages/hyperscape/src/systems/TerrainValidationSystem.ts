@@ -35,6 +35,8 @@ export class TerrainValidationSystem extends SystemBase {
   private walkabilityCache = new Map<string, WalkabilityData>();
   private isValidating = false;
   private validationProgress = 0;
+  private _tempVec3_1 = new THREE.Vector3();
+  private _tempVec3_2 = new THREE.Vector3();
   
   // Validation configuration
   private readonly CONFIG = {
@@ -382,8 +384,8 @@ export class TerrainValidationSystem extends SystemBase {
    */
   private getPhysXHeight(x: number, z: number): number | null {
     if (!this.world.raycast) return null;
-    const origin = new THREE.Vector3(x, 1000, z);
-    const direction = new THREE.Vector3(0, -1, 0);
+    const origin = this._tempVec3_1.set(x, 1000, z);
+    const direction = this._tempVec3_2.set(0, -1, 0);
     const hit = this.world.raycast(origin, direction, 2000);
     return hit ? hit.point.y : null;
   }

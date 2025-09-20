@@ -7,6 +7,8 @@ import type { ChatMessage, EntityData, SnapshotData, World, WorldOptions } from 
 import { uuid } from '../utils'
 import { SystemBase } from './SystemBase'
 
+const _v3_1 = new THREE.Vector3()
+
 // SnapshotData interface moved to shared types
 
 /**
@@ -253,23 +255,18 @@ export class ClientNetwork extends SystemBase {
       // Set initial serverPosition for local player immediately to avoid Y=0 flash
       for (const entityData of data.entities) {
         if (entityData && entityData.type === 'player' && entityData.owner === this.id) {
-          
-          const local = this.world.entities.get(entityData.id) as unknown as { 
-            updateServerPosition?: (x:number,y:number,z:number)=>void,
-            position?: { x: number, y: number, z: number, set?: (x:number,y:number,z:number)=>void }
-          } | null
-          
+          const local = this.world.entities.get(entityData.id) as {
+            updateServerPosition: (x: number, y: number, z: number) => void
+            position: { set: (x: number, y: number, z: number) => void }
+          }
+
           if (local) {
             // Force the position immediately
-            if (local.position && local.position.set && Array.isArray(entityData.position) && entityData.position.length === 3) {
-              console.log('[ClientNetwork] Forcing local player position to:', entityData.position)
-              local.position.set(entityData.position[0] as number, entityData.position[1] as number, entityData.position[2] as number)
-            }
-            
+            const pos = entityData.position as [number, number, number]
+            local.position.set(pos[0], pos[1], pos[2])
+
             // Also update server position for reconciliation
-            if (local.updateServerPosition && Array.isArray(entityData.position) && entityData.position.length === 3) {
-              local.updateServerPosition(entityData.position[0] as number, entityData.position[1] as number, entityData.position[2] as number)
-            }
+            local.updateServerPosition(pos[0], pos[1], pos[2])
           } else {
             console.error('[ClientNetwork] Local player entity not found after deserialize!')
           }
@@ -331,52 +328,48 @@ export class ClientNetwork extends SystemBase {
       return
     }
     // Accept both normalized { changes: {...} } and flat payloads { id, ...changes }
-    const changes = data.changes ?? Object.fromEntries(Object.entries(data).filter(([k]) => k !== 'id' && k !== 'changes'))
+    const changes =
+      data.changes ?? Object.fromEntries(Object.entries(data).filter(([k]) => k !== 'id' && k !== 'changes'))
     // If this is the local player: apply server authoritative corrections (snap/interpolate), not entity.modify(p/q)
     const isLocal = (() => {
-      const localEntityId = this.world.entities.player?.id;
-      if (localEntityId && id === localEntityId) return true;
-      const ownerId = (entity as unknown as { data?: { owner?: string } }).data?.owner;
-      return !!(this.id && ownerId && ownerId === this.id);
-    })();
-    const hasP = Object.prototype.hasOwnProperty.call(changes, 'p');
-    const hasV = Object.prototype.hasOwnProperty.call(changes, 'v');
-    const hasQ = Object.prototype.hasOwnProperty.call(changes, 'q');
+      const localEntityId = this.world.entities.player?.id
+      if (localEntityId && id === localEntityId) return true
+      const ownerId = (entity as { data?: { owner?: string } }).data?.owner
+      return !!(this.id && ownerId && ownerId === this.id)
+    })()
+    const hasP = Object.prototype.hasOwnProperty.call(changes, 'p')
+    const hasV = Object.prototype.hasOwnProperty.call(changes, 'v')
+    const hasQ = Object.prototype.hasOwnProperty.call(changes, 'q')
     if (isLocal && (hasP || hasV || hasQ)) {
-      const p = (changes as { p?: number[], v?: number[] }).p;
-      const v = (changes as { v?: number[] }).v;
-      const q = (changes as { q?: number[] }).q;
-      
+      const p = (changes as { p?: number[]; v?: number[] }).p
+      const v = (changes as { v?: number[] }).v
+      const q = (changes as { q?: number[] }).q
+
       // Update server position and velocity for local player
-      if (Array.isArray(p) && p.length === 3) {
-        const playerLocal = entity as unknown as { 
-          updateServerPosition?: (x: number, y: number, z: number) => void,
-          updateServerVelocity?: (x: number, y: number, z: number) => void 
-        };
-        if (playerLocal.updateServerPosition) {
-          playerLocal.updateServerPosition(p[0], p[1], p[2]);
-        } else {
-          // Fallback: snap quickly for now
-          entity.position.set(p[0], p[1], p[2]);
-        }
+      const playerLocal = entity as {
+        updateServerPosition: (x: number, y: number, z: number) => void
+        updateServerVelocity: (x: number, y: number, z: number) => void
+        base?: { quaternion: THREE.Quaternion }
+      }
+      if (p) {
+        playerLocal.updateServerPosition(p[0], p[1], p[2])
         // Immediately reflect authoritative position on the local visual for responsiveness
         if (entity.node && entity.node.position) {
-          entity.node.position.set(p[0], p[1], p[2]);
-        }
-        // Also update velocity if provided
-        if (Array.isArray(v) && v.length === 3 && playerLocal.updateServerVelocity) {
-          playerLocal.updateServerVelocity(v[0], v[1], v[2]);
+          entity.node.position.set(p[0], p[1], p[2])
         }
       }
-      if (Array.isArray(q) && q.length === 4 && (entity as unknown as { base?: { quaternion: THREE.Quaternion } }).base) {
-        const baseQuat = (entity as unknown as { base: { quaternion: { set: (x:number,y:number,z:number,w:number)=>void } } }).base.quaternion;
-        baseQuat.set(q[0] as number, q[1] as number, q[2] as number, q[3] as number);
+      // Also update velocity if provided
+      if (v) {
+        playerLocal.updateServerVelocity(v[0], v[1], v[2])
+      }
+      if (q && playerLocal.base) {
+        playerLocal.base.quaternion.set(q[0], q[1], q[2], q[3])
       }
       // Apply any non-transform fields (e.g., emote, name)
-      const filtered = { ...changes } as Record<string, unknown>;
-      delete (filtered as { p?: unknown }).p;
-      delete (filtered as { v?: unknown }).v;
-      delete (filtered as { q?: unknown }).q;
+      const filtered = { ...changes } as Record<string, unknown>
+      delete (filtered as { p?: unknown }).p
+      delete (filtered as { v?: unknown }).v
+      delete (filtered as { q?: unknown }).q
       if (Object.keys(filtered).length) {
         entity.modify(filtered);
       }
@@ -413,23 +406,23 @@ export class ClientNetwork extends SystemBase {
   }
 
   onPlayerTeleport = (data: { playerId: string; position: [number, number, number] }) => {
-    const player = this.world.entities.player as { teleport?: (pos: THREE.Vector3, rotY?: number) => void } | undefined
-    if (player?.teleport) {
-      const pos = new THREE.Vector3(data.position[0], data.position[1], data.position[2]);
-      player.teleport(pos);
+    const player = this.world.entities.player as { teleport: (pos: THREE.Vector3, rotY?: number) => void }
+    if (player) {
+      const pos = _v3_1.set(data.position[0], data.position[1], data.position[2])
+      player.teleport(pos)
     }
   }
 
   onPlayerPush = (data: { force: [number, number, number] }) => {
-    const player = this.world.entities.player as { push?: (force: THREE.Vector3) => void } | undefined
-    if (player?.push) {
-      const force = new THREE.Vector3(data.force[0], data.force[1], data.force[2]);
-      player.push(force);
+    const player = this.world.entities.player as { push: (force: THREE.Vector3) => void }
+    if (player) {
+      const force = _v3_1.set(data.force[0], data.force[1], data.force[2])
+      player.push(force)
     }
   }
 
   onPlayerSessionAvatar = (data: { playerId: string; avatar: string }) => {
-    const player = this.world.entities.player as { setSessionAvatar?: (url: string) => void } | undefined
+    const player = this.world.entities.player as { setSessionAvatar?: (url: string) => void }
     if (player?.setSessionAvatar) {
       player.setSessionAvatar(data.avatar)
     }

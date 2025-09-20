@@ -162,6 +162,12 @@ function createAction(world: World): ClientActionHandler {
   const pxToMeters = 0.01
   const board = createBoard(widthPx, heightPx, pxToMeters, world)
 
+  const _update_pos = new THREE.Vector3()
+  const _update_qua = new THREE.Quaternion()
+  const _update_sca = new THREE.Vector3()
+  const _update_camPosition = new THREE.Vector3()
+  const _update_direction = new THREE.Vector3()
+
   const draw = (label: string, ratio: number) => {
     // console.time('draw')
     const text = board.measureText(47, heightPx / 2, label, '#ffffff', 18, 400)
@@ -200,24 +206,21 @@ function createAction(world: World): ClientActionHandler {
       if (!node) return
       let distance
       if (world.xr?.session) {
-        const pos = new THREE.Vector3();
-        const qua = new THREE.Quaternion();
-        const sca = new THREE.Vector3();
-        node.matrixWorld.decompose(pos, qua, sca);
-        
-        const camPosition = new THREE.Vector3();
-        camPosition.setFromMatrixPosition(world.xr?.camera?.matrixWorld || new THREE.Matrix4());
-        distance = camPosition.distanceTo(pos);
-        
-        const direction = new THREE.Vector3();
-        direction.subVectors(camPosition, pos).normalize();
-        qua.setFromUnitVectors(FORWARD, direction);
-        e1.setFromQuaternion(qua)
+        node.matrixWorld.decompose(_update_pos, _update_qua, _update_sca)
+
+        _update_camPosition.setFromMatrixPosition(
+          world.xr?.camera?.matrixWorld || new THREE.Matrix4(),
+        )
+        distance = _update_camPosition.distanceTo(_update_pos)
+
+        _update_direction.subVectors(_update_camPosition, _update_pos).normalize()
+        _update_qua.setFromUnitVectors(FORWARD, _update_direction)
+        e1.setFromQuaternion(_update_qua)
         e1.z = 0
-        qua.setFromEuler(e1)
-        mesh.position.copy(pos)
-        mesh.quaternion.copy(qua)
-        mesh.scale.copy(sca)
+        _update_qua.setFromEuler(e1)
+        mesh.position.copy(_update_pos)
+        mesh.quaternion.copy(_update_qua)
+        mesh.scale.copy(_update_sca)
       } else {
         const camPosition = v3.setFromMatrixPosition(world.camera.matrixWorld)
         mesh.position.setFromMatrixPosition(node.matrixWorld)

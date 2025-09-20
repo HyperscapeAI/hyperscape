@@ -21,6 +21,7 @@ import { RigidBody } from './RigidBody'
 import { bindRotations } from '../extras/bindRotations'
 import { DEG2RAD } from '../extras/general'
 
+const _v1 = new THREE.Vector3(1, 0, 0)
 const _q1 = new THREE.Quaternion()
 const _q2 = new THREE.Quaternion()
 
@@ -162,10 +163,8 @@ export class Joint extends Node {
       if (offset1.toPxTransform) {
         offset1.toPxTransform(frame1)
       }
-      const plainVector = new THREE.Vector3(1, 0, 0);
-      const plainAxis = new THREE.Vector3().copy(this.axis);
-    const alignRotation = new THREE.Quaternion().setFromUnitVectors(plainVector, plainAxis)
-      const q1 = _q1.copy(this.quaternion0).multiply(alignRotation) as QuaternionWithPxTransform
+      const alignRotation = _q1.setFromUnitVectors(_v1, this.axis)
+      const q1 = _q2.copy(this.quaternion0).multiply(alignRotation) as QuaternionWithPxTransform
       const q2 = _q2.copy(this.quaternion1).multiply(alignRotation) as QuaternionWithPxTransform
       if (q1.toPxTransform) {
         q1.toPxTransform(frame0)
@@ -209,10 +208,8 @@ export class Joint extends Node {
       if (offset1.toPxTransform) {
         offset1.toPxTransform(frame1)
       }
-      const plainVector = new THREE.Vector3(1, 0, 0);
-      const plainAxis = new THREE.Vector3().copy(this.axis);
-    const alignRotation = new THREE.Quaternion().setFromUnitVectors(plainVector, plainAxis)
-      const q1 = _q1.copy(this.quaternion0).multiply(alignRotation) as QuaternionWithPxTransform
+      const alignRotation = _q1.setFromUnitVectors(_v1, this.axis)
+      const q1 = _q2.copy(this.quaternion0).multiply(alignRotation) as QuaternionWithPxTransform
       const q2 = _q2.copy(this.quaternion1).multiply(alignRotation) as QuaternionWithPxTransform
       if (q1.toPxTransform) {
         q1.toPxTransform(frame0)

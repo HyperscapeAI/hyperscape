@@ -85,7 +85,9 @@ export class Controller extends Node {
     if (this._visible) {
       const geometry = new THREE.CapsuleGeometry(this._radius!, this._height!, 2, 8)
       geometry.translate(0, this._height! / 2 + this._radius!, 0)
-      geometry.computeBoundsTree()
+      if (geometry.computeBoundsTree) {
+        geometry.computeBoundsTree()
+      }
       const material = new THREE.MeshStandardMaterial({ color: 'green' })
       this.mesh = new THREE.Mesh(geometry, material)
       this.mesh.receiveShadow = true

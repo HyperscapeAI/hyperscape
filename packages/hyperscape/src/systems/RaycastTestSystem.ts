@@ -31,6 +31,8 @@ export class RaycastTestSystem extends System {
   private raycaster = new THREE.Raycaster();
   private testResults: RaycastTestResult[] = [];
   private isRunningTests = false;
+  private _tempVec3 = new THREE.Vector3();
+  private _tempVec2 = new THREE.Vector2();
   
   constructor(world: World) {
     super(world);
@@ -97,11 +99,11 @@ export class RaycastTestSystem extends System {
     const lookDistance = 10; // How far in front of camera to expect hits
     
     const testPoints = [
-      { screenX: 640, screenY: 360, name: 'center', expectedWorld: new THREE.Vector3(camPos.x, 0, camPos.z - lookDistance) },
-      { screenX: 320, screenY: 360, name: 'left', expectedWorld: new THREE.Vector3(camPos.x - 5, 0, camPos.z - lookDistance) },
-      { screenX: 960, screenY: 360, name: 'right', expectedWorld: new THREE.Vector3(camPos.x + 5, 0, camPos.z - lookDistance) },
-      { screenX: 640, screenY: 500, name: 'bottom-center', expectedWorld: new THREE.Vector3(camPos.x, 0, camPos.z - 5) },
-      { screenX: 640, screenY: 200, name: 'top-center', expectedWorld: new THREE.Vector3(camPos.x, 0, camPos.z - 15) },
+      { screenX: 640, screenY: 360, name: 'center', expectedWorld: this._tempVec3.clone().set(camPos.x, 0, camPos.z - lookDistance) },
+      { screenX: 320, screenY: 360, name: 'left', expectedWorld: this._tempVec3.clone().set(camPos.x - 5, 0, camPos.z - lookDistance) },
+      { screenX: 960, screenY: 360, name: 'right', expectedWorld: this._tempVec3.clone().set(camPos.x + 5, 0, camPos.z - lookDistance) },
+      { screenX: 640, screenY: 500, name: 'bottom-center', expectedWorld: this._tempVec3.clone().set(camPos.x, 0, camPos.z - 5) },
+      { screenX: 640, screenY: 200, name: 'top-center', expectedWorld: this._tempVec3.clone().set(camPos.x, 0, camPos.z - 15) },
     ];
     
     // Test each point
@@ -130,7 +132,7 @@ export class RaycastTestSystem extends System {
     console.log(`[RaycastTest] NDC: (${ndcX.toFixed(3)}, ${ndcY.toFixed(3)})`);
     
     // Perform raycast
-    this.raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+    this.raycaster.setFromCamera(this._tempVec2.set(ndcX, ndcY), camera);
     
     // Test against the existing stage ground plane instead of our own
     const stageGroundPlane = this.world.stage?.scene?.getObjectByName('stage-ground');

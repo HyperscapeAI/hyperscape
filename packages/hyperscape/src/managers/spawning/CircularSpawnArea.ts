@@ -4,6 +4,8 @@ import type { SpawnArea } from '../../types/components';
 import { calculateDistance2D } from '../../utils/EntityUtils';
 import THREE from '../../extras/three';
 
+const _v1 = new THREE.Vector3()
+
 /**
  * Circular spawn area implementation
  */
@@ -44,7 +46,7 @@ export class CircularSpawnArea implements SpawnArea {
     
     const yOffset = this.maxHeight > 0 ? (Math.random() - 0.5) * this.maxHeight * 2 : 0;
     
-    return new THREE.Vector3(
+    return _v1.set(
       this.center.x + Math.cos(angle) * distance,
       this.center.y + yOffset,
       this.center.z + Math.sin(angle) * distance

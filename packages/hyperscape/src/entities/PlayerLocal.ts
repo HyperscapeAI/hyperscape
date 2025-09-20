@@ -867,6 +867,15 @@ export class PlayerLocal extends Entity implements HotReloadable {
 
     // Initialize camera system
     this.initCameraSystem()
+    
+    // Retry camera initialization after a delay in case systems aren't ready yet
+    setTimeout(() => {
+      const cameraSystem = getSystem(this.world, 'client-camera-system')
+      if (cameraSystem) {
+        console.log('[PlayerLocal] Re-emitting camera target event')
+        this.world.emit(EventType.CAMERA_SET_TARGET, { target: this })
+      }
+    }, 1000)
 
     // Ensure player starts clamped to ground when RPG is disabled and only core systems are active
     try {
@@ -1410,36 +1419,44 @@ export class PlayerLocal extends Entity implements HotReloadable {
   }
 
   initControl() {
-    this.control = this.world.controls?.bind({
-      priority: ControlPriorities.PLAYER,
-      onTouch: (touch: unknown) => {
-        const playerTouch = touch as PlayerTouch
-        if (!this.stick && playerTouch.position && playerTouch.position.x < (this.control?.screen?.width || 0) / 2) {
-          this.stick = {
-            center: { x: playerTouch.position.x, y: playerTouch.position.y },
-            touch: playerTouch,
+    // Initialize control binding for input handling
+    if (this.world.controls) {
+      this.control = this.world.controls.bind({
+        priority: ControlPriorities.PLAYER,
+        onTouch: (touch: unknown) => {
+          const playerTouch = touch as PlayerTouch
+          if (!this.stick && playerTouch.position && playerTouch.position.x < (this.control?.screen?.width || 0) / 2) {
+            this.stick = {
+              center: { x: playerTouch.position.x, y: playerTouch.position.y },
+              touch: playerTouch,
+            }
+          } else if (!this.pan) {
+            this.pan = playerTouch
           }
-        } else if (!this.pan) {
-          this.pan = playerTouch
-        }
-        return true
-      },
-      onTouchEnd: (touch: unknown) => {
-        const playerTouch = touch as PlayerTouch
-        if (this.stick?.touch === playerTouch) {
-          this.stick = undefined
-        }
-        if (this.pan === playerTouch) {
-          this.pan = undefined
-        }
-        return true
-      },
-    }) as ControlBinding
+          return true
+        },
+        onTouchEnd: (touch: unknown) => {
+          const playerTouch = touch as PlayerTouch
+          if (this.stick?.touch === playerTouch) {
+            this.stick = undefined
+          }
+          if (this.pan === playerTouch) {
+            this.pan = undefined
+          }
+          return true
+        },
+      }) as ControlBinding
+    }
 
-    // Check if unified camera system is active
+    // Initialize camera controls
     const cameraSystem = getSystem(this.world, 'client-camera-system')
-    if (!cameraSystem) {
-      // Fall back to traditional camera control if unified system not available
+    if (cameraSystem) {
+      // Using unified camera system - just set ourselves as target
+      console.log('[PlayerLocal] Using unified camera system')
+      this.world.emit(EventType.CAMERA_SET_TARGET, { target: this })
+    } else {
+      // Fall back to traditional camera control
+      console.log('[PlayerLocal] Using fallback camera control')
       if (this.control?.camera) {
         this.control.camera.write = (camera: THREE.Camera) => {
           camera.position.copy(this.cam.position)
@@ -1459,6 +1476,18 @@ export class PlayerLocal extends Entity implements HotReloadable {
       console.log('[PlayerLocal] Registering with camera system')
       // The camera target expects an object with a THREE.Vector3 position; the Entity already has node.position
       this.world.emit(EventType.CAMERA_SET_TARGET, { target: this })
+      
+      // Debug camera system state
+      const camSys = cameraSystem as any
+      console.log('[PlayerLocal] Camera system debug:', {
+        hasCamera: !!camSys.camera,
+        hasCanvas: !!camSys.canvas,
+        hasTarget: !!camSys.target,
+        cameraMode: camSys.mode,
+        initialized: camSys.initialized
+      })
+    } else {
+      console.warn('[PlayerLocal] No camera system found - camera controls may not work')
     }
 
     // Emit avatar ready event for camera height adjustment
@@ -1632,53 +1661,8 @@ export class PlayerLocal extends Entity implements HotReloadable {
   update(delta: number): void {
     if(!this.capsule) return;
     
-    // Rotation validation - track rotation at start of update
-    const rotationBefore = this.base ? this.base.quaternion.clone() : null;
-      const pose = this.capsule.getGlobalPose()
-      if (pose && pose.p) {
-        const physicsPos = new THREE.Vector3(pose.p.x, pose.p.y, pose.p.z)
-        const prevPos = this.position.clone()
-        const moved = prevPos.distanceTo(physicsPos)
-
-        // Mirror physics pose to entity for logic
-        this.position.copy(physicsPos)
-        // Smooth the visual base to reduce jitter while preserving physics accuracy
-        if (this.base) {
-          if (this.smoothedBasePos.lengthSq() === 0) {
-            this.smoothedBasePos.copy(physicsPos)
-          } else {
-            const alpha = 0.25
-            this.smoothedBasePos.lerp(physicsPos, alpha)
-          }
-          this.base.position.copy(this.smoothedBasePos)
-        }
-        
-        // Log significant movement
-        // Commented out verbose position update logging
-        // if (moved > 0.01) {
-        //   console.log(`[PlayerLocal] Position updated from physics: moved ${moved.toFixed(3)} to (${physicsPos.x.toFixed(2)}, ${physicsPos.y.toFixed(2)}, ${physicsPos.z.toFixed(2)})`)
-        // }
-        
-        // Update avatar instance position from base transform
-        // NOTE: This is required because the VRM factory doesn't automatically track the base node
-        const avatarNode = this._avatar as any
-        if (avatarNode && avatarNode.instance) {
-          const instance = avatarNode.instance
-          if (instance && typeof instance.move === 'function' && this.base) {
-            // Ensure base matrices are up-to-date
-            this.base.updateMatrix()
-            this.base.updateMatrixWorld(true)
-            // Move the avatar to match the base transform
-            instance.move(this.base.matrixWorld)
-          }
-          // Call update for animation updates (mixer, skeleton, etc)
-          if (instance && typeof instance.update === 'function') {
-            instance.update(delta)
-          }
-        }
-      }
-    
-        // RuneScape-style point-and-click movement only
+    // 1. MOVEMENT CALCULATION FIRST - Calculate where we want to be
+    // RuneScape-style point-and-click movement only
     if (this.clickMoveTarget) {
       const speed = this.runMode ? 8 : 4
       const direction = v1.subVectors(this.clickMoveTarget, this.position)
@@ -1698,56 +1682,18 @@ export class PlayerLocal extends Entity implements HotReloadable {
         }
         this.moving = true
         this.running = this.runMode
-        
-        // Clamp player strictly to terrain height while moving (no fallback)
-        if (this.capsule) {
-          const terrainSystemMove = this.world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number };
-          if (!terrainSystemMove || typeof terrainSystemMove.getHeightAt !== 'function') {
-            throw new Error('[PlayerLocal] TerrainSystem.getHeightAt unavailable during movement');
-          }
-          const h = terrainSystemMove.getHeightAt(this.position.x, this.position.z);
-          if (!Number.isFinite(h)) {
-            throw new Error(`[PlayerLocal] Invalid terrain height during movement at (${this.position.x.toFixed(2)}, ${this.position.z.toFixed(2)})`);
-          }
-          // Compute model-aware clearance: use avatar bounding box height if available
-          let clearance = 0.2
-          if (this._avatar && (this._avatar as any).instance?.raw?.scene) {
-            const sceneObj = (this._avatar as any).instance.raw.scene as THREE.Object3D
-            const box = new THREE.Box3().setFromObject(sceneObj)
-            const height = Math.max(0, box.max.y - box.min.y)
-            // Assume feet at ~0 and slight pad to avoid clipping
-            clearance = Math.min(0.35, Math.max(0.2, height * 0.01))
-          }
-          const desiredY = (h as number) + clearance;
-          const yDelta = desiredY - this.position.y;
-          // Gentle ground-follow to avoid jitter when going up/down hills
-          // Blend Y toward ground and cap per-frame adjustment to avoid snaps
-          const needsAdjust = Math.abs(yDelta) > 0.01;
-          if (needsAdjust) {
-            const pose = this.capsule.getGlobalPose();
-            if (pose && pose.p) {
-              // Allow at most 0.35 units per update; blend by 25% toward target for snappier but smooth adjust
-              const blend = 0.25;
-              const maxStep = 0.35;
-              const step = THREE.MathUtils.clamp(yDelta * blend, -maxStep, maxStep);
-              pose.p.y = this.position.y + step;
-              this.capsuleHandle?.snap(pose);
-            }
-            const vel = this.capsule.getLinearVelocity();
-            if (vel) {
-              vel.y = 0;
-              this.capsule.setLinearVelocity(vel);
-            }
-          }
-        }
       }
-      
+    }
+    
+    // 2. SERVER RECONCILIATION - Blend with server position
+    if (this.serverPosition && this.clickMoveTarget) {
       // Teleport for large errors, interpolate for small ones
       const errorDistance = this.position.distanceTo(this.serverPosition);
       if (errorDistance > 5.0) {
         // Large error: snap immediately
         console.log(`[PlayerLocal] Large position error (${errorDistance.toFixed(2)}), snapping to server position`);
         this.position.copy(this.serverPosition);
+        this.clickMoveTarget = null; // Cancel movement on large correction
       } else if (errorDistance > 0.05) {
         // Small error: smooth interpolation
         const lerpSpeed = errorDistance > 1.0 ? 15.0 : 10.0;
@@ -1766,33 +1712,52 @@ export class PlayerLocal extends Entity implements HotReloadable {
       throw new Error(errorMsg + '\n\nThis crash is intentional to identify movement system failures.');
     }
     
-    // CRITICAL: Update node and base matrices EVERY frame to ensure avatar follows
-    // The node position has changed, we need to update its matrix
-    if (this.node) {
-      this.node.updateMatrix()
-      this.node.updateMatrixWorld(true)
-    }
-    
-    // The base inherits transform from node but needs its own matrix update for avatar
-    if (this.base) {
-      // Only update if position is valid
-      if (this.position.y >= -5) {
-        // Base is a child of node, its world matrix depends on node's matrix
-        this.base.updateMatrix()
-        this.base.updateMatrixWorld(true)
-      } else {
-        console.error('[PlayerLocal] Refusing to update base to invalid position Y=' + this.position.y);
-      }
-    }
-
-    // 4. KINEMATIC PHYSICS SYNC
+    // 5. UPDATE PHYSICS CAPSULE - Sync kinematic body with our calculated position
     if (this.capsule) {
       const pose = this.capsule.getGlobalPose()
       if (pose?.p) {
         pose.p.x = this.position.x
         pose.p.y = this.position.y
         pose.p.z = this.position.z
-        this.capsule.setGlobalPose(pose)
+        this.capsule.setGlobalPose(pose, true) // true = wake up touching actors
+      }
+    }
+    
+    // 6. UPDATE VISUAL REPRESENTATION
+    // Update node position to match our calculated position
+    if (this.node) {
+      this.node.position.copy(this.position)
+      this.node.updateMatrix()
+      this.node.updateMatrixWorld(true)
+    }
+    
+    // Update base visual smoothing
+    if (this.base) {
+      // Smooth the visual base to reduce jitter
+      if (this.smoothedBasePos.lengthSq() === 0) {
+        this.smoothedBasePos.copy(this.position)
+      } else {
+        const alpha = 0.25
+        this.smoothedBasePos.lerp(this.position, alpha)
+      }
+      // Base is a child of node, so it's position is relative to node (should be 0,0,0)
+      this.base.position.set(0, 0, 0)
+      this.base.updateMatrix()
+      this.base.updateMatrixWorld(true)
+    }
+    
+    // 7. UPDATE AVATAR INSTANCE
+    // Update avatar instance position from base transform
+    const avatarNode = this._avatar as any
+    if (avatarNode && avatarNode.instance) {
+      const instance = avatarNode.instance
+      if (instance && typeof instance.move === 'function' && this.base) {
+        // Move the avatar to match the base transform
+        instance.move(this.base.matrixWorld)
+      }
+      // Call update for animation updates (mixer, skeleton, etc)
+      if (instance && typeof instance.update === 'function') {
+        instance.update(delta)
       }
     }
     
@@ -1849,7 +1814,6 @@ export class PlayerLocal extends Entity implements HotReloadable {
           this.lastState.q?.copy(this.base.quaternion)
           this.node.quaternion.copy(this.base.quaternion)
         }
-        this.node.quaternion.slerp(q1, delta * 10)
       }
     } else {
       // Not moving - use idle animation
@@ -1878,103 +1842,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
       }
     }
 
-    // Update avatar instance position from base transform
-    const avatarNodeWithInstance = this._avatar as AvatarNode
-    if (avatarNodeWithInstance && avatarNodeWithInstance.instance && this.base) {
-      const instance = avatarNodeWithInstance.instance
-      
-      // CRITICAL: Check if avatar scene is attached BEFORE moving
-      const instanceWithRaw = instance as unknown as { raw?: { scene?: THREE.Object3D } }
-      if (instanceWithRaw?.raw?.scene) {
-        const avatarScene = instanceWithRaw.raw.scene
-        
-        // Ensure avatar scene is attached to world scene BEFORE any position updates
-        if (!avatarScene.parent && this.world?.stage?.scene) {
-          console.error('[PlayerLocal] Avatar scene has NO PARENT! Attaching to scene...')
-          this.world.stage.scene.add(avatarScene)
-          console.log('[PlayerLocal] Avatar attached to world.stage.scene')
-          
-          // Reset position to avoid double transform
-          avatarScene.position.set(0, 0, 0)
-          avatarScene.updateMatrixWorld(true)
-        }
-      }
-      
-      // Debug avatar structure once
-      if (!this.avatarDebugLogged) {
-        console.log('[PlayerLocal] Avatar instance structure:', {
-          hasInstance: !!instance,
-          instanceKeys: instance ? Object.keys(instance) : [],
-          hasRaw: !!(instance as any)?.raw,
-          rawKeys: (instance as any)?.raw ? Object.keys((instance as any).raw) : [],
-          hasScene: !!(instance as any)?.raw?.scene,
-          sceneType: (instance as any)?.raw?.scene?.constructor?.name,
-          hasVrm: !!(instance as any)?.vrm,
-          vrmKeys: (instance as any)?.vrm ? Object.keys((instance as any).vrm) : [],
-          hasMove: typeof instance.move === 'function',
-          hasUpdate: typeof instance.update === 'function'
-        })
-        this.avatarDebugLogged = true
-      }
-      
-      // Try multiple ways to access the avatar scene
-      let avatarScene: THREE.Object3D | null = null
-      
-      // Method 1: raw.scene
-      if (instanceWithRaw?.raw?.scene) {
-        avatarScene = instanceWithRaw.raw.scene
-      }
-      // Method 2: vrm.scene
-      else if ((instance as any)?.vrm?.scene) {
-        avatarScene = (instance as any).vrm.scene
-      }
-      // Method 3: direct scene property
-      else if ((instance as any)?.scene) {
-        avatarScene = (instance as any).scene
-      }
-      
-      if (avatarScene) {
-        // The VRM scene has matrixAutoUpdate = false, so we need to update matrices manually
-        // Use pre-allocated temporary matrix from top of file
-        _m1.compose(
-          this.node.position,
-          this.node.quaternion,
-          _SCALE_IDENTITY  // Use pre-allocated scale vector
-        )
-        
-        // Set both matrix and matrixWorld since auto update is disabled
-        avatarScene.matrix.copy(_m1)
-        avatarScene.matrixWorld.copy(_m1)
-        
-        // Debug logging disabled to prevent memory pressure
-        // Uncomment for debugging avatar movement issues
-        // if (Math.random() < 0.001) {  // 0.1% chance
-        //   console.log('[PlayerLocal] Moving avatar:', {
-        //     nodePos: this.node.position.toArray(),
-        //     avatarMatrixWorld: avatarScene.matrixWorld.elements.slice(12, 15),
-        //     avatarParent: avatarScene.parent?.name || 'NO PARENT',
-        //     matrixAutoUpdate: avatarScene.matrixAutoUpdate
-        //   })
-        // }
-      } else if (Math.random() < 0.001) {  // Reduced frequency
-        console.error('[PlayerLocal] No avatar scene found to move!')
-      }
-      
-      // Update avatar animations
-      if (instance.update) {
-        instance.update(delta)
-      }
-      
-      // Debug logging disabled to prevent memory pressure
-      // Uncomment for debugging avatar positioning issues
-      // if (Math.random() < 0.0001) { // 0.01% chance per frame
-      //   if (instanceWithRaw?.raw?.scene) {
-      //     const avatarScene = instanceWithRaw.raw.scene
-      //     avatarScene.getWorldPosition(v1)
-      //     console.log(`[PlayerLocal] Avatar Y=${v1.y.toFixed(2)}, Base Y=${this.base.position.y.toFixed(2)}, Parent: ${avatarScene.parent?.name || 'NONE'}`)
-      //   }
-      // }
-    }
+    // Avatar position update is already handled above in section 7
     
     this.sendNetworkUpdate()
   }

@@ -14,6 +14,7 @@ import THREE from '../extras/three';
 export class SpawnTestSystem extends SystemBase {
   private playerSystem!: PlayerSystem;
   private worldGenSystem!: WorldGenerationSystem;
+  private _tempVec3 = new THREE.Vector3();
   
   constructor(world: World) {
     super(world, {
@@ -58,7 +59,7 @@ export class SpawnTestSystem extends SystemBase {
     const z = townCenterZ + Math.sin(angle) * distance;
     const y = 1; // Default spawn height above ground
     
-    return new THREE.Vector3(x, y, z);
+    return this._tempVec3.set(x, y, z);
   }
 
   private testSpawnPositionAvailability(): void {
@@ -93,7 +94,7 @@ export class SpawnTestSystem extends SystemBase {
     const player = this.world.entities.getPlayer(event.playerId);
     if (!player) return;
 
-    const distance = (player.position as THREE.Vector3).distanceTo(event.finalPosition as THREE.Vector3);
+    const distance = (player.position as THREE.Vector3).distanceTo(this._tempVec3.set(event.finalPosition.x, event.finalPosition.y, event.finalPosition.z));
     if (distance > 1.0) {
       this.logger.error(`Player ${event.playerId} did not teleport to the correct position.`);
     }

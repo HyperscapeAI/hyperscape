@@ -65,6 +65,11 @@ export class TerrainSystem extends System {
   private pendingCollisionSet = new Set<string>()
   private maxTilesPerFrame = 2 // cap tiles generated per frame
   private generationBudgetMsPerFrame = 6 // time budget per frame (ms)
+  private _tempVec3 = new THREE.Vector3();
+  private _tempVec3_2 = new THREE.Vector3();
+  private _tempVec2 = new THREE.Vector2();
+  private _tempVec2_2 = new THREE.Vector2();
+  private _tempBox3 = new THREE.Box3();
 
   // Serialization system
   private lastSerializationTime = 0
@@ -1170,7 +1175,7 @@ export class TerrainSystem extends System {
     const dhdz = (hU - hD) / (2 * sampleDistance)
 
     // For a heightfield y = h(x, z), a surface normal can be constructed as (-dhdx, 1, -dhdz)
-    const normal = new THREE.Vector3(-dhdx, 1, -dhdz)
+    const normal = this._tempVec3.set(-dhdx, 1, -dhdz)
     normal.normalize()
     return normal
   }
@@ -1366,7 +1371,7 @@ export class TerrainSystem extends System {
       if (!walkableCheck.walkable) continue
 
       const height = this.getHeightAt(worldX, worldZ)
-      const position = new THREE.Vector3(
+      const position = this._tempVec3.set(
         worldX - tile.x * this.CONFIG.TILE_SIZE,
         height,
         worldZ - tile.z * this.CONFIG.TILE_SIZE
@@ -1426,7 +1431,7 @@ export class TerrainSystem extends System {
         }
 
         const height = this.getHeightAt(worldX, worldZ)
-        const position = new THREE.Vector3(
+        const position = this._tempVec3.set(
           worldX - tile.x * this.CONFIG.TILE_SIZE,
           height,
           worldZ - tile.z * this.CONFIG.TILE_SIZE
@@ -1532,10 +1537,10 @@ export class TerrainSystem extends System {
 
     const t = Math.max(
       0,
-      Math.min(1, point.clone().sub(lineStart).dot(lineEnd.clone().sub(lineStart)) / lineLengthSquared)
+      Math.min(1, this._tempVec2.copy(point).sub(lineStart).dot(this._tempVec2_2.copy(lineEnd).sub(lineStart)) / lineLengthSquared)
     )
 
-    const projection = lineStart.clone().add(lineEnd.clone().sub(lineStart).multiplyScalar(t))
+    const projection = this._tempVec2.copy(lineStart).add(this._tempVec2_2.copy(lineEnd).sub(lineStart).multiplyScalar(t))
 
     return point.distanceTo(projection)
   }
@@ -2705,13 +2710,13 @@ export class TerrainSystem extends System {
 
     for (const [key, tile] of this.terrainTiles) {
       // Calculate bounding box for this tile
-      const box = new THREE.Box3()
+      const box = this._tempBox3;
 
       if (tile.mesh && tile.mesh.geometry) {
         box.setFromObject(tile.mesh)
 
         // Verify tile is within expected size bounds
-        const tempVector = new THREE.Vector3()
+        const tempVector = this._tempVec3;
         const size = box.getSize(tempVector)
         const expectedSize = this.CONFIG.TILE_SIZE
 

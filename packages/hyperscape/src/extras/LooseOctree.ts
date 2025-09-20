@@ -91,7 +91,7 @@ export class LooseOctree {
 
     prevRoot = this.root
     size = prevRoot.size * 2
-    center = new THREE.Vector3(
+    center = _v1.set(
       prevRoot.center.x + prevRoot.size,
       prevRoot.center.y + prevRoot.size,
       prevRoot.center.z + prevRoot.size
@@ -106,7 +106,7 @@ export class LooseOctree {
 
     prevRoot = this.root
     size = prevRoot.size * 2
-    center = new THREE.Vector3(
+    center = _v1.set(
       prevRoot.center.x - prevRoot.size,
       prevRoot.center.y - prevRoot.size,
       prevRoot.center.z - prevRoot.size
@@ -270,12 +270,12 @@ export class LooseOctreeNode {
     for (let x = 0; x < 2; x++) {
       for (let y = 0; y < 2; y++) {
         for (let z = 0; z < 2; z++) {
-          const center = new THREE.Vector3(
+          const center = _v1.set(
             this.center.x + halfSize * (2 * x - 1),
             this.center.y + halfSize * (2 * y - 1),
             this.center.z + halfSize * (2 * z - 1)
           )
-          const child = new LooseOctreeNode(this.octree, this, center, halfSize)
+          const child = new LooseOctreeNode(this, this, center, halfSize)
           this.children.push(child)
         }
       }

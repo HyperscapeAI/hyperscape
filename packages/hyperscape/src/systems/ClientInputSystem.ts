@@ -10,6 +10,8 @@ import { InputButtons } from '../types/networking';
 import { MovementConfig } from '../config/movement';
 import * as THREE from 'three';
 
+const _v3_1 = new THREE.Vector3()
+
 interface BufferedInput {
   command: InputCommand;
   sent: boolean;
@@ -332,7 +334,7 @@ export class ClientInputSystem extends System {
     if (target) {
       const player = this.world.entities.player;
       if (player && 'position' in player) {
-        const direction = new THREE.Vector3()
+        const direction = _v3_1
           .subVectors(target, player.position as THREE.Vector3)
           .setY(0)
           .normalize();

@@ -13,6 +13,10 @@ import type {
 import THREE from '../extras/three';
 import { getPhysX } from '../PhysXManager';
 
+const _v1 = new THREE.Vector3()
+const _q1 = new THREE.Quaternion()
+const _s1 = new THREE.Vector3()
+
 /**
  * Convert Three.js Vector3 to PhysX PxVec3
  */
@@ -112,14 +116,10 @@ export function setTransformFromMatrix4(
   transform: PxTransform,
   matrix: THREE.Matrix4
 ): void {
-  const position = new THREE.Vector3();
-  const quaternion = new THREE.Quaternion();
-  const scale = new THREE.Vector3();
-  
-  matrix.decompose(position, quaternion, scale);
-  
-  setTransformPosition(transform, position);
-  setTransformRotation(transform, quaternion);
+  matrix.decompose(_v1, _q1, _s1)
+
+  setTransformPosition(transform, _v1)
+  setTransformRotation(transform, _q1)
 }
 
 /**
@@ -180,21 +180,21 @@ export function installThreeJSExtensions(): void {
 
   // Extend Matrix4 prototype with physics transform method
   if (!THREE.Matrix4.prototype.toPxTransform) {
-    THREE.Matrix4.prototype.toPxTransform = function(this: THREE.Matrix4, transform: PxTransform): void {
-      const PHYSX = getPhysX()!;
-      const position = new THREE.Vector3();
-      const quaternion = new THREE.Quaternion();
-      const scale = new THREE.Vector3();
-      
-      this.decompose(position, quaternion, scale);
-      
+    THREE.Matrix4.prototype.toPxTransform = function (
+      this: THREE.Matrix4,
+      transform: PxTransform,
+    ): void {
+      const PHYSX = getPhysX()!
+
+      this.decompose(_v1, _q1, _s1)
+
       // Set position
-      const pxVec = new PHYSX.PxVec3(position.x, position.y, position.z);
-      transform.p = pxVec;
-      
+      const pxVec = new PHYSX.PxVec3(_v1.x, _v1.y, _v1.z)
+      transform.p = pxVec
+
       // Set rotation
-      const pxQuat = new PHYSX.PxQuat(quaternion.x, quaternion.y, quaternion.z, quaternion.w);
-      transform.q = pxQuat;
-    };
+      const pxQuat = new PHYSX.PxQuat(_q1.x, _q1.y, _q1.z, _q1.w)
+      transform.q = pxQuat
+    }
   }
 }

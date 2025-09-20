@@ -12,6 +12,9 @@ import type { World } from '../types/index';
 import { SystemBase } from './SystemBase';
 import type { TerrainSystem } from './TerrainSystem';
 
+const _v3_1 = new THREE.Vector3()
+const _v3_2 = new THREE.Vector3()
+
 interface GridNode {
   x: number;
   z: number;
@@ -73,13 +76,12 @@ export class HeightmapPathfinding extends SystemBase {
   private isDirectPathWalkable(start: THREE.Vector3, end: THREE.Vector3): boolean {
     const distance = start.distanceTo(end);
     const steps = Math.ceil(distance / this.gridResolution);
-    const _direction = new THREE.Vector3().subVectors(end, start).normalize();
     
     let prevHeight = this.getHeightAt(start.x, start.z);
     
     for (let i = 1; i <= steps; i++) {
       const t = i / steps;
-      const point = start.clone().lerp(end, t);
+      const point = _v3_1.copy(start).lerp(end, t);
       const height = this.getHeightAt(point.x, point.z);
       
       // Check slope between previous and current point
@@ -210,11 +212,11 @@ export class HeightmapPathfinding extends SystemBase {
   /**
    * Convert grid coordinates to world position
    */
-  private gridToWorld(gridX: number, gridZ: number): THREE.Vector3 {
+  private gridToWorld(gridX: number, gridZ: number, target: THREE.Vector3): THREE.Vector3 {
     const x = gridX * this.gridResolution;
     const z = gridZ * this.gridResolution;
     const y = this.getHeightAt(x, z);
-    return new THREE.Vector3(x, y, z);
+    return target.set(x, y, z);
   }
   
   /**
@@ -236,7 +238,7 @@ export class HeightmapPathfinding extends SystemBase {
     for (const dir of dirs) {
       const x = node.x + dir.x;
       const z = node.z + dir.z;
-      const worldPos = this.gridToWorld(x, z);
+      const worldPos = this.gridToWorld(x, z, _v3_1);
       
       neighbors.push({
         x,
@@ -289,7 +291,7 @@ export class HeightmapPathfinding extends SystemBase {
     let current: GridNode | undefined = node;
     
     while (current) {
-      const worldPos = this.gridToWorld(current.x, current.z);
+      const worldPos = this.gridToWorld(current.x, current.z, new THREE.Vector3());
       path.unshift(worldPos);
       current = current.parent;
     }
@@ -318,8 +320,8 @@ export class HeightmapPathfinding extends SystemBase {
       const next = path[i + 1];
       
       // Calculate direction vectors
-      const dir1 = new THREE.Vector3().subVectors(curr, prev).normalize();
-      const dir2 = new THREE.Vector3().subVectors(next, curr).normalize();
+      const dir1 = _v3_1.subVectors(curr, prev).normalize();
+      const dir2 = _v3_2.subVectors(next, curr).normalize();
       
       // Keep waypoint if direction changes significantly
       const dot = dir1.dot(dir2);

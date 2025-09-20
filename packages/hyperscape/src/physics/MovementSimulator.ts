@@ -16,6 +16,12 @@ import {
 } from '../types/networking';
 import { MovementPhysics } from '../config/movement';
 
+const _v3_1 = new THREE.Vector3()
+const _v3_2 = new THREE.Vector3()
+const _v3_3 = new THREE.Vector3()
+const _v2_1 = new THREE.Vector2()
+const _q_1 = new THREE.Quaternion()
+
 /**
  * Core movement physics simulator
  * Deterministic and frame-rate independent
@@ -53,12 +59,12 @@ export class MovementSimulator {
       if (!state.grounded) {
         newState.velocity.y += config.gravity * dt;
       }
-      newState.position.add(newState.velocity.clone().multiplyScalar(dt));
+      newState.position.add(_v3_1.copy(newState.velocity).multiplyScalar(dt));
       return newState;
     }
     
     // Process movement input
-    const wishDir = this.getWishDirection(input);
+    const wishDir = this.getWishDirection(input, _v3_1);
     const wishSpeed = this.getWishSpeed(input, state, config) * speedMultiplier;
     
     // Apply movement based on state
@@ -86,7 +92,10 @@ export class MovementSimulator {
       }
       
       // Check if we walked off a ledge
-      const nextPos = state.position.clone().add(newState.velocity.clone().multiplyScalar(dt));
+      const nextPos = _v3_2
+        .copy(newState.velocity)
+        .multiplyScalar(dt)
+        .add(state.position);
       if (!this.checkGround(nextPos, config, world)) {
         newState.grounded = false;
         newState.moveState = MoveState.FALLING;
@@ -112,7 +121,7 @@ export class MovementSimulator {
     }
     
     // Clamp velocity to max speed
-    const horizontalVel = new THREE.Vector2(newState.velocity.x, newState.velocity.z);
+    const horizontalVel = _v2_1.set(newState.velocity.x, newState.velocity.z);
     const maxHorizontalSpeed = state.grounded ? 
       this.getMaxGroundSpeed(input, config) : 
       config.maxAirSpeed;
@@ -124,7 +133,7 @@ export class MovementSimulator {
     }
     
     // Update position
-    const movement = newState.velocity.clone().multiplyScalar(dt);
+    const movement = _v3_3.copy(newState.velocity).multiplyScalar(dt);
     newState.position.add(movement);
     
     // Ground check at new position
@@ -150,7 +159,7 @@ export class MovementSimulator {
     
     // Update rotation based on movement direction
     if (wishDir.lengthSq() > 0.01) {
-      newState.rotation = this.calculateRotation(wishDir, state.rotation, dt);
+      this.calculateRotation(wishDir, state.rotation, dt, newState.rotation);
     }
     
     return newState;
@@ -159,42 +168,45 @@ export class MovementSimulator {
   /**
    * Get movement wish direction from input
    */
-  private static getWishDirection(input: InputCommand): THREE.Vector3 {
-    const forward = new THREE.Vector3(0, 0, -1);
-    const right = new THREE.Vector3(1, 0, 0);
-    
+  private static getWishDirection(
+    input: InputCommand,
+    target: THREE.Vector3,
+  ): THREE.Vector3 {
+    const forward = _v3_2.set(0, 0, -1)
+    const right = _v3_3.set(1, 0, 0)
+
     // Apply view rotation to get world-space directions
-    forward.applyQuaternion(input.viewAngles);
-    right.applyQuaternion(input.viewAngles);
-    
+    forward.applyQuaternion(input.viewAngles)
+    right.applyQuaternion(input.viewAngles)
+
     // Remove vertical component for movement
-    forward.y = 0;
-    right.y = 0;
-    forward.normalize();
-    right.normalize();
-    
+    forward.y = 0
+    right.y = 0
+    forward.normalize()
+    right.normalize()
+
     // Build wish direction from input
-    const wishDir = new THREE.Vector3();
-    
+    target.set(0, 0, 0)
+
     if (input.buttons & InputButtons.FORWARD) {
-      wishDir.add(forward);
+      target.add(forward)
     }
     if (input.buttons & InputButtons.BACKWARD) {
-      wishDir.sub(forward);
+      target.sub(forward)
     }
     if (input.buttons & InputButtons.LEFT) {
-      wishDir.sub(right);
+      target.sub(right)
     }
     if (input.buttons & InputButtons.RIGHT) {
-      wishDir.add(right);
+      target.add(right)
     }
-    
+
     // Use direct move vector if provided (for click-to-move)
     if (input.moveVector && input.moveVector.lengthSq() > 0.01) {
-      return input.moveVector.clone().normalize();
+      return target.copy(input.moveVector).normalize()
     }
-    
-    return wishDir.normalize();
+
+    return target.normalize()
   }
   
   /**
@@ -239,9 +251,9 @@ export class MovementSimulator {
     wishSpeed: number,
     acceleration: number,
     friction: number,
-    dt: number
+    dt: number,
   ): THREE.Vector3 {
-    const vel = velocity.clone();
+    const vel = _v3_2.copy(velocity)
     
     // Apply friction first
     const speed = vel.length();
@@ -262,7 +274,7 @@ export class MovementSimulator {
           accelSpeed = addSpeed;
         }
         
-        vel.add(wishDir.clone().multiplyScalar(accelSpeed));
+        vel.add(_v3_3.copy(wishDir).multiplyScalar(accelSpeed));
       }
     }
     
@@ -278,12 +290,12 @@ export class MovementSimulator {
     wishSpeed: number,
     acceleration: number,
     friction: number,
-    dt: number
+    dt: number,
   ): THREE.Vector3 {
-    const vel = velocity.clone();
+    const vel = _v3_2.copy(velocity)
     
     // Apply air friction (much less than ground)
-    const speed = new THREE.Vector2(vel.x, vel.z).length();
+    const speed = _v2_1.set(vel.x, vel.z).length();
     if (speed > 0.1) {
       const drop = speed * friction * dt;
       const newSpeed = Math.max(0, speed - drop);
@@ -305,7 +317,7 @@ export class MovementSimulator {
           accelSpeed = addSpeed;
         }
         
-        vel.add(wishDir.clone().multiplyScalar(accelSpeed));
+        vel.add(_v3_3.copy(wishDir).multiplyScalar(accelSpeed));
       }
     }
     
@@ -354,7 +366,7 @@ export class MovementSimulator {
       // Could calculate actual terrain normal here
       return {
         grounded: true,
-        normal: new THREE.Vector3(0, 1, 0)
+        normal: _v3_1.set(0, 1, 0),
       };
     }
     
@@ -376,7 +388,7 @@ export class MovementSimulator {
       return MoveState.CROUCHING;
     }
     
-    const speed = new THREE.Vector2(state.velocity.x, state.velocity.z).length();
+    const speed = _v2_1.set(state.velocity.x, state.velocity.z).length();
     
     if (speed < 0.1) {
       return MoveState.IDLE;
@@ -399,22 +411,23 @@ export class MovementSimulator {
   private static calculateRotation(
     moveDir: THREE.Vector3,
     currentRotation: THREE.Quaternion,
-    dt: number
+    dt: number,
+    target: THREE.Quaternion,
   ): THREE.Quaternion {
     if (moveDir.lengthSq() < 0.01) {
-      return currentRotation;
+      return target.copy(currentRotation);
     }
     
     // Calculate target rotation from movement direction
-    const forward = new THREE.Vector3(0, 0, -1);
-    const targetQuat = new THREE.Quaternion();
-    targetQuat.setFromUnitVectors(forward, moveDir.normalize());
+    const forward = _v3_1.set(0, 0, -1)
+    const targetQuat = _q_1
+    targetQuat.setFromUnitVectors(forward, _v3_2.copy(moveDir).normalize());
     
     // Smooth rotation
-    const result = currentRotation.clone();
-    result.slerp(targetQuat, Math.min(1, dt * 10)); // Smooth turning
-    
-    return result;
+    target.copy(currentRotation)
+    target.slerp(targetQuat, Math.min(1, dt * 10)) // Smooth turning
+
+    return target;
   }
   
   /**
@@ -461,18 +474,17 @@ export class MovementSimulator {
     const corrected = { ...clientState };
     
     // Smooth position correction
-    corrected.position = clientState.position.clone().lerp(
-      serverState.position,
-      smoothing
-    );
+    corrected.position.copy(clientState.position).lerp(serverState.position, smoothing);
     
     // Take server velocity directly (more responsive)
-    corrected.velocity = serverState.velocity.clone();
+    corrected.velocity.copy(serverState.velocity);
     
     // Take server physics state
     corrected.grounded = serverState.grounded;
     corrected.moveState = serverState.moveState;
-    corrected.groundNormal = serverState.groundNormal?.clone();
+    corrected.groundNormal = serverState.groundNormal
+      ? _v3_1.copy(serverState.groundNormal)
+      : undefined;
     
     return corrected;
   }

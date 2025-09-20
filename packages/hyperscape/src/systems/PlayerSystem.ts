@@ -24,6 +24,7 @@ export class PlayerSystem extends SystemBase {
   private readonly RESPAWN_TIME = 30000; // 30 seconds per GDD
   private readonly AUTO_SAVE_INTERVAL = 30000; // 30 seconds auto-save
   private saveInterval?: NodeJS.Timeout;
+  private _tempVec3 = new THREE.Vector3();
 
   constructor(world: World) {
     super(world, {
@@ -84,7 +85,7 @@ export class PlayerSystem extends SystemBase {
     
     // --- NEW: Wait for Terrain Physics ---
     const terrainSystem = this.world.getSystem<TerrainSystem>('terrain')
-    const finalPosition = new THREE.Vector3(data.position.x, data.position.y, data.position.z);
+    const finalPosition = this._tempVec3.set(data.position.x, data.position.y, data.position.z);
     
     // Reduced logging - only log errors, not every spawn
     // console.log(`[PlayerSystem] Spawn request received for ${data.playerId} at:`, data.position);

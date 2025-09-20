@@ -44,6 +44,7 @@ export class ServerBot extends System {
   private lastUpdate: number = 0
   private dwellUntil: number = 0
   private clientWorld: ClientWorld | null = null
+  private _tempVec3 = new THREE.Vector3();
   
   override start(): void {
     Logger.info('[ServerBot] 🤖 Initializing server bot system...')
@@ -185,7 +186,7 @@ export class ServerBot extends System {
     const origin = this.getClientPlayerPosition()
     const targetX = origin.x + Math.cos(angle) * distance
     const targetZ = origin.z + Math.sin(angle) * distance
-    const target = new THREE.Vector3(targetX, 0, targetZ)
+    const target = this._tempVec3.set(targetX, 0, targetZ)
     this.sendMoveRequest(target, false)
     Logger.info(`[ServerBot] Wandering to (${target.x.toFixed(1)}, ${target.z.toFixed(1)})`)
   }
@@ -195,7 +196,7 @@ export class ServerBot extends System {
     const origin = this.getClientPlayerPosition()
     const targetX = origin.x + (Math.random() * 100 - 50)
     const targetZ = origin.z + (Math.random() * 100 - 50)
-    const target = new THREE.Vector3(targetX, 0, targetZ)
+    const target = this._tempVec3.set(targetX, 0, targetZ)
     this.sendMoveRequest(target, false)
     Logger.info(`[ServerBot] Exploring to (${target.x.toFixed(1)}, ${target.z.toFixed(1)})`)
   }
@@ -207,7 +208,7 @@ export class ServerBot extends System {
     const origin = this.getClientPlayerPosition()
     const targetX = origin.x + Math.cos(angle) * distance
     const targetZ = origin.z + Math.sin(angle) * distance
-    const target = new THREE.Vector3(targetX, 0, targetZ)
+    const target = this._tempVec3.set(targetX, 0, targetZ)
     this.sendMoveRequest(target, true)
     Logger.info(`[ServerBot] Sprinting to (${target.x.toFixed(1)}, ${target.z.toFixed(1)})`)
   }
@@ -215,7 +216,7 @@ export class ServerBot extends System {
   private interactBehavior(): void {
     // For now, just wander towards a nearby random offset
     const origin = this.getClientPlayerPosition()
-    const target = origin.clone().add(new THREE.Vector3((Math.random()-0.5)*8, 0, (Math.random()-0.5)*8))
+    const target = this._tempVec3.copy(origin).add(new THREE.Vector3((Math.random()-0.5)*8, 0, (Math.random()-0.5)*8))
     this.sendMoveRequest(target, false)
   }
   
@@ -244,7 +245,7 @@ export class ServerBot extends System {
     const nextAngle = currentAngle + angle
     const targetX = origin.x + Math.cos(nextAngle) * radius
     const targetZ = origin.z + Math.sin(nextAngle) * radius
-    const target = new THREE.Vector3(targetX, 0, targetZ)
+    const target = this._tempVec3.set(targetX, 0, targetZ)
     this.sendMoveRequest(target, false)
     Logger.info(`[ServerBot] Moving in circle to (${target.x.toFixed(1)}, ${target.z.toFixed(1)})`)
   }
@@ -252,7 +253,7 @@ export class ServerBot extends System {
   // Helper methods
   private getClientPlayerPosition(): THREE.Vector3 {
     if (!this.clientWorld?.entities?.player) {
-      return new THREE.Vector3(0, 0, 0)
+      return this._tempVec3.set(0, 0, 0)
     }
     const player = this.clientWorld.entities.player
     if ('node' in player && player.node && player.node.position) {
@@ -279,7 +280,7 @@ export class ServerBot extends System {
       
       return position
     }
-    return new THREE.Vector3(0, 0, 0)
+    return this._tempVec3.set(0, 0, 0)
   }
 
   private sendMoveRequest(target: THREE.Vector3, sprint: boolean = false): void {

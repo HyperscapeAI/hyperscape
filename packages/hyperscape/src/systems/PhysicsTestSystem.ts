@@ -31,6 +31,10 @@ export class PhysicsTestSystem extends SystemBase {
     HITPOINT: 0xFFFF00,  // Yellow cube for raycast hit points
     TERRAIN: 0x8B4513    // Brown cube for terrain
   } as const;
+  private _tempVec3_1 = new THREE.Vector3();
+  private _tempVec3_2 = new THREE.Vector3();
+  private _tempVec3_3 = new THREE.Vector3();
+  private _testCubeGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
 
   constructor(world: World) {
     super(world, {
@@ -83,8 +87,8 @@ export class PhysicsTestSystem extends SystemBase {
   private async testBasicRaycasting(): Promise<void> {
     
     // Create test objects - shoot downward to hit terrain like terrain_collision test
-    const rayOrigin = new THREE.Vector3(2, 3, 2); // Start above ground
-    const rayDirection = new THREE.Vector3(0, -1, 0); // Downward ray
+    const rayOrigin = this._tempVec3_1.set(2, 3, 2); // Start above ground
+    const rayDirection = this._tempVec3_2.set(0, -1, 0); // Downward ray
     
     // Create visual proxy cubes
     this.createTestCube('player_raycast', { x: 2, y: 3, z: 2 }, this.TEST_COLORS.PLAYER);
@@ -138,8 +142,8 @@ export class PhysicsTestSystem extends SystemBase {
     this.createTestCube('terrain_obstacle', terrainPos, this.TEST_COLORS.TERRAIN);
     
     // Test raycast to terrain
-    const rayOrigin = new THREE.Vector3(0, 2, 0);
-    const rayDirection = new THREE.Vector3(0, -1, 0); // Downward ray
+    const rayOrigin = this._tempVec3_1.set(0, 2, 0);
+    const rayDirection = this._tempVec3_2.set(0, -1, 0); // Downward ray
     
     this.createTestCube('terrain_ray_origin', rayOrigin, this.TEST_COLORS.PLAYER);
     
@@ -171,12 +175,14 @@ export class PhysicsTestSystem extends SystemBase {
     this.createTestCube('nav_end', endPos, this.TEST_COLORS.TARGET);
     
     // Create navigation raycast
-    const navDirection = new THREE.Vector3(endPos.x - startPos.x, endPos.y - startPos.y, endPos.z - startPos.z);
+    const startVec = this._tempVec3_1.set(startPos.x, startPos.y, startPos.z);
+    const endVec = this._tempVec3_2.set(endPos.x, endPos.y, endPos.z);
+    const navDirection = this._tempVec3_3.subVectors(endVec, startVec);
     
-    const navLength = Math.sqrt(navDirection.x ** 2 + navDirection.y ** 2 + navDirection.z ** 2);
-    navDirection.divideScalar(navLength);
+    const navLength = navDirection.length();
+    navDirection.normalize();
     
-    const rayOrigin = new THREE.Vector3(startPos.x, startPos.y, startPos.z);
+    const rayOrigin = startVec;
     const hit = this.world.raycast(rayOrigin, navDirection, navLength);
     
     // For navigation, we want to ensure path is clear (no hit) or hit is at destination
@@ -187,7 +193,7 @@ export class PhysicsTestSystem extends SystemBase {
 
   private createTestCube(id: string, position: { x: number; y: number; z: number }, color: number): void {
     // Create a simple cube for visual testing
-    const cubeGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+    const cubeGeometry = this._testCubeGeometry;
     const cubeMaterial = new THREE.MeshBasicMaterial({ 
       color: color,
       transparent: true,

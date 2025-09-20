@@ -14,6 +14,7 @@ export class SpatialIndex extends System {
   private updateInterval: number;
   private lastUpdate: number;
   private tempVec3 = new THREE.Vector3();
+  private _tempVec3_2 = new THREE.Vector3();
   
   constructor(world: World, cellSize: number = 10) {
     super(world);
@@ -147,7 +148,7 @@ export class SpatialIndex extends System {
         
         // Distance check
         if (entity.node) {
-          const entityPos = entity.node.getWorldPosition(new THREE.Vector3());
+          const entityPos = entity.node.getWorldPosition(this._tempVec3_2);
           const distSquared = query.position.distanceToSquared(entityPos);
           
           if (distSquared <= radiusSquared) {

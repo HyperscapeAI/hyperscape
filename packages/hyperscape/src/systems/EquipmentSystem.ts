@@ -32,6 +32,15 @@ import {
 import { ItemRarity } from '../types/entities';
 import type { PlayerWithEquipmentSupport } from '../types/ui-types';
 
+const attachmentPoints = {
+  helmet: { bone: 'head', offset: new THREE.Vector3(0, 0.1, 0) },
+  body: { bone: 'spine', offset: new THREE.Vector3(0, 0, 0) },
+  legs: { bone: 'hips', offset: new THREE.Vector3(0, -0.2, 0) },
+  weapon: { bone: 'rightHand', offset: new THREE.Vector3(0.1, 0, 0) },
+  shield: { bone: 'leftHand', offset: new THREE.Vector3(-0.1, 0, 0) },
+  arrows: { bone: 'spine', offset: new THREE.Vector3(0, 0, -0.2) },
+}
+
 // Re-export for backward compatibility
 export type { EquipmentSlot, PlayerEquipment };
 
@@ -907,22 +916,13 @@ export class EquipmentSystem extends SystemBase {
    * Update equipment visuals for a specific player
    */
   private updatePlayerEquipmentVisuals(player: PlayerWithEquipmentSupport, equipment: PlayerEquipment): void {
-    const attachmentPoints = {
-      helmet: { bone: 'head', offset: new THREE.Vector3(0, 0.1, 0) },
-      body: { bone: 'spine', offset: new THREE.Vector3(0, 0, 0) },
-      legs: { bone: 'hips', offset: new THREE.Vector3(0, -0.2, 0) },
-      weapon: { bone: 'rightHand', offset: new THREE.Vector3(0.1, 0, 0) },
-      shield: { bone: 'leftHand', offset: new THREE.Vector3(-0.1, 0, 0) },
-      arrows: { bone: 'spine', offset: new THREE.Vector3(0, 0, -0.2) }
-    };
-
     // Process each equipment slot
     Object.entries(attachmentPoints).forEach(([slotName, attachment]) => {
-      const slot = equipment[slotName as keyof PlayerEquipment] as EquipmentSlot;
+      const slot = equipment[slotName as keyof PlayerEquipment] as EquipmentSlot
       if (slot?.visualMesh) {
-        this.attachEquipmentToPlayer(player, slot.visualMesh as THREE.Object3D, attachment.bone, attachment.offset);
+        this.attachEquipmentToPlayer(player, slot.visualMesh as THREE.Object3D, attachment.bone, attachment.offset)
       }
-    });
+    })
   }
 
   /**

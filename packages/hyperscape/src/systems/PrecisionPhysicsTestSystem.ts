@@ -135,6 +135,10 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
   private updateCounter = 0;
   private scenariosInitialized = false;
   private enabled = true; // Flag to disable system if physics not available
+  private _tempVec3_1 = new THREE.Vector3();
+  private _tempVec3_2 = new THREE.Vector3();
+  private _tempVec3_3 = new THREE.Vector3();
+  private _tempQuat = new THREE.Quaternion();
   
   constructor(world: World) {
     super(world, {
@@ -181,7 +185,7 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
     // Create transform for ground plane (normal pointing up)
     const planeTransform = new PHYSX.PxTransform(PHYSX.PxIDENTITYEnum.PxIdentity);
     // Rotation of 90 degrees around Z axis: quaternion (0, 0, 0.707, 0.707)
-    const quat = new PHYSX.PxQuat(0, 0, 0.707, 0.707);
+    const quat = this._tempQuat.set(0, 0, 0.707, 0.707);
     planeTransform.q = quat;
     planeTransform.p.y = 0; // Position at y = 0
     
@@ -238,8 +242,8 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
           Logger.system('PrecisionPhysics', 'Creating projectile motion test')
     
     const PHYSX = this.getPhysX();
-    const launchPosition = new THREE.Vector3(20, 5, 0);
-    const launchVelocity = new THREE.Vector3(10, 8, 0); // m/s
+    const launchPosition = this._tempVec3_1.set(20, 5, 0);
+    const launchVelocity = this._tempVec3_2.set(10, 8, 0); // m/s
     
     // Calculate expected landing position using kinematic equations
     // x = v₀ₓt, y = y₀ + v₀ᵧt + ½gt²
@@ -247,7 +251,7 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
       launchVelocity.y * launchVelocity.y - 2 * this.gravity * launchPosition.y
     )) / this.gravity;
     
-    const expectedLandingPosition = new THREE.Vector3(
+    const expectedLandingPosition = this._tempVec3_3.set(
       launchPosition.x + launchVelocity.x * expectedLandingTime,
       0, // Ground level
       launchPosition.z + launchVelocity.z * expectedLandingTime
@@ -417,7 +421,7 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
    */
   private createCollisionResponseTest(): void {
     
-    const collisionPosition = new THREE.Vector3(-20, 2, 0);
+    const collisionPosition = this._tempVec3_1.set(-20, 2, 0);
     
     // Create two spheres for collision test
     const sphere1Geometry = new THREE.SphereGeometry(0.5);
@@ -435,18 +439,18 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
     // Set up collision physics data
     const mass1 = 2.0; // kg
     const mass2 = 1.0; // kg
-    const velocity1 = new THREE.Vector3(3, 0, 0); // m/s moving right
-    const velocity2 = new THREE.Vector3(-2, 0, 0); // m/s moving left
+    const velocity1 = this._tempVec3_2.set(3, 0, 0); // m/s moving right
+    const velocity2 = this._tempVec3_3.set(-2, 0, 0); // m/s moving left
     
     // Calculate expected post-collision velocities using conservation of momentum
     // For elastic collision: v1' = ((m1-m2)v1 + 2m2v2)/(m1+m2)
     // v2' = ((m2-m1)v2 + 2m1v1)/(m1+m2)
-    const expectedVel1 = new THREE.Vector3(
+    const expectedVel1 = this._tempVec3_1.set(
       ((mass1 - mass2) * velocity1.x + 2 * mass2 * velocity2.x) / (mass1 + mass2),
       0,
       0
     );
-    const expectedVel2 = new THREE.Vector3(
+    const expectedVel2 = this._tempVec3_2.set(
       ((mass2 - mass1) * velocity2.x + 2 * mass1 * velocity1.x) / (mass1 + mass2),
       0,
       0
@@ -527,7 +531,7 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
    */
   private createEnergyConservationTest(): void {
     
-    const pendulumPosition = new THREE.Vector3(0, 8, 20);
+    const pendulumPosition = this._tempVec3_1.set(0, 8, 20);
     const stringLength = 3.0; // meters
     const initialAngle = Math.PI / 4; // 45 degrees
     
@@ -537,7 +541,7 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
     const bob = new THREE.Mesh(bobGeometry, bobMaterial);
     
     // Position bob at initial angle
-    const initialPosition = new THREE.Vector3(
+    const initialPosition = this._tempVec3_2.set(
       pendulumPosition.x + stringLength * Math.sin(initialAngle),
       pendulumPosition.y - stringLength * Math.cos(initialAngle),
       pendulumPosition.z
@@ -611,7 +615,7 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
    */
   private createFrictionTest(): void {
     
-    const rampPosition = new THREE.Vector3(0, 2, -20);
+    const rampPosition = this._tempVec3_1.set(0, 2, -20);
     const rampAngle = Math.PI / 6; // 30 degrees
     const frictionCoeff = 0.3; // Known friction coefficient
     
@@ -628,7 +632,7 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
     const block = new THREE.Mesh(blockGeometry, blockMaterial);
     
     // Position block at top of ramp
-    const blockStartPosition = new THREE.Vector3(
+    const blockStartPosition = this._tempVec3_2.set(
       rampPosition.x - 2.5,
       rampPosition.y + 1,
       rampPosition.z
@@ -700,7 +704,7 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
    */
   private createAngularMomentumTest(): void {
     
-    const spinPosition = new THREE.Vector3(20, 3, -20);
+    const spinPosition = this._tempVec3_1.set(20, 3, -20);
     
     // Create spinning disc
     const discGeometry = new THREE.CylinderGeometry(1.0, 1.0, 0.2);
@@ -801,7 +805,7 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
     const physicsActor = actor as PhysicsActor;
     if (physicsActor) {
       const pose = physicsActor.getGlobalPose();
-      finalPosition = new THREE.Vector3(pose.p.x, pose.p.y, pose.p.z);
+      finalPosition = this._tempVec3_1.set(pose.p.x, pose.p.y, pose.p.z);
       Logger.system('PrecisionPhysics', `Actor physics position: (${pose.p.x.toFixed(2)}, ${pose.p.y.toFixed(2)}, ${pose.p.z.toFixed(2)})`);
     } else {
       finalPosition = projectile.position;

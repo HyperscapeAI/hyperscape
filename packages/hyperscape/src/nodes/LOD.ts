@@ -43,7 +43,7 @@ export class LOD extends Node {
 
   mount() {
     // Register with LODs system if present (typed cast through World extension)
-    const worldWithLods = this.ctx as (World & { lods?: import('../systems/LODs').LODs }) | null
+    const worldWithLods = this.ctx as (World & { lods?: { register: (lod: LOD) => void } }) | null
     worldWithLods?.lods?.register?.(this)
     this.check()
   }
@@ -77,7 +77,7 @@ export class LOD extends Node {
   }
 
   unmount() {
-    const worldWithLods = this.ctx as (World & { lods?: import('../systems/LODs').LODs }) | null
+    const worldWithLods = this.ctx as (World & { lods?: { unregister: (lod: LOD) => void } }) | null
     worldWithLods?.lods?.unregister?.(this)
   }
 

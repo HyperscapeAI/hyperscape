@@ -9,7 +9,7 @@ export class LerpVector3 {
   snapToken: unknown;
 
   constructor(value: THREE.Vector3, rate: number) {
-    this.value = value
+    this.value = new THREE.Vector3().copy(value)
     this.rate = rate // receive rate eg 1/5 for 5hz
     this.previous = new THREE.Vector3().copy(this.value)
     this.current = new THREE.Vector3().copy(this.value)

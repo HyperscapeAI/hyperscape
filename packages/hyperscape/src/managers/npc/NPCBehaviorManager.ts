@@ -17,6 +17,8 @@ import { calculateDistance, getEntity } from '../../utils/EntityUtils';
 // MovementSystem removed (RPG server-side). NPCs move by directly updating positions or via pathfinding.
 import THREE from '../../extras/three';
 
+const _v1 = new THREE.Vector3(0, 1, 0)
+
 export class NPCBehaviorManager {
   private world: World;
   
@@ -373,7 +375,7 @@ export class NPCBehaviorManager {
     
     // Apply rotation to NPC
     if (npc.node) {
-      npc.node.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+      npc.node.quaternion.setFromAxisAngle(_v1, angle);
     }
   }
   

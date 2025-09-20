@@ -30,6 +30,8 @@ export class PhysXCollisionSystem extends SystemBase {
   private physicsSystem!: Physics;
   private lastValidationTime = 0;
   private isValidating = false;
+  private _tempVec3_1 = new THREE.Vector3();
+  private _tempVec3_2 = new THREE.Vector3();
   
   // Interval handles
   private validationIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -236,8 +238,8 @@ export class PhysXCollisionSystem extends SystemBase {
    * Perform PhysX raycast to get collision height
    */
   private async performPhysXRaycast(x: number, z: number, startHeight: number = 500): Promise<number> {
-    const origin = new THREE.Vector3(x, startHeight, z);
-    const direction = new THREE.Vector3(0, -1, 0);
+    const origin = this._tempVec3_1.set(x, startHeight, z);
+    const direction = this._tempVec3_2.set(0, -1, 0);
     const mask = this.world.createLayerMask ? this.world.createLayerMask('environment') : 0xFFFFFFFF;
     const hit = this.physicsSystem.raycastWithMask(origin, direction, PhysXCollisionSystem.RAYCAST_DISTANCE, mask);
     if (hit && hit.point) {

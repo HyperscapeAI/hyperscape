@@ -25,6 +25,12 @@ interface DampedSettings {
   minDistance?: number
 }
 
+const _v3_1 = new THREE.Vector3()
+const _v3_2 = new THREE.Vector3()
+const _v3_3 = new THREE.Vector3()
+const _q_1 = new THREE.Quaternion()
+const _sph_1 = new THREE.Spherical()
+
 export class ClientCameraSystem extends SystemBase {
   private camera: THREE.PerspectiveCamera | null = null;
   private target: CameraTarget | null = null;
@@ -116,8 +122,8 @@ export class ClientCameraSystem extends SystemBase {
       console.log('[ClientCameraSystem] Detaching camera from world.rig to make it independent');
       
       // Get world position and rotation before removing from parent
-      const worldPos = new THREE.Vector3();
-      const worldQuat = new THREE.Quaternion();
+      const worldPos = _v3_1
+      const worldQuat = _q_1
       this.camera.getWorldPosition(worldPos);
       this.camera.getWorldQuaternion(worldQuat);
       
@@ -280,8 +286,8 @@ export class ClientCameraSystem extends SystemBase {
     if (!this.camera || !this.target) return;
 
     // Simple pan: move the camera offset in world space based on current camera orientation
-    const cameraRight = new THREE.Vector3();
-    const cameraForward = new THREE.Vector3();
+    const cameraRight = _v3_1
+    const cameraForward = _v3_2
 
     // Get camera right vector
     cameraRight.setFromMatrixColumn(this.camera.matrix, 0).normalize();
@@ -340,7 +346,7 @@ export class ClientCameraSystem extends SystemBase {
     this.detachCameraFromRig();
 
     // Set up orbit center in world space
-    const orbitCenter = new THREE.Vector3(targetPos.x, targetPos.y + this.cameraOffset.y, targetPos.z);
+    const orbitCenter = _v3_1.set(targetPos.x, targetPos.y + this.cameraOffset.y, targetPos.z);
     
     this.effectiveRadius = this.spherical.radius;
     this.cameraPosition.setFromSpherical(this.spherical);
@@ -410,7 +416,7 @@ export class ClientCameraSystem extends SystemBase {
     }
 
     // Calculate camera position from spherical coordinates using effective radius
-    const tempSpherical = new THREE.Spherical(this.effectiveRadius, this.spherical.phi, this.spherical.theta);
+    const tempSpherical = _sph_1.set(this.effectiveRadius, this.spherical.phi, this.spherical.theta);
     this.cameraPosition.setFromSpherical(tempSpherical);
     this.cameraPosition.add(this.smoothedTarget);
 

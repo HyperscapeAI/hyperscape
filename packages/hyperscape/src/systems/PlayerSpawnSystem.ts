@@ -19,6 +19,9 @@ import { SystemBase } from './SystemBase';
 
 export class PlayerSpawnSystem extends SystemBase {
   private spawnedPlayers = new Map<string, PlayerSpawnData>();
+  private _tempVec3_1 = new THREE.Vector3();
+  private _tempVec3_2 = new THREE.Vector3();
+  private _tempVec3_3 = new THREE.Vector3();
   
   // GDD-compliant starter equipment
   private readonly STARTER_EQUIPMENT = equipmentRequirements.getStarterEquipment();
@@ -283,9 +286,9 @@ export class PlayerSpawnSystem extends SystemBase {
     const playerPos = player.node.position;
     
     const goblinSpawnPositions = [
-      new THREE.Vector3(playerPos.x + 3, playerPos.y, playerPos.z + 2),
-      new THREE.Vector3(playerPos.x - 2, playerPos.y, playerPos.z + 4),
-      new THREE.Vector3(playerPos.x + 1, playerPos.y, playerPos.z - 3)
+      this._tempVec3_1.set(playerPos.x + 3, playerPos.y, playerPos.z + 2),
+      this._tempVec3_2.set(playerPos.x - 2, playerPos.y, playerPos.z + 4),
+      this._tempVec3_3.set(playerPos.x + 1, playerPos.y, playerPos.z - 3)
     ];
     
     goblinSpawnPositions.forEach((position, index) => {

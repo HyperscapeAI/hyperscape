@@ -17,7 +17,7 @@ export class ColliderComponent extends Component {
   
   constructor(entity: Entity, data: {
     type?: 'box' | 'sphere' | 'capsule' | 'mesh';
-    size?: Vector3;
+    size?: Vector3 | { x?: number; y?: number; z?: number };
     radius?: number;
     height?: number;
     isTrigger?: boolean;
@@ -29,9 +29,10 @@ export class ColliderComponent extends Component {
     layers?: string[];
     [key: string]: unknown;
   } = {}) {
+    const size = data.size || { x: 1, y: 1, z: 1 };
     super('collider', entity, {
       type: 'box',
-      size: data.size || new THREE.Vector3(1, 1, 1),
+      size: size instanceof THREE.Vector3 ? size : new THREE.Vector3(size.x, size.y, size.z),
       radius: 0.5,
       height: 1,
       isTrigger: false,
@@ -55,21 +56,15 @@ export class ColliderComponent extends Component {
   }
   
   get size(): Vector3 {
-    const size = this.get<Vector3 | { x?: number; y?: number; z?: number }>('size');
-    if (size instanceof THREE.Vector3) {
-      return size;
-    }
-    // Convert plain object to THREE.Vector3
-    return new THREE.Vector3(size?.x || 1, size?.y || 1, size?.z || 1);
+    return this.get<Vector3>('size');
   }
   
   set size(value: Vector3 | { x: number; y: number; z: number }) {
-    // Ensure we store a THREE.Vector3 instance
+    const currentSize = this.get<Vector3>('size');
     if (value instanceof THREE.Vector3) {
-      this.set('size', value);
+      currentSize.copy(value);
     } else {
-      const vec3 = new THREE.Vector3(value.x, value.y, value.z);
-      this.set('size', vec3);
+      currentSize.set(value.x, value.y, value.z);
     }
     this.updatePhysicsShape();
   }

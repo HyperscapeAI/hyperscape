@@ -40,7 +40,9 @@ export class Action extends Node {
   mount() {
     // Register with actions system
     const actionsSystem = this.ctx!.findSystem!('actions') as ActionsSystem;
-    actionsSystem.register(this);
+    if (actionsSystem) {
+      actionsSystem.register(this);
+    }
     this.worldPos.setFromMatrixPosition(this.matrixWorld)
   }
 
@@ -53,7 +55,9 @@ export class Action extends Node {
   unmount() {
     // Unregister with actions system
     const actionsSystem = this.ctx!.findSystem!('actions') as ActionsSystem;
-    actionsSystem.unregister(this.id);
+    if (actionsSystem) {
+      actionsSystem.unregister(this);
+    }
   }
 
   copy(source, recursive) {

@@ -49,6 +49,20 @@ export function vector3ToPxTransform(vector: THREE.Vector3, pxTransform: PxTrans
 }
 
 /**
+ * Clone a vector to ensure a new instance
+ */
+export function cloneVector3(vec: THREE.Vector3 | { x: number; y: number; z: number }): THREE.Vector3 {
+  return new THREE.Vector3(vec.x, vec.y, vec.z)
+}
+
+/**
+ * Convert to a plain object (useful for serialization)
+ */
+export function toVector3Object(vec: THREE.Vector3 | { x: number; y: number; z: number }): { x: number; y: number; z: number } {
+  return { x: vec.x, y: vec.y, z: vec.z }
+}
+
+/**
  * Observable Vector3 wrapper for change detection
  */
 export class ObservableVector3 {

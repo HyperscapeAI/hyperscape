@@ -86,6 +86,7 @@ const defaults = {
 const _v1 = new THREE.Vector3()
 const _v2 = new THREE.Vector3()
 const _q1 = new THREE.Quaternion()
+const m1 = new THREE.Matrix4()
 
 const types = ['box', 'sphere', 'geometry']
 const layers = ['environment', 'prop', 'player', 'tool']
@@ -146,14 +147,11 @@ export class Collider extends Node {
         pmesh = geometryToPxMesh(this.ctx!, this._geometry, isConvex)
       }
       if (!pmesh) return console.error('failed to generate collider pmesh')
-      const tempPos = new THREE.Vector3()
-      const tempQuat = new THREE.Quaternion()
-      const tempScale = new THREE.Vector3()
-      const plainMatrix = new THREE.Matrix4().copy(this.matrixWorld)
+      const tempPos = _v1
+      const tempQuat = _q1
+      const tempScale = _v2
+      const plainMatrix = m1.copy(this.matrixWorld)
       safeMatrixDecompose(plainMatrix, tempPos, tempQuat, tempScale)
-      _v1.copy(tempPos)
-      _q1.copy(tempQuat)
-      _v2.copy(tempScale)
       _v1.multiplyScalar(0.02) // for visible selection
       const scale = new PHYSX.PxMeshScale(new PHYSX.PxVec3(_v2.x, _v2.y, _v2.z), new PHYSX.PxQuat(0, 0, 0, 1))
       if (isConvex) {
@@ -237,10 +235,8 @@ export class Collider extends Node {
       this.shape.setQueryFilterData(filterData)
       this.shape.setSimulationFilterData(filterData)
     }
-    const plainPosition = new THREE.Vector3(this.position.x, this.position.y, this.position.z)
-    const plainScale = this.parent?.scale
-      ? new THREE.Vector3(this.parent.scale.x, this.parent.scale.y, this.parent.scale.z)
-      : new THREE.Vector3(1, 1, 1)
+    const plainPosition = _v1.copy(this.position)
+    const plainScale = this.parent?.scale ? _v2.copy(this.parent.scale) : _v2.set(1, 1, 1)
     const position: THREE.Vector3 = _v1.copy(plainPosition).multiply(plainScale)
     const pose = new PHYSX.PxTransform()
 

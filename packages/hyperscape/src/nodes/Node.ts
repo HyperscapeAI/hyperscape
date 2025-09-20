@@ -465,32 +465,32 @@ export class Node {
     return this._onPointerEnter
   }
 
-  set onPointerEnter(value) {
-    this._onPointerEnter = value
+  set onPointerEnter(value: ((event: Event) => void) | undefined) {
+    this._onPointerEnter = value as (event: PointerEvent) => void
   }
 
   get onPointerLeave() {
     return this._onPointerLeave
   }
 
-  set onPointerLeave(value) {
-    this._onPointerLeave = value
+  set onPointerLeave(value: ((event: Event) => void) | undefined) {
+    this._onPointerLeave = value as (event: PointerEvent) => void
   }
 
   get onPointerDown() {
     return this._onPointerDown
   }
 
-  set onPointerDown(value) {
-    this._onPointerDown = value
+  set onPointerDown(value: ((event: Event) => void) | undefined) {
+    this._onPointerDown = value as (event: PointerEvent) => void
   }
 
   get onPointerUp() {
     return this._onPointerUp
   }
 
-  set onPointerUp(value) {
-    this._onPointerUp = value
+  set onPointerUp(value: ((event: Event) => void) | undefined) {
+    this._onPointerUp = value as (event: PointerEvent) => void
   }
 
   get cursor() {

@@ -45,6 +45,8 @@ export class ResourceInteractionSystem extends SystemBase {
   private activeGathering: ActiveGathering | null = null;
   private raycaster = new THREE.Raycaster();
   private canvas: HTMLCanvasElement | null = null;
+  private _tempVec3 = new THREE.Vector3();
+  private _tempVec2 = new THREE.Vector2();
   
   constructor(world: World) {
     super(world, { 
@@ -247,7 +249,7 @@ export class ResourceInteractionSystem extends SystemBase {
     const x = ((screenX - rect.left) / rect.width) * 2 - 1;
     const y = -((screenY - rect.top) / rect.height) * 2 + 1;
     
-    this.raycaster.setFromCamera(new THREE.Vector2(x, y), this.world.camera);
+    this.raycaster.setFromCamera(this._tempVec2.set(x, y), this.world.camera);
     
     // First try raycasting against actual 3D objects in the scene
     const intersects = this.raycaster.intersectObjects(this.world.stage.scene.children, true);
@@ -268,7 +270,7 @@ export class ResourceInteractionSystem extends SystemBase {
     let closestDistance = Infinity;
     
     for (const resource of this.resources.values()) {
-      const resourcePos = new THREE.Vector3(
+      const resourcePos = this._tempVec3.set(
         resource.position.x,
         resource.position.y || 0,
         resource.position.z
@@ -353,7 +355,7 @@ export class ResourceInteractionSystem extends SystemBase {
     const playerPos = localPlayer.position;
     const treePos = resource.position;
     
-    const direction = new THREE.Vector3(
+    const direction = this._tempVec3.set(
       playerPos.x - treePos.x,
       0,
       playerPos.z - treePos.z

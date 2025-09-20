@@ -8,6 +8,10 @@ import type { World } from '../World';
 import type { NetworkSystem } from '../types/system-interfaces';
 import * as THREE from 'three';
 
+const _v3_1 = new THREE.Vector3()
+const _v3_2 = new THREE.Vector3()
+const _q_1 = new THREE.Quaternion()
+
 interface EntitySnapshot {
   id: string;
   position: Float32Array;
@@ -538,29 +542,29 @@ export class DeltaCompressionSystem extends System {
         const compressed = this.compressEntityState(
           entityData.id || '',
           {
-            position: new THREE.Vector3(
-              entityData.changes.p[0], 
-              entityData.changes.p[1], 
-              entityData.changes.p[2]
+            position: _v3_1.set(
+              entityData.changes.p[0],
+              entityData.changes.p[1],
+              entityData.changes.p[2],
             ),
-            rotation: entityData.changes.q ? 
-              new THREE.Quaternion(
-                entityData.changes.q[0], 
-                entityData.changes.q[1], 
-                entityData.changes.q[2], 
-                entityData.changes.q[3]
-              ) :
-              new THREE.Quaternion(),
-            velocity: entityData.changes.v ?
-              new THREE.Vector3(
-                entityData.changes.v[0], 
-                entityData.changes.v[1], 
-                entityData.changes.v[2]
-              ) :
-              new THREE.Vector3(),
-            state: entityData.changes.s || 0
+            rotation: entityData.changes.q
+              ? _q_1.set(
+                  entityData.changes.q[0],
+                  entityData.changes.q[1],
+                  entityData.changes.q[2],
+                  entityData.changes.q[3],
+                )
+              : _q_1.identity(),
+            velocity: entityData.changes.v
+              ? _v3_2.set(
+                  entityData.changes.v[0],
+                  entityData.changes.v[1],
+                  entityData.changes.v[2],
+                )
+              : _v3_2.set(0, 0, 0),
+            state: entityData.changes.s || 0,
           },
-          Date.now()
+          Date.now(),
         );
         
         if (compressed) {

@@ -90,7 +90,7 @@ export class UI extends Node implements HotReloadable {
   private _billboard: string = defaults.billboard
   private _pivot: string = defaults.pivot
   private _offset: THREE.Vector3
-  private _scaler: number[] | null = defaults.scaler
+  private _scaler: [number, number] | [number, number, number] | null = defaults.scaler
   private _pointerEvents: boolean = defaults.pointerEvents
   private _transparent: boolean = defaults.transparent
   private _backgroundColor: string | null = defaults.backgroundColor
@@ -225,7 +225,7 @@ export class UI extends Node implements HotReloadable {
         const onPointerEnter = (_e: PointerEvent) => {
           hit = {
             node: this,
-            coords: new THREE.Vector3(0, 0, 0),
+            coords: v5.set(0, 0, 0),
           }
           ;(world as { pointer?: { setScreenHit: (hit: unknown) => void } }).pointer?.setScreenHit(hit)
         }
@@ -726,7 +726,7 @@ export class UI extends Node implements HotReloadable {
     if (value && !isScaler(value)) {
       throw new Error('[ui] scaler not valid')
     }
-    this._scaler = value
+    this._scaler = value as [number, number] | [number, number, number] | null
   }
 
   get pointerEvents() {

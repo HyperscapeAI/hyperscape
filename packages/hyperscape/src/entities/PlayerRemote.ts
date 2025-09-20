@@ -338,8 +338,8 @@ export class PlayerRemote extends Entity implements HotReloadable {
         
         // The VRM scene has matrixAutoUpdate = false, so we need to update matrices manually
         // Create a temporary matrix - consider moving this to a class property for reuse
-        const worldMatrix = new THREE.Matrix4()
-        const tempScale = new THREE.Vector3(1, 1, 1)
+        const worldMatrix = m1
+        const tempScale = v1.set(1, 1, 1)
         worldMatrix.compose(
           this.node.position,
           this.node.quaternion,

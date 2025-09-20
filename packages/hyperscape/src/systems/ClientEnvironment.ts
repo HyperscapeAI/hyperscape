@@ -236,7 +236,7 @@ export class ClientEnvironment extends System {
     }
 
     if (this.csm) {
-      this.csm.lightDirection = sunDirection || new THREE.Vector3(0, -1, 0)
+      this.csm.lightDirection = sunDirection || _sunDirection
 
       if (this.csm.lights) {
         for (const light of this.csm.lights) {
@@ -257,7 +257,7 @@ export class ClientEnvironment extends System {
     this.skyInfo = {
       bgUrl,
       hdrUrl,
-      sunDirection: sunDirection || new THREE.Vector3(0, -1, 0),
+      sunDirection: sunDirection || _sunDirection,
       sunIntensity: sunIntensity || 1,
       sunColor: sunColor || '#ffffff',
       fogNear,
@@ -324,7 +324,7 @@ export class ClientEnvironment extends System {
         // },
         maxCascades: 3,
         maxFar: 100,
-        lightDirection: new THREE.Vector3(0, -1, 0).normalize(),
+        lightDirection: _sunDirection.clone().normalize(),
         fade: true,
         parent: scene,
         camera: camera,

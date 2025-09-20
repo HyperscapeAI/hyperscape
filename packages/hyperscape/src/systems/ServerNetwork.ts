@@ -81,6 +81,11 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     currentRotation?: THREE.Quaternion; // Track current rotation for smooth turning
     lastBroadcast?: number; // Track last broadcast time to throttle updates
   }> = new Map();
+  private _tempVec3_1 = new THREE.Vector3();
+  private _tempVec3_2 = new THREE.Vector3();
+  private _tempVec3_3 = new THREE.Vector3();
+  private _tempVec3_4 = new THREE.Vector3();
+  private _tempQuat = new THREE.Quaternion();
 
   // Add lastQuaternion per entity
   private lastStates = new Map(); // Add quaternion to lastState
@@ -262,12 +267,12 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       }
       
       // Calculate desired velocity
-      const direction = new THREE.Vector3(dx / distXZ, 0, dz / distXZ);
-      const desiredVelocity = direction.multiplyScalar(info.maxSpeed);
+      const direction = this._tempVec3_1.set(dx / distXZ, 0, dz / distXZ);
+      const desiredVelocity = this._tempVec3_2.copy(direction).multiplyScalar(info.maxSpeed);
       
       // Apply acceleration toward desired velocity
-      const velocityDiff = desiredVelocity.sub(info.velocity);
-      const acceleration = velocityDiff.normalize().multiplyScalar(ACCELERATION * dt);
+      const velocityDiff = this._tempVec3_3.subVectors(desiredVelocity, info.velocity);
+      const acceleration = this._tempVec3_4.copy(velocityDiff).normalize().multiplyScalar(ACCELERATION * dt);
       info.velocity.add(acceleration);
       
       // Apply braking when close to target
@@ -342,11 +347,11 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       
       // Smooth rotation: compute target rotation and interpolate
       let qArr: [number, number, number, number] | undefined;
-      const moveDir = new THREE.Vector3(dx, 0, dz);
+      const moveDir = this._tempVec3_1.set(dx, 0, dz);
       if (moveDir.lengthSq() > 1e-6) {
         moveDir.normalize();
-        const forward = new THREE.Vector3(0, 0, -1);
-        const targetRotation = new THREE.Quaternion().setFromUnitVectors(forward, moveDir);
+        const forward = this._tempVec3_2.set(0, 0, -1);
+        const targetRotation = this._tempQuat.setFromUnitVectors(forward, moveDir);
         
         // Initialize current rotation if not set
         if (!info.currentRotation) {
@@ -976,7 +981,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       return;
     }
     const maxSpeed = payload?.runMode ? 8 : 4; // units per second (faster to ensure visible replication)
-    const target = new THREE.Vector3(t[0], t[1], t[2]);
+    const target = this._tempVec3_1.set(t[0], t[1], t[2]);
     
     // Anchor Y to terrain height with proper offset
     const terrain = this.world.getSystem('terrain') as TerrainSystem | null;

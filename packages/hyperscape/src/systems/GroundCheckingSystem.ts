@@ -5,6 +5,12 @@ import { TerrainSystem } from './TerrainSystem'
 import { TransformComponent } from '../components/TransformComponent'
 import type { GroundCheckingSystemResult, GroundCheckingSystemEntity } from '../types/physics'
 
+const _groundCheckResult: GroundCheckingSystemResult = {
+  groundHeight: 0,
+  isValid: false,
+  correction: new THREE.Vector3(),
+}
+
 // Local type aliases for clarity
 type GroundCheckResult = GroundCheckingSystemResult
 type GroundCheckEntity = GroundCheckingSystemEntity
@@ -63,12 +69,11 @@ export class GroundCheckingSystem extends System {
     // Use terrain system
     const terrainSystem = this.world.getSystem<TerrainSystem>('terrain') as TerrainSystem
     const terrainHeight = terrainSystem.getHeightAt(worldPos.x, worldPos.z)
-    
-    return {
-      groundHeight: terrainHeight,
-      isValid: true,
-      correction: new THREE.Vector3(0, terrainHeight - worldPos.y, 0)
-    }
+
+    _groundCheckResult.groundHeight = terrainHeight
+    _groundCheckResult.isValid = true
+    _groundCheckResult.correction.set(0, terrainHeight - worldPos.y, 0)
+    return _groundCheckResult
   }
 
   /**
@@ -83,11 +88,10 @@ export class GroundCheckingSystem extends System {
 
     // If entity is significantly below or above ground, needs correction
     if (yDifference > 0.1) {
-      return {
-        groundHeight: groundResult.groundHeight,
-        isValid: true,
-        correction: new THREE.Vector3(0, targetY - currentY, 0)
-      }
+      _groundCheckResult.groundHeight = groundResult.groundHeight
+      _groundCheckResult.isValid = true
+      _groundCheckResult.correction.set(0, targetY - currentY, 0)
+      return _groundCheckResult
     }
 
     return null // No correction needed

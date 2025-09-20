@@ -55,7 +55,7 @@ let forceModes
 function getForceMode(mode) {
   if (!PHYSX) {
     console.warn('[rigidbody] PHYSX not initialized, cannot get force mode');
-    return null;
+    return 0;
   }
   if (!forceModes) {
     forceModes = {
@@ -380,22 +380,22 @@ export class RigidBody extends Node {
 
   addForce(force: THREE.Vector3, mode: string | number) {
     if (!this.actor || !PHYSX) return
-    const pxForce = new PHYSX.PxVec3(force.x, force.y, force.z)
+    const pxForce = _v1.set(force.x, force.y, force.z)
     const forceMode = getForceMode(mode) || 0
     const dyn = this.actor as unknown as { addForce?: (f: PxVec3, mode?: number) => void }
-    dyn.addForce?.(pxForce, forceMode)
+    dyn.addForce?.(pxForce as unknown as PxVec3, forceMode)
   }
 
   addForceAtPos(force: THREE.Vector3, pos: THREE.Vector3, mode: string | number) {
     if (!this.actor || !PHYSX) return
-    const pxForce = new PHYSX.PxVec3(force.x, force.y, force.z)
-    const pxPos = new PHYSX.PxVec3(pos.x, pos.y, pos.z)
+    const pxForce = _v1.set(force.x, force.y, force.z)
+    const pxPos = _v2.set(pos.x, pos.y, pos.z)
     const forceMode = getForceMode(mode) || 0
     if (PHYSX?.PxRigidBodyExt?.addForceAtPos) {
       PHYSX.PxRigidBodyExt.addForceAtPos(
         this.actor as PxRigidBody,
-        pxForce,
-        pxPos,
+        pxForce as PxVec3,
+        pxPos as PxVec3,
         forceMode,
         true
       )
@@ -404,14 +404,14 @@ export class RigidBody extends Node {
 
   addForceAtLocalPos(force: THREE.Vector3, pos: THREE.Vector3, mode: string | number) {
     if (!this.actor || !PHYSX) return
-    const pxForce = new PHYSX.PxVec3(force.x, force.y, force.z)
-    const pxPos = new PHYSX.PxVec3(pos.x, pos.y, pos.z)
+    const pxForce = _v1.set(force.x, force.y, force.z)
+    const pxPos = _v2.set(pos.x, pos.y, pos.z)
     const forceMode = getForceMode(mode) || 0
     if (PHYSX?.PxRigidBodyExt?.addForceAtLocalPos) {
       PHYSX.PxRigidBodyExt.addForceAtLocalPos(
         this.actor as PxRigidBody,
-        pxForce,
-        pxPos,
+        pxForce as PxVec3,
+        pxPos as PxVec3,
         forceMode,
         true
       )
@@ -420,10 +420,10 @@ export class RigidBody extends Node {
 
   addTorque(torque: THREE.Vector3, mode: string | number) {
     if (!this.actor || !PHYSX) return
-    const pxTorque = new PHYSX.PxVec3(torque.x, torque.y, torque.z)
+    const pxTorque = _v1.set(torque.x, torque.y, torque.z)
     const forceMode = getForceMode(mode) || 0
     const dyn = this.actor as unknown as { addTorque?: (t: PxVec3, mode?: number) => void }
-    dyn.addTorque?.(pxTorque, forceMode)
+    dyn.addTorque?.(pxTorque as unknown as PxVec3, forceMode)
   }
 
   getPosition(vec3?: THREE.Vector3) {
@@ -495,7 +495,7 @@ export class RigidBody extends Node {
     if (!PHYSX) return
     const set = (this.actor as unknown as { setLinearVelocity?: (v: PxVec3) => void }).setLinearVelocity
     if (set) {
-      const pxVec = new PHYSX.PxVec3(vec3.x, vec3.y, vec3.z) as PxVec3
+      const pxVec = _v1.set(vec3.x, vec3.y, vec3.z) as unknown as PxVec3
       set.call(this.actor as unknown as { setLinearVelocity: (v: PxVec3) => void }, pxVec)
     }
   }
@@ -517,15 +517,15 @@ export class RigidBody extends Node {
     if (!PHYSX) return
     const set = (this.actor as unknown as { setAngularVelocity?: (v: PxVec3) => void }).setAngularVelocity
     if (set) {
-      const pxVec = new PHYSX.PxVec3(vec3.x, vec3.y, vec3.z) as PxVec3
+      const pxVec = _v1.set(vec3.x, vec3.y, vec3.z) as unknown as PxVec3
       set.call(this.actor as unknown as { setAngularVelocity: (v: PxVec3) => void }, pxVec)
     }
   }
 
   getVelocityAtPos(pos: THREE.Vector3, vec3: THREE.Vector3) {
     if (!this.actor || !PHYSX) return vec3.set(0, 0, 0)
-    const pxPos = new PHYSX.PxVec3(pos.x, pos.y, pos.z);
-    const result = PHYSX?.PxRigidBodyExt?.getVelocityAtPos(this.actor as PxRigidBody, pxPos);
+    const pxPos = _v1.set(pos.x, pos.y, pos.z);
+    const result = PHYSX?.PxRigidBodyExt?.getVelocityAtPos(this.actor as PxRigidBody, pxPos as unknown as PxVec3);
     if (result && typeof result === 'object') {
       const vel = result as { x: number; y: number; z: number };
       vec3.set(vel.x || 0, vel.y || 0, vel.z || 0);
@@ -535,8 +535,8 @@ export class RigidBody extends Node {
 
   getLocalVelocityAtLocalPos(pos: THREE.Vector3, vec3: THREE.Vector3) {
     if (!this.actor || !PHYSX) return vec3.set(0, 0, 0)
-    const pxPos = new PHYSX.PxVec3(pos.x, pos.y, pos.z);
-    const result = PHYSX?.PxRigidBodyExt?.getLocalVelocityAtLocalPos(this.actor as PxRigidBody, pxPos);
+    const pxPos = _v1.set(pos.x, pos.y, pos.z);
+    const result = PHYSX?.PxRigidBodyExt?.getLocalVelocityAtLocalPos(this.actor as PxRigidBody, pxPos as unknown as PxVec3);
     if (result && typeof result === 'object') {
       const vel = result as { x: number; y: number; z: number };
       vec3.set(vel.x || 0, vel.y || 0, vel.z || 0);

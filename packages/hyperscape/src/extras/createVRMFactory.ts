@@ -107,13 +107,11 @@ export function createVRMFactory(glb: GLBData, setupMaterial?: (material: THREE.
   let height = 0.5 // minimum
   for (const mesh of skinnedMeshes) {
     if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox()
-    if (height < mesh.geometry.boundingBox!.max.y) {
-      height = mesh.geometry.boundingBox!.max.y
-    }
+    height = Math.max(height, mesh.geometry.boundingBox!.max.y)
   }
 
   // this.headToEyes = this.eyePosition.clone().sub(headPos)
-  const headPos = normBones.head?.node?.getWorldPosition(new THREE.Vector3()) || new THREE.Vector3()
+  const headPos = normBones.head?.node?.getWorldPosition(v1) || v1.set(0,0,0)
   const headToHeight = height - headPos.y
 
   const getBoneName = (vrmBoneName: string): string | undefined => {

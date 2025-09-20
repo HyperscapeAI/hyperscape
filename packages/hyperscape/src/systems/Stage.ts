@@ -43,6 +43,8 @@ export class Stage extends SystemBase {
   private raycastHits: unknown[] = [];
   private maskNone: THREE.Layers;
   private dirtyNodes: Set<unknown> = new Set();
+  private _tempVec2 = new THREE.Vector2();
+  private _tempVec3 = new THREE.Vector3();
 
   THREE?: typeof THREE;
 
@@ -341,7 +343,7 @@ export class Stage extends SystemBase {
     if (!this.viewport) throw new Error('no viewport');
     
     const rect = this.viewport.getBoundingClientRect();
-    const vec2 = new THREE.Vector2();
+    const vec2 = this._tempVec2;
     vec2.x = ((position.x - rect.left) / rect.width) * 2 - 1;
     vec2.y = -((position.y - rect.top) / rect.height) * 2 + 1;
     
@@ -451,7 +453,7 @@ export class Stage extends SystemBase {
     const skyNode = {
       _bg: skyData.bg ?? undefined,
       _hdr: skyData.hdr ?? undefined,
-      _sunDirection: skyData.sunDirection ? new THREE.Vector3(skyData.sunDirection[0], skyData.sunDirection[1], skyData.sunDirection[2]) : undefined,
+      _sunDirection: skyData.sunDirection ? this._tempVec3.set(skyData.sunDirection[0], skyData.sunDirection[1], skyData.sunDirection[2]).clone() : undefined,
       _sunIntensity: skyData.sunIntensity ?? undefined,
       _sunColor: skyData.sunColor ?? undefined,
       _fogNear: skyData.fogNear ?? undefined,

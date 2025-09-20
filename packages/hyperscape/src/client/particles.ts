@@ -12,6 +12,7 @@ const q1 = new THREE.Quaternion()
 const q2 = new THREE.Quaternion()
 const _q3 = new THREE.Quaternion()
 const m1 = new THREE.Matrix4()
+const m2 = new THREE.Matrix4()
 const color1 = new THREE.Color()
 
 const xAxis = new THREE.Vector3(1, 0, 0)
@@ -373,10 +374,10 @@ function createEmitter(config: EmitterConfig): ParticleEmitter {
           const lerpFactor = (i + 1) / (particlesToEmit + 1)
 
           // Create a position vector along the path
-          const emitPosition = new THREE.Vector3().copy(lastWorldPos).lerp(currWorldPos, lerpFactor)
+          const emitPosition = _v5.copy(lastWorldPos!).lerp(currWorldPos, lerpFactor)
 
           // Create a temporary matrix with this position
-          const tempMatrix = new THREE.Matrix4().copy(m1)
+          const tempMatrix = m2.copy(m1)
           tempMatrix.setPosition(emitPosition)
 
           // Emit a single particle at this position
@@ -459,10 +460,10 @@ function createEmitter(config: EmitterConfig): ParticleEmitter {
           // Calculate tangential direction
           v4.crossVectors(
             velocityOrbital.x > 0
-              ? new THREE.Vector3(1, 0, 0)
+              ? xAxis
               : velocityOrbital.y > 0
-                ? new THREE.Vector3(0, 1, 0)
-                : new THREE.Vector3(0, 0, 1),
+                ? yAxis
+                : zAxis,
             v3
           ).normalize()
           // Adjust velocity in the tangential direction

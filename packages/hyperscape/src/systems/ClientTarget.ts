@@ -3,6 +3,8 @@ import THREE from '../extras/three'
 import { System } from './System'
 import type { World, WorldOptions } from '../types'
 
+const _v3_1 = new THREE.Vector3()
+
 // Using built-in DOM types for DOMRect and HTMLDivElement
 // Minimal inline SVG for target indicator (kept local to avoid external deps)
 const targetSVG = `
@@ -58,7 +60,7 @@ export class ClientTarget extends System {
   lateUpdate() {
     if (!this.target) return
 
-    const vector = new THREE.Vector3().copy(this.target)
+    const vector = _v3_1.copy(this.target)
     vector.project(this.world.camera)
 
     const x = ((vector.x + 1) * (this.bounds?.width || 0)) / 2

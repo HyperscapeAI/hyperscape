@@ -41,8 +41,8 @@ export class SkinnedMesh extends Node implements HotReloadable {
     this._object3d = data.object3d ?? defaults.object3d
     this._animations = data.animations ?? defaults.animations
 
-    this.castShadow = data.castShadow
-    this.receiveShadow = data.receiveShadow
+    this.castShadow = data.castShadow ?? defaults.castShadow
+    this.receiveShadow = data.receiveShadow ?? defaults.receiveShadow
 
     this.clips = {}
     this.actions = {}

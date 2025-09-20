@@ -55,11 +55,11 @@ export class Audio extends Node {
     this.volume = data.volume ?? 1
     this.loop = data.loop ?? false
     this.group = data.group ?? 'sfx'
-    this.spatial = data.spatial ?? false
-    this.distanceModel = data.distanceModel ?? 'linear'
+    this.spatial = data.spatial ?? true
+    this.distanceModel = data.distanceModel ?? 'inverse'
     this.refDistance = data.refDistance ?? 1
-    this.maxDistance = data.maxDistance ?? 10000
-    this.rolloffFactor = data.rolloffFactor ?? 1
+    this.maxDistance = data.maxDistance ?? 40
+    this.rolloffFactor = data.rolloffFactor ?? 3
     this.coneInnerAngle = data.coneInnerAngle ?? 360
     this.coneOuterAngle = data.coneOuterAngle ?? 360
     this.coneOuterGain = data.coneOuterGain ?? 0

@@ -642,12 +642,8 @@ export abstract class VisualTestFramework extends SystemBase {
     })
     
     // Also add to world.entities.players for combat system compatibility
-    if (this.world.entities.players) {
-      this.world.entities.players.set(player.id, player);
-      Logger.system('VisualTestFramework', `Player ${player.id} registered in world.entities.players`);
-    } else {
-      Logger.systemError('VisualTestFramework', `world.entities.players not available for player ${player.id}`);
-    }
+    this.world.entities.players.set(player.id, player);
+    Logger.system('VisualTestFramework', `Player ${player.id} registered in world.entities.players`);
 
     return player
   }

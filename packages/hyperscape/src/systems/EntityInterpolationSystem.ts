@@ -8,6 +8,8 @@ import type { World } from '../World';
 import type { Entity } from '../entities/Entity';
 import * as THREE from 'three';
 
+const _v3_1 = new THREE.Vector3()
+
 interface PlayerEntity extends Entity {
   base?: {
     position: THREE.Vector3
@@ -222,7 +224,7 @@ export class EntityInterpolationSystem extends System {
     // Calculate velocity for extrapolation
     if (state.positions.length >= 2) {
       const secondLast = state.positions[state.positions.length - 2];
-      const velocity = new THREE.Vector3()
+      const velocity = _v3_1
         .subVectors(last.position, secondLast.position)
         .divideScalar((last.timestamp - secondLast.timestamp) / 1000);
       
