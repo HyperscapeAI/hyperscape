@@ -269,9 +269,7 @@ export class InteractionSystem extends SystemBase {
     this.canvas = canvas
 
     const terrainSystem = this.world.getSystem<TerrainSystem>('terrain')
-    if (terrainSystem) {
-      this.instancedMeshManager = terrainSystem.instancedMeshManager
-    }
+    this.instancedMeshManager = terrainSystem!.instancedMeshManager
 
     // Initialize DOM elements
     this.initializeDOMElements()
@@ -832,15 +830,38 @@ export class InteractionSystem extends SystemBase {
     const localPlayer = this.world.getPlayer()
     console.log(`[InteractionSystem] Local player:`, localPlayer ? `Found (id: ${localPlayer.id})` : 'NOT FOUND')
 
-    // Prefer ground/terrain for navigation raycasts; fall back to environment
-    const groundMask = this.world.createLayerMask('ground', 'terrain')
+    // Always raycast 10,000 meters (10km) to hit terrain anywhere on the map
+    // This ensures clicks on distant terrain still register properly
+    const RAYCAST_DISTANCE = 1000
+    
+    // Use terrain mask primarily, with environment as fallback
+    const terrainMask = this.world.createLayerMask('terrain')
+    const groundMask = this.world.createLayerMask('ground')
     const environmentMask = this.world.createLayerMask('environment')
-    // Combine with bitwise OR so either layer can be hit; logical OR would drop a valid zero mask
-    const movementMask = (groundMask | environmentMask) >>> 0
+    // Combine all masks - we want to hit terrain primarily but accept other geometry
+    const movementMask = (terrainMask | groundMask | environmentMask) >>> 0
+    
     this.logger.info(
-      `[Raycast Debug] Masks - ground/terrain=0x${groundMask.toString(16)}, environment=0x${environmentMask.toString(16)}, combined=0x${movementMask.toString(16)}`
+      `[Raycast Debug] Masks - terrain=0x${terrainMask.toString(16)}, ground=0x${groundMask.toString(16)}, environment=0x${environmentMask.toString(16)}, combined=0x${movementMask.toString(16)}`
     )
-    let physxHit = this.world.raycast(origin, direction, 5000, movementMask)
+    
+    // Try terrain-only first for best results
+    let physxHit = this.world.raycast(origin, direction, RAYCAST_DISTANCE, terrainMask)
+    
+    // If terrain didn't hit, try all movement masks
+    if (!physxHit) {
+      console.log('[Raycast Debug] Terrain raycast missed, trying combined mask')
+      physxHit = this.world.raycast(origin, direction, RAYCAST_DISTANCE, movementMask)
+    }
+    
+    // Debug: try with all layers if still no hit
+    if (!physxHit) {
+      console.log('[Raycast Debug] Combined mask missed, trying 0xFFFFFFFF')
+      physxHit = this.world.raycast(origin, direction, RAYCAST_DISTANCE, 0xFFFFFFFF)
+      if (physxHit) {
+        console.log('[Raycast Debug] Hit with 0xFFFFFFFF at:', physxHit.point)
+      }
+    }
 
     this.logger.info(`[Raycast Debug] PhysX raycast result (movementMask): ${physxHit ? 'hit' : 'null'}`)
     if (physxHit) {
@@ -877,18 +898,7 @@ export class InteractionSystem extends SystemBase {
         this.logger.info(
           `[Raycast Debug] PhysX hit at: x=${physxHit.point.x.toFixed(2)}, y=${physxHit.point.y.toFixed(2)}, z=${physxHit.point.z.toFixed(2)}`
         )
-        // Always project down to walkable ground beneath the hit to avoid walls/props
-        const downOrigin = new THREE.Vector3(targetPosition.x, Math.min(50, targetPosition.y + 20), targetPosition.z)
-        const downDir = new THREE.Vector3(0, -1, 0)
-        const snapMask = (groundMask | environmentMask) >>> 0
-        const snapHit = this.world.raycast(downOrigin, downDir, 500, snapMask)
-        if (snapHit && snapHit.point) {
-          targetPosition.set(snapHit.point.x, snapHit.point.y, snapHit.point.z)
-          hitMethod = `${hitMethod}+snap_down`
-          this.logger.info(
-            `[Raycast Debug] Snapped (physx) to ground at: x=${targetPosition.x.toFixed(2)}, y=${targetPosition.y.toFixed(2)}, z=${targetPosition.z.toFixed(2)}`
-          )
-        }
+        // Don't snap down - we'll use terrain heightmap later for accurate Y
       } else {
         this.logger.warn(
           `[Raycast Debug] PhysX returned invalid hit at (${physxHit.point.x}, ${physxHit.point.y}, ${physxHit.point.z}), trying fallback`
@@ -900,10 +910,25 @@ export class InteractionSystem extends SystemBase {
     }
 
     if (!targetPosition) {
-      this.logger.error(
-        `[Movement] No ground hit for click ox=${origin.x.toFixed?.(2) ?? origin.x}, oy=${origin.y.toFixed?.(2) ?? origin.y}, oz=${origin.z.toFixed?.(2) ?? origin.z}, dx=${direction.x.toFixed?.(3) ?? direction.x}, dy=${direction.y.toFixed?.(3) ?? direction.y}, dz=${direction.z.toFixed?.(3) ?? direction.z}`
-      )
-      return // Cancel movement when no proper ground hit
+      // For far away clicks, extend the ray to hit distant terrain
+      // Calculate a point far along the ray direction
+      const farPoint = origin.clone().add(direction.clone().multiplyScalar(RAYCAST_DISTANCE))
+      
+      // Project to terrain heightmap at the far point
+      const terrainSystem = this.world.getSystem<TerrainSystem>('terrain')
+      const terrainHeight = terrainSystem!.getHeightAt(farPoint.x, farPoint.z)
+      if (Number.isFinite(terrainHeight)) {
+        targetPosition = new THREE.Vector3(farPoint.x, terrainHeight + 0.1, farPoint.z)
+        hitMethod = 'terrain_projection'
+        this.logger.info(
+          `[Raycast Debug] No direct hit - projecting to terrain at (${farPoint.x.toFixed(2)}, ${(terrainHeight + 0.1).toFixed(2)}, ${farPoint.z.toFixed(2)})`
+        )
+      }
+      
+      if (!targetPosition) {
+        this.logger.error('[Movement] Failed to find any valid target position - no terrain hit and heightmap unavailable')
+        return
+      }
     }
 
     // Final validation: ensure a grounded target
@@ -940,28 +965,7 @@ export class InteractionSystem extends SystemBase {
       console.error(`[InteractionSystem] WARNING: Invalid Y position ${targetPosition.y}, clamping to 0`)
       targetPosition.y = 0
     }
-    
-    const terrainSystem = this.world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number }
-
-    // Additional safety check - if Y is unreasonably high, something went wrong
-    if (targetPosition.y > 100) {
-      console.error(`[InteractionSystem] WARNING: Target Y=${targetPosition.y} is suspiciously high!`)
-      console.error(`[InteractionSystem] Debug info:`, {
-        hitMethod,
-        originalHit: physxHit?.point,
-        terrainHeight: terrainSystem?.getHeightAt ? terrainSystem.getHeightAt(targetPosition.x, targetPosition.z) : 'N/A',
-        playerY: localPlayer?.position?.y
-      })
-      
-      // Try to use player's current Y as fallback
-      if (localPlayer?.position?.y && Number.isFinite(localPlayer.position.y)) {
-        targetPosition.y = localPlayer.position.y
-        console.warn(`[InteractionSystem] Using player's current Y=${localPlayer.position.y} as fallback`)
-      } else {
-        targetPosition.y = 0
-        console.warn(`[InteractionSystem] Using Y=0 as last resort fallback`)
-      }
-    }
+    // Additional safety check removed - we trust terrain heightmap
 
     // Use the localPlayer we already got earlier
     if (!localPlayer) return
@@ -974,27 +978,24 @@ export class InteractionSystem extends SystemBase {
     // Show debug cube at the exact raycast hit location
     this.showDebugCube(targetPosition)
 
-    // Force-ground Y: use terrain height if available; else one more physics snap
-    let grounded = false
-    if (terrainSystem?.getHeightAt) {
-      const terrainHeight = terrainSystem.getHeightAt(targetPosition.x, targetPosition.z)
+    // ALWAYS use terrain heightmap for final Y position
+    // This ensures the player always moves to the actual terrain height
+    const terrainSystemFinal = this.world.getSystem<TerrainSystem>('terrain')
+    if (terrainSystemFinal && terrainSystemFinal.getHeightAt) {
+      const terrainHeight = terrainSystemFinal.getHeightAt(targetPosition.x, targetPosition.z)
       if (Number.isFinite(terrainHeight)) {
-        targetPosition.y = (terrainHeight as number) + 0.1
-        grounded = true
+        const oldY = targetPosition.y
+        targetPosition.y = terrainHeight + 0.1
         this.logger.info(
-          `[InteractionSystem] Adjusted target Y to terrain height+offset: ${(terrainHeight + 0.1).toFixed(2)}`
+          `[InteractionSystem] Set target to terrain height: Y=${(terrainHeight + 0.1).toFixed(2)} (was ${oldY.toFixed(2)})`
+        )
+      } else {
+        this.logger.warn(
+          `[InteractionSystem] Terrain height not available at (${targetPosition.x.toFixed(2)}, ${targetPosition.z.toFixed(2)})`
         )
       }
-    }
-    if (!grounded) {
-      const downOrigin = new THREE.Vector3(targetPosition.x, targetPosition.y + 200, targetPosition.z)
-      const downDir = new THREE.Vector3(0, -1, 0)
-      const downMask = (groundMask | environmentMask) >>> 0
-      const fh = this.world.raycast(downOrigin, downDir, 100, downMask)
-      if (fh && fh.point) {
-        targetPosition.y = fh.point.y + 0.1
-        grounded = true
-      }
+    } else {
+      this.logger.warn('[InteractionSystem] TerrainSystem not available for height mapping')
     }
 
     // Pathfinding may be enabled for visualization, but MUST NOT influence movement target

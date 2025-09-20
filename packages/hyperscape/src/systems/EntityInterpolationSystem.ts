@@ -38,7 +38,7 @@ interface InterpolationState {
  */
 export class EntityInterpolationSystem extends System {
   private states: Map<string, InterpolationState> = new Map();
-  private interpolationDelay: number = 100; // ms - how far behind to render
+  private interpolationDelay: number = 150; // ms - how far behind to render (increased for smoother movement)
   private maxBufferSize: number = 20;
   private extrapolationLimit: number = 500; // ms - max extrapolation time
   
@@ -219,9 +219,9 @@ export class EntityInterpolationSystem extends System {
       const extrapolatedPos = last.position.clone()
         .add(velocity.multiplyScalar(extrapolationTime));
       
-      // Apply with smoothing
-      state.currentPosition.lerp(extrapolatedPos, 0.5);
-      state.currentRotation.slerp(last.rotation, 0.5);
+      // Apply with heavier smoothing to reduce jitter
+      state.currentPosition.lerp(extrapolatedPos, 0.2);
+      state.currentRotation.slerp(last.rotation, 0.2);
       
       this.applyPosition(entity, state.currentPosition, state.currentRotation);
     } else {
@@ -238,22 +238,26 @@ export class EntityInterpolationSystem extends System {
     position: THREE.Vector3,
     rotation: THREE.Quaternion
   ): void {
-    // Update entity position
+    // Apply additional smoothing for extra-smooth movement
+    const smoothingFactor = 0.2; // Lower = smoother but more delayed
+    
+    // Update entity position with smoothing
     if ('position' in entity) {
-      (entity.position as THREE.Vector3).copy(position);
+      const entityPos = entity.position as THREE.Vector3;
+      entityPos.lerp(position, smoothingFactor);
     }
     
-    // Update node
+    // Update node with smoothing
     if (entity.node) {
-      entity.node.position.copy(position);
-      entity.node.quaternion.copy(rotation);
+      entity.node.position.lerp(position, smoothingFactor);
+      entity.node.quaternion.slerp(rotation, smoothingFactor);
     }
     
-    // Update base if player
+    // Update base if player with smoothing
     const player = entity as PlayerEntity
     if (player.base) {
-      player.base.position.copy(position);
-      player.base.quaternion.copy(rotation);
+      player.base.position.lerp(position, smoothingFactor);
+      player.base.quaternion.slerp(rotation, smoothingFactor);
     }
     
     // Update physics if needed (but don't for remote entities)

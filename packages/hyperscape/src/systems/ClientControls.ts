@@ -618,7 +618,8 @@ export class ClientControls extends SystemBase {
 
   onScroll = (e) => {
     if (e.isCoreUI) return
-    e.preventDefault()
+    // Don't prevent default - let other systems handle scroll too
+    // e.preventDefault() // REMOVED to allow camera zoom
     let delta = e.shiftKey ? e.deltaX : e.deltaY
     if (!this.isMac) delta = -delta
     this.scroll.delta += delta

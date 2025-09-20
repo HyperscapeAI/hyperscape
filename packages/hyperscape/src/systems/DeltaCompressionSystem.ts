@@ -66,6 +66,8 @@ export class DeltaCompressionSystem extends System {
     const env = (typeof process !== 'undefined' ? (process.env || {}) : {}) as Record<string, string | undefined>;
     const gEnv = (globalThis as unknown as { env?: Record<string, string> }).env || {};
     const flag = env.DELTA_COMPRESSION ?? gEnv.DELTA_COMPRESSION;
+    // Disable delta compression for now - conflicts with interpolation system
+    // TODO: Integrate delta compression with interpolation for bandwidth savings
     this.enabled = false; // flag !== 'false';
   }
   
@@ -266,7 +268,7 @@ export class DeltaCompressionSystem extends System {
       offset += 2;
     }
     
-    // Apply velocity deltas
+    // Apply velocity values (absolute, not deltas)
     if (packet.fields & DeltaFields.VELOCITY_X) {
       result.velocity.x = view.getInt16(offset, true) / this.quantizationScale;
       offset += 2;
@@ -355,11 +357,11 @@ export class DeltaCompressionSystem extends System {
     }
     if (Math.abs(current.position[1] - base.position[1]) > posThreshold) {
       fields |= DeltaFields.POSITION_Y;
-      const delta = current.position[1] - base.position[1];
-      const quantized = Math.round(delta * this.quantizationScale);
-      const tempView = new DataView(new ArrayBuffer(4));
-      tempView.setInt32(0, quantized, true);
-      data.push(tempView.getUint8(0), tempView.getUint8(1), tempView.getUint8(2), tempView.getUint8(3));
+      const quantized = Math.round((current.position[1] - base.position[1]) * this.quantizationScale);
+      // Store as signed 16-bit integer (little-endian)
+      const tempView = new DataView(new ArrayBuffer(2));
+      tempView.setInt16(0, quantized, true);
+      data.push(tempView.getUint8(0), tempView.getUint8(1));
     }
     if (Math.abs(current.position[2] - base.position[2]) > posThreshold) {
       fields |= DeltaFields.POSITION_Z;
