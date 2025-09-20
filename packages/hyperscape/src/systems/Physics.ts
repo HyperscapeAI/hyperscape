@@ -838,9 +838,10 @@ export class Physics extends SystemBase implements IPhysics {
     this.scene.fetchResults(true);
     
     // Log physics step periodically
-    if (Math.random() < 0.01) { // Log ~1% of frames
-      console.log(`[Physics] Stepping physics with delta=${delta.toFixed(4)}`);
-    }
+    // Commented out verbose physics stepping log
+    // if (Math.random() < 0.01) { // Log ~1% of frames
+    //   console.log(`[Physics] Stepping physics with delta=${delta.toFixed(4)}`);
+    // }
     if (this.processContactCallbacks) this.processContactCallbacks();
     if (this.processTriggerCallbacks) this.processTriggerCallbacks();
     

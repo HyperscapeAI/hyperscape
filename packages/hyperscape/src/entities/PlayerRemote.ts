@@ -337,33 +337,36 @@ export class PlayerRemote extends Entity implements HotReloadable {
         const avatarScene = instanceWithRaw.raw.scene
         
         // The VRM scene has matrixAutoUpdate = false, so we need to update matrices manually
+        // Create a temporary matrix - consider moving this to a class property for reuse
         const worldMatrix = new THREE.Matrix4()
+        const tempScale = new THREE.Vector3(1, 1, 1)
         worldMatrix.compose(
           this.node.position,
           this.node.quaternion,
-          new THREE.Vector3(1, 1, 1)
+          tempScale
         )
         
         // Set both matrix and matrixWorld since auto update is disabled
         avatarScene.matrix.copy(worldMatrix)
         avatarScene.matrixWorld.copy(worldMatrix)
         
-        // Debug logging occasionally
-        if (Math.random() < 0.01) {
-          console.log('[PlayerRemote] Moving avatar:', {
-            id: this.id,
-            nodePos: this.node.position.toArray(),
-            avatarMatrixWorld: avatarScene.matrixWorld.elements.slice(12, 15), // Translation part
-            matrixAutoUpdate: avatarScene.matrixAutoUpdate
-          })
-        }
+        // Debug logging disabled to prevent memory pressure
+        // Uncomment for debugging remote avatar movement
+        // if (Math.random() < 0.001) {  // 0.1% chance
+        //   console.log('[PlayerRemote] Moving avatar:', {
+        //     id: this.id,
+        //     nodePos: this.node.position.toArray(),
+        //     avatarMatrixWorld: avatarScene.matrixWorld.elements.slice(12, 15), // Translation part
+        //     matrixAutoUpdate: avatarScene.matrixAutoUpdate
+        //   })
+        // }
       }
       
       // Update avatar animations
       if (instance && instance.update) {
         instance.update(delta)
       }
-    } else if (Math.random() < 0.001) {
+    } else if (Math.random() < 0.0001) {  // Reduced frequency to 0.01%
       console.warn(`[PlayerRemote] No avatar instance for ${this.id}`)
     }
 

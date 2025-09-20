@@ -201,7 +201,7 @@ export class ItemPickupSystem extends SystemBase {
    */
   private handlePlayerLeave(event: PlayerLeavePayload): void {
     // Player left - clean up any player-specific item data
-    console.log(`[ItemPickupSystem] Player left: ${event.playerId}`);
+    // console.log(`[ItemPickupSystem] Player left: ${event.playerId}`);
   }
 
   /**

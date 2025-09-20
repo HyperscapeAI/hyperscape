@@ -85,7 +85,7 @@ export class WorldGenerationSystem extends SystemBase {
    */
   private onPlayerLeave(data: { playerId: string }): void {
     // Player left - could clean up player-specific world content
-    Logger.system('WorldGenerationSystem', `Player ${data.playerId} left the world`);
+    // Logger.system('WorldGenerationSystem', `Player ${data.playerId} left the world`);
     // Could clean up or save player-specific world state
   }
 

@@ -515,9 +515,10 @@ export class PlayerLocal extends Entity implements HotReloadable {
       }
       
       // Log Y position periodically for debugging
-      if (Math.abs(this.position.y) > 5) {
-        console.log(`[PlayerLocal] Y position check: ${this.position.y.toFixed(2)} (server: ${this.serverPosition?.y?.toFixed(2) || 'N/A'})`);
-      }
+      // Commented out verbose Y position logging
+      // if (Math.abs(this.position.y) > 5) {
+      //   console.log(`[PlayerLocal] Y position check: ${this.position.y.toFixed(2)} (server: ${this.serverPosition?.y?.toFixed(2) || 'N/A'})`);
+      // }
       
       // Check for large divergence from server
       if (this.serverPosition) {
@@ -1653,9 +1654,10 @@ export class PlayerLocal extends Entity implements HotReloadable {
         }
         
         // Log significant movement
-        if (moved > 0.01) {
-          console.log(`[PlayerLocal] Position updated from physics: moved ${moved.toFixed(3)} to (${physicsPos.x.toFixed(2)}, ${physicsPos.y.toFixed(2)}, ${physicsPos.z.toFixed(2)})`)
-        }
+        // Commented out verbose position update logging
+        // if (moved > 0.01) {
+        //   console.log(`[PlayerLocal] Position updated from physics: moved ${moved.toFixed(3)} to (${physicsPos.x.toFixed(2)}, ${physicsPos.y.toFixed(2)}, ${physicsPos.z.toFixed(2)})`)
+        // }
         
         // Update avatar instance position from base transform
         // NOTE: This is required because the VRM factory doesn't automatically track the base node
@@ -1801,7 +1803,6 @@ export class PlayerLocal extends Entity implements HotReloadable {
       this.running = this.runMode && this.stamina > 0
       // We're moving - choose walk or run animation
       newEmote = this.running ? 'run' : 'walk';
-      console.log(`[PlayerLocal] Moving detected - setting emote to: ${newEmote}`)
       // RS3-style stamina: drain while running; regen otherwise handled when idle below
       const deltaSeconds = delta
       if (this.running) {
@@ -1820,11 +1821,13 @@ export class PlayerLocal extends Entity implements HotReloadable {
       // Rotate base (and thus avatar) to face movement direction ONLY while actively moving
       // Important: Check this.moving instead of moveDir.length() to prevent rotation after stopping
       if (this.base && this.moving && this.moveDir.length() > 0) {
-        const forward = new THREE.Vector3(0, 0, -1)
-        const targetQuaternion = new THREE.Quaternion().setFromUnitVectors(forward, this.moveDir.normalize())
+        // Use pre-allocated temporary vectors from top of file
+        v1.set(0, 0, -1)  // forward
+        v3.copy(this.moveDir).normalize()  // normalized move direction
+        q1.setFromUnitVectors(v1, v3)  // targetQuaternion
 
         // Only rotate if angle delta is meaningful to reduce tiny jitter
-        const dotRaw = this.base.quaternion.dot(targetQuaternion)
+        const dotRaw = this.base.quaternion.dot(q1)
         const dot = Math.min(1, Math.max(-1, dotRaw))
         const angle = 2 * Math.acos(Math.abs(dot))
 
@@ -1840,13 +1843,13 @@ export class PlayerLocal extends Entity implements HotReloadable {
           }
           factor = Math.min(maxFactor, Math.max(minFactor, factor))
 
-          this.base.quaternion.slerp(targetQuaternion, factor)
+          this.base.quaternion.slerp(q1, factor)
 
           // Sync lastState and node quaternion to prevent fighting
           this.lastState.q?.copy(this.base.quaternion)
           this.node.quaternion.copy(this.base.quaternion)
         }
-        this.node.quaternion.slerp(targetQuaternion, delta * 10)
+        this.node.quaternion.slerp(q1, delta * 10)
       }
     } else {
       // Not moving - use idle animation
@@ -1932,27 +1935,28 @@ export class PlayerLocal extends Entity implements HotReloadable {
       
       if (avatarScene) {
         // The VRM scene has matrixAutoUpdate = false, so we need to update matrices manually
-        const worldMatrix = new THREE.Matrix4()
-        worldMatrix.compose(
+        // Use pre-allocated temporary matrix from top of file
+        _m1.compose(
           this.node.position,
           this.node.quaternion,
-          new THREE.Vector3(1, 1, 1)
+          _SCALE_IDENTITY  // Use pre-allocated scale vector
         )
         
         // Set both matrix and matrixWorld since auto update is disabled
-        avatarScene.matrix.copy(worldMatrix)
-        avatarScene.matrixWorld.copy(worldMatrix)
+        avatarScene.matrix.copy(_m1)
+        avatarScene.matrixWorld.copy(_m1)
         
-        // Debug logging every 100 frames
-        if (Math.random() < 0.01) {
-          console.log('[PlayerLocal] Moving avatar:', {
-            nodePos: this.node.position.toArray(),
-            avatarMatrixWorld: avatarScene.matrixWorld.elements.slice(12, 15), // Translation part
-            avatarParent: avatarScene.parent?.name || 'NO PARENT',
-            matrixAutoUpdate: avatarScene.matrixAutoUpdate
-          })
-        }
-      } else if (Math.random() < 0.01) {
+        // Debug logging disabled to prevent memory pressure
+        // Uncomment for debugging avatar movement issues
+        // if (Math.random() < 0.001) {  // 0.1% chance
+        //   console.log('[PlayerLocal] Moving avatar:', {
+        //     nodePos: this.node.position.toArray(),
+        //     avatarMatrixWorld: avatarScene.matrixWorld.elements.slice(12, 15),
+        //     avatarParent: avatarScene.parent?.name || 'NO PARENT',
+        //     matrixAutoUpdate: avatarScene.matrixAutoUpdate
+        //   })
+        // }
+      } else if (Math.random() < 0.001) {  // Reduced frequency
         console.error('[PlayerLocal] No avatar scene found to move!')
       }
       
@@ -1961,15 +1965,15 @@ export class PlayerLocal extends Entity implements HotReloadable {
         instance.update(delta)
       }
       
-      // Debug logging (reduced frequency)
-      if (Math.random() < 0.005) { // 0.5% chance per frame
-        if (instanceWithRaw?.raw?.scene) {
-          const avatarScene = instanceWithRaw.raw.scene
-          const worldPos = new THREE.Vector3()
-          avatarScene.getWorldPosition(worldPos)
-          console.log(`[PlayerLocal] Avatar Y=${worldPos.y.toFixed(2)}, Base Y=${this.base.position.y.toFixed(2)}, Parent: ${avatarScene.parent?.name || 'NONE'}`)
-        }
-      }
+      // Debug logging disabled to prevent memory pressure
+      // Uncomment for debugging avatar positioning issues
+      // if (Math.random() < 0.0001) { // 0.01% chance per frame
+      //   if (instanceWithRaw?.raw?.scene) {
+      //     const avatarScene = instanceWithRaw.raw.scene
+      //     avatarScene.getWorldPosition(v1)
+      //     console.log(`[PlayerLocal] Avatar Y=${v1.y.toFixed(2)}, Base Y=${this.base.position.y.toFixed(2)}, Parent: ${avatarScene.parent?.name || 'NONE'}`)
+      //   }
+      // }
     }
     
     this.sendNetworkUpdate()
@@ -2031,8 +2035,10 @@ export class PlayerLocal extends Entity implements HotReloadable {
     this.position.copy(position)
     if (hasRotation && this.base) {
       // Apply yaw in quaternion space to base and keep node aligned
-      const yawQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotationY!)
-      this.base.quaternion.copy(yawQuat)
+      // Use pre-allocated temporary vectors
+      v1.set(0, 1, 0)  // up vector
+      q1.setFromAxisAngle(v1, rotationY!)
+      this.base.quaternion.copy(q1)
       this.node.quaternion.copy(this.base.quaternion)
     }
     // send network update
@@ -2123,8 +2129,9 @@ export class PlayerLocal extends Entity implements HotReloadable {
     rotationY?: number
   }): void {
     if (event.playerId === this.data.id) {
-      const pos = new THREE.Vector3(event.position.x, event.position.y, event.position.z)
-      this.teleport(pos, event.rotationY || 0)
+      // Use pre-allocated temporary vector
+      v1.set(event.position.x, event.position.y, event.position.z)
+      this.teleport(v1, event.rotationY || 0)
     }
   }
 

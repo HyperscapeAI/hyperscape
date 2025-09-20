@@ -197,7 +197,8 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     this.moveTargets.forEach((info, playerId) => {
       const entity = this.world.entities.get(playerId);
       if (!entity) {
-        console.warn(`[ServerNetwork] No entity found for player ${playerId}, removing from move targets`);
+        // Only log if debugging network issues
+        // console.warn(`[ServerNetwork] No entity found for player ${playerId}, removing from move targets`);
         toDelete.push(playerId);
         return;
       }
@@ -319,10 +320,11 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       // Apply position update - handle both entity.position and entity.node.position
       if (entity.position && entity.position.set) {
         entity.position.set(nx, ny, nz);
-        console.log(`[ServerNetwork] Updated entity ${playerId} position to (${nx.toFixed(1)}, ${ny.toFixed(1)}, ${nz.toFixed(1)})`);
+        // Commented out verbose position logging
+        // console.log(`[ServerNetwork] Updated entity ${playerId} position to (${nx.toFixed(1)}, ${ny.toFixed(1)}, ${nz.toFixed(1)})`);
       } else if (entity.node && entity.node.position && entity.node.position.set) {
         entity.node.position.set(nx, ny, nz);
-        console.log(`[ServerNetwork] Updated entity ${playerId} node.position to (${nx.toFixed(1)}, ${ny.toFixed(1)}, ${nz.toFixed(1)})`);
+        // console.log(`[ServerNetwork] Updated entity ${playerId} node.position to (${nx.toFixed(1)}, ${ny.toFixed(1)}, ${nz.toFixed(1)})`);
       } else {
         console.error(`[ServerNetwork] Cannot set position for entity ${playerId} - no position property!`);
       }
@@ -442,8 +444,8 @@ export class ServerNetwork extends System implements NetworkWithSocket {
 
   onDisconnect(socket: Socket, code?: number | string): void {
     // Handle socket disconnection
-      // Use world logger if available via SystemBase in future refactor; keep minimal console for server context
-      console.log(`[ServerNetwork] Socket ${socket.id} disconnected with code:`, code);
+      // Only log disconnects if debugging connection issues
+      // console.log(`[ServerNetwork] Socket ${socket.id} disconnected with code:`, code);
     
     // Remove socket from our tracking
     this.sockets.delete(socket.id);

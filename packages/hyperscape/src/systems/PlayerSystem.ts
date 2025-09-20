@@ -86,7 +86,8 @@ export class PlayerSystem extends SystemBase {
     const terrainSystem = this.world.getSystem<TerrainSystem>('terrain')
     const finalPosition = new THREE.Vector3(data.position.x, data.position.y, data.position.z);
     
-    console.log(`[PlayerSystem] Spawn request received for ${data.playerId} at:`, data.position);
+    // Reduced logging - only log errors, not every spawn
+    // console.log(`[PlayerSystem] Spawn request received for ${data.playerId} at:`, data.position);
     
     if (!terrainSystem) {
       console.error('[PlayerSystem] CRITICAL: TerrainSystem not found!');
@@ -100,7 +101,7 @@ export class PlayerSystem extends SystemBase {
         // We need a method isPhysicsReadyAt on TerrainSystem
         // Assuming it exists for now. If not, this will need to be added.
         if (terrainSystem.isPhysicsReadyAt(data.position.x, data.position.z)) {
-          console.log(`[PlayerSystem] Terrain physics is ready for player ${data.playerId}.`);
+          // console.log(`[PlayerSystem] Terrain physics is ready for player ${data.playerId}.`);
           break;
         }
         await new Promise(resolve => setTimeout(resolve, 50));
@@ -111,20 +112,20 @@ export class PlayerSystem extends SystemBase {
       }
       
       const height = terrainSystem.getHeightAt(data.position.x, data.position.z);
-      console.log(`[PlayerSystem] Terrain height at (${data.position.x}, ${data.position.z}):`, height);
+      // console.log(`[PlayerSystem] Terrain height at (${data.position.x}, ${data.position.z}):`, height);
       
       if (typeof height === 'number' && isFinite(height)) {
         const oldY = finalPosition.y;
         // Spawn well above terrain to avoid clipping
         finalPosition.y = height + 2.0;
-        console.log(`[PlayerSystem] Adjusted spawn height from Y=${oldY} to Y=${finalPosition.y} (terrain=${height})`);
+        // console.log(`[PlayerSystem] Adjusted spawn height from Y=${oldY} to Y=${finalPosition.y} (terrain=${height})`);
       } else {
         console.error(`[PlayerSystem] Invalid terrain height: ${height} - using safe default Y=50`);
         finalPosition.y = 50; // Safe height above most terrain
       }
     }
     
-    console.log(`[PlayerSystem] Final spawn position for ${data.playerId}:`, { x: finalPosition.x, y: finalPosition.y, z: finalPosition.z });
+    // console.log(`[PlayerSystem] Final spawn position for ${data.playerId}:`, { x: finalPosition.x, y: finalPosition.y, z: finalPosition.z });
 
     // Server-authoritative: clamp to terrain height map explicitly
     const terrainHeight = terrainSystem.getHeightAt(finalPosition.x, finalPosition.z)
@@ -135,14 +136,14 @@ export class PlayerSystem extends SystemBase {
     const entity = this.world.entities.get(data.playerId);
     if (entity) {
       entity.node.position.set(finalPosition.x, groundedY, finalPosition.z);
-      console.log(`[PlayerSystem] Directly set entity node position to Y=${finalPosition.y}`);
+      // console.log(`[PlayerSystem] Directly set entity node position to Y=${finalPosition.y}`);
       
       // Force update data.position for serialization
       if (entity.data && Array.isArray(entity.data.position)) {
         entity.data.position[0] = finalPosition.x;
         entity.data.position[1] = groundedY;
         entity.data.position[2] = finalPosition.z;
-        console.log(`[PlayerSystem] Updated entity.data.position to:`, entity.data.position);
+        // console.log(`[PlayerSystem] Updated entity.data.position to:`, entity.data.position);
       }
     } else {
       console.error(`[PlayerSystem] CRITICAL: Entity ${data.playerId} not found in entities system!`);
@@ -162,7 +163,7 @@ export class PlayerSystem extends SystemBase {
 
   private onPlayerRegister(data: { playerId: string }): void {
     // For now, just log the registration - PlayerLocal reference will be handled elsewhere
-    console.log('[PlayerSystem] onPlayerRegister called with data:', data, 'playerId:', data?.playerId);
+    // console.log('[PlayerSystem] onPlayerRegister called with data:', data, 'playerId:', data?.playerId);
     if (!data?.playerId) {
       console.error('[PlayerSystem] ERROR: playerId is undefined in registration data!', data);
     }
@@ -254,7 +255,8 @@ export class PlayerSystem extends SystemBase {
 
   async onPlayerLeave(data: PlayerLeaveEvent): Promise<void> {
     try {
-      Logger.system('PlayerSystem', `Player leaving: ${data.playerId}`);
+      // Only log player leaves if debugging
+      // Logger.system('PlayerSystem', `Player leaving: ${data.playerId}`);
 
       // Save player data before removal
       if (this.databaseSystem && this.players.has(data.playerId)) {
@@ -272,7 +274,7 @@ export class PlayerSystem extends SystemBase {
       this.respawnTimers.delete(data.playerId);
     }
 
-    Logger.system('PlayerSystem', 'Player cleanup completed');
+    // Logger.system('PlayerSystem', 'Player cleanup completed');
     } catch (error) {
       Logger.systemError('PlayerSystem', `Error handling player leave for ${data.playerId}`, 
         error instanceof Error ? error : new Error('Unknown error')
