@@ -186,6 +186,13 @@ const m3 = new THREE.Matrix4()
 // Removed unused interface: PlayerState
 
 export class PlayerLocal extends Entity implements HotReloadable {
+  private smoothedBasePos = new THREE.Vector3()
+  // RS3-style run energy
+  public stamina: number = 100
+  // Tunable RS-style stamina rates (percent per second). Adjust to match desired feel exactly.
+  private readonly staminaDrainPerSecond: number = 2   // drain while running
+  private readonly staminaRegenWhileWalkingPerSecond: number = 2 // regen while walking
+  private readonly staminaRegenPerSecond: number = 4  // regen while idle
   // Implement HotReloadable interface
   hotReload?(): void {
     // Implementation for hot reload functionality
@@ -196,7 +203,6 @@ export class PlayerLocal extends Entity implements HotReloadable {
   alive: boolean = true;
   // Player interface properties (separate from Entity properties to avoid conflicts)
   private _playerHealth: PlayerHealth = { current: 100, max: 100 };
-  stamina: PlayerStamina = { current: 100, max: 100 };
   skills: Skills = { 
     attack: { level: 1, xp: 0 }, 
     strength: { level: 1, xp: 0 }, 
@@ -228,7 +234,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
       name: this.data.name || 'Unknown Player',
       health: this._playerHealth,
       alive: this.alive,
-      stamina: this.stamina,
+      stamina: { current: this.stamina, max: 100 },
       position: { x: this.position.x, y: this.position.y, z: this.position.z },
       skills: this.skills,
       equipment: this.equipment,
@@ -1243,8 +1249,8 @@ export class PlayerLocal extends Entity implements HotReloadable {
       console.log(`[PlayerLocal] Current position: x=${this.position.x.toFixed(2)}, y=${this.position.y.toFixed(2)}, z=${this.position.z.toFixed(2)}`)
       console.log(`[PlayerLocal] Base position: x=${this.base?.position.x.toFixed(2)}, y=${this.base?.position.y.toFixed(2)}, z=${this.base?.position.z.toFixed(2)}`)
       this.clickMoveTarget = new THREE.Vector3(target.x, target.y, target.z)
-      // Use the current run mode setting
-      this.running = this.runMode
+      // Use the current run mode setting, but only if stamina is available
+      this.running = this.runMode && this.stamina > 0
       console.log(`[PlayerLocal] Mode: ${this.runMode ? 'RUN' : 'WALK'}`)
       console.log(`[PlayerLocal] Target set successfully`)
     } else {
@@ -1884,10 +1890,17 @@ export class PlayerLocal extends Entity implements HotReloadable {
         const prevPos = this.position.clone()
         const moved = prevPos.distanceTo(physicsPos)
 
-        // Mirror physics pose to entity/base as a fallback to ensure camera/rig sync
+        // Mirror physics pose to entity for logic
         this.position.copy(physicsPos)
+        // Smooth the visual base to reduce jitter while preserving physics accuracy
         if (this.base) {
-          this.base.position.copy(physicsPos)
+          if (this.smoothedBasePos.lengthSq() === 0) {
+            this.smoothedBasePos.copy(physicsPos)
+          } else {
+            const alpha = 0.25
+            this.smoothedBasePos.lerp(physicsPos, alpha)
+          }
+          this.base.position.copy(this.smoothedBasePos)
         }
         
         // Log significant movement
@@ -2001,12 +2014,28 @@ export class PlayerLocal extends Entity implements HotReloadable {
           if (!Number.isFinite(h)) {
             throw new Error(`[PlayerLocal] Invalid terrain height during movement at (${this.position.x.toFixed(2)}, ${this.position.z.toFixed(2)})`);
           }
-          const desiredY = (h as number) + 0.1;
+          // Compute model-aware clearance: use avatar bounding box height if available
+          let clearance = 0.2
+          if (this._avatar && (this._avatar as any).instance?.raw?.scene) {
+            const sceneObj = (this._avatar as any).instance.raw.scene as THREE.Object3D
+            const box = new THREE.Box3().setFromObject(sceneObj)
+            const height = Math.max(0, box.max.y - box.min.y)
+            // Assume feet at ~0 and slight pad to avoid clipping
+            clearance = Math.min(0.35, Math.max(0.2, height * 0.01))
+          }
+          const desiredY = (h as number) + clearance;
           const yDelta = desiredY - this.position.y;
-          if (Math.abs(yDelta) > 0.2) {
+          // Gentle ground-follow to avoid jitter when going up/down hills
+          // Blend Y toward ground and cap per-frame adjustment to avoid snaps
+          const needsAdjust = Math.abs(yDelta) > 0.01;
+          if (needsAdjust) {
             const pose = this.capsule.getGlobalPose();
             if (pose && pose.p) {
-              pose.p.y = desiredY;
+              // Allow at most 0.35 units per update; blend by 25% toward target for snappier but smooth adjust
+              const blend = 0.25;
+              const maxStep = 0.35;
+              const step = THREE.MathUtils.clamp(yDelta * blend, -maxStep, maxStep);
+              pose.p.y = this.position.y + step;
               this.capsuleHandle?.snap(pose);
             }
             const vel = this.capsule.getLinearVelocity();
@@ -2029,26 +2058,51 @@ export class PlayerLocal extends Entity implements HotReloadable {
     let newEmote = 'idle'; // Default to idle
     
     if (this.moving) {
+      // Honor run toggle immediately while moving (and stamina availability)
+      this.running = this.runMode && this.stamina > 0
       // We're moving - choose walk or run animation
       newEmote = this.running ? 'run' : 'walk';
       console.log(`[PlayerLocal] Moving detected - setting emote to: ${newEmote}`)
+      // RS3-style stamina: drain while running; regen otherwise handled when idle below
+      const deltaSeconds = delta
+      if (this.running) {
+        this.stamina = THREE.MathUtils.clamp(this.stamina - this.staminaDrainPerSecond * deltaSeconds, 0, 100)
+        if (this.stamina <= 0) {
+          // When energy depletes, force walk and turn off the run toggle (RS3-like behavior)
+          this.running = false
+          this.runMode = false
+          newEmote = 'walk'
+        }
+      } else {
+        // Walking: regenerate stamina
+        this.stamina = THREE.MathUtils.clamp(this.stamina + this.staminaRegenWhileWalkingPerSecond * deltaSeconds, 0, 100)
+      }
       
       // Rotate base (and thus avatar) to face movement direction ONLY while actively moving
       // Important: Check this.moving instead of moveDir.length() to prevent rotation after stopping
       if (this.base && this.moving && this.moveDir.length() > 0) {
         const forward = new THREE.Vector3(0, 0, -1)
         const targetQuaternion = new THREE.Quaternion().setFromUnitVectors(forward, this.moveDir.normalize())
-        
+
         // Only rotate if angle delta is meaningful to reduce tiny jitter
-        const dot = this.base.quaternion.clone().dot(targetQuaternion)
-        const angle = 2 * Math.acos(Math.min(1, Math.max(-1, Math.abs(dot))))
-        
-        // Increased threshold to 0.02 radians (~1 degree) to reduce micro-jitter
+        const dotRaw = this.base.quaternion.dot(targetQuaternion)
+        const dot = Math.min(1, Math.max(-1, dotRaw))
+        const angle = 2 * Math.acos(Math.abs(dot))
+
+        // Threshold to avoid micro-jitter
         if (angle > 0.02) {
-          // Smoother rotation with reduced speed to prevent shaking
-          // Using 0.03 for very smooth turns (was 0.06)
-          this.base.quaternion.slerp(targetQuaternion, 0.03)
-          
+          // Angle-based slerp factor for brisk, RS3-like turning
+          // Larger angles turn faster; smaller angles remain smooth
+          const minFactor = 0.08
+          const maxFactor = 0.28
+          let factor = (angle / Math.PI) * 0.5 + 0.05
+          if (angle > 2.1) { // ~120° or more: accelerate turn-in
+            factor += 0.07
+          }
+          factor = Math.min(maxFactor, Math.max(minFactor, factor))
+
+          this.base.quaternion.slerp(targetQuaternion, factor)
+
           // Sync lastState and node quaternion to prevent fighting
           this.lastState.q?.copy(this.base.quaternion)
           this.node.quaternion.copy(this.base.quaternion)
@@ -2057,6 +2111,9 @@ export class PlayerLocal extends Entity implements HotReloadable {
     } else {
       // Not moving - use idle animation
       newEmote = 'idle';
+      // Idle: regenerate faster
+      const deltaSeconds = delta
+      this.stamina = THREE.MathUtils.clamp(this.stamina + this.staminaRegenPerSecond * deltaSeconds, 0, 100)
       // Do not enforce any rotation while idle to avoid fighting other systems
     }
     

@@ -44,6 +44,7 @@ export function Interface({ world }: { world: World }) {
   const [showInventory, setShowInventory] = useState(false)
   const [showBank, setShowBank] = useState(false)
   const [showStore, setShowStore] = useState(false)
+  const [showSkills, setShowSkills] = useState(false)
   const [bankData, setBankData] = useState<BankEntityData & { items: BankItem[] } | null>(null)
   const [storeData, setStoreData] = useState<StoreData | null>(null)
   const [contextMenu, setContextMenu] = useState<{
@@ -162,6 +163,30 @@ export function Interface({ world }: { world: World }) {
       setStoreData(null)
     }
 
+    // Open panes from global UI events (RS-style sidebar tabs)
+    const handleOpenPane = (raw: unknown) => {
+      const data = raw as { pane?: string | null }
+      if (!data) return
+      switch (data.pane) {
+        case 'skills':
+          // handled by Sidebar unified panel
+          setShowSkills(false)
+          break
+        case 'inventory':
+          // handled by Sidebar unified panel
+          setShowInventory(false)
+          break
+        case 'prefs':
+          // handled by Sidebar; nothing to do here
+          break
+        case null:
+        case 'close':
+          setShowSkills(false)
+          setShowInventory(false)
+          break
+      }
+    }
+
     const handleContextMenu = (rawData: unknown) => {
       const data = rawData as {
         x: number
@@ -225,6 +250,7 @@ export function Interface({ world }: { world: World }) {
     typedWorld.on(EventType.STORE_CLOSE, handleStoreClose)
     // Removed STORE_INTERFACE_UPDATE - UI updates reactively to STORE_BUY/STORE_SELL events
     typedWorld.on(EventType.UI_CONTEXT_MENU, handleContextMenu)
+    typedWorld.on(EventType.UI_OPEN_PANE, handleOpenPane)
     typedWorld.on(EventType.COMBAT_DAMAGE_DEALT, handleCombatEvent)
     typedWorld.on(EventType.COMBAT_HEAL, handleCombatEvent)
     typedWorld.on(EventType.SKILLS_XP_GAINED, handleCombatEvent)
@@ -259,6 +285,7 @@ export function Interface({ world }: { world: World }) {
       typedWorld.off(EventType.STORE_CLOSE, handleStoreClose)
       // Removed STORE_INTERFACE_UPDATE listener cleanup
       typedWorld.off(EventType.UI_CONTEXT_MENU, handleContextMenu)
+      typedWorld.off(EventType.UI_OPEN_PANE, handleOpenPane)
       typedWorld.off(EventType.COMBAT_DAMAGE_DEALT, handleCombatEvent)
       typedWorld.off(EventType.COMBAT_HEAL, handleCombatEvent)
       typedWorld.off(EventType.SKILLS_XP_GAINED, handleCombatEvent)
@@ -305,7 +332,7 @@ export function Interface({ world }: { world: World }) {
                 attack: { level: 1, xp: 0 },
                 strength: { level: 1, xp: 0 },
                 defense: { level: 1, xp: 0 },
-                constitution: { level: 1, xp: 0 },
+                constitution: { level: 10, xp: 0 },
                 ranged: { level: 1, xp: 0 },
                 woodcutting: { level: 1, xp: 0 },
                 fishing: { level: 1, xp: 0 },
@@ -334,16 +361,9 @@ export function Interface({ world }: { world: World }) {
 
   return (
     <>
-      {playerStats && <Hud stats={playerStats} />}
-      {showInventory && (
-        <UnifiedInventoryEquipment
-          items={inventory}
-          equipment={equipment}
-          stats={playerStats}
-          onClose={() => setShowInventory(false)}
-          world={world}
-        />
-      )}
+      {/* HUD removed; replaced by minimap/side panel */}
+      {/* Skills now lives in right sidebar panel */}
+      {/* Inventory/Equipment panel moved to right sidebar */}
       {showBank && bankData && (
         <Bank
           data={bankData}
@@ -383,115 +403,185 @@ export function Interface({ world }: { world: World }) {
           world={world}
         />
       )}
-      <ButtonPanel
-        onInventoryClick={() => setShowInventory(!showInventory)}
-        showInventory={showInventory}
-        world={world}
-      />
+      {/* ButtonPanel removed; replaced by minimap tabs in Sidebar */}
       <DamageNumbers damageNumbers={damageNumbers} />
-      <Hotbar stats={playerStats} inventory={inventory} world={world} />
       <InteractionHandler world={world} />
     </>
   )
 }
+// RuneScape-style Skills Panel
+function SkillsPanel({ stats, onClose }: { stats: PlayerStats & {
+  id: string
+  name: string
+  stamina: number
+  maxStamina: number
+  xp: number
+  maxXp: number
+  coins: number
+  combatStyle: 'attack' | 'strength' | 'defense' | 'ranged'
+}; onClose: () => void }) {
+  const skills = [
+    { key: 'attack', label: 'Attack', icon: '⚔️' },
+    { key: 'strength', label: 'Strength', icon: '💪' },
+    { key: 'defense', label: 'Defense', icon: '🛡️' },
+    { key: 'ranged', label: 'Ranged', icon: '🏹' },
+    { key: 'constitution', label: 'Constitution', icon: '❤️' },
+    { key: 'woodcutting', label: 'Woodcutting', icon: '🪓' },
+    { key: 'fishing', label: 'Fishing', icon: '🎣' },
+    { key: 'firemaking', label: 'Firemaking', icon: '🔥' },
+    { key: 'cooking', label: 'Cooking', icon: '🍳' },
+  ] as const
 
-// Button Panel Component (Bottom-Right UI)
-function ButtonPanel({
-  onInventoryClick,
-  showInventory,
-  world: _world,
-}: {
-  onInventoryClick: () => void
-  showInventory: boolean
-  world: World
-}) {
-  const buttonStyle = {
-    width: '3rem',
-    height: '3rem',
-    background: 'rgba(11, 10, 21, 0.9)',
-    border: '0.0625rem solid #2a2b39',
-    borderRadius: '0.375rem',
-    color: '#ffffff',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '1.25rem',
-    fontWeight: 'bold',
-    backdropFilter: 'blur(5px)',
-    transition: 'all 0.2s ease',
-  }
+  const totalLevel = skills.reduce((sum, s) => sum + (stats.skills?.[s.key as keyof typeof stats.skills]?.level ?? 1), 0)
 
-  const activeButtonStyle = {
-    ...buttonStyle,
-    background: 'rgba(59, 130, 246, 0.8)',
-    borderColor: '#3b82f6',
-    boxShadow: '0 0 10px rgba(59, 130, 246, 0.5)',
+  // Dynamic positioning under minimap
+  const [panelPos, setPanelPos] = useState<{ top: number; right: number }>({ top: 96, right: 16 })
+  useEffect(() => {
+    const compute = () => {
+      const mm = document.querySelector('.minimap') as HTMLElement | null
+      if (!mm) {
+        setPanelPos({ top: 96, right: 16 })
+        return
+      }
+      const rect = mm.getBoundingClientRect()
+      const top = rect.bottom + 8
+      const right = Math.max(8, window.innerWidth - rect.right + 0)
+      setPanelPos({ top, right })
+    }
+    compute()
+    window.addEventListener('resize', compute)
+    const id = window.setInterval(compute, 500) // track layout changes
+    return () => { window.removeEventListener('resize', compute); window.clearInterval(id) }
+  }, [])
+
+  // Hover tooltip with XP and next level
+  const [hoverInfo, setHoverInfo] = useState<{ label: string; xp: number; level: number } | null>(null)
+  const [mouse, setMouse] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+
+  const getXpForLevel = (level: number): number => {
+    // RuneScape/OSRS XP curve up to 120: standard formula to 99
+    let points = 0
+    for (let lvl = 1; lvl < level; lvl++) {
+      points += Math.floor(lvl + 300 * Math.pow(2, lvl / 7))
+    }
+    return Math.floor(points / 4)
   }
 
   return (
     <div
-      className="rpg-button-panel"
+      className="rpg-skills"
       style={{
         position: 'fixed',
-        bottom: 'calc(1rem + env(safe-area-inset-bottom))',
-        right: 'calc(1rem + env(safe-area-inset-right))',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.5rem',
+        top: panelPos.top,
+        right: panelPos.right,
+        width: '17rem',
+        background: 'rgba(11, 10, 21, 0.94)',
+        border: '0.0625rem solid #2a2b39',
+        borderRadius: '0.5rem',
+        padding: '0.75rem',
         pointerEvents: 'auto',
-        zIndex: 100,
+        backdropFilter: 'blur(5px)',
+        zIndex: 90,
       }}
+      onMouseMove={(e) => setMouse({ x: e.clientX, y: e.clientY })}
     >
-      {/* Inventory Button */}
-      <button
-        onClick={onInventoryClick}
-        style={showInventory ? activeButtonStyle : buttonStyle}
-        onMouseEnter={(e) => {
-          if (!showInventory) {
-            e.currentTarget.style.background = 'rgba(11, 10, 21, 0.95)'
-            e.currentTarget.style.borderColor = '#3b82f6'
-            e.currentTarget.style.transform = 'scale(1.05)'
-          }
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '0.5rem',
         }}
-        onMouseLeave={(e) => {
-          if (!showInventory) {
-            e.currentTarget.style.background = 'rgba(11, 10, 21, 0.9)'
-            e.currentTarget.style.borderColor = '#2a2b39'
-            e.currentTarget.style.transform = 'scale(1)'
-          }
-        }}
-        title="Inventory (I)"
       >
-        🎒
-      </button>
+        <h3 style={{ margin: 0, fontSize: '1rem' }}>Skills</h3>
+        <button
+          onClick={onClose}
+          style={{
+            background: '#ef4444',
+            border: 'none',
+            borderRadius: '0.25rem',
+            color: 'white',
+            padding: '0.25rem 0.5rem',
+            cursor: 'pointer',
+            fontSize: '0.75rem',
+          }}
+        >
+          Close
+        </button>
+      </div>
 
-      {/* Settings Button */}
-      <button
-        style={buttonStyle}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = 'rgba(11, 10, 21, 0.95)'
-          e.currentTarget.style.borderColor = '#3b82f6'
-          e.currentTarget.style.transform = 'scale(1.05)'
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = 'rgba(11, 10, 21, 0.9)'
-          e.currentTarget.style.borderColor = '#2a2b39'
-          e.currentTarget.style.transform = 'scale(1)'
-        }}
-        title="Settings"
-        onClick={() => {
-          const player = _world.getPlayer()
-          if (!player) return
-          // Open the preferences pane in the sidebar
-          _world.emit(EventType.UI_OPEN_PANE, { pane: 'prefs' })
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '0.35rem',
         }}
       >
-        ⚙️
-      </button>
+        {skills.map(({ key, label, icon }) => {
+          const level = stats.skills?.[key as keyof typeof stats.skills]?.level ?? 1
+          const xp = stats.skills?.[key as keyof typeof stats.skills]?.xp ?? 0
+          const nextLevel = Math.min(120, level + 1)
+          const nextXp = getXpForLevel(nextLevel)
+          const curLevelXp = getXpForLevel(level)
+          const toNext = Math.max(0, nextXp - xp)
+          return (
+            <div
+              key={key}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                background: 'rgba(0,0,0,0.35)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '0.375rem',
+                padding: '0.35rem 0.5rem',
+                cursor: 'default',
+              }}
+              onMouseEnter={() => setHoverInfo({ label, xp, level })}
+              onMouseLeave={() => setHoverInfo(null)}
+            >
+              <div style={{ fontSize: '1rem', width: '1.5rem', textAlign: 'center' }}>{icon}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '0.85rem' }}>
+                <span>{label}</span>
+                <span>{level}/{level}</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#9ca3af', textAlign: 'right' }}>
+        Total level: {totalLevel}
+      </div>
+
+      {hoverInfo && (
+        <div
+          style={{
+            position: 'fixed',
+            left: mouse.x + 12,
+            top: mouse.y + 12,
+            background: 'rgba(20,20,28,0.98)',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: '0.375rem',
+            padding: '0.5rem 0.6rem',
+            color: '#fff',
+            pointerEvents: 'none',
+            fontSize: '0.8rem',
+            zIndex: 200,
+            maxWidth: '16rem'
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>{hoverInfo.label}</div>
+          <div style={{ opacity: 0.9 }}>XP: {Math.floor(hoverInfo.xp).toLocaleString()}</div>
+          <div style={{ opacity: 0.9 }}>Next level at: {getXpForLevel(Math.min(120, hoverInfo.level + 1)).toLocaleString()} xp</div>
+          <div style={{ opacity: 0.9 }}>Remaining: {(getXpForLevel(Math.min(120, hoverInfo.level + 1)) - Math.floor(hoverInfo.xp)).toLocaleString()} xp</div>
+        </div>
+      )}
     </div>
   )
 }
+
+// ButtonPanel removed (function deleted)
 
 // HUD Component
 function Hud({ stats }: { stats: PlayerStats & {
@@ -575,32 +665,7 @@ function Hud({ stats }: { stats: PlayerStats & {
         </div>
       </div>
       
-      {/* Stamina Bar */}
-      <div style={{ marginBottom: '0.5rem' }}>
-        <div style={{ fontSize: '0.875rem', marginBottom: '0.125rem', display: 'flex', justifyContent: 'space-between' }}>
-          <span>Stamina</span>
-          <span>{stats.stamina}/{stats.maxStamina}</span>
-        </div>
-        <div
-          style={{
-            width: '100%',
-            height: '1rem',
-            background: 'rgba(0, 0, 0, 0.5)',
-            borderRadius: '0.25rem',
-            overflow: 'hidden',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-          }}
-        >
-          <div
-            style={{
-              width: `${staminaPercent}%`,
-              height: '100%',
-              background: `linear-gradient(90deg, ${staminaColor}, ${staminaColor}dd)`,
-              transition: 'width 0.3s ease-out',
-            }}
-          />
-        </div>
-      </div>
+      {/* Stamina Bar removed - now shown on minimap */}
       
       {/* XP Bar */}
       <div style={{ marginBottom: '0.5rem' }}>
@@ -629,16 +694,7 @@ function Hud({ stats }: { stats: PlayerStats & {
         </div>
       </div>
       
-      {/* Quick Skills Display */}
-      <div style={{ marginTop: '0.75rem' }}>
-        <div style={{ fontSize: '0.875rem', marginBottom: '0.25rem', color: '#9ca3af' }}>Combat Skills</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem', fontSize: '0.8rem' }}>
-          <div>ATK: {stats.skills?.attack?.level || 0}</div>
-          <div>STR: {stats.skills?.strength?.level || 0}</div>
-          <div>DEF: {stats.skills?.defense?.level || 0}</div>
-          <div>RNG: {stats.skills?.ranged?.level || 0}</div>
-        </div>
-      </div>
+      {/* Skills summary removed; open full panel via Skills button */}
     </div>
   )
 }

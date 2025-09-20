@@ -19,6 +19,10 @@ interface DiagnosticReport {
   moving?: boolean
   clickTarget?: { x: number; z: number } | null
   errors?: string[]
+  camera?: {
+    position: { x: number; y: number; z: number } | null
+    spherical?: { radius: number; phi: number; theta: number }
+  }
 }
 
 async function captureScreenshot(page: Page, name: string) {
@@ -128,6 +132,21 @@ async function extractDiagnostics(page: Page): Promise<DiagnosticReport> {
       report.clickTarget = null
     }
     
+    // Camera info (from client-camera-system)
+    try {
+      const camSys = (world as any).getSystem?.('client-camera-system') || (world as any)['client-camera-system']
+      if (camSys && typeof camSys.getCameraInfo === 'function') {
+        const info = camSys.getCameraInfo()
+        report.camera = {
+          position: info.position ? { x: info.position[0], y: info.position[1], z: info.position[2] } : null,
+          spherical: info.spherical
+        }
+      } else if ((world as any).camera) {
+        const c = (world as any).camera
+        report.camera = { position: { x: c.position.x, y: c.position.y, z: c.position.z } }
+      }
+    } catch {}
+
     return report
   })
 }
@@ -283,6 +302,50 @@ test.describe('Client Movement and Avatar Tests', () => {
     } else {
       console.log('✅ Movement successful')
     }
+  })
+
+  test('Camera orbit with middle-drag changes yaw/pitch and zoom clamps', async () => {
+    // Ensure loaded
+    await page.waitForTimeout(1000)
+
+    const before = await extractDiagnostics(page)
+    const beforeTheta = before.camera?.spherical?.theta ?? 0
+    const beforePhi = before.camera?.spherical?.phi ?? 0
+
+    // Perform a middle-drag to orbit
+    const box = await page.locator('canvas').boundingBox()
+    if (!box) throw new Error('Canvas not found')
+    const cx = box.x + box.width * 0.5
+    const cy = box.y + box.height * 0.5
+
+    await page.mouse.move(cx, cy)
+    await page.mouse.down({ button: 'middle' })
+    await page.mouse.move(cx + 120, cy - 80)
+    await page.mouse.up({ button: 'middle' })
+
+    await page.waitForTimeout(200)
+    const after = await extractDiagnostics(page)
+    const afterTheta = after.camera?.spherical?.theta ?? 0
+    const afterPhi = after.camera?.spherical?.phi ?? 0
+
+    // Expect both yaw and pitch to change meaningfully
+    expect(Math.abs(afterTheta - beforeTheta)).toBeGreaterThan(0.05)
+    expect(Math.abs(afterPhi - beforePhi)).toBeGreaterThan(0.02)
+
+    // Zoom in then out and ensure clamping
+    await page.mouse.move(cx, cy)
+    await page.mouse.wheel(0, -400) // zoom in
+    await page.waitForTimeout(50)
+    const zIn = await extractDiagnostics(page)
+    const rIn = zIn.camera?.spherical?.radius ?? 0
+    await page.mouse.wheel(0, 2000) // zoom out a lot
+    await page.waitForTimeout(50)
+    const zOut = await extractDiagnostics(page)
+    const rOut = zOut.camera?.spherical?.radius ?? 0
+
+    // Radius must stay within [~2.5, ~15]
+    expect(rIn).toBeGreaterThan(2.4)
+    expect(rOut).toBeLessThan(15.1)
   })
 
   test('Remote player appears with avatar and moves when local moves', async () => {

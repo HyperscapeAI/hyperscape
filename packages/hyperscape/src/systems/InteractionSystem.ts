@@ -52,11 +52,18 @@ export class InteractionSystem extends SystemBase {
   private camera!: THREE.Camera;
   private canvas!: HTMLCanvasElement;
   
+  // RS3-like: limit how far a player can click-to-move from current position per click
+  // This prevents setting extremely distant targets in one click
+  private readonly maxClickDistance = 100; // world units (~100 paces)
+  
   // Interaction state
   private hoveredEntity: InteractableEntity | null = null;
   private selectedEntity: InteractableEntity | null = null;
   private interactables = new Map<string, InteractableEntity>();
   private isDragging = false;
+  private mouseDownButton: number | null = null;
+  private mouseDownClientPos: { x: number; y: number } | null = null;
+  private readonly dragThresholdPx = 5;
   private actionMenu: HTMLElement | null = null;
   private tooltip: HTMLElement | null = null;
 
@@ -342,6 +349,15 @@ export class InteractionSystem extends SystemBase {
     this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
+    // Drag detection for right-click to suppress context menu during orbit
+    if (this.mouseDownButton !== null && this.mouseDownClientPos) {
+      const dx = event.clientX - this.mouseDownClientPos.x;
+      const dy = event.clientY - this.mouseDownClientPos.y;
+      if (!this.isDragging && (Math.abs(dx) > this.dragThresholdPx || Math.abs(dy) > this.dragThresholdPx)) {
+        this.isDragging = true;
+      }
+    }
+
     // Update raycaster and ensure camera is set (required for sprites)
     this.raycaster.camera = this.camera;
     this.raycaster.setFromCamera(this.mouse, this.camera);
@@ -434,6 +450,14 @@ export class InteractionSystem extends SystemBase {
   private onRightClick(event: MouseEvent): void {
     event.preventDefault();
     
+    // If user dragged with RMB (orbit), do not open menu
+    if (this.isDragging) {
+      this.isDragging = false;
+      this.mouseDownButton = null;
+      this.mouseDownClientPos = null;
+      return;
+    }
+
     this.updateMousePosition(event);
     const target = this.performRaycast();
 
@@ -451,6 +475,8 @@ export class InteractionSystem extends SystemBase {
   private onMouseDown(_event: MouseEvent): void {
     // Can be used for drag detection or other mouse down specific logic
     this.isDragging = false;
+    this.mouseDownButton = _event.button;
+    this.mouseDownClientPos = { x: _event.clientX, y: _event.clientY };
   }
 
   /**
@@ -459,6 +485,8 @@ export class InteractionSystem extends SystemBase {
   private onMouseUp(_event: MouseEvent): void {
     // Reset dragging state
     this.isDragging = false;
+    this.mouseDownButton = null;
+    this.mouseDownClientPos = null;
   }
 
   /**
@@ -926,7 +954,20 @@ export class InteractionSystem extends SystemBase {
     // Show debug cube at the exact raycast hit location
     this.showDebugCube(targetPosition);
 
-    // Ensure target Y is at terrain height
+    // Limit max click distance from player (XZ plane), RS3-style
+    const playerPos = (localPlayer as any).position as THREE.Vector3;
+    if (playerPos) {
+      const flatDir = new THREE.Vector3(targetPosition.x - playerPos.x, 0, targetPosition.z - playerPos.z);
+      const dist = flatDir.length();
+      if (dist > this.maxClickDistance) {
+        flatDir.normalize().multiplyScalar(this.maxClickDistance);
+        targetPosition.x = playerPos.x + flatDir.x;
+        targetPosition.z = playerPos.z + flatDir.z;
+        this.logger.info(`[InteractionSystem] Clamped click-to-move distance to ${this.maxClickDistance} units`);
+      }
+    }
+
+    // Ensure target Y is at terrain height after any clamping
     const terrainSystem = this.world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number };
     if (terrainSystem?.getHeightAt) {
       const terrainHeight = terrainSystem.getHeightAt(targetPosition.x, targetPosition.z);
@@ -951,7 +992,7 @@ export class InteractionSystem extends SystemBase {
       }
     }
     
-    // Expose last raycast target for testing/diagnostics
+    // Expose last raycast target for testing/diagnostics (after clamping)
     if (typeof window !== 'undefined') {
       (window as any).__lastRaycastTarget = { x: targetPosition.x, y: targetPosition.y, z: targetPosition.z, method: hitMethod };
     }
@@ -1070,22 +1111,7 @@ export class InteractionSystem extends SystemBase {
     
     this.scene?.add(targetIndicator);
 
-    // Animate and remove after delay
-    let opacity = 0.8;
-    const fadeOut = () => {
-      opacity -= 0.02;
-      targetMaterial.opacity = opacity;
-      
-      if (opacity > 0) {
-        requestAnimationFrame(fadeOut);
-      } else {
-        this.scene?.remove(targetIndicator);
-        targetGeometry.dispose();
-        targetMaterial.dispose();
-      }
-    };
-    
-    setTimeout(fadeOut, 2000); // Start fading after 2 seconds
+    // Persist until arrival; removal handled when reaching destination
   }
 
   /**
