@@ -41,6 +41,7 @@ export class EntityInterpolationSystem extends System {
   private interpolationDelay: number = 150; // ms - how far behind to render (increased for smoother movement)
   private maxBufferSize: number = 20;
   private extrapolationLimit: number = 500; // ms - max extrapolation time
+  private lastAlpha: number = 0; // Store alpha for smooth interpolation
   
   constructor(world: World) {
     super(world);
@@ -125,9 +126,18 @@ export class EntityInterpolationSystem extends System {
   }
   
   /**
-   * Update interpolation for all entities
+   * Store the alpha value for use in lateUpdate
+   * This runs AFTER physics interpolation
    */
-  override update(_delta: number): void {
+  override preUpdate(alpha: number): void {
+    this.lastAlpha = alpha;
+  }
+  
+  /**
+   * Update interpolation for all entities
+   * Now runs in lateUpdate to avoid conflicts with physics
+   */
+  override lateUpdate(delta: number): void {
     const now = performance.now();
     const renderTime = now - this.interpolationDelay;
     
@@ -135,8 +145,8 @@ export class EntityInterpolationSystem extends System {
       const entity = this.world.entities.get(entityId);
       if (!entity) continue;
       
-      // Interpolate or extrapolate position
-      this.updateEntityPosition(entity, state, renderTime, now);
+      // Interpolate or extrapolate position with frame-independent smoothing
+      this.updateEntityPosition(entity, state, renderTime, now, delta);
     }
   }
   
@@ -147,13 +157,14 @@ export class EntityInterpolationSystem extends System {
     entity: Entity,
     state: InterpolationState,
     renderTime: number,
-    now: number
+    now: number,
+    delta: number
   ): void {
     if (state.positions.length < 2) {
       // Not enough data to interpolate
       if (state.positions.length === 1) {
         // Just use the single position
-        this.applyPosition(entity, state.positions[0].position, state.positions[0].rotation);
+        this.applyPosition(entity, state.positions[0].position, state.positions[0].rotation, delta);
       }
       return;
     }
@@ -178,10 +189,10 @@ export class EntityInterpolationSystem extends System {
       state.currentPosition.lerpVectors(older.position, newer.position, t);
       state.currentRotation.slerpQuaternions(older.rotation, newer.rotation, t);
       
-      this.applyPosition(entity, state.currentPosition, state.currentRotation);
+      this.applyPosition(entity, state.currentPosition, state.currentRotation, delta);
     } else {
       // Need to extrapolate
-      this.extrapolatePosition(entity, state, renderTime, now);
+      this.extrapolatePosition(entity, state, renderTime, now, delta);
     }
   }
   
@@ -192,7 +203,8 @@ export class EntityInterpolationSystem extends System {
     entity: Entity,
     state: InterpolationState,
     renderTime: number,
-    now: number
+    now: number,
+    delta: number
   ): void {
     if (state.positions.length === 0) return;
     
@@ -203,7 +215,7 @@ export class EntityInterpolationSystem extends System {
     const timeSinceLastUpdate = now - state.lastUpdate;
     if (timeSinceLastUpdate > this.extrapolationLimit) {
       // Too old, just use last position
-      this.applyPosition(entity, last.position, last.rotation);
+      this.applyPosition(entity, last.position, last.rotation, delta);
       return;
     }
     
@@ -223,10 +235,10 @@ export class EntityInterpolationSystem extends System {
       state.currentPosition.lerp(extrapolatedPos, 0.2);
       state.currentRotation.slerp(last.rotation, 0.2);
       
-      this.applyPosition(entity, state.currentPosition, state.currentRotation);
+      this.applyPosition(entity, state.currentPosition, state.currentRotation, delta);
     } else {
       // Just use last position
-      this.applyPosition(entity, last.position, last.rotation);
+      this.applyPosition(entity, last.position, last.rotation, delta);
     }
   }
   
@@ -236,10 +248,13 @@ export class EntityInterpolationSystem extends System {
   private applyPosition(
     entity: Entity,
     position: THREE.Vector3,
-    rotation: THREE.Quaternion
+    rotation: THREE.Quaternion,
+    delta: number
   ): void {
-    // Apply additional smoothing for extra-smooth movement
-    const smoothingFactor = 0.2; // Lower = smoother but more delayed
+    // Frame-independent smoothing
+    // Convert smoothing rate from "per second" to "per frame"
+    const smoothingRate = 8.0; // Higher = snappier, lower = smoother
+    const smoothingFactor = 1.0 - Math.exp(-smoothingRate * delta);
     
     // Update entity position with smoothing
     if ('position' in entity) {
