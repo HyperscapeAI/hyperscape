@@ -1001,7 +1001,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     
     // Get or create movement info
     const existingInfo = this.moveTargets.get(playerEntity.id);
-    const velocity = existingInfo?.velocity || new THREE.Vector3(0, 0, 0);
+    const velocity = existingInfo?.velocity || this._tempVec3_2.set(0, 0, 0);
     const currentRotation = existingInfo?.currentRotation || 
       (playerEntity.node?.quaternion ? playerEntity.node.quaternion.clone() : undefined);
     

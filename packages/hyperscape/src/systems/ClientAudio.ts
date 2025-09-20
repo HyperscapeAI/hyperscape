@@ -105,23 +105,16 @@ export class ClientAudio extends System {
   lateUpdate(delta: number) {
     const target = this.world.rig
     const dir = v1.set(0, 0, -1).applyQuaternion(target.quaternion)
-    if (this.audioListener.positionX) {
-      // https://github.com/mrdoob/three.js/blob/master/src/audio/AudioListener.js
-      // code path for Chrome (see three#14393)
-      const endTime = this.ctx.currentTime + delta * 2
-      this.audioListener.positionX.linearRampToValueAtTime(target.position.x, endTime)
-      this.audioListener.positionY.linearRampToValueAtTime(target.position.y, endTime)
-      this.audioListener.positionZ.linearRampToValueAtTime(target.position.z, endTime)
-      this.audioListener.forwardX.linearRampToValueAtTime(dir.x, endTime)
-      this.audioListener.forwardY.linearRampToValueAtTime(dir.y, endTime)
-      this.audioListener.forwardZ.linearRampToValueAtTime(dir.z, endTime)
-      this.audioListener.upX.linearRampToValueAtTime(up.x, endTime)
-      this.audioListener.upY.linearRampToValueAtTime(up.y, endTime)
-      this.audioListener.upZ.linearRampToValueAtTime(up.z, endTime)
-    } else {
-      this.audioListener.setPosition(target.position.x, target.position.y, target.position.z)
-      this.audioListener.setOrientation(dir.x, dir.y, dir.z, up.x, up.y, up.z)
-    }
+    const endTime = this.ctx.currentTime + delta * 2
+    this.audioListener.positionX.linearRampToValueAtTime(target.position.x, endTime)
+    this.audioListener.positionY.linearRampToValueAtTime(target.position.y, endTime)
+    this.audioListener.positionZ.linearRampToValueAtTime(target.position.z, endTime)
+    this.audioListener.forwardX.linearRampToValueAtTime(dir.x, endTime)
+    this.audioListener.forwardY.linearRampToValueAtTime(dir.y, endTime)
+    this.audioListener.forwardZ.linearRampToValueAtTime(dir.z, endTime)
+    this.audioListener.upX.linearRampToValueAtTime(up.x, endTime)
+    this.audioListener.upY.linearRampToValueAtTime(up.y, endTime)
+    this.audioListener.upZ.linearRampToValueAtTime(up.z, endTime)
     this.lastDelta = delta * 2
   }
 

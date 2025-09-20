@@ -4,6 +4,10 @@ import THREE from '../extras/three'
 import { SystemBase } from './SystemBase'
 import { EventType } from '../types/events'
 
+const _v3_1 = new THREE.Vector3()
+const _v3_2 = new THREE.Vector3()
+const _v3_3 = new THREE.Vector3()
+
 // Interfaces moved to shared types
 
 
@@ -636,9 +640,9 @@ export class ClientControls extends SystemBase {
       const touch = e.changedTouches[i]
       const info = {
         id: touch.identifier,
-        position: new THREE.Vector3(touch.clientX, touch.clientY, 0),
-        prevPosition: new THREE.Vector3(touch.clientX, touch.clientY, 0),
-        delta: new THREE.Vector3(),
+        position: _v3_1.set(touch.clientX, touch.clientY, 0),
+        prevPosition: _v3_2.set(touch.clientX, touch.clientY, 0),
+        delta: _v3_3.set(0, 0, 0),
       }
       this.touches.set(info.id, info)
       for (const control of this.controls) {

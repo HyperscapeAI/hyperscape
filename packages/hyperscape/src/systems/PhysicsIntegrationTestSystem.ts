@@ -20,6 +20,9 @@ import { EventType } from '../types/events';
 import type { World } from '../types/index';
 import type { SystemDependencies } from './System';
 
+const _v3_1 = new THREE.Vector3()
+const _v3_2 = new THREE.Vector3()
+
 // Test result types
 interface BallTestResult {
   ballIndex: number;
@@ -261,7 +264,7 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
    */
   private createCubeDropTest(): void {
     
-    const testPosition = new THREE.Vector3(-10, 5, 10);
+    const testPosition = _v3_1.set(-10, 5, 10);
     const cubes: THREE.Mesh[] = [];
     
     // Create tower of cubes at different heights
@@ -320,7 +323,7 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
    */
   private createCharacterColliderTest(): void {
     
-    const testPosition = new THREE.Vector3(0, 1, -10);
+    const testPosition = _v3_1.set(0, 1, -10);
     
     // Create invisible character proxy (capsule shape)
     const characterGeometry = new THREE.CapsuleGeometry(0.5, 1.8);
@@ -405,10 +408,10 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
     
     // Test various positions for height validation
     const testPositions = [
-      new THREE.Vector3(15, 10, 0),
-      new THREE.Vector3(-15, 10, 0),
-      new THREE.Vector3(0, 10, 15),
-      new THREE.Vector3(0, 10, -15)
+      _v3_1.set(15, 10, 0),
+      _v3_1.set(-15, 10, 0),
+      _v3_1.set(0, 10, 15),
+      _v3_1.set(0, 10, -15)
     ];
     
     const heightTestObjects: THREE.Mesh[] = [];
@@ -462,7 +465,7 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
    */
   private createRampTrajectoryTest(): void {
     
-    const rampPosition = new THREE.Vector3(10, 1, -10);
+    const rampPosition = _v3_1.set(10, 1, -10);
     
     // Create launch ramp
     const rampGeometry = new THREE.BoxGeometry(4, 0.2, 2);
@@ -542,7 +545,7 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
     if (scenario.balls) {
       scenario.balls.forEach((ball: THREE.Mesh, _index: number) => {
       // Simulate physics push
-      const initialVelocity = new THREE.Vector3(1, 0, 0);
+      const initialVelocity = _v3_1.set(1, 0, 0);
       ball.userData.initialVelocity = initialVelocity;
       
     });
@@ -749,7 +752,7 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
     
     
     // Simulate movement (in real implementation this would be physics-driven)
-    const movement = new THREE.Vector3().subVectors(targetPosition, character.position).normalize();
+    const movement = _v3_1.subVectors(targetPosition, character.position).normalize();
     characterUserData.movementDirection = movement;
     
     // Schedule test validation

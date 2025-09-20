@@ -95,35 +95,33 @@ export class PlayerSystem extends SystemBase {
       throw new Error('TerrainSystem not available during player spawn');
     }
     
-    if (terrainSystem) {
-      let attempts = 0;
-      const maxAttempts = 100; // Wait up to 5 seconds
-      while (attempts < maxAttempts) {
-        // We need a method isPhysicsReadyAt on TerrainSystem
-        // Assuming it exists for now. If not, this will need to be added.
-        if (terrainSystem.isPhysicsReadyAt(data.position.x, data.position.z)) {
-          // console.log(`[PlayerSystem] Terrain physics is ready for player ${data.playerId}.`);
-          break;
-        }
-        await new Promise(resolve => setTimeout(resolve, 50));
-        attempts++;
+    let attempts = 0;
+    const maxAttempts = 100; // Wait up to 5 seconds
+    while (attempts < maxAttempts) {
+      // We need a method isPhysicsReadyAt on TerrainSystem
+      // Assuming it exists for now. If not, this will need to be added.
+      if (terrainSystem.isPhysicsReadyAt(data.position.x, data.position.z)) {
+        // console.log(`[PlayerSystem] Terrain physics is ready for player ${data.playerId}.`);
+        break;
       }
-      if (attempts >= maxAttempts) {
-        this.logger.error(`Timed out waiting for terrain physics for player ${data.playerId}.`);
-      }
-      
-      const height = terrainSystem.getHeightAt(data.position.x, data.position.z);
-      // console.log(`[PlayerSystem] Terrain height at (${data.position.x}, ${data.position.z}):`, height);
-      
-      if (typeof height === 'number' && isFinite(height)) {
-        const oldY = finalPosition.y;
-        // Spawn well above terrain to avoid clipping
-        finalPosition.y = height + 2.0;
-        // console.log(`[PlayerSystem] Adjusted spawn height from Y=${oldY} to Y=${finalPosition.y} (terrain=${height})`);
-      } else {
-        console.error(`[PlayerSystem] Invalid terrain height: ${height} - using safe default Y=50`);
-        finalPosition.y = 50; // Safe height above most terrain
-      }
+      await new Promise(resolve => setTimeout(resolve, 50));
+      attempts++;
+    }
+    if (attempts >= maxAttempts) {
+      this.logger.error(`Timed out waiting for terrain physics for player ${data.playerId}.`);
+    }
+    
+    const height = terrainSystem.getHeightAt(data.position.x, data.position.z);
+    // console.log(`[PlayerSystem] Terrain height at (${data.position.x}, ${data.position.z}):`, height);
+    
+    if (typeof height === 'number' && isFinite(height)) {
+      const oldY = finalPosition.y;
+      // Spawn well above terrain to avoid clipping
+      finalPosition.y = height + 2.0;
+      // console.log(`[PlayerSystem] Adjusted spawn height from Y=${oldY} to Y=${finalPosition.y} (terrain=${height})`);
+    } else {
+      console.error(`[PlayerSystem] Invalid terrain height: ${height} - using safe default Y=50`);
+      finalPosition.y = 50; // Safe height above most terrain
     }
     
     // console.log(`[PlayerSystem] Final spawn position for ${data.playerId}:`, { x: finalPosition.x, y: finalPosition.y, z: finalPosition.z });

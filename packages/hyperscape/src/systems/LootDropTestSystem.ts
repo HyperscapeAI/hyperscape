@@ -17,6 +17,10 @@ import type { World } from '../types/index';
 import type { LootSystem } from './LootSystem';
 import { VisualTestFramework } from './VisualTestFramework';
 
+const _v3_1 = new THREE.Vector3()
+const _v3_2 = new THREE.Vector3()
+const _v3_3 = new THREE.Vector3()
+
 interface LootTestData {
   testId: string;
   mobId: string;
@@ -336,7 +340,7 @@ export class LootDropTestSystem extends VisualTestFramework {
     if (this.world.stage.scene) {
       let _nearbyObjectCount = 0;
       const pos = testData.mobSpawnPosition || this.testPositions[0];
-      const center = new THREE.Vector3(pos.x, pos.y, pos.z);
+      const center = _v3_1.set(pos.x, pos.y, pos.z);
       const itemLikeObjects: string[] = [];
       
       this.world.stage.scene.traverse((obj) => {
@@ -662,11 +666,11 @@ export class LootDropTestSystem extends VisualTestFramework {
     if (!this.world.stage.scene) return [];
     
     const items: THREE.Object3D[] = [];
-    const center = new THREE.Vector3(position.x, position.y, position.z);
+    const center = _v3_2.set(position.x, position.y, position.z);
     
     this.world.stage.scene.traverse((obj) => {
       // Calculate world position for nested objects
-      const worldPos = new THREE.Vector3();
+      const worldPos = _v3_3
       obj.getWorldPosition(worldPos);
       const distance = worldPos.distanceTo(center);
       
@@ -698,7 +702,7 @@ export class LootDropTestSystem extends VisualTestFramework {
   private findCorpseNear(position: { x: number; y: number; z: number }, radius: number = 3.0): THREE.Object3D | null {
     if (!this.world.stage.scene) return null;
     
-    const center = new THREE.Vector3(position.x, position.y, position.z);
+    const center = _v3_1.set(position.x, position.y, position.z);
     let corpse: THREE.Object3D | null = null;
     
     this.world.stage.scene.traverse((obj) => {

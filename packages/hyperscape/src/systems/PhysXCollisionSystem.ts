@@ -198,7 +198,7 @@ export class PhysXCollisionSystem extends SystemBase {
     result.averageHeight = result.successfulChecks > 0 ? heightSum / result.successfulChecks : 0;
     result.maxHeightDifference = maxHeightDiff;
     result.validationTime = performance.now() - startTime;
-    result.isValid = result.errors.filter((e) => e.severity === 'critical').length === 0;
+    result.isValid = !result.errors.some(e => e.severity === 'critical');
     
     // Emit validation complete event
     this.emitTypedEvent(EventType.PHYSICS_VALIDATION_COMPLETE, result);
@@ -469,7 +469,7 @@ export class PhysXCollisionSystem extends SystemBase {
     
     // Check for underground condition
     const groundState = this.entityGroundStates.get(data.entityId);
-    if (groundState?.isUnderground) {
+    if (groundState && groundState.isUnderground) {
       
       // Auto-clamp to ground
       this.clampEntityToGround({

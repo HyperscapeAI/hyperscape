@@ -7,6 +7,8 @@ import type { Stage } from './Stage'
 import { SystemBase } from './SystemBase'
 import type { ParticleEmitter, ParticleMessageData, EmitterNode } from '../types/particles'
 
+const v1 = new THREE.Vector3()
+
 // Create a minimal no-op worker to keep the Particles system operational in tests
 function createDummyWorker(): Worker {
   const dummy = {
@@ -23,7 +25,6 @@ interface ParticleInstancedMesh extends THREE.InstancedMesh {
   _node: EmitterNode
 }
 
-const v1 = new THREE.Vector3()
 const v2 = new THREE.Vector3()
 const e1 = new THREE.Euler(0, 0, 0, 'YXZ')
 const arr1: number[] = []
@@ -324,7 +325,9 @@ function createEmitter(world: World, system: Particles, node: EmitterNode): Part
       system.worker.postMessage({ op: 'destroy', emitterId: id })
     }
     const stage = world.stage as Stage
-    stage.scene.remove(mesh)
+    if (stage.scene) {
+      stage.scene.remove(mesh)
+    }
     if (Array.isArray(mesh.material)) {
       mesh.material.forEach(mat => mat.dispose())
     } else {

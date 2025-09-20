@@ -1,51 +1,30 @@
 /**
- * Base types for the Hyperscape system
- * 
- * These are fundamental types that are used throughout the system
- * and should not have dependencies on other type files to avoid circular imports.
+ * Base type definitions for core game elements
+ * These types are shared across the entire system for consistency
  */
 
-// Core position interfaces - plain objects without methods
+// Basic 3D position
 export interface Position3D {
   x: number;
   y: number;
   z: number;
 }
 
-export interface Position2D {
+export interface Quaternion {
   x: number;
   y: number;
+  z: number;
+  w: number;
 }
 
-// Deprecated aliases - use Position3D/Position2D instead
-export type Vector3D = Position3D;
-export type Vector2D = Position2D;
-
-// Core entity data interface
+// Base entity data for serialization
 export interface EntityData {
   id: string;
   type: string;
   name?: string;
-  owner?: string;
-  active?: boolean;
-  visible?: boolean;
-  // Player-specific properties
-  userId?: string;
-  emote?: string;
-  avatar?: string;
-  sessionAvatar?: string;
-  roles?: string[];
-  // Effect data for any entity
-  effect?: {
-    anchorId?: string;
-    snare?: number;
-    freeze?: boolean;
-    turn?: boolean;
-    emote?: string;
-    duration?: number;
-    cancellable?: boolean;
-  };
-  // Allow additional properties
+  position?: [number, number, number];
+  quaternion?: [number, number, number, number];
+  scale?: [number, number, number];
   [key: string]: unknown;
 }
 

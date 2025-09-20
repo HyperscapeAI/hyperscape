@@ -6,6 +6,8 @@ import type { World } from '../types'
 import { EventType } from '../types/events'
 import type { Nametag } from '../types/ui-types'
 
+const _v3_1 = new THREE.Vector3()
+
 /**
  * Nametags System
  *
@@ -217,7 +219,7 @@ export class Nametags extends SystemBase {
     coords.needsUpdate = true
     // make nametag
     const matrix = new THREE.Matrix4()
-    const position = toTHREEVector3(new THREE.Vector3(0, 0, 0));
+    const position = _v3_1.set(0, 0, 0)
     matrix.compose(position, defaultQuaternion, defaultScale)
     const nametag: Nametag = {
       idx,

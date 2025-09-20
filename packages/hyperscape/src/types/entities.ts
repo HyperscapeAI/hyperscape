@@ -4,7 +4,7 @@
  */
 
 import type THREE from '../extras/three';
-import type { EntityData, Position3D } from './base-types';
+import type { EntityData, Position3D, Quaternion } from './base-types';
 import type { 
   Item, 
   InventoryItem,
@@ -100,7 +100,7 @@ export interface EntityConfig<TProperties = BaseEntityProperties> {
   name: string;
   type: EntityType;
   position: Position3D;
-  rotation: Position3D;
+  rotation: Quaternion;
   scale: Position3D;
   visible: boolean;
   interactable: boolean;

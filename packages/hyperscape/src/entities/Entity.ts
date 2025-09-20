@@ -362,7 +362,7 @@ export class Entity implements IEntity {
 
   // Set velocity updates the THREE.Vector3 instance and syncs with physics if enabled
   setVelocity(vel: Vector3): void {
-    this.velocity = vel
+    this.velocity.copy(vel)
 
     // Apply to physics body if available
     if (this.rigidBody) {

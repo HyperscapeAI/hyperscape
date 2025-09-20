@@ -12,7 +12,7 @@ import { PathRequest } from '../types/core';
 import { getWorldScene, safeSceneAdd, safeSceneRemove } from '../utils/EntityUtils';
 import { SystemBase } from './SystemBase';
 
-
+const _v3_1 = new THREE.Vector3()
 
 export class PathfindingSystem extends SystemBase {
   
@@ -78,24 +78,27 @@ export class PathfindingSystem extends SystemBase {
    * Find a path using simple line-of-sight with obstacle avoidance
    * Made public for testing purposes
    */
-  public findPath(start: THREE.Vector3 | { x: number; y: number; z: number }, end: THREE.Vector3 | { x: number; y: number; z: number }): THREE.Vector3[] {
-    const startVec = toTHREEVector3(start);
-    const endVec = toTHREEVector3(end);
-    
+  public findPath(
+    start: THREE.Vector3 | { x: number; y: number; z: number },
+    end: THREE.Vector3 | { x: number; y: number; z: number },
+  ): THREE.Vector3[] {
+    const startVec = toTHREEVector3(start)
+    const endVec = toTHREEVector3(end)
+
     // First try direct path
     if (this.hasLineOfSight(startVec, endVec)) {
-      return [startVec.clone(), endVec.clone()];
+      return [startVec.clone(), endVec.clone()]
     }
-    
+
     // If no direct path, use waypoint generation
-    const waypoints = this.generateWaypoints(startVec, endVec);
-    const path = this.optimizePath([startVec, ...waypoints, endVec]);
+    const waypoints = this.generateWaypoints(startVec, endVec)
+    const path = this.optimizePath([startVec, ...waypoints, endVec])
     // Ensure returned path's last point is EXACTLY the requested end to avoid drift/backtracking
     if (path.length > 0) {
-      path[path.length - 1].copy(endVec);
+      path[path.length - 1].copy(endVec)
     }
-    
-    return path;
+
+    return path
   }
 
   /**
@@ -134,7 +137,7 @@ export class PathfindingSystem extends SystemBase {
     if (obstacles.length === 0) return true;
     
     // Cast ray slightly above ground level to avoid minor terrain bumps
-    const fromRay = fromVec.clone();
+    const fromRay = _v3_1.copy(fromVec);
     fromRay.y += 0.3;
     const toRay = toVec.clone();
     toRay.y += 0.3;
@@ -204,7 +207,7 @@ export class PathfindingSystem extends SystemBase {
     const waypoints: THREE.Vector3[] = [];
     
     // Calculate perpendicular directions (left and right)
-    const up = new THREE.Vector3(0, 1, 0);
+    const up = _v3_1.set(0, 1, 0);
     const leftDir = new THREE.Vector3().crossVectors(up, moveDirection).normalize();
     const rightDir = leftDir.clone().negate();
     

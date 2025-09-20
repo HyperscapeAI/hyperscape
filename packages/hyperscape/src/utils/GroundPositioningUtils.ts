@@ -7,6 +7,9 @@ import THREE from '../extras/three';
 import type { World, System } from '../types';
 import type { GroundPositionResult, GroundHeightResult } from '../types/ground-types';
 
+const _tempVec3_1 = new THREE.Vector3();
+const _tempVec3_2 = new THREE.Vector3();
+
 /**
  * Get proper ground position for any entity using multiple fallback methods
  * Matches the same logic used in PlayerSpawnSystem.positionPlayerOnGround()
@@ -46,7 +49,7 @@ export function getGroundPosition(
     }
     
     if (groundHeight !== null && !isNaN(groundHeight)) {
-      const position = new THREE.Vector3(x, groundHeight + yOffset, z);
+      const position = _tempVec3_1.set(x, groundHeight + yOffset, z);
       return {
         position,
         method: 'terrain',
@@ -63,12 +66,12 @@ export function getGroundPosition(
 
   // Method 2: Use world raycast (PhysX) with environment layer mask
   if (world.raycast) {
-    const origin = new THREE.Vector3(x, 1000, z); // Start high above
-    const direction = new THREE.Vector3(0, -1, 0); // Ray down
+    const origin = _tempVec3_1.set(x, 1000, z); // Start high above
+    const direction = _tempVec3_2.set(0, -1, 0); // Ray down
     const mask = (world as unknown as { createLayerMask: (...names: string[]) => number }).createLayerMask?.('environment') ?? 0xFFFFFFFF;
     const hit = world.raycast(origin, direction, 2000, mask as number);
     if (hit && hit.point) {
-      const position = new THREE.Vector3(x, hit.point.y + yOffset, z);
+      const position = _tempVec3_1.set(x, hit.point.y + yOffset, z);
       return {
         position,
         method: 'raycast',
@@ -86,11 +89,11 @@ export function getGroundPosition(
     getGroundHeight(position: THREE.Vector3): GroundHeightResult;
   };
   if (groundCheckingSystem) {
-    const testPosition = new THREE.Vector3(x, 100, z); // Start high
+    const testPosition = _tempVec3_1.set(x, 100, z); // Start high
     const groundResult = groundCheckingSystem.getGroundHeight(testPosition);
     
     if (groundResult.isValid) {
-      const position = new THREE.Vector3(x, groundResult.groundHeight + yOffset, z);
+      const position = _tempVec3_1.set(x, groundResult.groundHeight + yOffset, z);
       return {
         position,
         method: 'ground-checking',
@@ -107,7 +110,7 @@ export function getGroundPosition(
 
   // Final fallback: use provided offset as absolute height
   console.warn(`[GroundPositioning] ❌ Could not determine ground height, using fallback height of ${yOffset}m`);
-  const position = new THREE.Vector3(x, yOffset, z);
+  const position = _tempVec3_1.set(x, yOffset, z);
   return {
     position,
     method: 'fallback',

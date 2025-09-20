@@ -19,6 +19,8 @@ import { ItemPickupSystemInfo as SystemInfo } from '../types/system-types';
 import { safeSceneAdd } from '../utils/EntityUtils';
 import { SystemBase } from './SystemBase';
 
+const _v3_1 = new THREE.Vector3()
+
 export class ItemPickupSystem extends SystemBase {
   private groundItems: Map<string, GroundItem> = new Map();
   private itemColors: Map<string, number> = new Map();
@@ -79,7 +81,7 @@ export class ItemPickupSystem extends SystemBase {
     const groundItem: GroundItem = {
       id: itemId,
       item: item,
-      position: new THREE.Vector3(position.x, position.y, position.z),
+      position: _v3_1.copy(position),
       mesh: mesh,
       droppedBy: droppedBy,
       droppedAt: Date.now(),
@@ -341,13 +343,10 @@ export class ItemPickupSystem extends SystemBase {
    */
   public getItemsInRange(position: { x: number; y: number; z: number }, range: number): GroundItem[] {
     const itemsInRange: GroundItem[] = [];
+    _v3_1.set(position.x, position.y, position.z)
     
     for (const groundItem of this.groundItems.values()) {
-      const distance = Math.sqrt(
-        Math.pow(position.x - groundItem.position.x, 2) +
-        Math.pow(position.y - groundItem.position.y, 2) +
-        Math.pow(position.z - groundItem.position.z, 2)
-      );
+      const distance = _v3_1.distanceTo(groundItem.position)
       if (distance <= range) {
         itemsInRange.push(groundItem);
       }

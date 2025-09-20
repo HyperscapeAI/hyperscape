@@ -18,6 +18,11 @@ import { System } from './System'
 import { SystemBase } from './SystemBase'
 import { InstancedMeshManager } from '../utils/InstancedMeshManager'
 
+const _v3_1 = new THREE.Vector3()
+const _v3_2 = new THREE.Vector3()
+const _v3_3 = new THREE.Vector3()
+const _v2_1 = new THREE.Vector2()
+
 interface PlayerWithRunMode {
   runMode: boolean
   toggleRunMode: () => void
@@ -373,38 +378,29 @@ export class InteractionSystem extends SystemBase {
   private setupEventListeners(): void {
     if (!this.canvas) return
 
-    // Mouse events
-    this.canvas.addEventListener('mousemove', this.onMouseMove.bind(this))
-    this.canvas.addEventListener('click', this.onClick.bind(this))
-    // Single-click only for movement; disable dblclick-to-move to avoid duplicate/lagged targets
-    this.canvas.addEventListener('contextmenu', this.onRightClick.bind(this))
-    this.canvas.addEventListener('mousedown', this.onMouseDown.bind(this))
-    this.canvas.addEventListener('mouseup', this.onMouseUp.bind(this))
+    // Mouse events - use capture phase to process before ClientCameraSystem
+    this.canvas.addEventListener('mousemove', this.onMouseMove.bind(this), false)
+    this.canvas.addEventListener('click', this.onClick.bind(this), false)
+    this.canvas.addEventListener('contextmenu', this.onRightClick.bind(this), false)
+    this.canvas.addEventListener('mousedown', this.onMouseDown.bind(this), false)
+    this.canvas.addEventListener('mouseup', this.onMouseUp.bind(this), false)
 
     // Keyboard events
     window.addEventListener('keydown', this.onKeyDown.bind(this))
     window.addEventListener('keyup', this.onKeyUp.bind(this))
 
-    // Prevent default context menu
-    this.canvas.addEventListener('contextmenu', e => e.preventDefault())
-
     // Close menu on escape
-    document.addEventListener('keydown', _event => {
-      if (_event.key === 'Escape' && this.isMenuOpen) {
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && this.isMenuOpen) {
         this.closeActionMenu()
       }
     })
 
     // Close menu on click outside
-    document.addEventListener('click', _event => {
-      if (this.isMenuOpen && !this.actionMenu?.contains(_event.target as Node)) {
+    document.addEventListener('click', event => {
+      if (this.isMenuOpen && !this.actionMenu?.contains(event.target as Node)) {
         this.closeActionMenu()
       }
-    })
-
-    // Update cursor based on hover
-    this.canvas.addEventListener('mouseenter', () => {
-      document.body.style.cursor = 'default'
     })
   }
 
@@ -742,7 +738,7 @@ export class InteractionSystem extends SystemBase {
     // Calculate NDC coordinates using local Vector2 (do not mutate shared this.mouse)
     const ndcX = (relativeX / rect.width) * 2 - 1
     const ndcY = -(relativeY / rect.height) * 2 + 1
-    const ndc = new THREE.Vector2(ndcX, ndcY)
+    const ndc = _v2_1.set(ndcX, ndcY)
 
     // Log canvas dimensions for debugging
     this.logger.info(
@@ -811,8 +807,8 @@ export class InteractionSystem extends SystemBase {
       return
     }
 
-    const direction = this.raycaster.ray.direction.clone().normalize()
-    const baseOrigin = this.raycaster.ray.origin.clone()
+    const direction = _v3_1.copy(this.raycaster.ray.direction).normalize()
+    const baseOrigin = _v3_2.copy(this.raycaster.ray.origin)
 
     // Debug the raycaster state
     this.logger.info(
@@ -838,7 +834,7 @@ export class InteractionSystem extends SystemBase {
     }
 
     // Offset the origin slightly to avoid hitting the player's own capsule
-    const origin = baseOrigin.add(direction.clone().multiplyScalar(1.0))
+    const origin = baseOrigin.add(direction)
 
     // Debug logging for raycast
     this.logger.info(`[Raycast Debug] Mouse: x=${ndcX.toFixed(3)}, y=${ndcY.toFixed(3)}`)
@@ -940,7 +936,7 @@ export class InteractionSystem extends SystemBase {
     if (!targetPosition) {
       // For far away clicks, extend the ray to hit distant terrain
       // Calculate a point far along the ray direction
-      const farPoint = origin.clone().add(direction.clone().multiplyScalar(RAYCAST_DISTANCE))
+      const farPoint = _v3_3.copy(origin).add(direction.clone().multiplyScalar(RAYCAST_DISTANCE))
       
       // Project to terrain heightmap at the far point
       const terrainSystem = this.world.getSystem<TerrainSystem>('terrain')
@@ -1081,8 +1077,8 @@ export class InteractionSystem extends SystemBase {
     start: THREE.Vector3 | { x: number; y: number; z: number },
     end: THREE.Vector3 | { x: number; y: number; z: number }
   ): boolean {
-    const startVec = start instanceof THREE.Vector3 ? start : new THREE.Vector3(start.x, start.y, start.z)
-    const endVec = end instanceof THREE.Vector3 ? end : new THREE.Vector3(end.x, end.y, end.z)
+    const startVec = start instanceof THREE.Vector3 ? start : _v3_2.set(start.x, start.y, start.z)
+    const endVec = end instanceof THREE.Vector3 ? end : _v3_3.set(end.x, end.y, end.z)
 
     const distance = startVec.distanceTo(endVec)
 
@@ -1091,7 +1087,7 @@ export class InteractionSystem extends SystemBase {
       return false
     }
 
-    const direction = new THREE.Vector3().subVectors(endVec, startVec).normalize()
+    const direction = _v3_1.subVectors(endVec, startVec).normalize()
 
     // Check for obstacles using PhysX
     const mask = this.world.createLayerMask('obstacle', 'building')
@@ -2001,7 +1997,7 @@ export class InteractionSystem extends SystemBase {
   public updateDistanceChecks(playerPosition: THREE.Vector3): void {
     // Update action enablement based on distance and other factors
     for (const [_id, target] of this.interactables) {
-      const targetPos = target.object?.position || target.position
+      const targetPos = target.object?.position || toTHREEVector3(target.position)
       const distance = calculateDistance(targetPos, playerPosition)
 
       const actions = this.hasInteractionActions(target) ? target.actions : undefined

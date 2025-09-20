@@ -10,11 +10,9 @@
  */
 
 import THREE, { toTHREEVector3 } from './three'
-import { cloneVector3, toVector3Object } from './vector3-utils'
 
 // Re-export for convenience
 export { toTHREEVector3 } from './three'
-export { cloneVector3, toVector3Object }
 
 /**
  * Create a Vector3 from components

@@ -96,7 +96,7 @@ export class PhysicsTestSystem extends SystemBase {
     
     const hit = this.world.raycast(rayOrigin, rayDirection, 10);
     
-    if (hit && hit.point) {
+    if (hit) {
       // Create hit point visualization
       this.createTestCube('hit_point', hit.point, this.TEST_COLORS.HITPOINT);
       this.testResults.set('basic_raycast', true);

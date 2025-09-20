@@ -24,6 +24,12 @@ import type {
 import type { SystemDependencies } from './System';
 import { SystemBase } from './SystemBase';
 
+const _v3_1 = new THREE.Vector3()
+const _v3_2 = new THREE.Vector3()
+const _v3_3 = new THREE.Vector3()
+const _contact_pos = new THREE.Vector3()
+const _contact_nor = new THREE.Vector3()
+const _contact_imp = new THREE.Vector3()
 
 // Import PhysX types
 import type PhysX from '@hyperscape/physx-js-webidl';
@@ -484,9 +490,9 @@ export class Physics extends SystemBase implements IPhysics {
             for (let j = 0; j < pxContactPoints; j++) {
               const contact = contactPoints.get(j);
               contactCallback.addContact(
-                new THREE.Vector3(contact.position.x, contact.position.y, contact.position.z),
-                new THREE.Vector3(contact.normal.x, contact.normal.y, contact.normal.z),
-                new THREE.Vector3(contact.impulse.x, contact.impulse.y, contact.impulse.z)
+                _contact_pos.set(contact.position.x, contact.position.y, contact.position.z),
+                _contact_nor.set(contact.normal.x, contact.normal.y, contact.normal.z),
+                _contact_imp.set(contact.impulse.x, contact.impulse.y, contact.impulse.z),
               );
             }
           }

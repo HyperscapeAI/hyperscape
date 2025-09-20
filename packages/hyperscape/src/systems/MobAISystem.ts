@@ -18,6 +18,8 @@ import { Logger } from '../utils/Logger';
 import type { PlayerSystem } from './PlayerSystem';
 import { SystemBase } from './SystemBase';
 
+const _v3_1 = new THREE.Vector3()
+
 // Type for mobs that may come from different sources
 type MobReference = MobEntity;
 
@@ -444,7 +446,7 @@ export class MobAISystem extends SystemBase {
     }
     
     // Check if target is too far (leashed)
-    const homeDistance = mob.mesh!.position.distanceTo(new THREE.Vector3(
+    const homeDistance = mob.mesh!.position.distanceTo(_v3_1.set(
       aiState.homePosition.x,
       aiState.homePosition.y,
       aiState.homePosition.z
@@ -485,7 +487,7 @@ export class MobAISystem extends SystemBase {
       return;
     }
     
-    const distance = mob.mesh!.position.distanceTo(new THREE.Vector3(targetPosition.x, targetPosition.y, targetPosition.z));
+    const distance = mob.mesh!.position.distanceTo(_v3_1.set(targetPosition.x, targetPosition.y, targetPosition.z));
     
     // Too far for combat, chase
     if (distance > 3.0) {
@@ -507,7 +509,7 @@ export class MobAISystem extends SystemBase {
   private updateReturningState(mob: MobReference, aiState: MobAIStateData): void {
 
     
-    const homePos = new THREE.Vector3(
+    const homePos = _v3_1.set(
       aiState.homePosition.x,
       aiState.homePosition.y,
       aiState.homePosition.z
@@ -538,10 +540,13 @@ export class MobAISystem extends SystemBase {
     const angle = Math.random() * Math.PI * 2;
     const distance = Math.random() * aiState.patrolRadius * 0.8;
     
-    aiState.patrolTarget = new THREE.Vector3(
+    if (!aiState.patrolTarget) {
+      aiState.patrolTarget = new THREE.Vector3()
+    }
+    aiState.patrolTarget.set(
       aiState.homePosition.x + Math.cos(angle) * distance,
       aiState.homePosition.y,
-      aiState.homePosition.z + Math.sin(angle) * distance
+      aiState.homePosition.z + Math.sin(angle) * distance,
     );
   }
 
@@ -595,13 +600,13 @@ export class MobAISystem extends SystemBase {
       
       for (const player of players) {
         // Ensure player has valid position before calculating distance
-        if (!player.node?.position || typeof player.node.position.x !== 'number' ||
-            typeof player.node.position.y !== 'number' || typeof player.node.position.z !== 'number') {
+        const playerPos = player.node?.position
+        if (!playerPos) {
           console.warn(`[MobAISystem] Player ${player.id} has no valid node position`);
           continue;
         }
 
-        const distance = mob.mesh!.position.distanceTo(player.node.position);
+        const distance = mob.mesh!.position.distanceTo(playerPos);
 
         // Check aggro range
         const mobData = this.getMobData(mob);
@@ -725,7 +730,7 @@ export class MobAISystem extends SystemBase {
 
     
     const _mobData = this.getMobData(mob);
-    const direction = new THREE.Vector3().subVectors(targetPosition, mob.mesh!.position);
+    const direction = _v3_1.subVectors(targetPosition, mob.mesh!.position);
     direction.y = 0; // Keep on ground
     
     // Only move if there's a horizontal distance to cover
@@ -736,7 +741,7 @@ export class MobAISystem extends SystemBase {
       mob.mesh!.position.add(direction.multiplyScalar(speed * 0.016)); // Assume 60fps
     }
     
-    const lookAtPos = new THREE.Vector3(targetPosition.x, targetPosition.y, targetPosition.z);
+    const lookAtPos = targetPosition
     mob.mesh!.lookAt(lookAtPos);
   }
 

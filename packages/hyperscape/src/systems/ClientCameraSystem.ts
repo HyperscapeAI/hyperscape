@@ -188,18 +188,18 @@ export class ClientCameraSystem extends SystemBase {
   }
 
   private onMouseDown(event: MouseEvent): void {
-    if (event.button === 2) { // Right mouse button (no orbit in RS3 default)
+    // Skip if InteractionSystem already handled this (check if default was prevented)
+    if (event.defaultPrevented) return;
+    
+    if (event.button === 2) { // Right mouse button
       this.mouseState.rightDown = true;
-      // Do not change cursor; InteractionSystem handles menu
     } else if (event.button === 1) { // Middle mouse button (orbit)
-      this.mouseState.middleDown = true;
-      // RS3: MMB drag orbits as well
-      this.canvas!.style.cursor = 'grabbing';
       event.preventDefault();
+      this.mouseState.middleDown = true;
+      this.canvas!.style.cursor = 'grabbing';
     } else if (event.button === 0) { // Left mouse button
       this.mouseState.leftDown = true;
-      // Click-to-move is handled by InteractionSystem to avoid duplication
-      // Do not call preventDefault here to allow click event to reach InteractionSystem
+      // Click-to-move is handled by InteractionSystem
     }
 
     this.mouseState.lastPosition.set(event.clientX, event.clientY);

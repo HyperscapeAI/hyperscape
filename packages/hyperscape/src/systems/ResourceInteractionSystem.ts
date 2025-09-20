@@ -204,10 +204,7 @@ export class ResourceInteractionSystem extends SystemBase {
 
   private getLocalPlayer(): Entity | null {
     // Get the local player from the world's entities
-    if (this.world.entities && 'player' in this.world.entities) {
-      return (this.world.entities as any).player || null;
-    }
-    return null;
+    return (this.world.entities as any).player || null;
   }
 
   private handleActionExecute(params: {

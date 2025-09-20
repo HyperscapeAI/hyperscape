@@ -29,6 +29,8 @@ export class InstancedMeshManager {
     private lastUpdateTime = 0;
     private maxInstancesPerType = 1000; // Max visible instances per type
     private cullDistance = 200; // Maximum distance to render instances
+    private _tempMatrix = new THREE.Matrix4();
+    private _tempVec3 = new THREE.Vector3();
 
     constructor(scene: THREE.Scene, world?: World) {
         this.scene = scene;
@@ -107,7 +109,7 @@ export class InstancedMeshManager {
 
             if (indexToRemove !== lastIndex) {
                 // Swap with the last element
-                const lastMatrix = new THREE.Matrix4();
+                const lastMatrix = this._tempMatrix;
                 data.mesh.getMatrixAt(lastIndex, lastMatrix);
                 data.mesh.setMatrixAt(indexToRemove, lastMatrix);
 
@@ -234,7 +236,7 @@ export class InstancedMeshManager {
         
         const player = players[0]; // Use first player
         if (player.node?.position) {
-            return new THREE.Vector3(
+            return this._tempVec3.set(
                 player.node.position.x,
                 player.node.position.y,
                 player.node.position.z

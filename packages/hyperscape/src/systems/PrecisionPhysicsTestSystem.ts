@@ -493,15 +493,15 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
     this.physicsObjects.set(sphere1.userData.testId as string, {
       _id: sphere1.userData.testId as string,
       mesh: sphere1,
-      initialPosition: new THREE.Vector3().copy(sphere1.position),
-      initialVelocity: new THREE.Vector3().copy(velocity1),
+      initialPosition: sphere1.position.clone(),
+      initialVelocity: velocity1.clone(),
       mass: mass1
     });
     this.physicsObjects.set(sphere2.userData.testId as string, {
       _id: sphere2.userData.testId as string,
       mesh: sphere2,
-      initialPosition: new THREE.Vector3().copy(sphere2.position),
-      initialVelocity: new THREE.Vector3().copy(velocity2),
+      initialPosition: sphere2.position.clone(),
+      initialVelocity: velocity2.clone(),
       mass: mass2
     });
     
@@ -1116,11 +1116,6 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
   }
   
   fixedUpdate(_delta: number): void {
-    const PHYSX = this.getPhysX();
-    if (!PHYSX) {
-      return;
-    }
-
     const projectileTest = this.precisionTests.get('projectile_motion');
     if (projectileTest && projectileTest.testStarted && !projectileTest.testCompleted) {
       const projectile = projectileTest.projectile as THREE.Mesh;

@@ -882,7 +882,6 @@ function setupAPI(world: World, systems: Systems): void {
     // Player Spawn API
     hasPlayerCompletedSpawn: (playerId: string) => systems.playerSpawn?.hasPlayerCompletedSpawn(playerId),
     getPlayerSpawnData: (playerId: string) => systems.playerSpawn?.getPlayerSpawnData(playerId),
-    forceReequipStarter: (playerId: string) => systems.playerSpawn?.forceReequipStarter(playerId),
     forceTriggerAggro: (playerId: string) => systems.playerSpawn?.forceTriggerAggro(playerId),
     getAllSpawnedPlayers: () => systems.playerSpawn?.getAllSpawnedPlayers(),
 

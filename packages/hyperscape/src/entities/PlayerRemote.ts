@@ -251,11 +251,11 @@ export class PlayerRemote extends Entity implements HotReloadable {
       // Don't add anything to base - the VRM scene is added to world.stage.scene
       
       // Set up positioning
-      if (this.avatar && this.avatar.getHeadToHeight) {
-        const headHeight = this.avatar.getHeadToHeight();
+      if (this.avatar) {
+        const headHeight = this.avatar.getHeadToHeight?.()
         if (headHeight != null) {
-          this.nametag.position.y = headHeight + 0.2;
-          this.bubble.position.y = headHeight + 0.2;
+          this.nametag.position.y = headHeight + 0.2
+          this.bubble.position.y = headHeight + 0.2
         }
       }
       

@@ -63,19 +63,15 @@ export class PlayerSpawnSystem extends SystemBase {
     // - Sound effects
 
     // Debug: add a blue cube above player so we can visually confirm spawn
-    try {
-      const player = this.world.getPlayer(event.playerId)
-      if (player && player.node) {
-        const debug = new THREE.Mesh(
-          new THREE.BoxGeometry(0.3, 0.3, 0.3),
-          new THREE.MeshBasicMaterial({ color: 0x0000ff })
-        )
-        debug.name = `SpawnDebugCube_${event.playerId}`
-        debug.position.set(player.node.position.x, player.node.position.y + 3, player.node.position.z)
-        this.world.stage.scene.add(debug)
-      }
-    } catch (_e) {
-      // ignore
+    const player = this.world.getPlayer(event.playerId)
+    if (player && player.node) {
+      const debug = new THREE.Mesh(
+        new THREE.BoxGeometry(0.3, 0.3, 0.3),
+        new THREE.MeshBasicMaterial({ color: 0x0000ff })
+      )
+      debug.name = `SpawnDebugCube_${event.playerId}`
+      debug.position.set(player.node.position.x, player.node.position.y + 3, player.node.position.z)
+      this.world.stage.scene.add(debug)
     }
 
     // Equip starter gear and trigger starter aggro pipeline
@@ -208,68 +204,6 @@ export class PlayerSpawnSystem extends SystemBase {
   }
 
   /**
-   * Spawn player with starter equipment
-   */
-  private async spawnPlayerWithEquipment(playerId: string): Promise<void> {
-    const spawnData = this.spawnedPlayers.get(playerId);
-    if (!spawnData) {
-      this.logger.warn(`[PlayerSpawnSystem] Player ${playerId} disconnected before equipment could be assigned`);
-      return;
-    }
-      
-      // First, register player with equipment system
-      this.emitTypedEvent(EventType.PLAYER_REGISTERED, { playerId: playerId });
-      
-      // Wait a moment for systems to initialize
-      await this.delay(100);
-      
-      // Check again if player is still connected after delay
-      if (!this.spawnedPlayers.has(playerId)) {
-        this.logger.warn(`[PlayerSpawnSystem] Player ${playerId} disconnected during equipment initialization`);
-        return;
-      }
-      
-      // Equip each starter item
-      for (const item of this.STARTER_EQUIPMENT) {
-        // Check if player still exists before each equipment
-        if (!this.spawnedPlayers.has(playerId)) {
-          this.logger.warn(`[PlayerSpawnSystem] Player ${playerId} disconnected during equipment process`);
-          return;
-        }
-        
-        // Force equip the item (bypass inventory checks for starter equipment)
-        this.emitTypedEvent(EventType.EQUIPMENT_EQUIP, {
-          playerId: playerId,
-          itemId: item.itemId, // Pass itemId string directly, not the full item object
-          slot: item.slot
-        });
-        
-        // Small delay between equipment
-        await this.delay(50);
-      }
-      
-      // Final check before setting the flag
-      const finalSpawnData = this.spawnedPlayers.get(playerId);
-      if (finalSpawnData) {
-        finalSpawnData.hasStarterEquipment = true;
-      }
-      
-      
-      // Trigger aggro after equipment is ready (only if player still exists)
-      if (this.spawnedPlayers.has(playerId)) {
-        this.triggerGoblinAggro(playerId);
-      }
-      
-      // Emit spawn complete event
-      this.emitTypedEvent(EventType.PLAYER_SPAWNED, {
-        playerId: playerId,
-        equipment: this.STARTER_EQUIPMENT,
-        position: spawnData.position
-      });
-      
-  }
-
-  /**
    * Trigger goblin aggro near player spawn
    */
   private triggerGoblinAggro(playerId: string): void {
@@ -358,13 +292,6 @@ export class PlayerSpawnSystem extends SystemBase {
    */
   public getPlayerSpawnData(playerId: string): PlayerSpawnData | undefined {
     return this.spawnedPlayers.get(playerId);
-  }
-
-  /**
-   * Force re-equip starter equipment (for testing)
-   */
-  public forceReequipStarter(playerId: string): void {
-    this.spawnPlayerWithEquipment(playerId);
   }
 
   /**

@@ -25,6 +25,8 @@ import { BankingSystem } from './BankingSystem';
 import { EquipmentSystem } from './EquipmentSystem';
 import { EventType } from '../types/events';
 
+const _v3_1 = new THREE.Vector3()
+
 interface PersistenceTestData {
   player: PlayerEntity;
   originalData: {
@@ -233,8 +235,8 @@ export class PersistenceTestSystem extends VisualTestFramework {
     const player = this.createPlayer({
       id: `basic_save_player_${Date.now()}`,
       name: 'Basic Save Test Player',
-      position: { x: -40, y: 1.8, z: -40 }
-    });
+      position: _v3_1.set(-40, 1.8, -40),
+    })
 
     // Basic inventory
     const bronzeSword = getItem('bronze_sword');
@@ -302,7 +304,7 @@ export class PersistenceTestSystem extends VisualTestFramework {
       const player = this.createPlayer({
         id: `skill_persist_player_${Date.now()}`,
         name: 'Skill Persistence Test Player',
-        position: { x: -45, y: 1.8, z: -40 }
+        position: _v3_1.set(-45, 1.8, -40),
       });
 
       // Give player various XP levels
@@ -359,7 +361,7 @@ export class PersistenceTestSystem extends VisualTestFramework {
       const player = this.createPlayer({
         id: `inventory_persist_player_${Date.now()}`,
         name: 'Inventory Persistence Test Player',
-        position: { x: -50, y: 1.8, z: -40 }
+        position: _v3_1.set(-50, 1.8, -40),
       });
 
       // Complex inventory with various items
@@ -428,7 +430,7 @@ export class PersistenceTestSystem extends VisualTestFramework {
       const player = this.createPlayer({
         id: `bank_persist_player_${Date.now()}`,
         name: 'Bank Persistence Test Player',
-        position: { x: -40, y: 1.8, z: -45 }
+        position: _v3_1.set(-40, 1.8, -45),
       });
 
       // Add items to bank storage
@@ -501,7 +503,7 @@ export class PersistenceTestSystem extends VisualTestFramework {
       const player = this.createPlayer({
         id: `equipment_persist_player_${Date.now()}`,
         name: 'Equipment Persistence Test Player',
-        position: { x: -45, y: 1.8, z: -45 }
+        position: _v3_1.set(-45, 1.8, -45),
       });
 
       // Equip various items
@@ -576,7 +578,7 @@ export class PersistenceTestSystem extends VisualTestFramework {
       const player = this.createPlayer({
         id: `large_data_player_${Date.now()}`,
         name: 'Large Dataset Test Player',
-        position: { x: -50, y: 1.8, z: -45 }
+        position: _v3_1.set(-50, 1.8, -45),
       });
 
       // Create large inventory (28 slots filled)
