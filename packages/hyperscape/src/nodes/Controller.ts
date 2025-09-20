@@ -321,7 +321,7 @@ export class Controller extends Node {
       // For now, call move without filters to avoid type mismatch
       // The physics system should handle collision filtering internally
       const minDist = 0;
-      const elapsedTime = 1 / 60;
+      const elapsedTime = 1 / 30; // Consistent with world fixedDeltaTime
       
       // Call move method using the physics system's approach
       try {

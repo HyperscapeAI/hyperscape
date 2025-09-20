@@ -242,7 +242,7 @@ export class Physics extends SystemBase implements IPhysics {
 
   // Plugin-specific extensions
   enabled: boolean = true;
-  timeStep: number = 1 / 60;
+  timeStep: number = 1 / 30; // 30 FPS for consistent timing with fixedDeltaTime
   gravity: Vector3 = { x: 0, y: -9.81, z: 0 };
   controllers: Map<string, any> = new Map();
   step?: (deltaTime: number) => void;

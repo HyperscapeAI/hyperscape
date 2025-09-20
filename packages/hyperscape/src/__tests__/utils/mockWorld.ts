@@ -23,8 +23,8 @@ export function createMockWorld(overrides: Partial<World> = {}): World {
     hot: new Set(),
     systems: [],
     systemsByName: new Map(),
-    maxDeltaTime: 1/60,
-    fixedDeltaTime: 1/60,
+    maxDeltaTime: 1/30,
+    fixedDeltaTime: 1/30,
     
     // Three.js objects
     rig: {
@@ -100,7 +100,7 @@ export function createMockWorld(overrides: Partial<World> = {}): World {
     physics: {
       enabled: true,
       gravity: { x: 0, y: -9.81, z: 0 },
-      timeStep: 1 / 60,
+      timeStep: 1 / 30,
       substeps: 1,
       world: {},
       controllers: new Map(),

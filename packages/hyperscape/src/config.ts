@@ -54,7 +54,7 @@ class ConfigurationManager {
       // Network configuration
       networkRate: parseFloat(process.env.HYPERSCAPE_NETWORK_RATE || '8'),
       maxDeltaTime: parseFloat(process.env.HYPERSCAPE_MAX_DELTA_TIME || String(1/30)),
-      fixedDeltaTime: parseFloat(process.env.HYPERSCAPE_FIXED_DELTA_TIME || String(1/60)),
+      fixedDeltaTime: parseFloat(process.env.HYPERSCAPE_FIXED_DELTA_TIME || String(1/30)),
       
       // Logging configuration
       logLevel: (process.env.HYPERSCAPE_LOG_LEVEL || (isProduction ? 'warn' : 'info')) as 'debug' | 'info' | 'warn' | 'error',

@@ -1,8 +1,8 @@
 import { System } from './System'
 import type { World } from '../types'
 
-// Industry standard 60Hz tick rate for responsive gameplay
-const TICK_RATE = 1 / 60
+// 30Hz tick rate for smooth, consistent gameplay without jitter
+const TICK_RATE = 1 / 30
 const TICK_INTERVAL_MS = TICK_RATE * 1000
 
 /**

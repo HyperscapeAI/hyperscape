@@ -37,8 +37,8 @@ export class MockWorld extends EventEmitter {
   hot: Set<unknown> = new Set();
   rig: unknown = {};
   camera: unknown = {};
-  maxDeltaTime: number = 1/60;
-  fixedDeltaTime: number = 1/60;
+  maxDeltaTime: number = 1/30;
+  fixedDeltaTime: number = 1/30;
   systems: unknown[] = [];
   systemsByName: Map<string, unknown> = new Map();
 

@@ -225,7 +225,7 @@ async function startServer() {
       methods: ['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS'],
     })
   } catch (error) {
-    fastify.log.error('[Server] Error registering CORS:', error)
+    fastify.log.error({ err: error }, '[Server] Error registering CORS')
     throw error
   }
 
@@ -250,17 +250,17 @@ async function startServer() {
       // In built version, __dirname points to build/, so public is at build/public
       const filePath = path.join(__dirname, 'public', 'index.html')
       
-      fastify.log.info('[Server] Serving index.html from:', filePath)
+      fastify.log.info({ filePath }, '[Server] Serving index.html')
       
       // Check if the HTML file exists
       if (!fs.existsSync(filePath)) {
-        fastify.log.error('[Server] HTML file not found at:', filePath)
+        fastify.log.error({ filePath }, '[Server] HTML file not found')
         throw new Error('Client HTML file not found')
       }
 
       // Read the file using async method
       const html = await fs.promises.readFile(filePath, 'utf-8')
-      fastify.log.info('[Server] HTML content length:', html.length)
+      fastify.log.info({ length: html.length }, '[Server] HTML content length')
       
       // Use Fastify's type() method and return the response
       return reply
@@ -270,7 +270,7 @@ async function startServer() {
         .header('Expires', '0')
         .send(html)
     } catch (error) {
-      fastify.log.error('[Server] Error serving HTML:', error)
+      fastify.log.error({ err: error }, '[Server] Error serving HTML')
       return reply.code(500).send('Internal Server Error')
     }
   })
@@ -280,15 +280,15 @@ async function startServer() {
     try {
       const filePath = path.join(__dirname, 'public', 'index.html')
       
-      fastify.log.info('[Server] Serving index.html from:', filePath)
+      fastify.log.info({ filePath }, '[Server] Serving index.html')
       
       if (!fs.existsSync(filePath)) {
-        fastify.log.error('[Server] HTML file not found at:', filePath)
+        fastify.log.error({ filePath }, '[Server] HTML file not found')
         throw new Error('Client HTML file not found')
       }
 
       const html = await fs.promises.readFile(filePath, 'utf-8')
-      fastify.log.info('[Server] HTML content length:', html.length)
+      fastify.log.info({ length: html.length }, '[Server] HTML content length')
       
       return reply
         .type('text/html; charset=utf-8')
@@ -297,7 +297,7 @@ async function startServer() {
         .header('Expires', '0')
         .send(html)
     } catch (error) {
-      fastify.log.error('[Server] Error serving HTML:', error)
+      fastify.log.error({ err: error }, '[Server] Error serving HTML')
       return reply.code(500).send('Internal Server Error')
     }
   })
@@ -351,7 +351,7 @@ async function startServer() {
       },
     })
   } catch (error) {
-    fastify.log.error('[Server] Error registering static public:', error)
+    fastify.log.error({ err: error }, '[Server] Error registering static public')
     throw error
   }
 
@@ -368,7 +368,7 @@ async function startServer() {
       },
     })
   } catch (error) {
-    fastify.log.error('[Server] Error registering world assets:', error)
+    fastify.log.error({ err: error }, '[Server] Error registering world assets')
     throw error
   }
 
@@ -387,7 +387,7 @@ async function startServer() {
         },
       })
           } catch (error) {
-        fastify.log.error('[Server] Error registering static systems:', error)
+        fastify.log.error({ err: error }, '[Server] Error registering static systems')
       // Don't throw - systems are optional
     }
   }
@@ -409,9 +409,9 @@ async function startServer() {
       
       // Debug logging to understand the structure
       fastify.log.info('[Server] WebSocket connection established')
-      fastify.log.info('[Server] Connection type:', typeof connection)
-      fastify.log.info('[Server] Connection.socket exists?', !!connection.socket)
-      fastify.log.info('[Server] Connection has .on method?', 'on' in connection)
+      fastify.log.info({ type: typeof connection }, '[Server] Connection type')
+      fastify.log.info({ socketExists: !!connection.socket }, '[Server] Connection.socket exists?')
+      fastify.log.info({ hasOnMethod: 'on' in connection }, '[Server] Connection has .on method?')
       
       // Handle network connection if server network exists
       const worldWithNetwork = world
@@ -436,7 +436,7 @@ async function startServer() {
   fastify.post('/api/player/disconnect', async (req, reply) => {
     try {
       const body = (req.body ?? {}) as { playerId?: string; sessionId?: string; reason?: string }
-      fastify.log.info('[API] player/disconnect', body)
+      fastify.log.info({ body }, '[API] player/disconnect')
       // Attempt to close socket if present
       const sockets = world.network && 'sockets' in world.network ? (world.network as unknown as { sockets: Map<string, import('../Socket').Socket> }).sockets : undefined
       const socket = sockets?.get(body.playerId || '')
@@ -445,7 +445,7 @@ async function startServer() {
       }
       return reply.send({ ok: true })
     } catch (err) {
-      fastify.log.error('[API] player/disconnect failed', err)
+      fastify.log.error({ err }, '[API] player/disconnect failed')
       return reply.code(200).send({ ok: true })
     }
   })
@@ -680,7 +680,7 @@ async function startServer() {
 
       return reply.send({ success: true, logged: true })
     } catch (error) {
-    fastify.log.error('[API] Failed to process frontend error:', error)
+    fastify.log.error({ err: error }, '[API] Failed to process frontend error')
       return reply.code(500).send({
         success: false,
         error: 'Failed to log frontend error',

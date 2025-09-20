@@ -360,7 +360,7 @@ export class PlayerRemote extends Entity implements HotReloadable {
       }
       
       // Update avatar animations
-      if (instance.update) {
+      if (instance && instance.update) {
         instance.update(delta)
       }
     } else if (Math.random() < 0.001) {

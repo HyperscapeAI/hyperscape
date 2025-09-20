@@ -54,7 +54,7 @@ export class World extends EventEmitter {
 
   // Time management
   maxDeltaTime = 1 / 30; // 0.33333
-  fixedDeltaTime = 1 / 50; // 0.01666
+  fixedDeltaTime = 1 / 30; // 0.03333 - 30 FPS for consistent timing
   frame = 0;
   time = 0;
   accumulator = 0;

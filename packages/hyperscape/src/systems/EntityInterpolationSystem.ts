@@ -38,7 +38,7 @@ interface InterpolationState {
  */
 export class EntityInterpolationSystem extends System {
   private states: Map<string, InterpolationState> = new Map();
-  private interpolationDelay: number = 150; // ms - how far behind to render (increased for smoother movement)
+  private interpolationDelay: number = 100; // ms - how far behind to render (optimized for 30 FPS)
   private maxBufferSize: number = 20;
   private extrapolationLimit: number = 500; // ms - max extrapolation time
   private lastAlpha: number = 0; // Store alpha for smooth interpolation
@@ -253,7 +253,7 @@ export class EntityInterpolationSystem extends System {
   ): void {
     // Frame-independent smoothing
     // Convert smoothing rate from "per second" to "per frame"
-    const smoothingRate = 8.0; // Higher = snappier, lower = smoother
+    const smoothingRate = 5.0; // Optimized for 30 FPS - provides smooth movement without lag
     const smoothingFactor = 1.0 - Math.exp(-smoothingRate * delta);
     
     // Update entity position with smoothing
