@@ -5,17 +5,17 @@
 
 import type THREE from '../extras/three';
 import type { EntityData, Position3D, Quaternion } from './base-types';
-import type { 
-  Item, 
-  InventoryItem,
-  MovementComponent,
-  InventoryComponent,
-  StatsComponent,
-  NPCComponent,
-  PrayerComponent,
+import type {
   EquipmentComponent,
+  InventoryComponent,
+  InventoryItem,
+  Item,
+  MovementComponent,
+  NPCComponent,
   PlayerHealth,
-  PlayerStamina
+  PlayerStamina,
+  PrayerComponent,
+  StatsComponent
 } from './core';
 
 // Enums for better type safety instead of string literals
@@ -92,7 +92,7 @@ export enum ItemRarity {
 }
 
 // Re-export for convenience
-export type { Position3D, Item };
+export type { Item, Position3D };
 
 // Base Entity configuration - generic with strongly typed properties
 export interface EntityConfig<TProperties = BaseEntityProperties> {

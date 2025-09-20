@@ -290,11 +290,11 @@ export class PlayerLocal extends Entity implements HotReloadable {
         quaternion: this.rotation
       },
       data: {
-        id: this.data.id,
-        name: this.data.name || 'Unknown Player',
+        id: this.data.id as string,
+        name: (this.data.name as string) || 'Unknown Player',
         health: this.health,
-        roles: this.data.roles,
-        owner: this.data.owner,
+        roles: this.data.roles as string[] | undefined,
+        owner: this.data.owner as string | undefined,
         effect: this.data.effect
       },
       avatar: this.avatar,
@@ -858,7 +858,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
   }
 
   getAvatarUrl(): string {
-    return this.data.sessionAvatar || this.data.avatar || 'asset://avatar.vrm'
+    return (this.data.sessionAvatar as string) || (this.data.avatar as string) || 'asset://avatar.vrm'
   }
 
   async applyAvatar(): Promise<void> {
@@ -1569,7 +1569,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
   }
 
   toggleFlying() {
-    const canFly = this.world.settings.public || hasRole(this.data.roles, 'admin')
+    const canFly = this.world.settings.public || hasRole(this.data.roles as string[], 'admin')
     if (!canFly) return
     this.flying = !this.flying
     if (this.flying && this.capsule) {
@@ -1876,7 +1876,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
     this.data.sessionAvatar = avatar
     this.applyAvatar().catch(err => console.error('[PlayerLocal] Failed to apply avatar:', err))
     this.world.network.send('entityModified', {
-      id: this.data.id,
+      id: this.data.id as string,
       sessionAvatar: avatar,
     })
   }

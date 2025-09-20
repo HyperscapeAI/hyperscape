@@ -143,7 +143,7 @@ export class UI extends Node implements HotReloadable {
     } else {
       this._offset.set(defaults.offset[0], defaults.offset[1], defaults.offset[2])
     }
-    this._scaler = data.scaler ?? defaults.scaler
+    this._scaler = (data.scaler ?? defaults.scaler) as [number, number] | [number, number, number] | null
     this._pointerEvents = data.pointerEvents ?? defaults.pointerEvents
 
     this._transparent = data.transparent ?? defaults.transparent

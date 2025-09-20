@@ -56,7 +56,7 @@ export class Action extends Node {
     // Unregister with actions system
     const actionsSystem = this.ctx!.findSystem!('actions') as ActionsSystem;
     if (actionsSystem) {
-      actionsSystem.unregister(this);
+      actionsSystem.unregister(this.id);
     }
   }
 

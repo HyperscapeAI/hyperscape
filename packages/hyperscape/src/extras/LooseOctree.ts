@@ -275,7 +275,7 @@ export class LooseOctreeNode {
             this.center.y + halfSize * (2 * y - 1),
             this.center.z + halfSize * (2 * z - 1)
           )
-          const child = new LooseOctreeNode(this, this, center, halfSize)
+          const child = new LooseOctreeNode(this.octree, this, center, halfSize)
           this.children.push(child)
         }
       }

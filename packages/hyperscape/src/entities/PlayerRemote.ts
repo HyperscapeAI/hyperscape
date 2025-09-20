@@ -56,6 +56,8 @@ export class PlayerRemote extends Entity implements HotReloadable {
   private prevPosition: THREE.Vector3 = new THREE.Vector3();
   public velocity = new THREE.Vector3();
   public enableInterpolation: boolean = false; // Disabled - ensure basic movement works first
+  private _tempMatrix1 = new THREE.Matrix4();
+  private _tempVector3_1 = new THREE.Vector3();
   
   constructor(world: World, data: EntityData, local?: boolean) {
     super(world, data, local)
@@ -338,8 +340,8 @@ export class PlayerRemote extends Entity implements HotReloadable {
         
         // The VRM scene has matrixAutoUpdate = false, so we need to update matrices manually
         // Create a temporary matrix - consider moving this to a class property for reuse
-        const worldMatrix = m1
-        const tempScale = v1.set(1, 1, 1)
+        const worldMatrix = this._tempMatrix1
+        const tempScale = this._tempVector3_1.set(1, 1, 1)
         worldMatrix.compose(
           this.node.position,
           this.node.quaternion,

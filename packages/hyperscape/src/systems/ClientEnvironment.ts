@@ -6,6 +6,8 @@ import { System } from './System'
 import { CSM } from '../libs/csm/CSM'
 import type { BaseEnvironment, EnvironmentModel, LoadedModel, LoaderResult, SkyHandle, SkyInfo, SkyNode, World, WorldOptions } from '../types/index'
 
+const _sunDirection = new THREE.Vector3(0, -1, 0)
+
 // Strong type casting helpers - assume types are correct
 function asString(value: unknown): string {
   return value as string

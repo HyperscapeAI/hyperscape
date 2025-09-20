@@ -461,7 +461,7 @@ export class Node {
     // nodes should override this and add their stats
   }
 
-  get onPointerEnter() {
+  get onPointerEnter(): ((event: PointerEvent) => void) | undefined {
     return this._onPointerEnter
   }
 
@@ -469,7 +469,7 @@ export class Node {
     this._onPointerEnter = value as (event: PointerEvent) => void
   }
 
-  get onPointerLeave() {
+  get onPointerLeave(): ((event: PointerEvent) => void) | undefined {
     return this._onPointerLeave
   }
 
@@ -477,7 +477,7 @@ export class Node {
     this._onPointerLeave = value as (event: PointerEvent) => void
   }
 
-  get onPointerDown() {
+  get onPointerDown(): ((event: PointerEvent) => void) | undefined {
     return this._onPointerDown
   }
 
@@ -485,7 +485,7 @@ export class Node {
     this._onPointerDown = value as (event: PointerEvent) => void
   }
 
-  get onPointerUp() {
+  get onPointerUp(): ((event: PointerEvent) => void) | undefined {
     return this._onPointerUp
   }
 
