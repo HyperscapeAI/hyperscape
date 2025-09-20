@@ -327,6 +327,7 @@ function Chat({ world }: { world: World }) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [msg, setMsg] = useState('')
   const [active, setActive] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
   useEffect(() => {
     const onToggle = () => {
       setActive(!active)
@@ -395,66 +396,87 @@ function Chat({ world }: { world: World }) {
   }
   return (
     <div
-      className={cls('mainchat', { active })}
+      className={cls('mainchat', { active, collapsed })}
       style={{
         position: 'absolute',
-        left: 'calc(2rem + env(safe-area-inset-left))',
-        bottom: 'calc(2rem + env(safe-area-inset-bottom))',
-        width: '20rem',
+        left: 'calc(1.5rem + env(safe-area-inset-left))',
+        bottom: 'calc(1.75rem + env(safe-area-inset-bottom))',
+        width: '32rem',
         fontSize: '1rem',
-        pointerEvents: active ? 'auto' : 'none',
+        pointerEvents: 'auto',
       }}
     >
       <style>{`
         @media all and (max-width: 1200px) {
           .mainchat {
-            left: calc(1rem + env(safe-area-inset-left)) !important;
-            bottom: calc(1rem + env(safe-area-inset-bottom)) !important;
+            left: calc(0.75rem + env(safe-area-inset-left)) !important;
+            bottom: calc(0.75rem + env(safe-area-inset-bottom)) !important;
           }
         }
-        .mainchat-msgs {
-          padding: 0 0 0.5rem 0.4rem;
-        }
-        .mainchat-btn {
+        .mainchat-header {
           pointer-events: auto;
-          width: 2.875rem;
-          height: 2.875rem;
+          height: 2.5rem;
           display: flex;
           align-items: center;
-          justify-content: center;
-          background: rgba(11, 10, 21, 0.85);
+          justify-content: space-between;
+          padding: 0 0.6rem;
+          background: rgba(11, 10, 21, 0.9);
           border: 0.0625rem solid #2a2b39;
-          border-radius: 1rem;
-          opacity: ${active ? '0' : '1'};
+          border-radius: 0.5rem 0.5rem 0 0;
+          backdrop-filter: blur(5px);
           cursor: pointer;
+          user-select: none;
+        }
+        .mainchat-msgs {
+          padding: 0.5rem 0.6rem 0.6rem 0.6rem;
+          background: rgba(11, 10, 21, 0.85);
+          border-left: 0.0625rem solid #2a2b39;
+          border-right: 0.0625rem solid #2a2b39;
         }
         .mainchat-entry {
-          height: 2.875rem;
-          padding: 0 0.8rem;
+          height: 3.25rem;
+          padding: 0 1rem;
           background: rgba(11, 10, 21, 0.85);
           border: 0.0625rem solid #2a2b39;
-          border-radius: 1rem;
+          border-radius: 0 0 0.5rem 0.5rem;
           backdrop-filter: blur(5px);
-          display: ${active ? 'flex' : 'none'};
+          display: ${active && !collapsed ? 'flex' : 'none'};
           align-items: center;
         }
         .mainchat-entry input {
-          font-size: 0.9375rem;
+          font-size: 1.05rem;
           line-height: 1;
         }
+        .mainchat.collapsed .mainchat-msgs { display: none; }
       `}</style>
-      <div className='mainchat-msgs'>
-        {isTouch && !active && <MiniMessages world={world} />}
-        {(!isTouch || active) && <Messages world={world} active={active} />}
-      </div>
       <div
-        className='mainchat-btn'
-        onClick={() => {
-          setActive(true)
-        }}
+        className='mainchat-header'
+        onClick={() => setCollapsed(prev => !prev)}
+        title={collapsed ? 'Open chat' : 'Collapse chat'}
       >
-        <MessageSquareIcon size='1.125rem' />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <MessageSquareIcon size={16} />
+          <span>Chat</span>
+        </div>
+        <div style={{ opacity: 0.8, fontSize: '0.85rem' }}>{collapsed ? '▾' : '▴'}</div>
       </div>
+      <div className='mainchat-msgs'>
+        {isTouch && (!active || collapsed) && <MiniMessages world={world} />}
+        {(!isTouch && !collapsed) && <Messages world={world} active={active} />}
+      </div>
+      {!active && !collapsed && (
+        <div
+          className='mainchat-entry'
+          style={{ display: 'flex', borderTop: 'none' }}
+        >
+          <input
+            readOnly
+            value={''}
+            placeholder={'Press Enter to chat'}
+            onFocus={() => setActive(true)}
+          />
+        </div>
+      )}
       <label className='mainchat-entry'>
         <input
           ref={inputRef}

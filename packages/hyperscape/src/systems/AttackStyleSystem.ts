@@ -107,10 +107,10 @@ export class AttackStyleSystem extends SystemBase {
   private handlePlayerRegister(data: { id: string }): void {
     const playerId = data.id;
     
-    // Initialize player with default attack style (controlled)
+    // Initialize player with default attack style (accurate/melee)
     const playerState: PlayerAttackStyleState = {
       playerId,
-      selectedStyle: 'controlled', // Default per GDD
+      selectedStyle: 'accurate',
       lastStyleChange: Date.now(),
       combatStyleHistory: []
     };
@@ -120,7 +120,7 @@ export class AttackStyleSystem extends SystemBase {
     // Notify UI of initial attack style - emit as notification, not request
     this.emitTypedEvent(EventType.UI_ATTACK_STYLE_CHANGED, {
       playerId,
-      currentStyle: this.ATTACK_STYLES.controlled,
+      currentStyle: this.ATTACK_STYLES.accurate,
       availableStyles: Object.values(this.ATTACK_STYLES),
       canChange: true
     });

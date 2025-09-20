@@ -5,6 +5,10 @@ import { isTouch } from '../utils'
 import { cls } from './cls'
 
 import { World } from '../../World'
+import type { InventoryItem, PlayerEquipmentItems, PlayerStats, Item } from '../../types/core'
+import { PlayerMigration } from '../../types/core'
+import { EquipmentSlotName } from '../../types/core'
+import { WeaponType } from '../../types/core'
 import { EventType } from '../../types/events'
 import { DraggableWindow } from './DraggableWindow'
 import {
@@ -41,14 +45,49 @@ interface SidebarProps {
 
 export function Sidebar({ world, ui }: SidebarProps) {
   const [livekit, setLiveKit] = useState(() => world.livekit!.status)
+  const [activePane, setActivePane] = useState<string>('skills')
+  const [inventory, setInventory] = useState<InventoryItem[]>([])
+  const [equipment, setEquipment] = useState<PlayerEquipmentItems | null>(null)
+  const [playerStats, setPlayerStats] = useState<PlayerStats | null>(null)
+  const [coins, setCoins] = useState<number>(0)
   
   useEffect(() => {
     const onLiveKitStatus = status => {
       setLiveKit({ ...status })
     }
     world.livekit!.on('status', onLiveKitStatus)
+    const onOpenPane = (data: { pane?: string | null }) => {
+      setActivePane((data?.pane ?? 'skills') as string)
+    }
+    world.on(EventType.UI_OPEN_PANE, onOpenPane)
+    const onUIUpdate = (raw: unknown) => {
+      const update = raw as { component: string; data: unknown }
+      if (update.component === 'player') {
+        setPlayerStats(update.data as PlayerStats)
+      }
+      if (update.component === 'equipment') {
+        const data = update.data as { equipment: PlayerEquipmentItems }
+        setEquipment(data.equipment)
+      }
+    }
+    const onInventory = (raw: unknown) => {
+      const data = raw as { items: InventoryItem[] }
+      if (Array.isArray(data.items)) setInventory(data.items)
+    }
+    const onCoins = (raw: unknown) => {
+      const data = raw as { playerId: string; coins: number }
+      const localId = world.entities.player?.id
+      if (!localId || data.playerId === localId) setCoins(typeof data.coins === 'number' ? data.coins : 0)
+    }
+    world.on(EventType.UI_UPDATE, onUIUpdate)
+    world.on(EventType.INVENTORY_UPDATED, onInventory)
+    world.on(EventType.INVENTORY_UPDATE_COINS, onCoins)
     return () => {
       world.livekit!.off('status', onLiveKitStatus)
+      world.off(EventType.UI_OPEN_PANE, onOpenPane)
+      world.off(EventType.UI_UPDATE, onUIUpdate)
+      world.off(EventType.INVENTORY_UPDATED, onInventory)
+      world.off(EventType.INVENTORY_UPDATE_COINS, onCoins)
     }
   }, [])
   
@@ -158,73 +197,34 @@ export function Sidebar({ world, ui }: SidebarProps) {
           </Section>
         </div>
         
-        {/* Minimap - top right */}
-        <DraggableWindow
-          initialPosition={{ x: Math.max(32, window.innerWidth - 232), y: 32 }} // Top right, account for width + padding
-          onPositionChange={() => {}} // Position changes are handled internally
-          dragHandle={
-            <div style={{ 
-              padding: '0.25rem 0.5rem', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              background: 'rgba(11, 10, 21, 0.95)',
-              borderTopLeftRadius: '8px',
-              borderTopRightRadius: '8px',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-              fontSize: '0.75rem',
-              fontWeight: '500',
-              color: 'rgba(255, 255, 255, 0.8)',
-              cursor: 'move'
-            }}>
-              📍 Minimap
-            </div>
-          }
-          style={{
-            position: 'fixed',
-            zIndex: 998
-          }}
-        >
-          <Minimap 
-            world={world} 
-            width={200} 
-            height={200}
-            zoom={50}
-            style={{
-              borderTopLeftRadius: 0,
-              borderTopRightRadius: 0
-            }}
-          />
-        </DraggableWindow>
+        {/* Minimap + Right sidebar column */}
+        <div style={{ position: 'fixed', right: 20, top: 24, zIndex: 998, pointerEvents: 'auto', width: 320 }}>
+          <div className="minimap-card" style={{
+            background: 'linear-gradient(180deg, rgba(12,12,20,0.98), rgba(12,12,20,0.92))',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 12,
+            boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+            padding: 8
+          }}>
+            <Minimap 
+              world={world}
+              width={304}
+              height={304}
+              zoom={50}
+              style={{ borderRadius: 8, overflow: 'hidden' }}
+            />
+          </div>
+          {/* Right docked panel that includes tab bar */}
+          <RightDockPanel world={world} activePane={activePane} ui={ui}>
+            {activePane === 'combat' && <CombatPage world={world} stats={playerStats} equipment={equipment} />}
+            {activePane === 'skills' && <SkillsPage world={world} stats={playerStats} />}
+            {activePane === 'inventory' && <InventoryPage items={inventory} coins={coins} />}
+            {activePane === 'equipment' && <EquipmentPage equipment={equipment} />}
+            {activePane === 'prefs' && <SettingsPage world={world} />}
+          </RightDockPanel>
+        </div>
         
-        {ui.pane === 'prefs' && (
-          <DraggableWindow
-            initialPosition={{ x: Math.max(32, window.innerWidth - 352), y: Math.max(32, window.innerHeight - 500) }} // Position near bottom right with bounds
-            onPositionChange={() => {}} // Position changes are handled internally
-            dragHandle={
-              <div style={{ 
-                padding: '0.75rem 1rem', 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '0.5rem',
-                borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-                background: 'rgba(11, 10, 21, 0.95)',
-                borderTopLeftRadius: '1rem',
-                borderTopRightRadius: '1rem',
-                cursor: 'move'
-              }}>
-                <Settings size='1rem' />
-                <span style={{ fontSize: '0.875rem', fontWeight: '500' }}>Game Settings</span>
-              </div>
-            }
-            style={{
-              position: 'fixed',
-              zIndex: 999
-            }}
-          >
-            <Prefs world={world} hidden={!ui.active} />
-          </DraggableWindow>
-        )}
+        {/* Settings handled in the right dock panel via activePane === 'prefs' */}
       </div>
     </HintProvider>
   )
@@ -309,6 +309,480 @@ function Btn({ disabled = false, suspended = false, active = false, children, ..
       `}</style>
       {children}
       <div className='sidebar-btn-dot' />
+    </div>
+  )
+}
+
+function TabButton({ label, onClick, disabled, titleHint, active }: { label: string; onClick?: () => void; disabled?: boolean; titleHint?: string; active?: boolean }) {
+  return (
+    <div
+      onClick={disabled ? undefined : onClick}
+      style={{
+        height: 32,
+        borderRadius: 8,
+        background: disabled ? 'rgba(255,255,255,0.06)' : active ? 'linear-gradient(180deg, rgba(59,130,246,0.35), rgba(59,130,246,0.2))' : 'rgba(0,0,0,0.35)',
+        border: active ? '1px solid rgba(59,130,246,0.7)' : '1px solid rgba(255,255,255,0.12)',
+        color: disabled ? '#6b7280' : '#e5e7eb',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 14, cursor: disabled ? 'default' : 'pointer', userSelect: 'none',
+        boxShadow: active ? 'inset 0 0 10px rgba(59,130,246,0.35)' : 'none'
+      }}
+      title={titleHint || label}
+    >
+      {label}
+    </div>
+  )
+}
+
+function RightDockPanel({ children, world, activePane, ui }: { children: React.ReactNode; world: World; activePane: string; ui: { pane: string | null } }) {
+  const [style, setStyle] = useState<{ top: number; left: number; width: number; height: number }>({ top: 24 + 304 + 12 + 46, left: window.innerWidth - 20 - 320, width: 320, height: 0 })
+  useEffect(() => {
+    const compute = () => {
+      const card = document.querySelector('.minimap-card') as HTMLElement | null
+      const gap = 12
+      const bottomInset = 28
+      const width = 320
+      if (!card) {
+        // Fallback constants mirroring container top spacing
+        const columns = 4, rows = 7, cellGap = 6
+        const size = Math.floor((width - cellGap * (columns - 1)) / columns)
+        const top = 24 + 304 + gap + 46
+        const maxH = window.innerHeight - top - bottomInset
+        const panelHeight = Math.floor(Math.min(maxH, size * rows + cellGap * (rows - 1) + 16))
+        setStyle({ top, left: Math.floor(window.innerWidth - 20 - width), width, height: panelHeight })
+        return
+      }
+      const rect = card.getBoundingClientRect()
+      // Derive consistent panel height from inventory grid (4x7)
+      const columns = 4, rows = 7, cellGap = 6
+      const size = Math.floor((width - cellGap * (columns - 1)) / columns)
+      const top = Math.floor(rect.bottom + gap)
+      const maxHeight = window.innerHeight - top - bottomInset
+      const panelHeight = Math.floor(Math.min(maxHeight, size * rows + cellGap * (rows - 1) + 16))
+      setStyle({ top, left: Math.floor(rect.left), width, height: panelHeight })
+    }
+    compute()
+    window.addEventListener('resize', compute)
+    return () => { window.removeEventListener('resize', compute) }
+  }, [])
+  return (
+    <div style={{ position: 'fixed', left: style.left, top: style.top, width: style.width }}>
+      <div className="panel-tabs" style={{
+        display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6,
+        background: 'rgba(11, 10, 21, 0.96)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderTopLeftRadius: 12, borderTopRightRadius: 12,
+        padding: '8px 8px'
+      }}>
+        <TabButton label='⚔️' titleHint='Combat' active={activePane === 'combat'} onClick={() => world.emit(EventType.UI_OPEN_PANE, { pane: 'combat' })} />
+        <TabButton label='🧠' titleHint='Skills' active={activePane === 'skills'} onClick={() => world.emit(EventType.UI_OPEN_PANE, { pane: 'skills' })} />
+        <TabButton label='🎒' titleHint='Inventory' active={activePane === 'inventory'} onClick={() => world.emit(EventType.UI_OPEN_PANE, { pane: 'inventory' })} />
+        <TabButton label='🛡️' titleHint='Worn Equipment' active={activePane === 'equipment'} onClick={() => world.emit(EventType.UI_OPEN_PANE, { pane: 'equipment' })} />
+        <TabButton label='⚙️' titleHint='Settings' active={ui.pane === 'prefs'} onClick={() => world.emit(EventType.UI_OPEN_PANE, { pane: 'prefs' })} />
+      </div>
+      <div
+        style={{
+          width: style.width,
+          height: style.height,
+          background: 'rgba(11, 10, 21, 0.96)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderTop: 'none',
+          borderBottomLeftRadius: 12, borderBottomRightRadius: 12,
+          padding: '10px',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.45)',
+          pointerEvents: 'auto',
+          zIndex: 998,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          boxSizing: 'border-box',
+          scrollbarGutter: 'stable'
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function SkillsPage({ world, stats }: { world: World; stats: PlayerStats | null }) {
+  const s = stats?.skills || ({} as NonNullable<PlayerStats['skills']>)
+  const items = [
+    { key: 'attack', label: 'Attack', icon: '⚔️', level: s?.attack?.level || 1, xp: s?.attack?.xp || 0 },
+    { key: 'constitution', label: 'Constitution', icon: '❤️', level: Math.max(10, s?.constitution?.level || 10), xp: s?.constitution?.xp || 0 },
+    { key: 'strength', label: 'Strength', icon: '💪', level: s?.strength?.level || 1, xp: s?.strength?.xp || 0 },
+    { key: 'defense', label: 'Defense', icon: '🛡️', level: s?.defense?.level || 1, xp: s?.defense?.xp || 0 },
+    { key: 'ranged', label: 'Ranged', icon: '🏹', level: s?.ranged?.level || 1, xp: s?.ranged?.xp || 0 },
+    { key: 'woodcutting', label: 'Woodcutting', icon: '🪓', level: s?.woodcutting?.level || 1, xp: s?.woodcutting?.xp || 0 },
+    { key: 'fishing', label: 'Fishing', icon: '🎣', level: s?.fishing?.level || 1, xp: s?.fishing?.xp || 0 },
+    { key: 'firemaking', label: 'Firemaking', icon: '🔥', level: s?.firemaking?.level || 1, xp: s?.firemaking?.xp || 0 },
+    { key: 'cooking', label: 'Cooking', icon: '🍳', level: s?.cooking?.level || 1, xp: s?.cooking?.xp || 0 }
+  ]
+  const totalLevel = items.reduce((sum, it) => sum + (it.level || 1), 0)
+  const totalXP = items.reduce((sum, it) => sum + (it.xp || 0), 0)
+  const [hover, setHover] = useState<{ label: string; xp: number } | null>(null)
+  const [mouse, setMouse] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  return (
+    <div style={{ position: 'relative', height: '100%' }} onMouseMove={(e) => setMouse({ x: e.clientX, y: e.clientY })}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+        {items.map((it) => (
+          <div key={it.key} style={{
+            background: 'rgba(0,0,0,0.35)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 6,
+            padding: '6px 8px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column',
+            fontSize: 13, cursor: 'default'
+          }}
+          onMouseEnter={() => setHover({ label: it.label, xp: it.xp })}
+          onMouseLeave={() => setHover(null)}
+          >
+            <span style={{ fontSize: 18 }}>{it.icon}</span>
+            <span>{it.level}/{it.level}</span>
+          </div>
+        ))}
+      </div>
+      <div
+        style={{ position: 'absolute', left: 8, right: 8, bottom: 8, textAlign: 'right', color: '#9ca3af', fontSize: 12 }}
+        onMouseEnter={() => setHover({ label: 'Total', xp: totalXP })}
+        onMouseLeave={() => setHover(null)}
+      >
+        Total level: {totalLevel}
+      </div>
+      {hover && (
+        (() => {
+          const pad = 12
+          const tooltipWidth = 160
+          const tooltipHeight = 56
+          let left = mouse.x + pad
+          if (left + tooltipWidth > window.innerWidth - 8) left = mouse.x - tooltipWidth - pad
+          if (left < 8) left = 8
+          let top = mouse.y + pad
+          if (top + tooltipHeight > window.innerHeight - 8) top = mouse.y - tooltipHeight - pad
+          if (top < 8) top = 8
+          return (
+            <div style={{ position: 'fixed', left, top, width: tooltipWidth, background: 'rgba(20,20,28,0.98)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6, padding: '6px 8px', color: '#fff', fontSize: 12, pointerEvents: 'none', zIndex: 200 }}>
+              <div style={{ fontWeight: 600, marginBottom: 2 }}>
+                {hover.label === 'Total' ? 'Total Experience' : hover.label}
+              </div>
+              <div>{hover.label === 'Total' ? 'Total XP' : 'XP'}: {Math.floor(hover.xp).toLocaleString()}</div>
+            </div>
+          )
+        })()
+      )}
+    </div>
+  )
+}
+
+function InventoryPage({ items, coins }: { items: InventoryItem[]; coins: number }) {
+  const slots = Array(28).fill(null)
+  items.forEach((item, i) => { if (i < 28) slots[i] = item })
+  const gridRef = useRef<HTMLDivElement | null>(null)
+  const [size, setSize] = useState<number>(40)
+  useEffect(() => {
+    const compute = () => {
+      const grid = gridRef.current
+      if (!grid) return
+      const parent = grid.parentElement as HTMLElement | null
+      const columns = 4
+      const rows = 7
+      const gap = 8
+      const widthAvailable = (parent?.clientWidth || grid.clientWidth)
+      const byWidth = Math.floor((widthAvailable - gap * (columns - 1)) / columns)
+      const next = Math.max(20, byWidth)
+      setSize(next)
+    }
+    compute()
+    window.addEventListener('resize', compute)
+    const id = window.setInterval(compute, 500)
+    return () => { window.removeEventListener('resize', compute); window.clearInterval(id) }
+  }, [])
+  const rows = 7
+  const columns = 4
+  const gap = 8
+  const gridHeight = size * rows + gap * (rows - 1)
+  return (
+    <div style={{ height: gridHeight + 44, width: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
+      <div ref={gridRef} style={{ margin: '0 auto', display: 'grid', gridTemplateColumns: `repeat(${columns}, ${size}px)`, gridTemplateRows: `repeat(${rows}, ${size}px)`, gridAutoFlow: 'row', gap: gap, width: (size * columns + gap * (columns - 1)) }}>
+        {slots.map((item, i) => (
+          <div key={i} style={{
+            width: size, height: size,
+            background: 'rgba(0,0,0,0.35)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 4,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 10
+          }}>
+            {item ? (item.itemId.substring(0, 3)) : ''}
+          </div>
+        ))}
+      </div>
+      <div style={{
+        marginTop: 10,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        background: 'rgba(0,0,0,0.35)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: 6,
+        padding: '8px 10px',
+        color: '#e5e7eb', fontSize: 13
+      }}>
+        <span>Coins</span>
+        <span style={{ color: '#fbbf24', fontWeight: 700 }}>{coins.toLocaleString()} gp</span>
+      </div>
+    </div>
+  )
+}
+
+function CombatPage({ world, stats, equipment }: { world: World; stats: PlayerStats | null; equipment: PlayerEquipmentItems | null }) {
+  const [style, setStyle] = useState<string>('accurate')
+  const [cooldown, setCooldown] = useState<number>(0)
+  const combatLevel = (typeof stats?.combatLevel === 'number')
+    ? (stats!.combatLevel as number)
+    : (stats?.skills ? PlayerMigration.calculateCombatLevel(stats.skills) : 1)
+
+  useEffect(() => {
+    const id = world.entities.player?.id
+    if (!id) return
+    const api = (world as unknown as { api?: { getAttackStyleInfo?: (playerId: string, cb: (info: { style: string; cooldown?: number }) => void) => void } }).api
+    api?.getAttackStyleInfo?.(id, (info: { style: string; cooldown?: number }) => {
+      if (info) {
+        setStyle(info.style)
+        setCooldown(info.cooldown || 0)
+      }
+    })
+    const onUpdate = (data: { playerId: string; currentStyle: { id: string } }) => {
+      if (data.playerId !== id) return
+      setStyle(data.currentStyle.id)
+    }
+    const onChanged = (data: { playerId: string; currentStyle: { id: string } }) => {
+      if (data.playerId !== id) return
+      setStyle(data.currentStyle.id)
+    }
+    world.on(EventType.UI_ATTACK_STYLE_UPDATE, onUpdate)
+    world.on(EventType.UI_ATTACK_STYLE_CHANGED, onChanged)
+    return () => {
+      world.off(EventType.UI_ATTACK_STYLE_UPDATE, onUpdate)
+      world.off(EventType.UI_ATTACK_STYLE_CHANGED, onChanged)
+    }
+  }, [world, world.entities.player?.id])
+
+  const changeStyle = (next: string) => {
+    const id = world.entities.player?.id
+    if (!id) return
+    const api = (world as unknown as { api?: { changeAttackStyle?: (playerId: string, style: string) => void } }).api
+    api?.changeAttackStyle?.(id, next)
+  }
+
+  // Determine if ranged weapon equipped; if so, limit to ranged/defense like RS
+  const isRanged = !!(equipment?.arrows || (equipment?.weapon && (equipment.weapon.weaponType === WeaponType.BOW || equipment.weapon.weaponType === WeaponType.CROSSBOW)))
+  const styles: Array<{ id: string; label: string }> = isRanged
+    ? [
+        { id: 'accurate', label: 'Ranged' },
+        { id: 'defensive', label: 'Defensive' },
+      ]
+    : [
+        { id: 'accurate', label: 'Accurate' },
+        { id: 'aggressive', label: 'Aggressive' },
+        { id: 'defensive', label: 'Defensive' },
+      ]
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{
+        background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6,
+        padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+      }}>
+        <div style={{ fontWeight: 600 }}>Combat level</div>
+        <div>{combatLevel}</div>
+      </div>
+      <div style={{ fontWeight: 600, marginTop: 4 }}>Attack style</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+        {styles.map(s => (
+          <button key={s.id}
+            onClick={() => changeStyle(s.id)}
+            disabled={cooldown > 0}
+            style={{
+              background: style === s.id ? 'rgba(59,130,246,0.25)' : 'rgba(0,0,0,0.35)',
+              border: style === s.id ? '1px solid rgba(59,130,246,0.7)' : '1px solid rgba(255,255,255,0.08)',
+              color: '#e5e7eb', borderRadius: 6, padding: '8px 10px', cursor: 'pointer'
+            }}
+          >{s.label}</button>
+        ))}
+      </div>
+      {cooldown > 0 && (
+        <div style={{ fontSize: 12, color: '#9ca3af' }}>Style change available in {Math.ceil(cooldown / 1000)}s</div>
+      )}
+    </div>
+  )
+}
+
+function EquipmentPage({ equipment }: { equipment: PlayerEquipmentItems | null }) {
+  // Fixed slot layout (shows placeholders even when empty)
+  // Use the same slots as defined in Interface.tsx and PlayerEquipmentItems
+  const slots = [
+    { key: EquipmentSlotName.HELMET as 'helmet', label: 'Helmet' },
+    { key: EquipmentSlotName.BODY as 'body', label: 'Body' },
+    { key: EquipmentSlotName.LEGS as 'legs', label: 'Legs' },
+    { key: EquipmentSlotName.WEAPON as 'weapon', label: 'Weapon' },
+    { key: EquipmentSlotName.SHIELD as 'shield', label: 'Shield' },
+    { key: EquipmentSlotName.ARROWS as 'arrows', label: 'Arrows' },
+  ] as const
+
+  const itemMap: Record<string, Item | null> = equipment
+    ? (equipment as unknown as Record<string, Item | null>)
+    : {}
+
+  const cell = (slotKey: string, label: string) => {
+    const item = (itemMap && slotKey in itemMap ? itemMap[slotKey] : null) as Item | null
+    return (
+      <div
+        key={slotKey}
+        style={{
+          background: 'rgba(0,0,0,0.35)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: 6,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: '#e5e7eb', fontSize: 11, position: 'relative'
+        }}
+        title={item ? item.name : label}
+      >
+        <div style={{
+          position: 'absolute', top: 4, left: 6, color: '#9ca3af', fontSize: 10
+        }}>{label}</div>
+        <div style={{ fontSize: 12 }}>
+          {item ? (item.id.substring(0, 3)) : ''}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div
+        style={{
+          background: 'rgba(0,0,0,0.35)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: 6,
+          padding: 8,
+        }}
+      >
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gridTemplateRows: 'repeat(4, 1fr)',
+            gap: 6,
+          }}
+        >
+          {slots.map((s) => (
+            <div key={s.key} style={{ width: '100%', aspectRatio: '1 / 1' }}>
+              {cell(s.key, s.label)}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SettingsPage({ world }: { world: World }) {
+  const [advanced, setAdvanced] = useState(false)
+  // Hooks must not be conditional – declare upfront
+  const [uiScale, setUiScale] = useState(world.prefs!.ui)
+  const [statsOn, setStatsOn] = useState(world.prefs!.stats)
+  const nullRef = useRef<HTMLElement>(null)
+  const [canFullscreen, isFullscreen, toggleFullscreen] = useFullscreen(nullRef)
+
+  // Advanced settings modal overlay (centered, scrollable)
+  const advancedModal = advanced ? (
+    <div
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 2000, pointerEvents: 'auto'
+      }}
+      onClick={() => setAdvanced(false)}
+    >
+      <div
+        style={{
+          width: 520, maxWidth: '90vw', maxHeight: '80vh',
+          background: 'rgba(11, 10, 21, 0.98)',
+          border: '1px solid #2a2b39', borderRadius: 12,
+          overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <div style={{ fontWeight: 600 }}>Advanced Settings</div>
+          <button onClick={() => setAdvanced(false)} style={{ background: '#ef4444', border: 'none', color: '#fff', borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}>Close</button>
+        </div>
+        <div className='noscrollbar' style={{ overflowY: 'auto', maxHeight: 'calc(80vh - 48px)', padding: '8px 12px' }}>
+          <Prefs world={world} hidden={false} />
+        </div>
+      </div>
+    </div>
+  ) : null
+  return (
+    <div style={{ width: '100%', height: '100%', overflowY: 'auto', position: 'relative' }}>
+      <div style={{ fontWeight: 600, marginBottom: 10 }}>Quick Settings</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {/* UI Scale */}
+        <div>
+          <div style={{ marginBottom: 4 }}>UI Scale</div>
+          <input
+            type='range'
+            min={0.6}
+            max={1.6}
+            step={0.05}
+            value={uiScale}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value)
+              setUiScale(v)
+              world.prefs!.setUI(v)
+            }}
+            style={{ width: '100%' }}
+          />
+        </div>
+        {/* Fullscreen */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>Fullscreen</div>
+          <button
+            onClick={() => { if (canFullscreen && typeof toggleFullscreen === 'function') toggleFullscreen(!(isFullscreen as boolean)) }}
+            style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.15)', color: 'white', borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}
+          >
+            {(isFullscreen as boolean) ? 'Disable' : 'Enable'}
+          </button>
+        </div>
+        {/* Performance Stats */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>Performance Stats</div>
+          <button
+            onClick={() => {
+              const next = !statsOn
+              setStatsOn(next)
+              world.prefs!.setStats(next)
+            }}
+            style={{ background: statsOn ? '#10b981' : '#4b5563', border: 'none', color: 'white', borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}
+          >
+            {statsOn ? 'Shown' : 'Hidden'}
+          </button>
+        </div>
+        {/* Hide Interface */}
+        <button
+          onClick={() => world.ui!.toggleVisible()}
+          style={{ background: '#ef4444', border: 'none', color: 'white', borderRadius: 6, padding: '6px 10px', cursor: 'pointer' }}
+        >
+          Hide Interface (Z)
+        </button>
+
+        <div style={{ height: 8 }} />
+        <button
+          onClick={() => setAdvanced(true)}
+          style={{ background: '#3b82f6', border: 'none', color: 'white', borderRadius: 6, padding: '8px 10px', cursor: 'pointer' }}
+        >
+          Open Advanced Settings
+        </button>
+      </div>
+      {advancedModal}
     </div>
   )
 }

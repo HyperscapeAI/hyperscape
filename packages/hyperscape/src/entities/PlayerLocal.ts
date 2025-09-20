@@ -224,8 +224,14 @@ const _m3 = new THREE.Matrix4()
 // Removed unused interface: PlayerState
 
 export class PlayerLocal extends Entity implements HotReloadable {
-  private terrainValidationCounter = 0;
+  private smoothedBasePos = new THREE.Vector3()
   private avatarDebugLogged: boolean = false;
+  // RS3-style run energy
+  public stamina: number = 100
+  // Tunable RS-style stamina rates (percent per second). Adjust to match desired feel exactly.
+  private readonly staminaDrainPerSecond: number = 2   // drain while running
+  private readonly staminaRegenWhileWalkingPerSecond: number = 2 // regen while walking
+  private readonly staminaRegenPerSecond: number = 4  // regen while idle
   // Implement HotReloadable interface
   hotReload?(): void {
     // Implementation for hot reload functionality
@@ -236,7 +242,6 @@ export class PlayerLocal extends Entity implements HotReloadable {
   alive: boolean = true;
   // Player interface properties (separate from Entity properties to avoid conflicts)
   private _playerHealth: PlayerHealth = { current: 100, max: 100 };
-  stamina: PlayerStamina = { current: 100, max: 100 };
   skills: Skills = { 
     attack: { level: 1, xp: 0 }, 
     strength: { level: 1, xp: 0 }, 
@@ -268,7 +273,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
       name: this.data.name || 'Unknown Player',
       health: this._playerHealth,
       alive: this.alive,
-      stamina: this.stamina,
+      stamina: { current: this.stamina, max: 100 },
       position: { x: this.position.x, y: this.position.y, z: this.position.z },
       skills: this.skills,
       equipment: this.equipment,
@@ -1550,37 +1555,21 @@ export class PlayerLocal extends Entity implements HotReloadable {
   public setClickMoveTarget(target: { x: number; y: number; z: number } | null): void {
     console.log(`[PlayerLocal] setClickMoveTarget called with:`, target);
     if (target) {
-      // Ground the target to terrain for accurate movement
-      let finalY = target.y;
-      const terrain = this.world.getSystem('terrain') as TerrainSystem | undefined;
-      if (terrain && terrain.getHeightAt) {
-        const terrainHeight = terrain.getHeightAt(target.x, target.z);
-        if (Number.isFinite(terrainHeight)) {
-          finalY = terrainHeight + 0.1; // Small offset above terrain
-        }
-      }
-      
-      if (this.world.network?.send) {
-        // Primary movement packet with grounded Y
-        this.world.network.send('moveRequest', {
-          target: [target.x, finalY, target.z],
-          runMode: this.runMode,
-        })
-        // Fallback for older servers that route input->moveRequest
-        this.world.network.send('input', {
-          type: 'click',
-          target: [target.x, finalY, target.z],
-          runMode: this.runMode,
-        })
-      } else {
-        console.warn('[PlayerLocal] Cannot send moveRequest - no network system available')
-        console.warn('[PlayerLocal] world.network:', this.world.network)
-      }
-      this.clickMoveTarget = new THREE.Vector3(target.x, finalY, target.z)
-      this.moving = true
-      this.running = this.runMode
-      // Track when we last sent a movement intent
-      this.lastSendAt = performance.now()
+      // Always replace previous target immediately to avoid any alternation
+      this.clickMoveTarget = null
+      this.moving = false
+      this.moveDir.set(0, 0, 0)
+
+      // Ignore if target is effectively identical to current target
+      // Now set new target directly
+      console.log(`[PlayerLocal] Target: x=${target.x.toFixed(2)}, y=${target.y.toFixed(2)}, z=${target.z.toFixed(2)}`)
+      console.log(`[PlayerLocal] Current position: x=${this.position.x.toFixed(2)}, y=${this.position.y.toFixed(2)}, z=${this.position.z.toFixed(2)}`)
+      console.log(`[PlayerLocal] Base position: x=${this.base?.position.x.toFixed(2)}, y=${this.base?.position.y.toFixed(2)}, z=${this.base?.position.z.toFixed(2)}`)
+      this.clickMoveTarget = new THREE.Vector3(target.x, target.y, target.z)
+      // Use the current run mode setting, but only if stamina is available
+      this.running = this.runMode && this.stamina > 0
+      console.log(`[PlayerLocal] Mode: ${this.runMode ? 'RUN' : 'WALK'}`)
+      console.log(`[PlayerLocal] Target set successfully`)
     } else {
       this.clickMoveTarget = null
       this.moveDir.set(0, 0, 0)
@@ -1640,7 +1629,54 @@ export class PlayerLocal extends Entity implements HotReloadable {
   }
 
   update(delta: number): void {
-    // 1. CLIENT PREDICTION (disabled by default). Keep intent for animation only.
+    if(!this.capsule) return;
+    
+    // Rotation validation - track rotation at start of update
+    const rotationBefore = this.base ? this.base.quaternion.clone() : null;
+      const pose = this.capsule.getGlobalPose()
+      if (pose && pose.p) {
+        const physicsPos = new THREE.Vector3(pose.p.x, pose.p.y, pose.p.z)
+        const prevPos = this.position.clone()
+        const moved = prevPos.distanceTo(physicsPos)
+
+        // Mirror physics pose to entity for logic
+        this.position.copy(physicsPos)
+        // Smooth the visual base to reduce jitter while preserving physics accuracy
+        if (this.base) {
+          if (this.smoothedBasePos.lengthSq() === 0) {
+            this.smoothedBasePos.copy(physicsPos)
+          } else {
+            const alpha = 0.25
+            this.smoothedBasePos.lerp(physicsPos, alpha)
+          }
+          this.base.position.copy(this.smoothedBasePos)
+        }
+        
+        // Log significant movement
+        if (moved > 0.01) {
+          console.log(`[PlayerLocal] Position updated from physics: moved ${moved.toFixed(3)} to (${physicsPos.x.toFixed(2)}, ${physicsPos.y.toFixed(2)}, ${physicsPos.z.toFixed(2)})`)
+        }
+        
+        // Update avatar instance position from base transform
+        // NOTE: This is required because the VRM factory doesn't automatically track the base node
+        const avatarNode = this._avatar as any
+        if (avatarNode && avatarNode.instance) {
+          const instance = avatarNode.instance
+          if (instance && typeof instance.move === 'function' && this.base) {
+            // Ensure base matrices are up-to-date
+            this.base.updateMatrix()
+            this.base.updateMatrixWorld(true)
+            // Move the avatar to match the base transform
+            instance.move(this.base.matrixWorld)
+          }
+          // Call update for animation updates (mixer, skeleton, etc)
+          if (instance && typeof instance.update === 'function') {
+            instance.update(delta)
+          }
+        }
+      }
+    
+        // RuneScape-style point-and-click movement only
     if (this.clickMoveTarget) {
       const speed = this.runMode ? 8 : 4
       const direction = v1.subVectors(this.clickMoveTarget, this.position)
@@ -1660,40 +1696,61 @@ export class PlayerLocal extends Entity implements HotReloadable {
         }
         this.moving = true
         this.running = this.runMode
-      }
-    }
-
-    // 2. SERVER RECONCILIATION - Trust server position but validate it
-    if (this.serverPosition) {
-      // SAFETY CHECK: Don't trust obviously invalid server positions
-      if (this.serverPosition.y < -5) {
-        console.error(`[PlayerLocal] Server position is invalid (Y=${this.serverPosition.y}), rejecting update!`);
-        // Try to get safe position from terrain
-        const terrain = this.world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number } | null;
-        if (terrain?.getHeightAt) {
-          const terrainHeight = terrain.getHeightAt(this.position.x, this.position.z);
-          if (Number.isFinite(terrainHeight)) {
-            const safeY = (terrainHeight as number) + 0.1; // 10cm above terrain
-            console.warn(`[PlayerLocal] Correcting position to terrain height: Y=${safeY}`);
-            this.position.y = safeY;
-            this.serverPosition.y = safeY; // Also fix server position
+        
+        // Clamp player strictly to terrain height while moving (no fallback)
+        if (this.capsule) {
+          const terrainSystemMove = this.world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number };
+          if (!terrainSystemMove || typeof terrainSystemMove.getHeightAt !== 'function') {
+            throw new Error('[PlayerLocal] TerrainSystem.getHeightAt unavailable during movement');
+          }
+          const h = terrainSystemMove.getHeightAt(this.position.x, this.position.z);
+          if (!Number.isFinite(h)) {
+            throw new Error(`[PlayerLocal] Invalid terrain height during movement at (${this.position.x.toFixed(2)}, ${this.position.z.toFixed(2)})`);
+          }
+          // Compute model-aware clearance: use avatar bounding box height if available
+          let clearance = 0.2
+          if (this._avatar && (this._avatar as any).instance?.raw?.scene) {
+            const sceneObj = (this._avatar as any).instance.raw.scene as THREE.Object3D
+            const box = new THREE.Box3().setFromObject(sceneObj)
+            const height = Math.max(0, box.max.y - box.min.y)
+            // Assume feet at ~0 and slight pad to avoid clipping
+            clearance = Math.min(0.35, Math.max(0.2, height * 0.01))
+          }
+          const desiredY = (h as number) + clearance;
+          const yDelta = desiredY - this.position.y;
+          // Gentle ground-follow to avoid jitter when going up/down hills
+          // Blend Y toward ground and cap per-frame adjustment to avoid snaps
+          const needsAdjust = Math.abs(yDelta) > 0.01;
+          if (needsAdjust) {
+            const pose = this.capsule.getGlobalPose();
+            if (pose && pose.p) {
+              // Allow at most 0.35 units per update; blend by 25% toward target for snappier but smooth adjust
+              const blend = 0.25;
+              const maxStep = 0.35;
+              const step = THREE.MathUtils.clamp(yDelta * blend, -maxStep, maxStep);
+              pose.p.y = this.position.y + step;
+              this.capsuleHandle?.snap(pose);
+            }
+            const vel = this.capsule.getLinearVelocity();
+            if (vel) {
+              vel.y = 0;
+              this.capsule.setLinearVelocity(vel);
+            }
           }
         }
-      } else {
-        // Calculate position error
-        const errorDistance = this.position.distanceTo(this.serverPosition);
-        
-        // Teleport for large errors, interpolate for small ones
-        if (errorDistance > 5.0) {
-          // Large error: snap immediately
-          console.log(`[PlayerLocal] Large position error (${errorDistance.toFixed(2)}), snapping to server position`);
-          this.position.copy(this.serverPosition);
-        } else if (errorDistance > 0.05) {
-          // Small error: smooth interpolation
-          const lerpSpeed = errorDistance > 1.0 ? 15.0 : 10.0;
-          const alpha = Math.min(1, delta * lerpSpeed);
-          this.position.lerp(this.serverPosition, alpha);
-        }
+      }
+      
+      // Teleport for large errors, interpolate for small ones
+      const errorDistance = this.position.distanceTo(this.serverPosition);
+      if (errorDistance > 5.0) {
+        // Large error: snap immediately
+        console.log(`[PlayerLocal] Large position error (${errorDistance.toFixed(2)}), snapping to server position`);
+        this.position.copy(this.serverPosition);
+      } else if (errorDistance > 0.05) {
+        // Small error: smooth interpolation
+        const lerpSpeed = errorDistance > 1.0 ? 15.0 : 10.0;
+        const alpha = Math.min(1, delta * lerpSpeed);
+        this.position.lerp(this.serverPosition, alpha);
       }
     }
     
@@ -1740,16 +1797,64 @@ export class PlayerLocal extends Entity implements HotReloadable {
     // 5. ROTATION AND ANIMATION
     let newEmote = 'idle'
     if (this.moving) {
-      newEmote = this.running ? 'run' : 'walk'
-      if (this.moveDir.lengthSq() > 0.001) {
-        const forward = v3.set(0, 0, -1)
-        const targetQuaternion = q1.setFromUnitVectors(forward, this.moveDir)
-        // Apply rotation to both base and node so avatar gets the rotation
-        if (this.base) {
-          this.base.quaternion.slerp(targetQuaternion, delta * 10)
+      // Honor run toggle immediately while moving (and stamina availability)
+      this.running = this.runMode && this.stamina > 0
+      // We're moving - choose walk or run animation
+      newEmote = this.running ? 'run' : 'walk';
+      console.log(`[PlayerLocal] Moving detected - setting emote to: ${newEmote}`)
+      // RS3-style stamina: drain while running; regen otherwise handled when idle below
+      const deltaSeconds = delta
+      if (this.running) {
+        this.stamina = THREE.MathUtils.clamp(this.stamina - this.staminaDrainPerSecond * deltaSeconds, 0, 100)
+        if (this.stamina <= 0) {
+          // When energy depletes, force walk and turn off the run toggle (RS3-like behavior)
+          this.running = false
+          this.runMode = false
+          newEmote = 'walk'
+        }
+      } else {
+        // Walking: regenerate stamina
+        this.stamina = THREE.MathUtils.clamp(this.stamina + this.staminaRegenWhileWalkingPerSecond * deltaSeconds, 0, 100)
+      }
+      
+      // Rotate base (and thus avatar) to face movement direction ONLY while actively moving
+      // Important: Check this.moving instead of moveDir.length() to prevent rotation after stopping
+      if (this.base && this.moving && this.moveDir.length() > 0) {
+        const forward = new THREE.Vector3(0, 0, -1)
+        const targetQuaternion = new THREE.Quaternion().setFromUnitVectors(forward, this.moveDir.normalize())
+
+        // Only rotate if angle delta is meaningful to reduce tiny jitter
+        const dotRaw = this.base.quaternion.dot(targetQuaternion)
+        const dot = Math.min(1, Math.max(-1, dotRaw))
+        const angle = 2 * Math.acos(Math.abs(dot))
+
+        // Threshold to avoid micro-jitter
+        if (angle > 0.02) {
+          // Angle-based slerp factor for brisk, RS3-like turning
+          // Larger angles turn faster; smaller angles remain smooth
+          const minFactor = 0.08
+          const maxFactor = 0.28
+          let factor = (angle / Math.PI) * 0.5 + 0.05
+          if (angle > 2.1) { // ~120° or more: accelerate turn-in
+            factor += 0.07
+          }
+          factor = Math.min(maxFactor, Math.max(minFactor, factor))
+
+          this.base.quaternion.slerp(targetQuaternion, factor)
+
+          // Sync lastState and node quaternion to prevent fighting
+          this.lastState.q?.copy(this.base.quaternion)
+          this.node.quaternion.copy(this.base.quaternion)
         }
         this.node.quaternion.slerp(targetQuaternion, delta * 10)
       }
+    } else {
+      // Not moving - use idle animation
+      newEmote = 'idle';
+      // Idle: regenerate faster
+      const deltaSeconds = delta
+      this.stamina = THREE.MathUtils.clamp(this.stamina + this.staminaRegenPerSecond * deltaSeconds, 0, 100)
+      // Do not enforce any rotation while idle to avoid fighting other systems
     }
     
     if (this.emote !== newEmote) {
