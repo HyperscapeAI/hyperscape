@@ -43,7 +43,6 @@ export class ItemActionSystem extends SystemBase {
     this.subscribe<{ playerId: string; itemId: string; position: { x: number; y: number; z: number } }>(EventType.CORPSE_CLICK, (data) => this.handleGroundItemClick(data));
     
     // Set up player event subscriptions
-    this.subscribe<{ playerId: string }>(EventType.PLAYER_JOINED, (data) => this.handlePlayerJoin(data));
     this.subscribe<{ playerId: string }>(EventType.PLAYER_LEFT, (data) => this.handlePlayerLeave(data));
   }
 
@@ -430,12 +429,13 @@ export class ItemActionSystem extends SystemBase {
   /**
    * Handle player events
    */
-  private handlePlayerJoin(_event: { playerId: string }): void {
-    // Initialize any player-specific data if needed
+  private handlePlayerJoin(event: { playerId: string }): void {
+    // Player joined - could initialize player-specific item action settings
+    console.log(`[ItemActionSystem] Player joined: ${event.playerId}`);
   }
 
   private handlePlayerLeave(event: { playerId: string }): void {
-    // Clean up context menus
+    // Clean up context menu if open
     this.closeContextMenu(event.playerId);
   }
 

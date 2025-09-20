@@ -76,9 +76,13 @@ export class SmartCache<T> {
       return null;
     }
 
-    // Update access statistics
+    // Update access statistics and move to front for LRU
     entry.lastAccessed = this.getCurrentTime();
     entry.accessCount++;
+    // Re-insert to update order for LRU
+    this.cache.delete(key);
+    this.cache.set(key, entry);
+    
     this.stats.hits++;
 
     // Return cloned value if serialization is enabled

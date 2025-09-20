@@ -104,143 +104,6 @@ export class AuthenticationSystem extends SystemBase {
   }
 
   /**
-   * Authenticate using client persistent token (returning player)
-   */
-  private async authenticateWithClientToken(
-    clientToken: string,
-    machineId?: string
-  ): Promise<AuthenticationResult> {
-    
-    try {
-      // Look for existing player with this client token
-      const existingPlayer = null;
-      // TODO: Implement getPlayerByClientToken method in DatabaseSystem
-      
-      if (!existingPlayer) {
-        // Client token not found, treat as new guest
-        return await this.createGuestAccount(machineId, clientToken);
-      }
-      
-      // Create identity for returning player
-      const identity: PlayerIdentity = {
-        hyperscapeUserId: '', // No Hyperscape account linked
-        hyperscapeUserName: '',
-        hyperscapeUserRoles: [],
-        rpgPlayerId: 'placeholder', // Would be existingPlayer.id
-        rpgPlayerName: 'Guest Player', // Would be existingPlayer.name
-        clientMachineId: machineId || this.generateMachineId(),
-        clientPersistentToken: clientToken,
-        sessionId: this.generateSessionId(),
-        loginTime: new Date(),
-        lastActivity: new Date(),
-        isGuest: true // Still a guest until they link Hyperscape account
-      };
-      
-      // Store authenticated player
-      this.authenticatedPlayers.set(identity.rpgPlayerId, identity);
-      
-      // Update last login
-      if (this.databaseSystem) {
-        await this.updatePlayerLoginInfo(identity);
-      }
-      
-      return {
-        success: true,
-        identity,
-        isNewPlayer: false,
-        isReturningPlayer: true
-      };
-      
-    } catch (error) {
-      console.error('[Auth] ❌ Client token authentication failed:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Create new guest account
-   */
-  private async createGuestAccount(
-    machineId?: string,
-    existingClientToken?: string
-  ): Promise<AuthenticationResult> {
-    
-    try {
-      const rpgPlayerId = this.generatePlayerId();
-      const clientToken = existingClientToken || this.generateClientToken();
-      const finalMachineId = machineId || this.generateMachineId();
-      
-      // Create guest identity
-      const identity: PlayerIdentity = {
-        hyperscapeUserId: '',
-        hyperscapeUserName: '',
-        hyperscapeUserRoles: [],
-        rpgPlayerId,
-        rpgPlayerName: this.generateGuestName(),
-        clientMachineId: finalMachineId,
-        clientPersistentToken: clientToken,
-        sessionId: this.generateSessionId(),
-        loginTime: new Date(),
-        lastActivity: new Date(),
-        isGuest: true
-      };
-      
-      // Store authenticated player
-      this.authenticatedPlayers.set(identity.rpgPlayerId, identity);
-      
-      // Create player record
-      if (this.databaseSystem) {
-        await this.createPlayerRecord(identity);
-      }
-      
-      return {
-        success: true,
-        identity,
-        isNewPlayer: true,
-        isReturningPlayer: false
-      };
-      
-    } catch (error) {
-      console.error('[Auth] ❌ Guest account creation failed:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Link guest account to Hyperscape account
-   */
-  async linkGuestToHyperscapeAccount(
-    guestRpgPlayerId: string,
-    hyperscapeUserId: string,
-    hyperscapeJwtToken: string
-  ): Promise<boolean> {
-    
-    try {
-      const guestIdentity = this.authenticatedPlayers.get(guestRpgPlayerId);
-      if (!guestIdentity || !guestIdentity.isGuest) {
-        throw new Error('Guest account not found or already linked');
-      }
-      
-      // Update identity
-      guestIdentity.hyperscapeUserId = hyperscapeUserId;
-      guestIdentity.hyperscapeJwtToken = hyperscapeJwtToken;
-      guestIdentity.isGuest = false;
-      guestIdentity.lastActivity = new Date();
-      
-      // Update database record
-      if (this.databaseSystem) {
-        await this.updatePlayerHyperscapeLink(guestIdentity);
-      }
-      
-      return true;
-      
-    } catch (error) {
-      console.error('[Auth] ❌ Failed to link guest to Hyperscape:', error);
-      return false;
-    }
-  }
-
-  /**
    * Get authenticated player identity
    */
   getPlayerIdentity(rpgPlayerId: string): PlayerIdentity | null {
@@ -321,6 +184,26 @@ export class AuthenticationSystem extends SystemBase {
     });
   }
 
+  /**
+   * Authenticate using a client token
+   */
+  private async authenticateWithClientToken(clientToken: string): Promise<{ success: boolean; playerId?: string; message?: string }> {
+    // Validate the client token (in a real implementation, this would check against a database)
+    if (!clientToken || clientToken.length < 10) {
+      return { success: false, message: 'Invalid client token' };
+    }
+    
+    // For now, extract player ID from token (in reality, this would be looked up)
+    // Assuming token format is like "token_<playerId>_<random>"
+    const parts = clientToken.split('_');
+    if (parts.length >= 2) {
+      const playerId = parts[1];
+      return { success: true, playerId };
+    }
+    
+    return { success: false, message: 'Unable to extract player ID from token' };
+  }
+
   // Helper methods for database operations
   private async createPlayerRecord(identity: PlayerIdentity): Promise<void> {
     if (!this.databaseSystem) return;
@@ -357,10 +240,6 @@ export class AuthenticationSystem extends SystemBase {
     // Implementation would update logout timestamp in database
   }
 
-  private async updatePlayerHyperscapeLink(_identity: PlayerIdentity): Promise<void> {
-    // Implementation would update Hyperscape link in database
-  }
-
   // ID generation helpers
   private generatePlayerId(): string {
     return `${this.PLAYER_PREFIX}${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -368,11 +247,6 @@ export class AuthenticationSystem extends SystemBase {
 
   private generateClientToken(): string {
     return `client_${Date.now()}_${Math.random().toString(36).substr(2, 16)}`;
-  }
-
-  private generateMachineId(): string {
-    // In a real implementation, this would use browser fingerprinting
-    return `machine_${Math.random().toString(36).substr(2, 12)}`;
   }
 
   private generateSessionId(): string {
@@ -399,9 +273,7 @@ export class AuthenticationSystem extends SystemBase {
     }
 
     try {
-      // TODO: Implement hyperscapeUserId field in database schema
-      // For now, the database doesn't store Hyperscape user IDs
-      // This method returns null until database schema is updated
+      // NOTE: getPlayerByHyperscapeId not implemented in DatabaseSystem
       console.warn('[Auth] ⚠️ getPlayerByHyperscapeId not implemented - database schema needs hyperscapeUserId field');
       return null;
     } catch (error) {

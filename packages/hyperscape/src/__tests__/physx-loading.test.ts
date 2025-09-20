@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll } from 'vitest'
 import { loadPhysX, isPhysXReady, getPhysX } from '../PhysXManager'
 import type PhysX from '@hyperscape/physx-js-webidl'
 
@@ -7,7 +7,6 @@ describe('PhysX Loading', () => {
 
   beforeAll(async () => {
     // Set timeout for PhysX loading
-    vi.setConfig({ testTimeout: 30000 })
   })
 
   it('should load PhysX successfully', async () => {
@@ -19,7 +18,7 @@ describe('PhysX Loading', () => {
     expect(physxInfo.version).toBeDefined()
     expect(physxInfo.physics).toBeDefined()
     expect(isPhysXReady()).toBe(true)
-  })
+  }, 30000)
 
   it('should provide access to PhysX types', async () => {
     const PHYSX = getPhysX()
@@ -35,7 +34,7 @@ describe('PhysX Loading', () => {
     const quat = new PHYSX!.PxQuat(0, 0, 0, 1)
     const transform = new PHYSX!.PxTransform(vec, quat)
     expect(transform).toBeDefined()
-  })
+  }, 30000)
 
   it('should handle multiple load calls gracefully', async () => {
     // Should return the same instance
@@ -44,7 +43,7 @@ describe('PhysX Loading', () => {
     
     expect(info1).toBe(info2)
     expect(isPhysXReady()).toBe(true)
-  })
+  }, 30000)
 
   it('should have proper TypeScript types from npm package', () => {
     // This test just verifies that types compile correctly

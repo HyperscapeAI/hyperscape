@@ -28,9 +28,22 @@ export function Minimap({
     const camera = new THREE.OrthographicCamera(
       -zoom, zoom, zoom, -zoom, 0.1, 2000
     )
+    // Orient minimap to match main camera heading on XZ plane
+    const initialForward = new THREE.Vector3()
+    if (world?.camera) {
+      world.camera.getWorldDirection(initialForward)
+    } else {
+      initialForward.set(0, 0, -1)
+    }
+    initialForward.y = 0
+    if (initialForward.lengthSq() < 0.0001) {
+      initialForward.set(0, 0, -1)
+    } else {
+      initialForward.normalize()
+    }
+    camera.up.copy(initialForward)
     camera.position.set(0, 500, 0) // Much higher for better overview
     camera.lookAt(0, 0, 0)
-    camera.up.set(0, 0, -1) // Z up for top-down view
     cameraRef.current = camera
 
     try {
@@ -79,11 +92,23 @@ export function Minimap({
     const updateCameraPosition = () => {
       const player = world.entities.player as Entity
       if (cameraRef.current && player) {
+        // Match minimap orientation to main camera heading (XZ)
+        const forward = new THREE.Vector3()
+        world.camera.getWorldDirection(forward)
+        forward.y = 0
+        if (forward.lengthSq() < 0.0001) {
+          forward.set(0, 0, -1)
+        } else {
+          forward.normalize()
+        }
+        cameraRef.current.up.copy(forward)
+
+        // Follow player position
         cameraRef.current.position.x = player.node.position.x
         cameraRef.current.position.z = player.node.position.z
         cameraRef.current.lookAt(
-          player.node.position.x, 
-          0, 
+          player.node.position.x,
+          0,
           player.node.position.z
         )
       }
@@ -116,7 +141,7 @@ export function Minimap({
       }
 
       // Add other players using entities system for reliable positions
-      if (world.entities && typeof world.entities.getAllPlayers === 'function') {
+      if (world.entities) {
         const players = world.entities.getAllPlayers()
         players.forEach((otherPlayer) => {
           // Find the actual entity to read its THREE position
@@ -180,7 +205,7 @@ export function Minimap({
         })
       }
       // Add pips for all known entities safely
-      if (world.entities && typeof world.entities.getAll === 'function') {
+      if (world.entities) {
         const allEntities = world.entities.getAll()
         allEntities.forEach((entity) => {
           // Skip if no valid position

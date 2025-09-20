@@ -10,10 +10,14 @@ import { ServerNetwork } from './systems/ServerNetwork'
 // Import unified terrain system
 import { TerrainSystem } from './systems/TerrainSystem'
 
+// Import multiplayer movement systems
+import { DeltaCompressionSystem } from './systems/DeltaCompressionSystem'
+
 // Import RPG systems loader
 import { registerSystems } from './systems/SystemLoader'
 // Test systems removed - consolidated into MovementValidationSystem
 import { ServerBot } from './systems/ServerBot'
+import { ServerPositionValidator } from './systems/ServerPositionValidator'
 
 export async function createServerWorld() {
   console.log('[Server World] Creating server world...');
@@ -30,6 +34,12 @@ export async function createServerWorld() {
   
   // Register core terrain system
   world.register('terrain', TerrainSystem);
+  
+  // Register position validation system (must come after terrain)
+  world.register('position-validator', ServerPositionValidator);
+  
+  // Register unified movement systems
+  world.register('delta-compression', DeltaCompressionSystem);
   
   // Do not register client systems on server; server exposes only RPG systems via SystemLoader when enabled
   

@@ -6,7 +6,6 @@
 
 import type { Entity, World } from '../types/index';
 import { getEntitiesSystem, getSystem } from '../utils/SystemUtils';
-import { getNPC } from '../data/npcs';
 import { SHOP_ITEMS, getItem } from '../data/items';
 import type { NPCLocation } from '../data/world-areas';
 import { BankTransaction, PlayerBankStorage, Position3D, StoreTransaction } from '../types/core';
@@ -42,35 +41,6 @@ export class NPCSystem extends SystemBase {
     this.subscribe(EventType.BANK_WITHDRAW, (data) => this.handleBankWithdraw(data));
     this.subscribe(EventType.STORE_BUY, (data) => this.handleStoreBuy(data));
     this.subscribe(EventType.STORE_SELL, (data) => this.handleStoreSell(data));
-  }
-
-  /**
-   * Spawn an NPC in the world
-   */
-  public spawnNPC(config: { npcId: number; position: Position3D; spawnerId: string }): Entity | null {
-    const npcData = getNPC(config.npcId);
-    if (!npcData) {
-      
-      return null;
-    }
-
-    const entitiesSystem = getEntitiesSystem(this.world);
-    if (!entitiesSystem || !entitiesSystem.add) {
-
-      return null;
-    }
-
-    const npcEntity = entitiesSystem.add({
-      id: `npc_${config.npcId}_${Date.now()}`,
-      type: 'npc',
-      position: [config.position.x, config.position.y, config.position.z],
-      npc: {
-        ...npcData,
-        spawnerId: config.spawnerId
-      }
-    });
-
-    return npcEntity;
   }
 
   /**
@@ -470,6 +440,38 @@ export class NPCSystem extends SystemBase {
       return this.transactionHistory.filter(t => t.playerId === playerId);
     }
     return [...this.transactionHistory];
+  }
+
+  /**
+   * Spawn an NPC entity
+   * Returns the spawned NPC entity or undefined if spawn failed
+   */
+  public spawnNPC(data: { 
+    npcId: string;
+    name: string;
+    type: string;
+    position: Position3D;
+    services?: string[];
+    modelPath?: string;
+  }): Entity | undefined {
+    // Get the entities system to spawn the actual entity
+    const entitiesSystem = getEntitiesSystem(this.world);
+    if (!entitiesSystem) return undefined;
+
+    // Create the NPC entity with proper components
+    const entity = (entitiesSystem as { spawn?: (config: unknown) => unknown }).spawn?.({
+      id: `npc_${data.npcId}_${Date.now()}`,
+      name: data.name,
+      position: data.position,
+      type: 'npc',
+      data: {
+        npcType: data.type,
+        services: data.services || [],
+        modelPath: data.modelPath || '/models/npcs/default.glb'
+      }
+    });
+
+    return entity as Entity | undefined;
   }
 
   /**

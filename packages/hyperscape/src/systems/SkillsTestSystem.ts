@@ -611,11 +611,8 @@ export class SkillsTestSystem extends VisualTestFramework {
     if (!stats) return 3;
     
     // Calculate combat level based on stats
-    const combatLevel = this.getStatValue(stats.combatLevel as number | SkillData | undefined);
-    if (typeof combatLevel === 'number') {
-      return combatLevel;
-    }
-    return this.calculateCombatLevel(stats);
+    const combatLevel = this.calculateCombatLevel(stats);
+    return combatLevel;
   }
 
   private calculateExpectedCombatLevel(skills: Record<string, number>): number {
@@ -709,48 +706,29 @@ export class SkillsTestSystem extends VisualTestFramework {
   private calculateCombatLevel(stats: StatsComponent): number {
     const getLevel = (stat: unknown): number => {
       if (typeof stat === 'number') return stat;
-      if (typeof stat === 'object' && stat && 'level' in stat) {
+      if (typeof stat === 'object' && stat !== null && 'level' in stat && typeof (stat as { level: unknown }).level === 'number') {
         return (stat as { level: number }).level;
       }
       return 1;
     };
     
-    const attack = getLevel(stats.attack) ?? 1;
-    const strength = getLevel(stats.strength) ?? 1;
-    const defense = getLevel(stats.defense) ?? 1;
-    const constitution = getLevel(stats.constitution) ?? 10;
-    const ranged = getLevel(stats.ranged) ?? 1;
+    const attack = getLevel((stats as { attack?: unknown }).attack);
+    const strength = getLevel((stats as { strength?: unknown }).strength);
+    const defense = getLevel((stats as { defense?: unknown }).defense);
+    const constitution = getLevel((stats as { constitution?: unknown }).constitution);
     
-    const combatLevel = (defense + constitution + Math.floor(constitution / 2)) / 4 +
-                       Math.max(attack + strength, Math.floor(ranged * 1.5)) / 4;
-    return Math.floor(combatLevel);
+    return Math.floor((attack + strength + defense + constitution) / 4);
   }
   
   // Helper method to get XP for a level
   private getXPForLevel(level: number): number {
     if (level <= 1) return 0;
     
-    let xp = 0;
+    let totalXP = 0;
     for (let i = 2; i <= level; i++) {
-      xp += Math.floor(i + 300 * Math.pow(2, i / 7));
+      totalXP += Math.floor(i - 1 + 300 * Math.pow(2, (i - 1) / 7.0));
     }
-    return Math.floor(xp / 4);
-  }
-
-  // Helper method to get stat value from mixed types
-  private getStatValue(stat: number | SkillData | undefined): number | SkillData | undefined {
-    return stat;
-  }
-
-  // Helper method to get skill level from mixed types
-  private getSkillLevel(stat: number | SkillData | undefined): number | undefined {
-    if (typeof stat === 'number') {
-      return stat;
-    }
-    if (typeof stat === 'object' && stat !== null && 'level' in stat) {
-      return stat.level;
-    }
-    return undefined;
+    return Math.floor(totalXP / 4);
   }
 
   async getSystemRating(): Promise<string> {

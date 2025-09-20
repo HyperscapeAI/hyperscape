@@ -5,8 +5,6 @@ import { getNearestTown, WORLD_CONSTANTS } from '../data/world-structure';
 import type { HeadstoneData } from '../types/entities';
 import type { ZoneData, InventoryItem, HeadstoneApp, DeathLocationData } from '../types/core';
 import { calculateDistance } from '../utils/EntityUtils';
-import { EntityManager } from './EntityManager';
-import { WorldGenerationSystem } from './WorldGenerationSystem';
 
 /**
  * Death and Respawn System - GDD Compliant
@@ -22,8 +20,6 @@ export class DeathSystem extends SystemBase {
   private respawnTimers = new Map<string, NodeJS.Timeout>();
   private itemDespawnTimers = new Map<string, NodeJS.Timeout>();
   private headstones = new Map<string, HeadstoneApp>();
-      private worldGeneration!: WorldGenerationSystem;
-    private entityManager!: EntityManager;
     private playerPositions = new Map<string, { x: number; y: number; z: number }>();
     private playerInventories = new Map<string, { items: InventoryItem[]; coins: number }>();
 
@@ -63,21 +59,6 @@ export class DeathSystem extends SystemBase {
       this.playerInventories.delete(data.id);
     });
     
-  }
-
-  start(): void {
-    // Get reference to World Generation System for better respawn point selection
-    const worldGen = this.world.getSystem('rpg-world-generation');
-    if (!worldGen) {
-      throw new Error('[DeathSystem] WorldGenerationSystem is required');
-    }
-    this.worldGeneration = worldGen as WorldGenerationSystem;
-    
-    const entityMgr = this.world.getSystem('rpg-entity-manager');
-    if (!entityMgr) {
-      throw new Error('[DeathSystem] EntityManager is required');
-    }
-    this.entityManager = entityMgr as EntityManager;
   }
 
   destroy(): void {

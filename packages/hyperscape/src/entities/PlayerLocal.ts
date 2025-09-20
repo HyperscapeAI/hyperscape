@@ -1,12 +1,13 @@
 import type PhysX from '@hyperscape/physx-js-webidl'
-import { Emotes } from '../extras/playerEmotes'
-import { Layers } from '../extras/Layers'
-import type { Player, PlayerHealth, PlayerStamina, Skills, PlayerEquipmentItems, PlayerCombatData, PlayerDeathData } from '../types/core'
 import { createNode } from '../extras/createNode'
+import { Layers } from '../extras/Layers'
+import { Emotes } from '../extras/playerEmotes'
 import THREE from '../extras/three'
 import { Avatar, Nametag, UI, UIText, UIView } from '../nodes'
 import { getPhysX, waitForPhysX } from '../PhysXManager'
 import type { PhysicsHandle } from '../systems/Physics'
+import type { TerrainSystem } from '../systems/TerrainSystem'
+import type { Player, PlayerCombatData, PlayerDeathData, PlayerEquipmentItems, PlayerHealth, PlayerStamina, Skills } from '../types/core'
 import { EventType } from '../types/events'
 import { ClientLoader, ControlBinding, NetworkData } from '../types/index'
 import type {
@@ -15,18 +16,55 @@ import type {
   HotReloadable,
   PlayerStickState,
   PlayerTouch,
+  PxCapsuleGeometry, PxMaterial, PxRigidDynamic, PxShape, PxSphereGeometry,
   QuaternionLike,
   Vector3Like,
   XRSystem
 } from '../types/physics'
-import type { PxCapsuleGeometry, PxMaterial, PxRigidDynamic, PxShape, PxSphereGeometry } from '../types/physics'
 
 import { vector3ToPxVec3 } from '../extras/vector3-utils'
-import { cleanupPxVec3 } from '../physics/vector-conversions'
-import { TerrainSystem } from '../systems/TerrainSystem'
 import { getSystem } from '../utils/SystemUtils'
 import type { World } from '../World'
 import { Entity } from './Entity'
+
+const UP = new THREE.Vector3(0, 1, 0)
+
+interface NodeWithInstance extends THREE.Object3D {
+  instance?: THREE.Object3D
+  activate?: (world: World) => void
+}
+
+interface GroupNode extends THREE.Group {
+  children: THREE.Object3D[]
+}
+
+interface AvatarInstance {
+  destroy(): void
+  move(matrix: THREE.Matrix4): void
+  update(delta: number): void
+  raw: {
+    scene: THREE.Object3D
+  }
+  disableRateCheck?: () => void
+  height?: number
+  setEmote?: (emote: string) => void
+}
+
+interface AvatarNode {
+  instance: AvatarInstance | null
+  mount?: () => Promise<void>
+  position: THREE.Vector3
+  visible: boolean
+  emote?: string
+  setEmote?: (emote: string) => void
+  ctx: World
+  parent: { matrixWorld: THREE.Matrix4 }
+  activate(world: World): void
+  getHeight?: () => number
+  getHeadToHeight?: () => number
+  getBoneTransform?: (boneName: string) => THREE.Matrix4 | null
+  deactivate?: () => void
+}
 
 // Camera system accessor with strong type assumption
 function getCameraSystem(world: World): CameraSystem | null {
@@ -39,11 +77,11 @@ function getCameraSystem(world: World): CameraSystem | null {
 
 // PhysX is available via getPhysX() from PhysXManager
 
-const UP = new THREE.Vector3(0, 1, 0)
-const DOWN = new THREE.Vector3(0, -1, 0)
-const FORWARD = new THREE.Vector3(0, 0, -1)
+const _UP = new THREE.Vector3(0, 1, 0)
+const _DOWN = new THREE.Vector3(0, -1, 0)
+const _FORWARD = new THREE.Vector3(0, 0, -1)
 // Removed unused constant: BACKWARD
-const SCALE_IDENTITY = new THREE.Vector3(1, 1, 1)
+const _SCALE_IDENTITY = new THREE.Vector3(1, 1, 1)
 // Removed unused constant: POINTER_LOOK_SPEED
 // Removed unused constant: PAN_LOOK_SPEED
 // Removed unused constant: ZOOM_SPEED
@@ -59,7 +97,7 @@ function hasRole(roles: string[] | undefined, role: string): boolean {
 
 // Constants for common game values
 const DEG2RAD = Math.PI / 180
-const RAD2DEG = 180 / Math.PI
+const _RAD2DEG = 180 / Math.PI
 
 // Constants for control priorities
 const ControlPriorities = {
@@ -69,7 +107,7 @@ const ControlPriorities = {
 // Removed unused constant: Emotes
 
 // Physics layers utility
-function getPhysicsLayers() {
+function _getPhysicsLayers() {
   return {
     environment: { group: 1, mask: 0xffffffff },
     player: { group: 2, mask: 0xffffffff },
@@ -78,7 +116,7 @@ function getPhysicsLayers() {
 }
 
 // Utility functions for PhysX transform operations
-function safePhysXTransform(vector: THREE.Vector3 | THREE.Quaternion, transform: PhysX.PxTransform): void {
+function _safePhysXTransform(vector: THREE.Vector3 | THREE.Quaternion, transform: PhysX.PxTransform): void {
   if (vector instanceof THREE.Vector3) {
     if (transform && typeof transform === 'object' && 'p' in transform) {
       const p = transform.p
@@ -98,7 +136,7 @@ function safePhysXTransform(vector: THREE.Vector3 | THREE.Quaternion, transform:
 }
 
 // Matrix composition utility
-function safeMatrixCompose(
+function _safeMatrixCompose(
   matrix: THREE.Matrix4,
   position: THREE.Vector3,
   quaternion: THREE.Quaternion,
@@ -115,7 +153,7 @@ function safeMatrixCompose(
 
 
 // Matrix decomposition utility
-function safeMatrixDecompose(
+function _safeMatrixDecompose(
   matrix: THREE.Matrix4,
   position: Vector3Like,
   quaternion: QuaternionLike,
@@ -169,23 +207,25 @@ function bindRotations(quaternion: THREE.Quaternion, euler: THREE.Euler): void {
 // Removed unused interface: CapsuleHandle
 
 const v1 = new THREE.Vector3()
-const v2 = new THREE.Vector3()
+const _v2 = new THREE.Vector3()
 const v3 = new THREE.Vector3()
-const v4 = new THREE.Vector3()
-const v5 = new THREE.Vector3()
-const v6 = new THREE.Vector3()
-const e1 = new THREE.Euler(0, 0, 0, 'YXZ')
+const _v4 = new THREE.Vector3()
+const _v5 = new THREE.Vector3()
+const _v6 = new THREE.Vector3()
+const _e1 = new THREE.Euler(0, 0, 0, 'YXZ')
 const q1 = new THREE.Quaternion()
-const q2 = new THREE.Quaternion()
-const q3 = new THREE.Quaternion()
-const q4 = new THREE.Quaternion()
-const m1 = new THREE.Matrix4()
-const m2 = new THREE.Matrix4()
-const m3 = new THREE.Matrix4()
+const _q2 = new THREE.Quaternion()
+const _q3 = new THREE.Quaternion()
+const _q4 = new THREE.Quaternion()
+const _m1 = new THREE.Matrix4()
+const _m2 = new THREE.Matrix4()
+const _m3 = new THREE.Matrix4()
 
 // Removed unused interface: PlayerState
 
 export class PlayerLocal extends Entity implements HotReloadable {
+  private terrainValidationCounter = 0;
+  private avatarDebugLogged: boolean = false;
   // Implement HotReloadable interface
   hotReload?(): void {
     // Implementation for hot reload functionality
@@ -262,17 +302,19 @@ export class PlayerLocal extends Entity implements HotReloadable {
     if (!this._avatar) return undefined;
     
     return {
-      getHeight: () => this._avatar?.getHeight() || 1.8,
-      getHeadToHeight: () => this._avatar?.getHeadToHeight() || 1.6,
-      setEmote: (emote: string) => this._avatar?.setEmote(emote),
-      getBoneTransform: (boneName: string) => this._avatar?.getBoneTransform(boneName) || null
+      getHeight: () => (this._avatar && this._avatar.getHeight) ? this._avatar.getHeight() : 1.8,
+      getHeadToHeight: () => (this._avatar && this._avatar.getHeadToHeight) ? this._avatar.getHeadToHeight() : 1.6,
+      setEmote: (emote: string) => { if (this._avatar && this._avatar.setEmote) this._avatar.setEmote(emote); },
+      getBoneTransform: (boneName: string) => (this._avatar && this._avatar.getBoneTransform) ? this._avatar.getBoneTransform(boneName) : null
     };
   }
   
   // Internal avatar reference (rename existing avatar property)
-  private _avatar?: Avatar;
+  private _avatar?: AvatarNode;
   
   isPlayer: boolean
+  // Explicit local flag for tests and systems that distinguish local vs remote
+  isLocal: boolean = true
   mass: number = 1
   gravity: number = 20
   effectiveGravity: number = 20
@@ -341,20 +383,30 @@ export class PlayerLocal extends Entity implements HotReloadable {
   airJumped?: boolean
   fallStartY?: number
   fallDistance?: number
-  jumpDown?: boolean
-  jumpPressed?: boolean
   onEffectEnd?: () => void
   lastState: {
     p?: THREE.Vector3
     q?: THREE.Quaternion
     e?: string
   } = {}
+  // Track last interpolation frame to avoid duplicate transform writes per frame
+  private lastInterpolatedFrame: number = -1
   emote?: string
   effect?: string
   running: boolean = false
   rotSpeed: number = 5
-  _terrainSpawnPosition?: THREE.Vector3
   clickMoveTarget: THREE.Vector3 | null = null
+  serverPosition: THREE.Vector3  // Track server's authoritative position - NEVER undefined
+  lastServerUpdate: number = 0    // Time of last server position update
+  private positionValidationInterval?: NodeJS.Timeout
+  // Add pendingMoves array
+  private pendingMoves: { seq: number; pos: THREE.Vector3 }[] = [];
+  
+  // Avatar retry mechanism
+  private avatarRetryInterval: NodeJS.Timeout | null = null;
+  // Add predictedStates array
+  // In update: predict physics, push to predictedStates
+  // On server correction: pop matched, smooth to correct if mismatch > threshold
 
   constructor(
     world: World,
@@ -367,6 +419,170 @@ export class PlayerLocal extends Entity implements HotReloadable {
     // Initialize Player interface properties
     this._playerHealth = { current: 100, max: 100 };
     this.hyperscapePlayerId = data.id || '';
+    
+    // CRITICAL: Initialize server position BEFORE anything else
+    // Server position is ABSOLUTE TRUTH - use it or crash
+    if (data.position && Array.isArray(data.position) && data.position.length === 3) {
+      this.serverPosition = new THREE.Vector3(data.position[0], data.position[1], data.position[2]);
+      // IMMEDIATELY set our position to server position
+      this.position.set(data.position[0], data.position[1], data.position[2]);
+      this.node.position.set(data.position[0], data.position[1], data.position[2]);
+      
+      // CRASH if Y position is invalid at spawn
+      if (data.position[1] < -5) {
+        throw new Error(`[PlayerLocal] FATAL: Spawning below terrain at Y=${data.position[1]}! Server sent invalid spawn position.`);
+      }
+      if (data.position[1] > 200) {
+        throw new Error(`[PlayerLocal] FATAL: Spawning too high at Y=${data.position[1]}! Server sent invalid spawn position.`);
+      }
+      
+      // Warn for suspicious but not fatal positions
+      if (data.position[1] < 0 || data.position[1] > 100) {
+        console.warn(`[PlayerLocal] WARNING: Starting with unusual Y position: ${data.position[1]}`);
+      }
+    } else {
+      // NO DEFAULT Y=0 ALLOWED - crash if no position
+      throw new Error('[PlayerLocal] FATAL: No server position provided in constructor! This will cause Y=0 spawn bug.');
+    }
+    
+    this.lastServerUpdate = performance.now();
+    console.log('[PlayerLocal] ✅ Initialized at server position:', this.serverPosition);
+    
+    // Start aggressive position validation
+    this.startPositionValidation();
+  }
+  
+  private startPositionValidation(): void {
+    // Validate position every 100ms initially, then slower
+    let checkCount = 0;
+    this.positionValidationInterval = setInterval(() => {
+      checkCount++;
+      
+      // Call terrain validation more frequently in first 5 seconds
+      if (checkCount < 50) { // 50 * 100ms = 5 seconds
+        this.validateTerrainPosition();
+      } else if (checkCount % 5 === 0) { // Then every 500ms
+        this.validateTerrainPosition();
+      }
+      // HARD CRASH if player is falling (Y position too low)
+      if (this.position.y < -10) {
+        const errorDetails = {
+          clientPosition: {
+            x: this.position.x.toFixed(2),
+            y: this.position.y.toFixed(2),
+            z: this.position.z.toFixed(2)
+          },
+          serverPosition: this.serverPosition ? {
+            x: this.serverPosition.x.toFixed(2),
+            y: this.serverPosition.y.toFixed(2),
+            z: this.serverPosition.z.toFixed(2)
+          } : 'null',
+          basePosition: this.base ? {
+            x: this.base.position.x.toFixed(2),
+            y: this.base.position.y.toFixed(2),
+            z: this.base.position.z.toFixed(2)
+          } : 'null',
+          hasCapsule: !!this.capsule,
+          playerId: this.id,
+          timestamp: new Date().toISOString()
+        };
+        
+        console.error('[PlayerLocal] FATAL: PLAYER HAS FALLEN BELOW TERRAIN!');
+        console.error('[PlayerLocal] Error details:', errorDetails);
+        
+        // Clear the interval before throwing
+        clearInterval(this.positionValidationInterval);
+        
+        // CRASH THE APPLICATION
+        throw new Error(`[PlayerLocal] FATAL: Player has fallen below terrain at Y=${this.position.y.toFixed(2)}! This indicates a critical movement system failure.\n\nDebug info:\n${JSON.stringify(errorDetails, null, 2)}`);
+      }
+      
+      // Also crash if Y is unreasonably high
+      if (this.position.y > 200) {
+        const errorDetails = {
+          clientY: this.position.y.toFixed(2),
+          serverY: this.serverPosition?.y?.toFixed(2) || 'N/A',
+          playerId: this.id
+        };
+        
+        clearInterval(this.positionValidationInterval);
+        throw new Error(`[PlayerLocal] FATAL: Player is too high at Y=${this.position.y.toFixed(2)}!\n\nDebug: ${JSON.stringify(errorDetails)}`);
+      }
+      
+      // Log Y position periodically for debugging
+      if (Math.abs(this.position.y) > 5) {
+        console.log(`[PlayerLocal] Y position check: ${this.position.y.toFixed(2)} (server: ${this.serverPosition?.y?.toFixed(2) || 'N/A'})`);
+      }
+      
+      // Check for large divergence from server
+      if (this.serverPosition) {
+        const dist = this.position.distanceTo(this.serverPosition);
+        if (dist > 100) {
+          console.warn('[PlayerLocal] WARNING: Very large divergence detected, snapping to server.', {
+            client: this.position,
+            server: this.serverPosition,
+            distance: dist
+          });
+          // Snap to server position
+          this.position.copy(this.serverPosition);
+          // Don't set base.position since it's a child of node (relative position should be 0,0,0)
+          if (this.capsule && getPhysX()) {
+            const PHYSX = getPhysX()!;
+            const pose = new PHYSX.PxTransform(PHYSX.PxIDENTITYEnum.PxIdentity);
+            pose.p.x = this.serverPosition.x;
+            pose.p.y = this.serverPosition.y;
+            pose.p.z = this.serverPosition.z;
+            this.capsule.setGlobalPose(pose);
+          }
+        }
+      }
+    }, 100); // Check every 100ms for better responsiveness
+  }
+
+  private validateTerrainPosition(): void {
+    // Smoothly follow terrain with a smaller tolerance for better hill climbing
+    const terrain = this.world.getSystem('terrain') as TerrainSystem | undefined;
+    if (terrain && terrain.getHeightAt) {
+      const terrainHeight = terrain.getHeightAt(this.node.position.x, this.node.position.z);
+      if (Number.isFinite(terrainHeight)) {
+        const expectedY = terrainHeight + 0.1; // Small offset above terrain
+        const currentY = this.node.position.y;
+        const diff = expectedY - currentY;
+        
+        // More aggressive correction for being below terrain (stuck in ground)
+        if (diff > 0.1) {
+          // Below terrain - snap up immediately
+          this.node.position.y = expectedY;
+          this.position.y = expectedY;
+        } 
+        // Gentler correction for being above terrain (falling/jumping)
+        else if (diff < -0.5) {
+          // Above terrain by more than 0.5 units - interpolate down
+          const lerpFactor = 0.15; // 15% per frame for smooth descent
+          const newY = currentY + (diff * lerpFactor);
+          this.node.position.y = newY;
+          this.position.y = newY;
+        }
+        
+        // Update physics capsule if position changed
+        if (Math.abs(this.node.position.y - currentY) > 0.01) {
+          if (this.capsule && this.world.physics) {
+            const transform = this.capsule.getGlobalPose();
+            transform.p.y = this.node.position.y;
+            this.capsule.setGlobalPose(transform, true);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Override initializeVisuals to skip UIRenderer-based UI elements
+   * PlayerLocal uses its own Nametag node system instead
+   */
+  protected initializeVisuals(): void {
+    // Skip UIRenderer - we use Nametag nodes instead
+    // Do not call super.initializeVisuals()
   }
 
   async init(): Promise<void> {
@@ -383,7 +599,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
     console.log('[PlayerLocal] Registered for physics updates')
     
     // Verify we're actually in the hot set
-    if ((this.world as any).hot?.has(this)) {
+    if (this.world.hot?.has(this)) {
       console.log('[PlayerLocal] ✅ Confirmed in hot set for fixedUpdate')
     } else {
       console.error('[PlayerLocal] ❌ NOT in hot set - fixedUpdate will not be called!')
@@ -399,7 +615,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
 
     this.grounded = false
     this.groundAngle = 0
-    this.groundNormal = new THREE.Vector3().copy(UP)
+    this.groundNormal.copy(UP)
     this.groundSweepRadius = this.capsuleRadius - 0.01 // slighty smaller than player
     // groundSweepGeometry will be created later when PhysX is available
 
@@ -435,48 +651,75 @@ export class PlayerLocal extends Entity implements HotReloadable {
 
     // Create a proper THREE.Group for the base (not a custom Node)
     // This ensures compatibility with Three.js scene graph
-    this.base = new THREE.Group() as any
+    this.base = new THREE.Group()
     if (this.base) {
-      (this.base as any).name = 'player-base'
+      this.base.name = 'player-base'
     }
     if (!this.base) {
       throw new Error('Failed to create base node for PlayerLocal')
     }
+    
+    // CRITICAL: Add base to the entity's node so it's part of the scene graph!
+    this.node.add(this.base)
+    
+    // Attach the camera rig to the player's base so it follows the player
+    if (this.world.rig && this.base) {
+      this.base.add(this.world.rig)
+      console.log('[PlayerLocal] Camera rig attached to player base')
+    }
 
     // Base node starts at player's position to avoid initial camera looking underground
 
-    // Get spawn position from world settings with terrain height checking
-    const terrainSystem = this.world.systems.find(s => s.constructor.name === 'TerrainSystem') as
-      | TerrainSystem
-      | undefined
-    let spawnX = 0
-    let spawnY = 0.1
-    let spawnZ = 0
-
-    if ('spawn' in this.world.settings && Array.isArray(this.world.settings.spawn)) {
-      const spawn = this.world.settings.spawn as number[]
-      // Ensure spawn coordinates are valid numbers, not NaN
-      spawnX = (typeof spawn[0] === 'number' && !isNaN(spawn[0])) ? spawn[0] : 0
-      spawnY = (typeof spawn[1] === 'number' && !isNaN(spawn[1])) ? spawn[1] : 0.1
-      spawnZ = (typeof spawn[2] === 'number' && !isNaN(spawn[2])) ? spawn[2] : 0
-    }
-
-    if (terrainSystem && terrainSystem.getHeightAt) {
-      try {
-        const terrainHeight = terrainSystem.getHeightAt(spawnX, spawnZ)
-        if (typeof terrainHeight === 'number' && !isNaN(terrainHeight)) {
-          spawnY = terrainHeight + 0.1 // Slight offset above terrain
-          console.log('[PlayerLocal] Spawning player on terrain at height:', spawnY)
-        }
-      } catch (_error) {
-        console.warn('[PlayerLocal] Could not get terrain height:', _error)
+    // CRITICAL FIX: The Entity constructor already parsed position from data and set it on this.node.position
+    // We should use this.position (which is this.node.position) NOT this.data.position!
+    // The server has already calculated the correct terrain height and sent it to us.
+    
+    console.log('[PlayerLocal] Current position from Entity constructor:', {
+      x: this.position.x,
+      y: this.position.y, 
+      z: this.position.z
+    })
+    console.log('[PlayerLocal] Raw data.position:', this.data.position)
+    
+    // The Entity constructor has already set our position from the server snapshot
+    // We just need to use it!
+    let spawnX = this.position.x
+    let spawnY = this.position.y
+    let spawnZ = this.position.z
+    
+    // Only use fallback if we truly have no position (0,0,0)
+    if (spawnX === 0 && spawnY === 0 && spawnZ === 0) {
+      console.warn('[PlayerLocal] Position is 0,0,0, checking for fallback options...')
+      
+      // Try world settings as fallback
+      if ('spawn' in this.world.settings && Array.isArray(this.world.settings.spawn)) {
+        const spawn = this.world.settings.spawn as number[]
+        spawnX = (typeof spawn[0] === 'number' && !isNaN(spawn[0])) ? spawn[0] : 0
+        spawnY = (typeof spawn[1] === 'number' && !isNaN(spawn[1])) ? spawn[1] : 0.1
+        spawnZ = (typeof spawn[2] === 'number' && !isNaN(spawn[2])) ? spawn[2] : 0
+        console.log('[PlayerLocal] Using world settings spawn as fallback:', { spawnX, spawnY, spawnZ })
+        
+        // Update our position with the fallback
+        this.position.set(spawnX, spawnY, spawnZ)
       }
+    } else {
+      console.log('[PlayerLocal] Using server-provided position:', { spawnX, spawnY, spawnZ })
     }
-
-    this.position.set(spawnX, spawnY, spawnZ)
-    // Ensure base node starts at player's position to avoid initial camera looking underground
+    
+    // Ensure base node matches the entity's current position (from server)
     if (this.base) {
-      this.base.position.set(spawnX, spawnY, spawnZ)
+      // If we have a server position, use that instead of potentially incorrect local position
+      if (this.serverPosition) {
+        this.position.copy(this.serverPosition);
+        // Base is a child of node, so it should stay at relative (0,0,0)
+        console.log('[PlayerLocal] Node position set to serverPosition:', this.serverPosition.x, this.serverPosition.y, this.serverPosition.z);
+      } else {
+        // Base is a child of node, so it should stay at relative (0,0,0)
+        console.log('[PlayerLocal] Node already at entity position:', this.position.x, this.position.y, this.position.z);
+      }
+      
+      // CRITICAL: Validate player is on terrain after spawn
+      this.validateTerrainPosition()
     }
     // Debug: blue cube above player for avatar/visual debugging, using Hyperscape Mesh node (not raw THREE)
     try {
@@ -494,14 +737,10 @@ export class PlayerLocal extends Entity implements HotReloadable {
     }
     this.active = true
 
-    // Store the calculated terrain position for physics initialization, ensure above ground plane
-    const minY = 0.1
-    this._terrainSpawnPosition = new THREE.Vector3(spawnX, Math.max(spawnY, minY), spawnZ)
-
     // Create a proper THREE.Group for the aura
-    this.aura = new THREE.Group() as any
+    this.aura = new THREE.Group()
     if (this.aura) {
-      (this.aura as any).name = 'player-aura'
+      this.aura.name = 'player-aura'
     }
     if (!this.aura) {
       throw new Error('Failed to create aura node for PlayerLocal')
@@ -516,8 +755,9 @@ export class PlayerLocal extends Entity implements HotReloadable {
       this.nametag.activate(this.world)
     }
     // Add the nametag's THREE.js object if it exists
-    if ((this.nametag as any).instance && (this.nametag as any).instance.isObject3D) {
-      this.aura.add((this.nametag as any).instance)
+    const nametagInstance = (this.nametag as NodeWithInstance).instance
+    if (nametagInstance && nametagInstance.isObject3D) {
+      this.aura.add(nametagInstance)
     }
 
     this.bubble = createNode('ui', {
@@ -561,17 +801,17 @@ export class PlayerLocal extends Entity implements HotReloadable {
       this.bubble.activate(this.world)
     }
     // Add the bubble's THREE.js object if it exists
-    if ((this.bubble as any).instance && (this.bubble as any).instance.isObject3D) {
-      this.aura.add((this.bubble as any).instance)
+    const bubbleInstance = (this.bubble as NodeWithInstance).instance
+    if (bubbleInstance && bubbleInstance.isObject3D) {
+      this.aura.add(bubbleInstance)
     }
 
     // THREE.Groups don't need activation, they're just containers
     // The custom nodes inside them (nametag, bubble) will activate themselves
     
-    // CRITICAL: Add base to the scene so it's visible
-    if (this.world.stage?.scene && this.base) {
-      this.world.stage.scene.add(this.base)
-      console.log('[PlayerLocal] Base added to scene')
+    // Note: Group nodes don't have Three.js representations - their children handle their own scene addition
+    if (this.base) {
+      console.log('[PlayerLocal] Base activated')
       
       // Also add aura to base for nametag/bubble
       this.base.add(this.aura)
@@ -598,14 +838,29 @@ export class PlayerLocal extends Entity implements HotReloadable {
     }
 
     await this.applyAvatar().catch(err => console.error('[PlayerLocal] Failed to apply avatar:', err))
-    // initCapsule is now async, but we don't await it to avoid blocking init
-    this.initCapsule().catch(err => {
-      console.warn('[PlayerLocal] Failed to initialize capsule:', err)
-    })
+    
+    // Await capsule initialization to ensure physics is ready before validation
+    try {
+      await this.initCapsule()
+      console.log('[PlayerLocal] Capsule initialized successfully')
+    } catch (err) {
+      console.error('[PlayerLocal] Failed to initialize capsule:', err)
+      // Log more details about the error
+      if (err instanceof Error) {
+        console.error('[PlayerLocal] Capsule error details:', {
+          message: err.message,
+          stack: err.stack,
+          worldPhysics: !!this.world.physics,
+          physicsScene: !!this.world.physics?.scene,
+          position: this.position,
+          base: !!this.base
+        })
+      }
+    }
     this.initControl()
 
-    // Initialize unified camera and movement systems
-    this.initUnifiedSystems()
+    // Initialize camera system
+    this.initCameraSystem()
 
     // Ensure player starts clamped to ground when RPG is disabled and only core systems are active
     try {
@@ -613,23 +868,12 @@ export class PlayerLocal extends Entity implements HotReloadable {
       const movementSystem = null
       if (movementSystem) {
         // Trigger a small downward clamp by asking movement system to compute ground y
-        const current = new THREE.Vector3(this.position.x, this.position.y, this.position.z)
+        const _current = new THREE.Vector3(this.position.x, this.position.y, this.position.z)
         // Use camera system ground helper indirectly by emitting a fake click directly below
         // or simply adjust y slightly; movement system will later keep clamped during movement
         // Prefer PhysX raycast to clamp to ground; fall back to y=0 if needed
-        const origin = new THREE.Vector3(current.x, current.y + 50, current.z)
-        const direction = new THREE.Vector3(0, -1, 0)
-        const mask = this.world.createLayerMask('environment')
-        const hit = this.world.raycast(origin, direction, 200, mask)
-        if (hit) {
-          const y = hit.point.y + 0.1
-          this.setPosition(current.x, y, current.z)
-        } else {
-          // Last resort: clamp to ground plane at y=0 just to avoid 0,0,0 collapses
-          if (!Number.isFinite(this.position.y) || this.position.y < -1000 || this.position.y > 10000) {
-            this.setPosition(current.x, 0.1, current.z)
-          }
-        }
+      // Don't clamp to terrain on init - trust the server position
+      // The server has already calculated the correct terrain height
       }
     } catch {}
 
@@ -662,16 +906,40 @@ export class PlayerLocal extends Entity implements HotReloadable {
       return
     }
     
+    // Check if loader is available - if not, we'll retry later
+    if (!this.world.loader) {
+      console.log('[PlayerLocal] Loader not available yet, will retry avatar loading...')
+      // Set up a retry mechanism
+      if (!this.avatarRetryInterval) {
+        this.avatarRetryInterval = setInterval(async () => {
+          if (this.world.loader) {
+            console.log('[PlayerLocal] Loader now available, retrying avatar load...')
+            clearInterval(this.avatarRetryInterval as unknown as number)
+            this.avatarRetryInterval = null
+            await this.applyAvatar()
+          }
+        }, 500) // Check every 500ms
+      }
+      return
+    }
+    
+    // Clear retry interval if it exists since loader is now available
+    if (this.avatarRetryInterval) {
+      clearInterval(this.avatarRetryInterval)
+      this.avatarRetryInterval = null
+    }
+    
     // Prevent concurrent loads for the same URL
     if (this.loadingAvatarUrl === avatarUrl) {
       console.log('[PlayerLocal] Avatar load already in progress for', avatarUrl)
       return
     }
     this.loadingAvatarUrl = avatarUrl
+    console.log('[PlayerLocal] Set loadingAvatarUrl to:', avatarUrl)
     
     // Only destroy if we're loading a different avatar
     if (this._avatar && this.avatarUrl !== avatarUrl) {
-      const oldInstance = (this._avatar as any).instance
+      const oldInstance = (this._avatar as AvatarNode).instance
       console.log('[PlayerLocal] Destroying previous avatar instance for new URL')
       if (oldInstance && oldInstance.destroy) {
         oldInstance.destroy() // This calls hooks.scene.remove(vrm.scene)
@@ -681,8 +949,9 @@ export class PlayerLocal extends Entity implements HotReloadable {
     
     // Only clear cache if we're loading a different avatar URL
     if (this.avatarUrl !== avatarUrl) {
-    const loader = this.world.loader as ClientLoader
-    if (loader) {
+      console.log('[PlayerLocal] Different avatar URL detected, clearing cache...')
+      const loader = this.world.loader as ClientLoader
+      if (loader) {
         // Clear cache for the old avatar URL only
         const oldKey = `avatar/${this.avatarUrl}`
         if (loader.promises.has(oldKey)) {
@@ -693,23 +962,22 @@ export class PlayerLocal extends Entity implements HotReloadable {
       }
     }
 
+    console.log('[PlayerLocal] About to load avatar from:', avatarUrl)
+    console.log('[PlayerLocal] world.loader exists?', !!this.world.loader)
+
     await this.world.loader
       ?.load('avatar', avatarUrl)
       .then(async (src) => {
         // src is LoaderResult, which may be a Texture or an object with toNodes
-        // We expect avatar loader to return an object with toNodes(): Map<string, Avatar>
-        const isAvatarNodeMap = (v: unknown): v is { toNodes: () => Map<string, Avatar> } =>
-          typeof v === 'object' && v !== null && 'toNodes' in v && typeof (v as { toNodes: unknown }).toNodes === 'function'
-        if (!isAvatarNodeMap(src)) {
-          throw new Error('Avatar loader did not return expected node map')
-        }
-        const avatarSrc = src
+        // Avatar loader should return an object with toNodes(): Map<string, Avatar>
+        const avatarSrc = src as { toNodes: () => Map<string, Avatar> }
         console.log('[PlayerLocal] Avatar loaded, src type:', typeof avatarSrc, 'src:', avatarSrc)
         if (this._avatar && this._avatar.deactivate) {
           this._avatar.deactivate()
         }
 
         // Pass VRM hooks so the avatar can add itself to the scene
+        // Use world.stage.scene and manually update position
         const vrmHooks = {
           scene: this.world.stage.scene,
           octree: this.world.stage.octree,
@@ -731,7 +999,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
         }
         
         // The avatar node is a child of the root node or in the map directly
-        const avatarNode = nodeMap.get('avatar') || ((rootNode as any).get ? (rootNode as any).get('avatar') : null)
+        const avatarNode = nodeMap.get('avatar') || rootNode
         console.log('[PlayerLocal] Root node:', rootNode, 'Avatar node:', avatarNode)
         
         // Use the avatar node if we found it, otherwise try root
@@ -741,35 +1009,75 @@ export class PlayerLocal extends Entity implements HotReloadable {
         }
         
         // Store the node - it's an Avatar node that needs mounting
-        this._avatar = nodeToUse as any
+        this._avatar = nodeToUse as unknown as AvatarNode
         
         // IMPORTANT: For Avatar nodes to work, they need their context set and to be mounted
         if (this.base && nodeToUse) {
+          const avatarNode = nodeToUse as unknown as AvatarNode
           // Set the context for the avatar node
-          if ((nodeToUse as any).ctx !== this.world) {
-            (nodeToUse as any).ctx = this.world
+          const avatarAsNode = avatarNode as unknown as AvatarNode & { ctx?: World; hooks?: unknown };
+          if (avatarAsNode.ctx !== this.world) {
+            avatarAsNode.ctx = this.world
+          }
+          
+          // Check current hooks
+          console.log('[PlayerLocal] Current avatar hooks:', avatarAsNode.hooks ? Object.keys(avatarAsNode.hooks) : 'none')
+          
+          // CRITICAL: ALWAYS update the hooks on the avatar node BEFORE mounting
+          // The avatar was created with ClientLoader's hooks, but we need to use
+          // the world's stage scene for proper rendering
+          console.log('[PlayerLocal] Force updating avatar hooks to use world.stage.scene')
+          console.log('[PlayerLocal] vrmHooks.scene exists?', !!vrmHooks.scene)
+          avatarAsNode.hooks = vrmHooks
+          console.log('[PlayerLocal] New hooks set:', Object.keys(vrmHooks))
+          
+          // CRITICAL: Verify hooks are properly set
+          if (!avatarAsNode.hooks) {
+            console.error('[PlayerLocal] CRITICAL: Hooks not set after assignment!')
+            avatarAsNode.hooks = vrmHooks // Force set again
+          }
+          const hooksAsVRM = avatarAsNode.hooks as unknown as { scene?: unknown; octree?: unknown }
+          if (!hooksAsVRM?.scene) {
+            console.error('[PlayerLocal] CRITICAL: Hooks.scene not set after assignment! Forcing...')
+            avatarAsNode.hooks = vrmHooks // Force set again
+          }
+          
+          // CRITICAL: Update base matrix BEFORE setting as parent
+          // The avatar needs the correct world position when created
+          if (this.base) {
+            this.base.updateMatrix()
+            this.base.updateMatrixWorld(true)
+            console.log('[PlayerLocal] Base matrixWorld updated before avatar mount, position:', 
+              this.base.position.x, this.base.position.y, this.base.position.z)
           }
           
           // Set the parent so the node knows where it belongs in the hierarchy
-          (nodeToUse as any).parent = { matrixWorld: this.base.matrixWorld }
+          avatarAsNode.parent = { matrixWorld: this.base.matrixWorld }
+          
+          // CRITICAL: Avatar node position should be at origin (0,0,0)
+          // The instance.move() method will position it at the base's world position
+          if (avatarAsNode.position) {
+            avatarAsNode.position.set(0, 0, 0)
+            console.log('[PlayerLocal] Avatar node position set to origin (0,0,0) - will be positioned by instance.move()')
+          }
           
           // Activate the node (this creates the Three.js representation)
-          if ((nodeToUse as any).activate) {
-            (nodeToUse as any).activate(this.world)
+          if (avatarAsNode.activate) {
+            avatarAsNode.activate(this.world)
             console.log('[PlayerLocal] Avatar node activated')
           }
           
           // Mount the avatar node to create its instance
-          if ((nodeToUse as any).mount) {
+          if (avatarAsNode.mount) {
             console.log('[PlayerLocal] Mounting avatar node...')
-            await (nodeToUse as any).mount()
+            await avatarAsNode.mount()
             console.log('[PlayerLocal] Avatar node mounted')
           }
           
           // After mounting, the avatar instance should be available
           // The instance manages its own scene internally - do NOT add raw.scene to base
-          if ((nodeToUse as any).instance) {
-            const instance = (nodeToUse as any).instance
+          if (avatarAsNode.instance) {
+            const instance = avatarAsNode.instance
             console.log('[PlayerLocal] Avatar instance structure:', {
               hasRaw: !!instance.raw,
               hasScene: !!(instance.raw && instance.raw.scene),
@@ -784,8 +1092,8 @@ export class PlayerLocal extends Entity implements HotReloadable {
         }
         
         // Now the instance should be available
-        if ((nodeToUse as any).instance) {
-          const instance = (nodeToUse as any).instance
+        if ((nodeToUse as unknown as AvatarNode).instance) {
+          const instance = (nodeToUse as unknown as AvatarNode).instance
           console.log('[PlayerLocal] Avatar has instance after mounting:', instance)
           
           // The Avatar node handles its own Three.js representation
@@ -793,25 +1101,25 @@ export class PlayerLocal extends Entity implements HotReloadable {
           // Just ensure visibility and disable rate check
           
           // Disable rate check if available
-          if (instance.disableRateCheck) {
+          if (instance && instance.disableRateCheck) {
             instance.disableRateCheck()
             console.log('[PlayerLocal] Avatar rate check disabled')
           }
           
           // Log instance properties for debugging
-          if (instance.height) {
+          if (instance && instance.height) {
             console.log('[PlayerLocal] Avatar height:', instance.height)
           }
-          if (instance.setEmote) {
+          if (instance && instance.setEmote) {
             console.log('[PlayerLocal] Avatar has setEmote method')
           }
         } else {
           console.warn('[PlayerLocal] Avatar node has no instance after mounting')
         }
         // Avatar might be a custom Node, not a THREE.Object3D, so visibility might not exist
-        const avatarVisible = (this._avatar as any).visible !== undefined ? (this._avatar as any).visible : 'N/A'
+        const avatarVisible = (this._avatar as AvatarNode).visible !== undefined ? (this._avatar as AvatarNode).visible : 'N/A'
         console.log('[PlayerLocal] Avatar visible:', avatarVisible)
-        console.log('[PlayerLocal] Base children count:', this.base && (this.base as any).children ? (this.base as any).children.length : 0)
+        console.log('[PlayerLocal] Base children count:', this.base && (this.base as GroupNode).children ? (this.base as GroupNode).children.length : 0)
 
         // Set up nametag and bubble positioning
         const headHeight = this._avatar && this._avatar.getHeadToHeight ? this._avatar.getHeadToHeight() : 1.8
@@ -836,15 +1144,15 @@ export class PlayerLocal extends Entity implements HotReloadable {
             ;(this._avatar as { visible: boolean }).visible = true
             console.log('[PlayerLocal] Avatar visibility set to true')
           }
-          if (this._avatar && (this._avatar as any).position) {
-            (this._avatar as any).position.set(0, 0, 0)
+          if (this._avatar && (this._avatar as AvatarNode).position) {
+            ;(this._avatar as AvatarNode).position.set(0, 0, 0)
             console.log('[PlayerLocal] Avatar position reset to origin')
           }
           
           // Verify avatar instance is actually in the scene graph
-          if (this._avatar && (this._avatar as any).instance) {
-            const instance = (this._avatar as any).instance
-            if (instance.raw && instance.raw.scene) {
+          if (this._avatar && (this._avatar as AvatarNode).instance) {
+            const instance = (this._avatar as AvatarNode).instance
+            if (instance && instance.raw && instance.raw.scene) {
               // The VRM scene is added directly to world.stage.scene by the factory
               let parent = instance.raw.scene.parent
               let depth = 0
@@ -872,14 +1180,14 @@ export class PlayerLocal extends Entity implements HotReloadable {
           camHeight: this.camHeight,
         })
         // Ensure avatar starts at ground height (0) if terrain height is unavailable
-        if (this._avatar && (this._avatar as any).position && isFinite((this._avatar as any).position.y)) {
-          if ((this._avatar as any).position.y < 0) (this._avatar as any).position.y = 0
+        if (this._avatar && (this._avatar as AvatarNode).position && isFinite((this._avatar as AvatarNode).position.y)) {
+          if ((this._avatar as AvatarNode).position.y < 0) (this._avatar as AvatarNode).position.y = 0
         }
         
         // Ensure a default idle animation is playing
         try {
           this.emote = this.emote || 'idle'
-          if (this._avatar && (this._avatar as any).setEmote) (this._avatar as any).setEmote('idle')
+          if (this._avatar && (this._avatar as AvatarNode).setEmote) (this._avatar as AvatarNode).setEmote!('idle')
         } catch {}
 
         // Emit camera follow event using core camera system
@@ -893,76 +1201,31 @@ export class PlayerLocal extends Entity implements HotReloadable {
           // Also set as camera target for immediate orbit control readiness
           this.world.emit(EventType.CAMERA_SET_TARGET, { target: this })
         }
+
+        // In applyAvatar, after successful load:
+        this.world.emit(EventType.AVATAR_LOAD_COMPLETE, { playerId: this.id, success: true });
       })
       .catch((err: Error) => {
         console.error('[PlayerLocal] Failed to load avatar:', err)
+        // On failure (in catch block):
+        this.world.emit(EventType.AVATAR_LOAD_COMPLETE, { playerId: this.id, success: false });
       })
       .finally(() => {
         this.loadingAvatarUrl = undefined
       })
   }
 
-  private createFallbackAvatar(): void {
-    try {
-      // Create a minimal fallback avatar that implements the required Avatar interface
-      // This is a temporary object used until the real avatar loads
-      // Create a fallback avatar - go back to the simpler approach with proper typing
-      const fallbackAvatar = new Avatar()
-
-      this._avatar = fallbackAvatar
-      this.camHeight = DEFAULT_CAM_HEIGHT
-      this.avatarUrl = this.getAvatarUrl()
-
-      // Set up nametag and bubble positioning
-      if (this.nametag) {
-        this.nametag.position.y = 1.9
-      }
-      if (this.bubble) {
-        this.bubble.position.y = 1.9
-        if (!this.bubble.active && this.nametag) {
-          this.nametag.active = true
-        }
-      }
-
-      // Emit avatar ready event even for fallback
-      this.world.emit(EventType.PLAYER_AVATAR_READY, {
-        playerId: this.data.id,
-        avatar: this._avatar,
-        camHeight: this.camHeight,
-        isFallback: true,
-      })
-
-      // Emit camera follow event using core camera system
-      const cameraSystem = getCameraSystem(this.world)
-      if (cameraSystem) {
-        this.world.emit(EventType.CAMERA_FOLLOW_PLAYER, {
-          player: this,
-        })
-      }
-    } catch (fallbackError) {
-      console.error('[PlayerLocal] ❌ Even fallback avatar creation failed:', fallbackError)
-      // Set minimal defaults
-      this.camHeight = DEFAULT_CAM_HEIGHT
-    }
-  }
-
   async initCapsule(): Promise<void> {
     console.log('[PlayerLocal] Initializing physics capsule...')
 
-    // Validation: Ensure we have a valid terrain spawn position
-    if (!this._terrainSpawnPosition) {
-      console.warn('[PlayerLocal] Cannot initialize physics capsule: No terrain spawn position available')
-      return
-    }
-
-    // Validation: Ensure terrain spawn position is valid
+    // Validation: Ensure we have a valid position from server
     if (
-      isNaN(this._terrainSpawnPosition.x) ||
-      isNaN(this._terrainSpawnPosition.y) ||
-      isNaN(this._terrainSpawnPosition.z)
+      isNaN(this.position.x) ||
+      isNaN(this.position.y) ||
+      isNaN(this.position.z)
     ) {
       console.warn(
-        `[PlayerLocal] Invalid terrain spawn position: ${this._terrainSpawnPosition.x}, ${this._terrainSpawnPosition.y}, ${this._terrainSpawnPosition.z}`
+        `[PlayerLocal] Invalid position from server: ${this.position.x}, ${this.position.y}, ${this.position.z}`
       )
       return
     }
@@ -997,11 +1260,18 @@ export class PlayerLocal extends Entity implements HotReloadable {
     // PHYSX already declared above
     this.groundSweepGeometry = new PHYSX.PxSphereGeometry(this.groundSweepRadius)
 
+    // CRITICAL: Force position to server position before creating physics
+    this.position.copy(this.serverPosition);
+    // Base is a child of node, no need to set its position separately
+    if (this.node) {
+      this.node.position.copy(this.serverPosition);
+    }
+    
     console.log(
-      '[PlayerLocal] Using terrain spawn position:',
-      this._terrainSpawnPosition.x,
-      this._terrainSpawnPosition.y,
-      this._terrainSpawnPosition.z
+      '[PlayerLocal] Creating capsule at EXACT server position:',
+      this.serverPosition.x,
+      this.serverPosition.y,
+      this.serverPosition.z
     )
 
     // Create physics material using the physics system - required for capsule
@@ -1023,7 +1293,9 @@ export class PlayerLocal extends Entity implements HotReloadable {
     // Set mass first
     this.capsule.setMass(this.mass)
 
-    // Configure physics flags
+    // Configure physics as KINEMATIC - position-driven, not force-driven
+    // This prevents falling and makes physics follow our position
+    this.capsule.setRigidBodyFlag(PHYSX.PxRigidBodyFlagEnum.eKINEMATIC, true)
     this.capsule.setRigidBodyFlag(PHYSX.PxRigidBodyFlagEnum.eENABLE_CCD, true)
     this.capsule.setRigidDynamicLockFlag(PHYSX.PxRigidDynamicLockFlagEnum.eLOCK_ANGULAR_X, true)
     this.capsule.setRigidDynamicLockFlag(PHYSX.PxRigidDynamicLockFlagEnum.eLOCK_ANGULAR_Z, true)
@@ -1046,12 +1318,18 @@ export class PlayerLocal extends Entity implements HotReloadable {
 
     this.capsule.attachShape(shape)
 
-    // CRITICAL: Initialize physics capsule with correct terrain position from the start
-    // This prevents race conditions with physics interpolation
+    // CRITICAL: Initialize physics capsule at SERVER position, not local position
+    // Server position is the ONLY truth
     const initialPose = new PHYSX.PxTransform(PHYSX.PxIDENTITYEnum.PxIdentity)
-    initialPose.p.x = this._terrainSpawnPosition.x
-    initialPose.p.y = this._terrainSpawnPosition.y
-    initialPose.p.z = this._terrainSpawnPosition.z
+    initialPose.p.x = this.serverPosition.x
+    initialPose.p.y = this.serverPosition.y
+    initialPose.p.z = this.serverPosition.z
+    
+    console.log('[PlayerLocal] Initializing physics capsule at SERVER position:', {
+      x: this.serverPosition.x,
+      y: this.serverPosition.y,
+      z: this.serverPosition.z
+    })
 
     // Apply the corrected pose to the physics capsule
     this.capsule.setGlobalPose(initialPose)
@@ -1060,20 +1338,10 @@ export class PlayerLocal extends Entity implements HotReloadable {
     const capsuleHandle = {
       tag: 'player',
       playerId: this.data?.id || 'unknown',
-      onInterpolate: (position: THREE.Vector3, _quaternion: THREE.Quaternion) => {
-        // Update both the entity position AND the base node position
-        // This ensures the avatar (child of base) moves with physics
-        const prevPos = this.position.clone()
-        const moved = prevPos.distanceTo(position)
-        if (moved > 0.01) {
-          console.log(`[PlayerLocal] onInterpolate: Moved ${moved.toFixed(3)} from (${prevPos.x.toFixed(2)}, ${prevPos.z.toFixed(2)}) to (${position.x.toFixed(2)}, ${position.z.toFixed(2)})`)
-        }
-        if (this.base) {
-          this.position.copy(position)
-          this.base.position.copy(position)
-          // Note: We don't update quaternion from physics for player capsule
-          // as player rotation is controlled by input/camera
-        }
+      onInterpolate: (_position: THREE.Vector3, _quaternion: THREE.Quaternion) => {
+        // DO NOT UPDATE POSITION FROM PHYSICS - Server is authoritative
+        // Physics is ONLY for collision detection, not movement
+        this.lastInterpolatedFrame = this.world.frame;
       },
       interpolation: {
         enabled: true,
@@ -1105,9 +1373,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
       console.warn('[PlayerLocal] Capsule handle snap method not available')
     }
 
-    // Sync the base position with the terrain spawn position
-    // This ensures the Three.js object and physics object are in sync from the start
-    this.position.copy(this._terrainSpawnPosition)
+    // The base position is already synced with the server's authoritative position
 
     // Validate final positions
     const finalPose = this.capsule.getGlobalPose()
@@ -1132,21 +1398,8 @@ export class PlayerLocal extends Entity implements HotReloadable {
 
     // Final ground clamp using PhysX raycast to prevent initial floating
     try {
-      const origin = new THREE.Vector3(this.position.x, this.position.y + 100, this.position.z)
-      const direction = new THREE.Vector3(0, -1, 0)
-      const mask = this.world.createLayerMask('environment')
-      const hit = this.world.raycast(origin, direction, 1000, mask)
-      if (hit) {
-        const desiredY = hit.point.y + 0.1
-        // Update physics pose
-        const pose = this.capsule.getGlobalPose()
-        if (pose && pose.p) {
-          pose.p.y = desiredY
-          this.capsuleHandle?.snap(pose)
-        }
-        // Update visual/base position
-        this.position.set(this.position.x, desiredY, this.position.z)
-      }
+      // Don't force terrain clamp on init - trust server position
+      // Server reconciliation will handle position updates
     } catch {}
   }
 
@@ -1193,16 +1446,14 @@ export class PlayerLocal extends Entity implements HotReloadable {
     }
   }
 
-  initUnifiedSystems(): void {
-    // Register with unified camera system if available
+  initCameraSystem(): void {
+    // Register with camera system if available
     const cameraSystem = getSystem(this.world, 'client-camera-system')
     if (cameraSystem) {
-      console.log('[PlayerLocal] Registering with unified camera system')
+      console.log('[PlayerLocal] Registering with camera system')
       // The camera target expects an object with a THREE.Vector3 position; the Entity already has node.position
       this.world.emit(EventType.CAMERA_SET_TARGET, { target: this })
     }
-
-    // Movement now handled by physics directly in this class
 
     // Emit avatar ready event for camera height adjustment
     if (this._avatar) {
@@ -1216,6 +1467,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
 
   // RuneScape-style run mode toggle (persists across movements)
   public runMode: boolean = true
+  private clientPredictMovement: boolean = true
   
   // Toggle between walk and run mode
   public toggleRunMode(): void {
@@ -1228,31 +1480,111 @@ export class PlayerLocal extends Entity implements HotReloadable {
     // TODO: Update UI to show run/walk state
   }
 
+  // Update server authoritative position for reconciliation
+  public updateServerPosition(x: number, y: number, z: number): void {
+    if (!this.serverPosition) {
+      this.serverPosition = new THREE.Vector3();
+    }
+    
+    // CRITICAL: Reject obviously invalid positions from server
+    // The server should never send positions below terrain
+    if (y < -5) {
+      console.error(`[PlayerLocal] REJECTING invalid server position! Y=${y} is below terrain!`);
+      console.error(`[PlayerLocal] Server tried to set position to: (${x}, ${y}, ${z})`);
+      
+      // Get terrain height at this position as safety fallback
+      const terrain = this.world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number } | null;
+      if (terrain?.getHeightAt) {
+        const terrainHeight = terrain.getHeightAt(x, z);
+        if (Number.isFinite(terrainHeight)) {
+          const safeY = (terrainHeight as number) + 0.1; // 10cm above terrain to prevent clipping
+          console.warn(`[PlayerLocal] Correcting to safe height: Y=${safeY} (terrain=${terrainHeight})`);
+          this.serverPosition.set(x, safeY, z);
+        } else {
+          // Fallback to a reasonable height
+          console.warn(`[PlayerLocal] No terrain data, using fallback Y=50`);
+          this.serverPosition.set(x, 50, z);
+        }
+      } else {
+        // No terrain system, use safe default
+        console.warn(`[PlayerLocal] No terrain system, using fallback Y=50`);
+        this.serverPosition.set(x, 50, z);
+      }
+    } else {
+      // Valid position from server
+      this.serverPosition.set(x, y, z);
+    }
+    
+    this.lastServerUpdate = performance.now();
+    
+    // Log if we receive other questionable positions
+    if (!Number.isFinite(y) || y > 1000) {
+      console.error(`[PlayerLocal] WARNING: Received questionable Y position from server: ${y}`);
+    }
+    
+    // ALWAYS sync base position with server position to prevent desync
+    // The node already has the authoritative position
+    // Base is a child of node, so it inherits the transform
+    if (this.base) {
+      this.base.updateMatrix();
+      this.base.updateMatrixWorld(true);
+    }
+    
+    // If no capsule yet, also directly sync entity position
+    if (!this.capsule) {
+      this.position.copy(this.serverPosition);
+    }
+    // Otherwise position interpolation is handled in update() method
+  }
+  
+  public updateServerVelocity(x: number, y: number, z: number): void {
+    // Store server velocity for prediction
+    // This helps with smoother client-side prediction
+    if (!this.velocity) {
+      this.velocity = new THREE.Vector3();
+    }
+    this.velocity.set(x, y, z);
+  }
+  
   // Set click-to-move target and let physics handle the actual movement
   public setClickMoveTarget(target: { x: number; y: number; z: number } | null): void {
-    console.log('[PlayerLocal] === setClickMoveTarget called ===')
+    console.log(`[PlayerLocal] setClickMoveTarget called with:`, target);
     if (target) {
-      // Always replace previous target immediately to avoid any alternation
-      this.clickMoveTarget = null
-      this.moving = false
-      this.moveDir.set(0, 0, 0)
-
-      // Ignore if target is effectively identical to current target
-      // Now set new target directly
-      console.log(`[PlayerLocal] Target: x=${target.x.toFixed(2)}, y=${target.y.toFixed(2)}, z=${target.z.toFixed(2)}`)
-      console.log(`[PlayerLocal] Current position: x=${this.position.x.toFixed(2)}, y=${this.position.y.toFixed(2)}, z=${this.position.z.toFixed(2)}`)
-      console.log(`[PlayerLocal] Base position: x=${this.base?.position.x.toFixed(2)}, y=${this.base?.position.y.toFixed(2)}, z=${this.base?.position.z.toFixed(2)}`)
-      this.clickMoveTarget = new THREE.Vector3(target.x, target.y, target.z)
-      // Use the current run mode setting
+      // Ground the target to terrain for accurate movement
+      let finalY = target.y;
+      const terrain = this.world.getSystem('terrain') as TerrainSystem | undefined;
+      if (terrain && terrain.getHeightAt) {
+        const terrainHeight = terrain.getHeightAt(target.x, target.z);
+        if (Number.isFinite(terrainHeight)) {
+          finalY = terrainHeight + 0.1; // Small offset above terrain
+        }
+      }
+      
+      if (this.world.network?.send) {
+        // Primary movement packet with grounded Y
+        this.world.network.send('moveRequest', {
+          target: [target.x, finalY, target.z],
+          runMode: this.runMode,
+        })
+        // Fallback for older servers that route input->moveRequest
+        this.world.network.send('input', {
+          type: 'click',
+          target: [target.x, finalY, target.z],
+          runMode: this.runMode,
+        })
+      } else {
+        console.warn('[PlayerLocal] Cannot send moveRequest - no network system available')
+        console.warn('[PlayerLocal] world.network:', this.world.network)
+      }
+      this.clickMoveTarget = new THREE.Vector3(target.x, finalY, target.z)
+      this.moving = true
       this.running = this.runMode
-      console.log(`[PlayerLocal] Mode: ${this.runMode ? 'RUN' : 'WALK'}`)
-      console.log(`[PlayerLocal] Target set successfully`)
+      // Track when we last sent a movement intent
+      this.lastSendAt = performance.now()
     } else {
-      console.log('[PlayerLocal] Clearing target')
       this.clickMoveTarget = null
       this.moveDir.set(0, 0, 0)
       this.moving = false
-      // Don't reset running - it follows runMode
     }
   }
 
@@ -1265,10 +1597,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
     // Apply to entity position
     super.setPosition(newX, newY, newZ)
     
-    // CRITICAL: Also update base node position so avatar follows
-    if (this.base) {
-      this.base.position.set(newX, newY, newZ)
-    }
+    // Base is a child of node and will follow automatically
 
     // Snap physics capsule to match to avoid interpolation snapping back
     if (this.capsule) {
@@ -1277,7 +1606,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
         pose.p.x = newX
         pose.p.y = newY
         pose.p.z = newZ
-        if (this.capsuleHandle && 'snap' in this.capsuleHandle && typeof this.capsuleHandle.snap === 'function') {
+        if (this.capsuleHandle) {
           this.capsuleHandle.snap(pose)
         } else {
           this.capsule.setGlobalPose(pose)
@@ -1310,869 +1639,247 @@ export class PlayerLocal extends Entity implements HotReloadable {
     return null
   }
 
-  fixedUpdate(delta: number): void {
-    // Skip physics updates if PhysX isn't ready
-    const PHYSX = getPhysX()
-    if (!PHYSX || !this.capsule) {
-      // Don't warn every frame, it's normal during initialization
-      return
-    }
-    
-    // Player transform is driven by physics interpolation callback (onInterpolate)
-
-    const anchor = this.getAnchorMatrix()
-    const snare = this.data.effect?.snare || 0
-
-    if (anchor && !this.capsuleDisabled) {
-      const PHYSX = getPhysX()
-      if (PHYSX) {
-        this.capsule!.setActorFlag(PHYSX.PxActorFlagEnum.eDISABLE_SIMULATION, true)
-        console.warn('[PlayerLocal] Capsule DISABLED due to anchor effect')
-      }
-      this.capsuleDisabled = true
-    }
-    if (!anchor && this.capsuleDisabled) {
-      const PHYSX = getPhysX()
-      if (PHYSX) {
-        this.capsule!.setActorFlag(PHYSX.PxActorFlagEnum.eDISABLE_SIMULATION, false)
-        console.log('[PlayerLocal] Capsule RE-ENABLED')
-      }
-      this.capsuleDisabled = false
-    }
-
-    if (anchor) {
-      /**
-       *
-       * ZERO MODE
-       *
-       */
-      // Player is anchored, no physics updates needed
-    } else if (!this.flying) {
-      /**
-       *
-       * STANDARD MODE
-       *
-       */
-
-      // if grounded last update, check for moving platforms and move with them
-      if (this.grounded && this.capsule) {
-        // find any potentially moving platform
-        const pose = this.capsule.getGlobalPose()
-        if (!pose || !pose.p) {
-          // Skip platform detection if physics pose is not available
-          return
-        }
-        const origin = v1.copy(pose.p!)
-        // origin.y += 0.2
-        const layers = getPhysicsLayers()
-        const hitMask = (layers.environment?.group || 0) | (layers.prop?.group || 0)
-        const hit = this.world.physics.raycast(origin, DOWN, 2, hitMask)
-        const actor = (hit?.handle as PhysicsHandle)?.actor || null
-        // if we found a new platform, set it up for tracking
-        if (this.platform.actor !== actor) {
-          // Only assign if actor is a rigid dynamic (can be moved/affected by forces)
-          if (actor && 'setGlobalPose' in actor && 'getGlobalPose' in actor && 'addForce' in actor) {
-            this.platform.actor = actor as Record<string, unknown>
-          } else {
-            this.platform.actor = null
-          }
-          if (
-            actor &&
-            this.platform.actor &&
-            'getGlobalPose' in this.platform.actor &&
-            typeof this.platform.actor.getGlobalPose === 'function'
-          ) {
-            const platformPose = this.platform.actor.getGlobalPose()
-            if (platformPose && typeof platformPose === 'object' && 'p' in platformPose && 'q' in platformPose) {
-              const p = platformPose.p
-              const q = platformPose.q
-              if (
-                p &&
-                typeof p === 'object' &&
-                'x' in p &&
-                'y' in p &&
-                'z' in p &&
-                q &&
-                typeof q === 'object' &&
-                'x' in q &&
-                'y' in q &&
-                'z' in q &&
-                'w' in q
-              ) {
-                v1.set(Number(p.x), Number(p.y), Number(p.z))
-                q1.set(Number(q.x), Number(q.y), Number(q.z), Number(q.w))
-                safeMatrixCompose(this.platform.prevTransform, v1, q1, SCALE_IDENTITY)
-              }
-            }
-          }
-        }
-        // move with platform, only when kinematic/dynamic (not static ground)
-        if (
-          this.platform.actor &&
-          'getGlobalPose' in this.platform.actor &&
-          typeof this.platform.actor.getGlobalPose === 'function'
-        ) {
-          const PHYSX = getPhysX()
-          const actor = this.platform.actor
-          const isStatic = PHYSX && actor instanceof PHYSX.PxRigidStatic
-          const isKinematic = PHYSX && actor && 'getRigidBodyFlags' in actor && typeof actor.getRigidBodyFlags === 'function'
-            ? (() => {
-                const flags = actor.getRigidBodyFlags()
-                return flags && typeof flags === 'object' && 'isSet' in flags && typeof flags.isSet === 'function'
-                  ? flags.isSet(PHYSX.PxRigidBodyFlagEnum.eKINEMATIC)
-                  : false
-              })()
-            : false
-          // CRITICAL FIX: Only apply platform movement for actual moving platforms (kinematic)
-          // Static ground should NOT apply any rotation transforms
-          if (!isStatic && isKinematic) {
-            // get current platform transform
-            const currTransform = m1
-            const platformPose = this.platform.actor.getGlobalPose()
-            if (platformPose && typeof platformPose === 'object' && 'p' in platformPose && 'q' in platformPose) {
-              const p = platformPose.p
-              const q = platformPose.q
-              if (
-                p &&
-                typeof p === 'object' &&
-                'x' in p &&
-                'y' in p &&
-                'z' in p &&
-                q &&
-                typeof q === 'object' &&
-                'x' in q &&
-                'y' in q &&
-                'z' in q &&
-                'w' in q
-              ) {
-                v1.set(Number(p.x), Number(p.y), Number(p.z))
-                q1.set(Number(q.x), Number(q.y), Number(q.z), Number(q.w))
-                safeMatrixCompose(currTransform, v1, q1, SCALE_IDENTITY)
-                // get delta transform
-                const deltaTransform = m2.multiplyMatrices(currTransform, this.platform.prevTransform.clone().invert())
-                // extract delta position and quaternion
-                const deltaPosition = v2
-                const deltaQuaternion = q2
-                const deltaScale = v3
-                safeMatrixDecompose(deltaTransform, deltaPosition, deltaQuaternion, deltaScale)
-                // apply delta to player
-                if (!this.capsule) return
-                const playerPose = this.capsule.getGlobalPose()
-                if (!playerPose || !playerPose.p || !playerPose.q) return
-                v4.copy(playerPose.p)
-                q3.copy(playerPose.q)
-                const playerTransform = m3
-                safeMatrixCompose(playerTransform, v4, q3, SCALE_IDENTITY)
-                playerTransform.premultiply(deltaTransform)
-                const newPosition = v5
-                const newQuaternion = q4
-                safeMatrixDecompose(playerTransform, newPosition, newQuaternion, v6)
-                const newPose = this.capsule.getGlobalPose()
-                if (!newPose || !newPose.p || !newPose.q) return
-                safePhysXTransform(newPosition, newPose)
-                // newQuaternion.toPxTransform(newPose) // capsule doesn't rotate
-                this.capsule!.setGlobalPose(newPose)
-                // rotate ghost by Y only
-                e1.setFromQuaternion(deltaQuaternion).reorder('YXZ')
-                e1.x = 0
-                e1.z = 0
-                q1.setFromEuler(e1)
-                this.base!.quaternion.multiply(q1)
-                // Update transform if method exists on base node
-                if ('updateTransform' in this.base! && typeof this.base!.updateTransform === 'function') {
-                  this.base!.updateTransform()
-                }
-                // store current transform for next frame
-                this.platform.prevTransform.copy(currTransform)
-              }
-            }
-          }
-        }
-      } else {
-        this.platform.actor = null
-      }
-
-      // sweep down to see if we hit ground
-      let sweepHit
-      if (this.capsule) {
-        const geometry = this.groundSweepGeometry
-        const pose = this.capsule.getGlobalPose()
-        if (pose && pose.p) {
-          const origin = v1.copy(pose.p /*this.ghost.position*/)
-          origin.y += this.groundSweepRadius + 0.12 // move up inside player + a bit
-          const direction = DOWN
-          const maxDistance = 0.12 + 0.1 // outside player + a bit more
-          const layers = getPhysicsLayers()
-          const hitMask = (layers.environment?.group || 0) | (layers.prop?.group || 0)
-          sweepHit = this.world.physics.sweep(geometry, origin, direction, maxDistance, hitMask)
-        }
-      }
-
-      // update grounded info
-      if (sweepHit) {
-        this.justLeftGround = false
-        this.grounded = true
-        this.groundNormal.copy(sweepHit.normal)
-        this.groundAngle = UP.angleTo(this.groundNormal) * RAD2DEG
-      } else {
-        this.justLeftGround = !!this.grounded
-        this.grounded = false
-        this.groundNormal.copy(UP)
-        this.groundAngle = 0
-      }
-
-      // if on a steep slope, unground and track slipping
-      if (this.grounded && this.groundAngle > 60) {
-        this.justLeftGround = false
-        this.grounded = false
-        this.groundNormal.copy(UP)
-        this.groundAngle = 0
-        this.slipping = true
-      } else {
-        this.slipping = false
-      }
-
-      // our capsule material has 0 friction
-      // we use eMIN when in the air so that we don't stick to walls etc (zero friction)
-      // and eMAX on the ground so that we don't constantly slip off physics objects we're pushing (absorb objects friction)
-      if (this.grounded) {
-        if (this.materialMax !== true) {
-          if (this.material?.setFrictionCombineMode && this.material?.setRestitutionCombineMode) {
-            const PHYSX = getPhysX()
-            if (PHYSX) {
-              this.material.setFrictionCombineMode!(PHYSX.PxCombineModeEnum.eMAX)
-              this.material.setRestitutionCombineMode!(PHYSX.PxCombineModeEnum.eMAX)
-            }
-          }
-          this.materialMax = true
-        }
-      } else {
-        if (this.materialMax !== false) {
-          if (this.material?.setFrictionCombineMode && this.material?.setRestitutionCombineMode) {
-            const PHYSX = getPhysX()
-            if (PHYSX) {
-              this.material.setFrictionCombineMode!(PHYSX.PxCombineModeEnum.eMIN)
-              this.material.setRestitutionCombineMode!(PHYSX.PxCombineModeEnum.eMIN)
-            }
-          }
-          this.materialMax = false
-        }
-      }
-
-      // if we jumped and have now left the ground, progress to jumping
-      if (this.jumped && !this.grounded) {
-        this.jumped = false
-        this.jumping = true
-      }
-
-      // if not grounded and our velocity is downward, start timing our falling
-      if (!this.grounded && this.capsule) {
-        const velocity = this.capsule.getLinearVelocity()
-        if (velocity && velocity.y < 0) {
-          this.fallTimer += delta
-        }
-      } else {
-        this.fallTimer = 0
-      }
-      // if we've been falling for a bit then progress to actual falling
-      // this is to prevent animation jitter when only falling for a very small amount of time
-      if (this.fallTimer > 0.1 && !this.falling) {
-        this.jumping = false
-        this.airJumping = false
-        this.falling = true
-        this.fallStartY = this.position.y
-      }
-
-      // if falling track distance
-      if (this.falling && this.fallStartY !== undefined) {
-        this.fallDistance = this.fallStartY - this.position.y
-      }
-
-      // if falling and we're now on the ground, clear it
-      if (this.falling && this.grounded) {
-        this.falling = false
-      }
-
-      // if jumping and we're now on the ground, clear it
-      if (this.jumping && this.grounded) {
-        this.jumping = false
-      }
-
-      // if airJumping and we're now on the ground, clear it
-      if (this.airJumped && this.grounded) {
-        this.airJumped = false
-        this.airJumping = false
-      }
-
-      // if we're grounded we don't need gravity.
-      // more importantly we disable it so that we don't slowly slide down ramps while standing still.
-      // even more importantly, if the platform we are on is dynamic we apply a force to it to compensate for our gravity being off.
-      // this allows things like see-saws to move down when we stand on them etc.
-      if (this.grounded) {
-        // gravity is disabled but we need to check our platform
-        if (this.platform.actor) {
-          const PHYSX = getPhysX()
-          const isStatic = PHYSX ? this.platform.actor instanceof PHYSX.PxRigidStatic : false
-          const actor = this.platform.actor
-          const isKinematic =
-            PHYSX && actor && 'getRigidBodyFlags' in actor && typeof actor.getRigidBodyFlags === 'function'
-              ? (() => {
-                  const flags = actor.getRigidBodyFlags()
-                  return flags && typeof flags === 'object' && 'isSet' in flags && typeof flags.isSet === 'function'
-                    ? flags.isSet(PHYSX.PxRigidBodyFlagEnum.eKINEMATIC)
-                    : false
-                })()
-              : false
-          // if its dynamic apply downward force!
-          if (!isKinematic && !isStatic) {
-            // this feels like the right amount of force but no idea why 0.2
-            const amount = -9.81 * 0.2
-            const force = v1.set(0, amount, 0)
-            // Use a safe approach for adding force at position
-            if (this.platform.actor && this.capsule) {
-              const pose = this.capsule.getGlobalPose()
-              if (pose && pose.p) {
-                const pxForce = vector3ToPxVec3(force)
-                const pxPos = vector3ToPxVec3(v2.copy(pose.p))
-                if (pxForce && pxPos && this.platform.actor) {
-                  if (
-                    'addForceAtPos' in this.platform.actor &&
-                    typeof this.platform.actor.addForceAtPos === 'function'
-                  ) {
-                    ;(this.platform.actor.addForceAtPos as (force: unknown, pos: unknown, mode?: unknown) => void)(
-                      pxForce,
-                      pxPos,
-                      getPhysX()?.PxForceModeEnum?.eFORCE
-                    )
-                  } else if ('addForce' in this.platform.actor && typeof this.platform.actor.addForce === 'function') {
-                    // Fallback to regular addForce
-                    ;(this.platform.actor.addForce as (force: unknown, mode?: unknown, autocwake?: boolean) => void)(
-                      pxForce,
-                      getPhysX()?.PxForceModeEnum?.eFORCE,
-                      true
-                    )
-                  }
-                  // Clean up PhysX vectors
-                  cleanupPxVec3(pxForce)
-                  cleanupPxVec3(pxPos)
-                }
-              }
-            }
-          }
-        }
-      } else if (this.capsule) {
-        const force = v1.set(0, -this.effectiveGravity, 0)
-        const pxForce = vector3ToPxVec3(force)
-        if (pxForce) {
-          this.capsule.addForce(pxForce, getPhysX()?.PxForceModeEnum?.eFORCE || 0, true)
-        }
-      }
-
-      // update velocity
-      if (!this.capsule) return
-      const capsuleVelocity = this.capsule.getLinearVelocity()
-      if (!capsuleVelocity) return
-      const velocity = v1.copy(capsuleVelocity)
-      // apply drag, orientated to ground normal
-      // this prevents ice-skating & yeeting us upward when going up ramps
-      // Increase drag when we're close to target for better stopping
-      const baseDrag = this.clickMoveTarget && this.position.distanceTo(this.clickMoveTarget) < 2.0 ? 15 : 10
-      const dragCoeff = baseDrag * delta
-      const perpComponent = v2.copy(this.groundNormal).multiplyScalar(velocity.dot(this.groundNormal))
-      const parallelComponent = v3.copy(velocity).sub(perpComponent)
-      parallelComponent.multiplyScalar(1 - dragCoeff)
-      velocity.copy(parallelComponent.add(perpComponent))
-      // cancel out velocity in ground normal direction (up oriented to ground normal)
-      // this helps us stick to elevators
-      if (this.grounded && !this.jumping) {
-        const projectedLength = velocity.dot(this.groundNormal)
-        const projectedVector = v2.copy(this.groundNormal).multiplyScalar(projectedLength)
-        velocity.sub(projectedVector)
-      }
-      // when walking off an edge or over the top of a ramp, attempt to snap down to a surface
-      if (this.justLeftGround && !this.jumping) {
-        velocity.y = -5
-      }
-      // if slipping ensure we can't gain upward velocity
-      if (this.slipping) {
-        // increase downward velocity to prevent sliding upward when walking at a slope
-        velocity.y -= 0.5
-      }
-
-      // apply additional push force
-      if (this.pushForce) {
-        if (!this.pushForceInit) {
-          this.pushForceInit = true
-          // if we're pushing up, act like a jump so we don't stick to the ground
-          if (this.pushForce.y) {
-            this.jumped = true
-            // ensure other stuff is reset
-            this.jumping = false
-            this.falling = false
-            this.airJumped = false
-            this.airJumping = false
-          }
-        }
-        velocity.add(this.pushForce)
-        const drag = 20
-        const decayFactor = 1 - drag * delta
-        if (decayFactor < 0) {
-          // if drag * delta > 1, just set to zero
-          this.pushForce.set(0, 0, 0)
-        } else {
-          this.pushForce.multiplyScalar(Math.max(decayFactor, 0))
-        }
-        if (this.pushForce.length() < 0.01) {
-          this.pushForce = null
-        }
-      }
-
-      // Set the updated velocity on the capsule
-      const pxVelocity = vector3ToPxVec3(velocity)
-      if (pxVelocity) {
-        this.capsule!.setLinearVelocity(pxVelocity)
-      }
-
-      // apply move force, projected onto ground normal
-      if (this.moving) {
-        let moveSpeed = (this.running ? 10 : 6) * this.mass // tuned speed
-        moveSpeed *= 1 - snare
-        const upVec = new THREE.Vector3(0, 1, 0)
-        const groundVec = new THREE.Vector3(this.groundNormal.x, this.groundNormal.y, this.groundNormal.z)
-        const slopeRotation = q1.setFromUnitVectors(upVec, groundVec)
-        const moveForce = v1.copy(this.moveDir).multiplyScalar(moveSpeed * 10).applyQuaternion(slopeRotation) // prettier-ignore
-        
-        // Clamp to terrain if not grounded
-        const terrainSystem = this.world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number };
-        if (!this.grounded && terrainSystem?.getHeightAt && this.capsule) {
-          const terrainHeight = terrainSystem.getHeightAt(this.position.x, this.position.z);
-          const playerGroundY = this.position.y - 1.8; // Account for player height
-          
-          // If player is below terrain, apply upward force
-          if (playerGroundY < terrainHeight - 0.5) {
-            const upwardForce = (terrainHeight - playerGroundY) * 50;
-            moveForce.y += upwardForce;
-            console.log(`[PlayerLocal] Applying terrain clamping force: ${upwardForce.toFixed(2)}`);
-          }
-        }
-        
-        // Log force application periodically
-        if (Math.random() < 0.05) { // Log ~5% of physics frames
-          console.log(`[PlayerLocal] Physics Force: dir=(${this.moveDir.x.toFixed(2)}, ${this.moveDir.z.toFixed(2)}), force=(${moveForce.x.toFixed(1)}, ${moveForce.z.toFixed(1)}), grounded=${this.grounded}`)
-          const velocity = this.capsule!.getLinearVelocity()
-          if (velocity) {
-            console.log(`[PlayerLocal] Velocity: (${velocity.x.toFixed(2)}, ${velocity.y.toFixed(2)}, ${velocity.z.toFixed(2)})`)
-          }
-        }
-        
-        const PHYSX = getPhysX()
-        const pxMoveForce = vector3ToPxVec3(moveForce)
-        if (pxMoveForce) {
-          this.capsule!.addForce(pxMoveForce, PHYSX?.PxForceModeEnum?.eFORCE || 0, true)
-        } else {
-          console.warn('[PlayerLocal] Failed to convert move force to PhysX vector!')
-        }
-        // alternative (slightly different projection)
-        // let moveSpeed = 10
-        // const slopeMoveDir = v1.copy(this.moveDir).projectOnPlane(this.groundNormal).normalize()
-        // const moveForce = v2.copy(slopeMoveDir).multiplyScalar(moveSpeed * 10)
-        // this.capsule!.addForce(vector3ToPxVec3(moveForce), PHYSX?.PxForceModeEnum?.eFORCE || 0, true)
-      }
-
-      // ground/air jump
-      const shouldJump =
-        this.grounded && !this.jumping && this.jumpDown && !this.data.effect?.snare && !this.data.effect?.freeze
-      const shouldAirJump = !this.grounded && !this.airJumped && this.jumpPressed && !this.world.builder?.enabled
-      if (shouldJump || shouldAirJump) {
-        // calc velocity needed to reach jump height
-        let jumpVelocity = Math.sqrt(2 * this.effectiveGravity * this.jumpHeight)
-        jumpVelocity = jumpVelocity * (1 / Math.sqrt(this.mass))
-        // update velocity
-        if (this.capsule) {
-          const velocity = this.capsule.getLinearVelocity()
-          if (velocity) {
-            velocity.y = jumpVelocity
-            this.capsule.setLinearVelocity(velocity)
-          }
-        }
-        // ground jump init (we haven't left the ground yet)
-        if (shouldJump) {
-          this.jumped = true
-        }
-        // air jump init
-        if (shouldAirJump) {
-          this.falling = false
-          this.fallTimer = 0
-          this.jumping = true
-          this.airJumped = true
-          this.airJumping = true
-        }
-      }
-    } else {
-      /**
-       *
-       * FLYING MODE
-       *
-       */
-
-      // apply force in the direction we want to go
-      if (this.moving || this.jumpDown || this.control?.keyC?.down) {
-        const flySpeed = this.flyForce * (this.running ? 2 : 1)
-        const force = v1.copy(this.flyDir).multiplyScalar(flySpeed)
-        // handle vertical movement
-        if (this.jumpDown) {
-          force.y = flySpeed
-        } else if (this.control?.keyC?.down) {
-          force.y = -flySpeed
-        }
-        if (this.capsule) {
-          const pxForce = vector3ToPxVec3(force)
-          if (pxForce) {
-            this.capsule.addForce(pxForce, getPhysX()?.PxForceModeEnum?.eFORCE || 0, true)
-          }
-        }
-      }
-
-      // add drag to prevent excessive speeds
-      if (this.capsule) {
-        const capsuleVelocity = this.capsule.getLinearVelocity()
-        if (capsuleVelocity) {
-          const velocity = v2.copy(capsuleVelocity)
-          const dragForce = v3.copy(velocity).multiplyScalar(-this.flyDrag * delta)
-          const PHYSX = getPhysX()
-          const pxDragForce = vector3ToPxVec3(dragForce)
-          if (pxDragForce) {
-            this.capsule.addForce(pxDragForce, PHYSX?.PxForceModeEnum?.eFORCE || 0, true)
-          }
-
-          // zero out any rotational velocity
-          const zeroAngular = v4.set(0, 0, 0)
-          const pxZeroAngular = vector3ToPxVec3(zeroAngular)
-          if (pxZeroAngular) {
-            this.capsule.setAngularVelocity(pxZeroAngular)
-          }
-        }
-      }
-
-      // if not in build mode, cancel flying
-      if (!this.world.builder?.enabled) {
-        this.toggleFlying()
-      }
-    }
-
-    // double jump in build, mode toggle flying
-    if (this.jumpPressed && this.world.builder?.enabled) {
-      const now = this.world.frame
-      if (now - this.lastJumpAt < 15 && now - this.lastJumpAt > 1) {
-        this.toggleFlying()
-      }
-      this.lastJumpAt = now
-    }
-
-    // consume jump press so we dont run it across multiple fixedUpdates in one frame
-    this.jumpPressed = false
-  }
-
   update(delta: number): void {
-    if(!this.capsule) return;
-    
-    // Rotation validation - track rotation at start of update
-    const rotationBefore = this.base ? this.base.quaternion.clone() : null;
-      const pose = this.capsule.getGlobalPose()
-      if (pose && pose.p) {
-        const physicsPos = new THREE.Vector3(pose.p.x, pose.p.y, pose.p.z)
-        const prevPos = this.position.clone()
-        const moved = prevPos.distanceTo(physicsPos)
-
-        // Mirror physics pose to entity/base as a fallback to ensure camera/rig sync
-        this.position.copy(physicsPos)
-        if (this.base) {
-          this.base.position.copy(physicsPos)
-        }
-        
-        // Log significant movement
-        if (moved > 0.01) {
-          console.log(`[PlayerLocal] Position updated from physics: moved ${moved.toFixed(3)} to (${physicsPos.x.toFixed(2)}, ${physicsPos.y.toFixed(2)}, ${physicsPos.z.toFixed(2)})`)
-        }
-        
-        // Update avatar instance position from base transform
-        // NOTE: This is required because the VRM factory doesn't automatically track the base node
-        const avatarNode = this._avatar as any
-        if (avatarNode && avatarNode.instance) {
-          const instance = avatarNode.instance
-          if (instance && typeof instance.move === 'function' && this.base) {
-            // Ensure base matrices are up-to-date
-            this.base.updateMatrix()
-            this.base.updateMatrixWorld(true)
-            // Move the avatar to match the base transform
-            instance.move(this.base.matrixWorld)
-          }
-          // Call update for animation updates (mixer, skeleton, etc)
-          if (instance && typeof instance.update === 'function') {
-            instance.update(delta)
-          }
-        }
-      }
-    
-        // RuneScape-style point-and-click movement only
+    // 1. CLIENT PREDICTION (disabled by default). Keep intent for animation only.
     if (this.clickMoveTarget) {
-      // Update target Y to match terrain height at target position (strict: no fallback)
-      const terrainSystem = this.world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number };
-      if (!terrainSystem || typeof terrainSystem.getHeightAt !== 'function') {
-        throw new Error('[PlayerLocal] TerrainSystem.getHeightAt unavailable when setting clickMoveTarget');
-      }
-      const targetHeight = terrainSystem.getHeightAt(this.clickMoveTarget.x, this.clickMoveTarget.z);
-      if (!Number.isFinite(targetHeight)) {
-        throw new Error(`[PlayerLocal] Invalid terrain height for target (${this.clickMoveTarget.x.toFixed(2)}, ${this.clickMoveTarget.z.toFixed(2)})`);
-      }
-      this.clickMoveTarget.y = (targetHeight as number) + 0.1;
-      
-      // Use horizontal (XZ) distance to determine arrival to avoid Y mismatches
-      const dx = this.position.x - this.clickMoveTarget.x;
-      const dz = this.position.z - this.clickMoveTarget.z;
-      const distanceXZ = Math.sqrt(dx * dx + dz * dz);
-      
-      // Check if we've reached the target
-      const velocity = this.capsule?.getLinearVelocity()
-      const speed = velocity ? Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z) : 0
-      
-      // Stop if we're very close
-      // OR if we're somewhat close AND we've been moving but are now slow (to avoid oscillation)
-      // Don't stop if we haven't started moving yet (speed near 0 but not at target)
-      if (distanceXZ < 0.3 || (distanceXZ < 0.8 && speed < 0.2 && this.moving)) {
-        console.log('[PlayerLocal] === REACHED DESTINATION ===')
-        console.log(`[PlayerLocal] Final position: (${this.position.x.toFixed(2)}, ${this.position.y.toFixed(2)}, ${this.position.z.toFixed(2)})`)
-        console.log(`[PlayerLocal] Target was: (${this.clickMoveTarget.x.toFixed(2)}, ${this.clickMoveTarget.y.toFixed(2)}, ${this.clickMoveTarget.z.toFixed(2)})`)
-        console.log(`[PlayerLocal] DistanceXZ: ${distanceXZ.toFixed(2)}, Speed: ${speed.toFixed(2)}`)
-        
-        // IMPORTANT: Preserve the final rotation before clearing movement state
-        // This prevents the avatar from rotating back after movement completes
-        if (this.base && this.lastState.q) {
-          this.lastState.q.copy(this.base.quaternion)
-          // Also ensure node quaternion stays aligned
-          this.node.quaternion.copy(this.base.quaternion)
-        }
-        
+      const speed = this.runMode ? 8 : 4
+      const direction = v1.subVectors(this.clickMoveTarget, this.position)
+      direction.y = 0
+      const distanceXZ = direction.length()
+      if (distanceXZ < 0.3) {
         this.clickMoveTarget = null
         this.moving = false
-        this.moveDir.set(0, 0, 0) // Clear move direction to prevent residual rotation
-        
-        // Zero out horizontal velocity AND lock rotation until next movement target
-        if (velocity && this.capsule) {
-          velocity.x = 0
-          velocity.z = 0
-          this.capsule.setLinearVelocity(velocity)
-        }
-        // Clear moveDir to prevent any residual facing updates
         this.moveDir.set(0, 0, 0)
-      } else if (distanceXZ < 1.0) {
-        // Getting close - apply proportional braking
-        const direction = new THREE.Vector3()
-          .subVectors(this.clickMoveTarget, this.position)
-        direction.y = 0
-        direction.normalize()
-        
-        // Scale movement force based on distance (closer = less force)
-        const scaleFactor = Math.max(0.1, distanceXZ / 2.0)
-        direction.multiplyScalar(scaleFactor)
-        this.moveDir.copy(direction)
-        this.moving = true
-        this.running = false  // Walk when close
       } else {
-        // Calculate movement direction toward target
-        const direction = new THREE.Vector3()
-          .subVectors(this.clickMoveTarget, this.position)
-        direction.y = 0 // Keep movement horizontal
         direction.normalize()
-        
-        // Set move direction for physics to use in fixedUpdate
         this.moveDir.copy(direction)
+        if (this.clientPredictMovement) {
+          const step = speed * delta
+          this.position.x += direction.x * step
+          this.position.z += direction.z * step
+        }
         this.moving = true
-        // Always use the persistent runMode setting
         this.running = this.runMode
-        
-        // Clamp player strictly to terrain height while moving (no fallback)
-        if (this.capsule) {
-          const terrainSystemMove = this.world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number };
-          if (!terrainSystemMove || typeof terrainSystemMove.getHeightAt !== 'function') {
-            throw new Error('[PlayerLocal] TerrainSystem.getHeightAt unavailable during movement');
-          }
-          const h = terrainSystemMove.getHeightAt(this.position.x, this.position.z);
-          if (!Number.isFinite(h)) {
-            throw new Error(`[PlayerLocal] Invalid terrain height during movement at (${this.position.x.toFixed(2)}, ${this.position.z.toFixed(2)})`);
-          }
-          const desiredY = (h as number) + 0.1;
-          const yDelta = desiredY - this.position.y;
-          if (Math.abs(yDelta) > 0.2) {
-            const pose = this.capsule.getGlobalPose();
-            if (pose && pose.p) {
-              pose.p.y = desiredY;
-              this.capsuleHandle?.snap(pose);
-            }
-            const vel = this.capsule.getLinearVelocity();
-            if (vel) {
-              vel.y = 0;
-              this.capsule.setLinearVelocity(vel);
-            }
+      }
+    }
+
+    // 2. SERVER RECONCILIATION - Trust server position but validate it
+    if (this.serverPosition) {
+      // SAFETY CHECK: Don't trust obviously invalid server positions
+      if (this.serverPosition.y < -5) {
+        console.error(`[PlayerLocal] Server position is invalid (Y=${this.serverPosition.y}), rejecting update!`);
+        // Try to get safe position from terrain
+        const terrain = this.world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number } | null;
+        if (terrain?.getHeightAt) {
+          const terrainHeight = terrain.getHeightAt(this.position.x, this.position.z);
+          if (Number.isFinite(terrainHeight)) {
+            const safeY = (terrainHeight as number) + 0.1; // 10cm above terrain
+            console.warn(`[PlayerLocal] Correcting position to terrain height: Y=${safeY}`);
+            this.position.y = safeY;
+            this.serverPosition.y = safeY; // Also fix server position
           }
         }
+      } else {
+        // Calculate position error
+        const errorDistance = this.position.distanceTo(this.serverPosition);
         
-        // Log movement state (but not every frame)
-        if (Math.random() < 0.02) { // Log ~2% of frames
-          console.log(`[PlayerLocal] Moving: distanceXZ=${distanceXZ.toFixed(2)}, target=(${this.clickMoveTarget.x.toFixed(2)}, ${this.clickMoveTarget.z.toFixed(2)}), pos=(${this.position.x.toFixed(2)}, ${this.position.z.toFixed(2)}), dir=(${direction.x.toFixed(2)}, ${direction.z.toFixed(2)})`)
+        // Teleport for large errors, interpolate for small ones
+        if (errorDistance > 5.0) {
+          // Large error: snap immediately
+          console.log(`[PlayerLocal] Large position error (${errorDistance.toFixed(2)}), snapping to server position`);
+          this.position.copy(this.serverPosition);
+        } else if (errorDistance > 0.05) {
+          // Small error: smooth interpolation
+          const lerpSpeed = errorDistance > 1.0 ? 15.0 : 10.0;
+          const alpha = Math.min(1, delta * lerpSpeed);
+          this.position.lerp(this.serverPosition, alpha);
         }
       }
-    } // End of clickMoveTarget check
-
-
-    // Update animation state based on movement (RuneScape style - no jump/fall)
-    let newEmote = 'idle'; // Default to idle
+    }
     
+    // 3. TERRAIN FOLLOWING - Smooth terrain height adjustment every frame
+    this.validateTerrainPosition();
+    
+    // 4. SAFETY CHECK - Don't wait for validation interval  
+    if (this.position.y < -5) {
+      const errorMsg = `[PlayerLocal] FATAL: Player falling in update()! Y=${this.position.y.toFixed(2)}, ServerY=${this.serverPosition?.y?.toFixed(2) || 'N/A'}`;
+      console.error(errorMsg);
+      throw new Error(errorMsg + '\n\nThis crash is intentional to identify movement system failures.');
+    }
+    
+    // CRITICAL: Update node and base matrices EVERY frame to ensure avatar follows
+    // The node position has changed, we need to update its matrix
+    if (this.node) {
+      this.node.updateMatrix()
+      this.node.updateMatrixWorld(true)
+    }
+    
+    // The base inherits transform from node but needs its own matrix update for avatar
+    if (this.base) {
+      // Only update if position is valid
+      if (this.position.y >= -5) {
+        // Base is a child of node, its world matrix depends on node's matrix
+        this.base.updateMatrix()
+        this.base.updateMatrixWorld(true)
+      } else {
+        console.error('[PlayerLocal] Refusing to update base to invalid position Y=' + this.position.y);
+      }
+    }
+
+    // 4. KINEMATIC PHYSICS SYNC
+    if (this.capsule) {
+      const pose = this.capsule.getGlobalPose()
+      if (pose?.p) {
+        pose.p.x = this.position.x
+        pose.p.y = this.position.y
+        pose.p.z = this.position.z
+        this.capsule.setGlobalPose(pose)
+      }
+    }
+    
+    // 5. ROTATION AND ANIMATION
+    let newEmote = 'idle'
     if (this.moving) {
-      // We're moving - choose walk or run animation
-      newEmote = this.running ? 'run' : 'walk';
-      console.log(`[PlayerLocal] Moving detected - setting emote to: ${newEmote}`)
-      
-      // Rotate base (and thus avatar) to face movement direction ONLY while actively moving
-      // Important: Check this.moving instead of moveDir.length() to prevent rotation after stopping
-      if (this.base && this.moving && this.moveDir.length() > 0) {
-        const forward = new THREE.Vector3(0, 0, -1)
-        const targetQuaternion = new THREE.Quaternion().setFromUnitVectors(forward, this.moveDir.normalize())
-        
-        // Only rotate if angle delta is meaningful to reduce tiny jitter
-        const dot = this.base.quaternion.clone().dot(targetQuaternion)
-        const angle = 2 * Math.acos(Math.min(1, Math.max(-1, Math.abs(dot))))
-        
-        // Increased threshold to 0.02 radians (~1 degree) to reduce micro-jitter
-        if (angle > 0.02) {
-          // Smoother rotation with reduced speed to prevent shaking
-          // Using 0.03 for very smooth turns (was 0.06)
-          this.base.quaternion.slerp(targetQuaternion, 0.03)
-          
-          // Sync lastState and node quaternion to prevent fighting
-          this.lastState.q?.copy(this.base.quaternion)
-          this.node.quaternion.copy(this.base.quaternion)
+      newEmote = this.running ? 'run' : 'walk'
+      if (this.moveDir.lengthSq() > 0.001) {
+        const forward = v3.set(0, 0, -1)
+        const targetQuaternion = q1.setFromUnitVectors(forward, this.moveDir)
+        // Apply rotation to both base and node so avatar gets the rotation
+        if (this.base) {
+          this.base.quaternion.slerp(targetQuaternion, delta * 10)
         }
+        this.node.quaternion.slerp(targetQuaternion, delta * 10)
       }
-    } else {
-      // Not moving - use idle animation
-      newEmote = 'idle';
-      // Do not enforce any rotation while idle to avoid fighting other systems
     }
     
-    // Only update emote if it changed to avoid animation restarts
     if (this.emote !== newEmote) {
-      this.emote = newEmote;
-      console.log(`[PlayerLocal] Animation state changed to: ${newEmote}`);
-    }
-
-    // Apply emote animation to avatar
-    if (this._avatar) {
-      // Check if it's an Avatar node with emote property
-      if ((this._avatar as any).emote !== undefined) {
-        // Map emote state names to Emotes URLs
-        const emoteMap: Record<string, string> = {
-          'idle': Emotes.IDLE,
-          'walk': Emotes.WALK,
-          'run': Emotes.RUN,
-          'float': Emotes.FLOAT,
-          'fall': Emotes.FALL,
-          'flip': Emotes.FLIP,
-          'talk': Emotes.TALK
-        };
-        
-        const emoteUrl = emoteMap[this.emote] || Emotes.IDLE;
-        // Set the emote on the Avatar node (it will pass it to its instance)
-        (this._avatar as any).emote = emoteUrl;
-      } else if ((this._avatar as any).setEmote) {
-        // Fallback for direct setEmote method
-        const emoteMap: Record<string, string> = {
-          'idle': Emotes.IDLE,
-          'walk': Emotes.WALK,
-          'run': Emotes.RUN,
-          'float': Emotes.FLOAT,
-          'fall': Emotes.FALL,
-          'flip': Emotes.FLIP,
-          'talk': Emotes.TALK
-        };
-        
-        const emoteUrl = emoteMap[this.emote] || Emotes.IDLE;
-        (this._avatar as any).setEmote(emoteUrl);
-      }
-    }
-    
-    // Ensure player remains grounded while idle
-    if (!this.moving && this.capsule) {
-      const terrainSystemIdle = this.world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number };
-      if (!terrainSystemIdle || typeof terrainSystemIdle.getHeightAt !== 'function') {
-        throw new Error('[PlayerLocal] TerrainSystem.getHeightAt unavailable while idle');
-      }
-      const hIdle = terrainSystemIdle.getHeightAt(this.position.x, this.position.z);
-      if (!Number.isFinite(hIdle)) {
-        throw new Error(`[PlayerLocal] Invalid terrain height while idle at (${this.position.x.toFixed(2)}, ${this.position.z.toFixed(2)})`);
-      }
-      const groundY = (hIdle as number) + 0.1;
-      if (Math.abs(this.position.y - groundY) > 0.2) {
-        const pose = this.capsule.getGlobalPose();
-        if (pose && pose.p) {
-          pose.p.y = groundY;
-          this.capsuleHandle?.snap(pose);
+      this.emote = newEmote
+      if (this._avatar) {
+        const avatarNode = this._avatar as AvatarNode
+        if (avatarNode.emote !== undefined) {
+          const emoteMap: Record<string, string> = {
+            'idle': Emotes.IDLE,
+            'walk': Emotes.WALK,
+            'run': Emotes.RUN,
+          };
+          const emoteUrl = emoteMap[this.emote] || Emotes.IDLE;
+          avatarNode.emote = emoteUrl;
+        } else if (avatarNode.setEmote) {
+          avatarNode.setEmote(this.emote);
         }
       }
     }
 
-    // Skip rotation validation/forcing to avoid fighting legitimate updates while idle
-
-    // Send network updates if needed
+    // Update avatar instance position from base transform
+    const avatarNodeWithInstance = this._avatar as AvatarNode
+    if (avatarNodeWithInstance && avatarNodeWithInstance.instance && this.base) {
+      const instance = avatarNodeWithInstance.instance
+      
+      // CRITICAL: Check if avatar scene is attached BEFORE moving
+      const instanceWithRaw = instance as unknown as { raw?: { scene?: THREE.Object3D } }
+      if (instanceWithRaw?.raw?.scene) {
+        const avatarScene = instanceWithRaw.raw.scene
+        
+        // Ensure avatar scene is attached to world scene BEFORE any position updates
+        if (!avatarScene.parent && this.world?.stage?.scene) {
+          console.error('[PlayerLocal] Avatar scene has NO PARENT! Attaching to scene...')
+          this.world.stage.scene.add(avatarScene)
+          console.log('[PlayerLocal] Avatar attached to world.stage.scene')
+          
+          // Reset position to avoid double transform
+          avatarScene.position.set(0, 0, 0)
+          avatarScene.updateMatrixWorld(true)
+        }
+      }
+      
+      // Debug avatar structure once
+      if (!this.avatarDebugLogged) {
+        console.log('[PlayerLocal] Avatar instance structure:', {
+          hasInstance: !!instance,
+          instanceKeys: instance ? Object.keys(instance) : [],
+          hasRaw: !!(instance as any)?.raw,
+          rawKeys: (instance as any)?.raw ? Object.keys((instance as any).raw) : [],
+          hasScene: !!(instance as any)?.raw?.scene,
+          sceneType: (instance as any)?.raw?.scene?.constructor?.name,
+          hasVrm: !!(instance as any)?.vrm,
+          vrmKeys: (instance as any)?.vrm ? Object.keys((instance as any).vrm) : [],
+          hasMove: typeof instance.move === 'function',
+          hasUpdate: typeof instance.update === 'function'
+        })
+        this.avatarDebugLogged = true
+      }
+      
+      // Try multiple ways to access the avatar scene
+      let avatarScene: THREE.Object3D | null = null
+      
+      // Method 1: raw.scene
+      if (instanceWithRaw?.raw?.scene) {
+        avatarScene = instanceWithRaw.raw.scene
+      }
+      // Method 2: vrm.scene
+      else if ((instance as any)?.vrm?.scene) {
+        avatarScene = (instance as any).vrm.scene
+      }
+      // Method 3: direct scene property
+      else if ((instance as any)?.scene) {
+        avatarScene = (instance as any).scene
+      }
+      
+      if (avatarScene) {
+        // The VRM scene has matrixAutoUpdate = false, so we need to update matrices manually
+        const worldMatrix = new THREE.Matrix4()
+        worldMatrix.compose(
+          this.node.position,
+          this.node.quaternion,
+          new THREE.Vector3(1, 1, 1)
+        )
+        
+        // Set both matrix and matrixWorld since auto update is disabled
+        avatarScene.matrix.copy(worldMatrix)
+        avatarScene.matrixWorld.copy(worldMatrix)
+        
+        // Debug logging every 100 frames
+        if (Math.random() < 0.01) {
+          console.log('[PlayerLocal] Moving avatar:', {
+            nodePos: this.node.position.toArray(),
+            avatarMatrixWorld: avatarScene.matrixWorld.elements.slice(12, 15), // Translation part
+            avatarParent: avatarScene.parent?.name || 'NO PARENT',
+            matrixAutoUpdate: avatarScene.matrixAutoUpdate
+          })
+        }
+      } else if (Math.random() < 0.01) {
+        console.error('[PlayerLocal] No avatar scene found to move!')
+      }
+      
+      // Update avatar animations
+      if (instance.update) {
+        instance.update(delta)
+      }
+      
+      // Debug logging (reduced frequency)
+      if (Math.random() < 0.005) { // 0.5% chance per frame
+        if (instanceWithRaw?.raw?.scene) {
+          const avatarScene = instanceWithRaw.raw.scene
+          const worldPos = new THREE.Vector3()
+          avatarScene.getWorldPosition(worldPos)
+          console.log(`[PlayerLocal] Avatar Y=${worldPos.y.toFixed(2)}, Base Y=${this.base.position.y.toFixed(2)}, Parent: ${avatarScene.parent?.name || 'NONE'}`)
+        }
+      }
+    }
+    
     this.sendNetworkUpdate()
   }
 
   sendNetworkUpdate(): void {
-    // Initialize lastState if needed
-    if (!this.lastState.p) {
-      this.lastState.p = new THREE.Vector3().copy(this.position)
-    }
-    if (!this.lastState.q) {
-      this.lastState.q = new THREE.Quaternion().copy(this.base?.quaternion || this.rotation)
-    }
-    if (!this.lastState.e) {
-      this.lastState.e = this.emote || 'idle'
-    }
-
-    // Create network data object with proper type
-    const data: Partial<NetworkData> = {
-      id: this.data.id,
-    }
-
-    let hasChanges = false
-
-    // Check for position changes
-    if (!this.lastState.p.equals(this.position)) {
-      data.p = this.position.toArray() as [number, number, number]
-      this.lastState.p.copy(this.position)
-      hasChanges = true
-    }
-
-    // Check for quaternion changes
-    if (this.base && !this.lastState.q.equals(this.base.quaternion)) {
-      data.q = this.base.quaternion.toArray() as [number, number, number, number]
-      this.lastState.q.copy(this.base.quaternion)
-      hasChanges = true
-    }
-
-    // Check for emote changes
+    // Server-authoritative movement: only send lightweight emote/name updates here (no p/q)
+    if (!this.lastState.e) this.lastState.e = this.emote || 'idle'
     if (this.lastState.e !== this.emote) {
-      data.e = this.emote
+      this.world.network.send('entityModified', { id: this.data.id, e: this.emote })
       this.lastState.e = this.emote || 'idle'
-      hasChanges = true
-    }
-
-    if (hasChanges) {
-      this.world.network.send('entityModified', data)
     }
   }
 
-  lateUpdate(delta: number): void {
+  lateUpdate(_delta: number): void {
     const isXR = (this.world.xr as XRSystem)?.session
     const anchor = this.getAnchorMatrix()
     // if we're anchored, force into that pose
@@ -2318,6 +2025,18 @@ export class PlayerLocal extends Entity implements HotReloadable {
 
   // Required System lifecycle methods
   override destroy(): void {
+    // Clean up validation interval
+    if (this.positionValidationInterval) {
+      clearInterval(this.positionValidationInterval);
+      this.positionValidationInterval = undefined;
+    }
+    
+    // Clean up avatar retry interval
+    if (this.avatarRetryInterval) {
+      clearInterval(this.avatarRetryInterval);
+      this.avatarRetryInterval = null;
+    }
+    
     if (this.capsule) {
       // Clean up physics
       if (this.capsuleHandle) {

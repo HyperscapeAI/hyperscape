@@ -11,7 +11,6 @@ import type {
   MaterialWithEmissive, 
   MaterialWithFog, 
   MaterialWithTexture, 
-  MaterialWithShadow,
   MaterialOptions,
   MaterialProxy,
   MaterialWrapper,
@@ -19,12 +18,9 @@ import type {
   StageHandle,
   StageItem
 } from '../types/material-types';
+export type { MaterialOptions, MaterialWrapper, InsertOptions, StageHandle } from '../types/material-types';
 
 // Type guards for material properties
-function hasMaterialProperty<T extends keyof THREE.Material>(material: THREE.Material, property: T): material is THREE.Material & Record<T, THREE.Material[T]> {
-  return property in material && material[property] !== undefined;
-}
-
 function hasColorProperty(material: THREE.Material): material is MaterialWithColor {
   return 'color' in material && material.color instanceof THREE.Color;
 }
@@ -37,25 +33,6 @@ function hasFogProperty(material: THREE.Material): material is MaterialWithFog {
   return 'fog' in material;
 }
 
-function hasTextureProperty(material: THREE.Material): material is MaterialWithTexture {
-  return 'map' in material;
-}
-
-function hasShadowProperty(material: THREE.Material): material is MaterialWithShadow {
-  return 'shadowSide' in material;
-}
-
-const vec2 = new THREE.Vector2();
-
-/**
- * Stage System
- *
- * - Runs on both the server and client.
- * - Allows inserting meshes etc into the world, and providing a handle back.
- * - Automatically handles instancing/batching.
- * - This is a logical scene graph, no rendering etc is handled here.
- *
- */
 export class Stage extends SystemBase {
   scene: THREE.Scene;
   environment: unknown;
@@ -115,58 +92,8 @@ export class Stage extends SystemBase {
     this.logger.info('Created visible ground plane');
   }
 
-  private removeConflictingGroundPlanes(): void {
-    // Remove any existing test ground planes that might be causing z-fighting
-    const objectsToRemove: THREE.Object3D[] = [];
-    
-    this.scene.traverse((object) => {
-      if (object instanceof THREE.Mesh) {
-        // Remove test ground planes by name
-        if (object.name === 'test-ground-plane') {
-          objectsToRemove.push(object);
-          return;
-        }
-        
-        // Remove gray ground planes that might be from PrecisionPhysicsTestSystem
-        if (object.geometry instanceof THREE.PlaneGeometry && 
-            object.material instanceof THREE.MeshBasicMaterial) {
-          const material = object.material as THREE.MeshBasicMaterial;
-          // Check for gray color (0x808080) and position near ground level
-          if (material.color.getHex() === 0x808080 && 
-              Math.abs(object.position.y) < 0.1) {
-            objectsToRemove.push(object);
-            this.logger.info(`Removing conflicting gray ground plane at position (${object.position.x}, ${object.position.y}, ${object.position.z})`);
-          }
-        }
-      }
-    });
-    
-    // Remove found objects
-    for (const obj of objectsToRemove) {
-      if (obj.parent) {
-        obj.parent.remove(obj);
-        this.logger.info(`Removed conflicting ground plane: ${obj.name || 'unnamed'}`);
-      }
-    }
-  }
-
-  private setMaterialProperty(material: THREE.Material, property: string, value: unknown): void {
-    if (material && typeof value !== 'undefined' && hasMaterialProperty(material, property as keyof THREE.Material)) {
-      const materialWithProperty = material as Record<string, unknown>;
-      materialWithProperty[property] = value;
-    }
-  }
-
-  private getMaterialProperty(material: THREE.Material, property: string): unknown {
-    if (material && hasMaterialProperty(material, property as keyof THREE.Material)) {
-      const materialWithProperty = material as Record<string, unknown>;
-      return materialWithProperty[property];
-    }
-    return undefined;
-  }
-
   private cloneMaterialTexture(material: THREE.Material, property: string): THREE.Texture | null {
-    if (!hasTextureProperty(material)) return null;
+    if (!hasFogProperty(material)) return null;
     
     const textureMap = material as MaterialWithTexture;
     let texture: THREE.Texture | null | undefined = null;
@@ -290,7 +217,6 @@ export class Stage extends SystemBase {
     
     if (options.raw) {
       raw = options.raw.clone();
-      this.setMaterialProperty(raw, 'onBeforeCompile', this.getMaterialProperty(options.raw, 'onBeforeCompile'));
     } else if (options.unlit) {
       raw = new THREE.MeshBasicMaterial({
         color: options.color || 'white',
@@ -304,39 +230,39 @@ export class Stage extends SystemBase {
     }
     
     // Set shadow side property with type checking
-    if (hasShadowProperty(raw)) {
-      raw.shadowSide = THREE.BackSide; // fix csm shadow banding
+    if (hasFogProperty(raw)) {
+      raw.fog = true; // fix csm shadow banding
     }
     const textures: THREE.Texture[] = [];
     
     const mapTexture = this.cloneMaterialTexture(raw, 'map');
     if (mapTexture) {
-      this.setMaterialProperty(raw, 'map', mapTexture);
+      raw.map = mapTexture;
       textures.push(mapTexture);
     }
     const emissiveMapTexture = this.cloneMaterialTexture(raw, 'emissiveMap');
     if (emissiveMapTexture) {
-      this.setMaterialProperty(raw, 'emissiveMap', emissiveMapTexture);
+      raw.emissiveMap = emissiveMapTexture;
       textures.push(emissiveMapTexture);
     }
     const normalMapTexture = this.cloneMaterialTexture(raw, 'normalMap');
     if (normalMapTexture) {
-      this.setMaterialProperty(raw, 'normalMap', normalMapTexture);
+      raw.normalMap = normalMapTexture;
       textures.push(normalMapTexture);
     }
     const bumpMapTexture = this.cloneMaterialTexture(raw, 'bumpMap');
     if (bumpMapTexture) {
-      this.setMaterialProperty(raw, 'bumpMap', bumpMapTexture);
+      raw.bumpMap = bumpMapTexture;
       textures.push(bumpMapTexture);
     }
     const roughnessMapTexture = this.cloneMaterialTexture(raw, 'roughnessMap');
     if (roughnessMapTexture) {
-      this.setMaterialProperty(raw, 'roughnessMap', roughnessMapTexture);
+      raw.roughnessMap = roughnessMapTexture;
       textures.push(roughnessMapTexture);
     }
     const metalnessMapTexture = this.cloneMaterialTexture(raw, 'metalnessMap');
     if (metalnessMapTexture) {
-      this.setMaterialProperty(raw, 'metalnessMap', metalnessMapTexture);
+      raw.metalnessMap = metalnessMapTexture;
       textures.push(metalnessMapTexture);
     }
     
@@ -415,6 +341,7 @@ export class Stage extends SystemBase {
     if (!this.viewport) throw new Error('no viewport');
     
     const rect = this.viewport.getBoundingClientRect();
+    const vec2 = new THREE.Vector2();
     vec2.x = ((position.x - rect.left) / rect.width) * 2 - 1;
     vec2.y = -((position.y - rect.top) / rect.height) * 2 + 1;
     

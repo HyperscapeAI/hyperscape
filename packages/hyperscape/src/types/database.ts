@@ -9,7 +9,7 @@ import { EquipmentSlotName } from './core';
 type SQLiteBoolean = 0 | 1;
 
 // SQLite Database interface
-type SQLiteParam = string | number | boolean | null | Buffer
+export type SQLiteParam = string | number | boolean | null | Buffer
 export interface SQLiteStatement {
   get<T = Record<string, unknown>>(...params: SQLiteParam[]): T | undefined;
   all<T = Record<string, unknown>>(...params: SQLiteParam[]): T[];

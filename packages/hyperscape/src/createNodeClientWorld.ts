@@ -11,6 +11,7 @@ import { NodeEnvironment } from './systems/NodeEnvironment'
 
 export function createNodeClientWorld() {
   const world = new World()
+  
   world.register('client', NodeClient)
   // world.register('controls', ClientControls)
   world.register('network', ClientNetwork)

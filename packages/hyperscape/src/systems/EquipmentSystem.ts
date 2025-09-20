@@ -46,7 +46,6 @@ export type { EquipmentSlot, PlayerEquipment };
  */
 export class EquipmentSystem extends SystemBase {
   private playerEquipment = new Map<string, PlayerEquipment>();
-  private equipmentColors = new Map<string, number>();
   private playerSkills = new Map<string, Record<string, { level: number; xp: number }>>();
   
   // GDD-compliant level requirements
@@ -56,16 +55,16 @@ export class EquipmentSystem extends SystemBase {
     super(world, {
       name: 'rpg-equipment',
       dependencies: {
-        required: ['rpg-inventory'], // Equipment needs inventory for item management
-        optional: ['rpg-player', 'rpg-ui'] // Better with player system and UI for notifications
+        required: [
+          'rpg-inventory' // Equipment needs inventory for item management
+        ],
+        optional: [
+          'rpg-player', // Better with player system for player data
+          'rpg-ui' // Better with UI for notifications
+        ]
       },
       autoCleanup: true
     });
-    this.initializeEquipmentColors();
-  }
-
-  private initializeEquipmentColors(): void {
-    // Equipment colors are now loaded from EquipmentRequirements
   }
 
   async init(): Promise<void> {
@@ -121,9 +120,6 @@ export class EquipmentSystem extends SystemBase {
       this.consumeArrow(data.playerId);
     });
     
-  }
-
-  start(): void {
   }
 
   private initializePlayerEquipment(playerData: { id: string }): void {
@@ -287,10 +283,11 @@ export class EquipmentSystem extends SystemBase {
     // Update stats
     this.recalculateStats(data.playerId);
     
-    // Update combat system with new equipment
+    // Update combat system with new equipment (emit per-slot change for type consistency)
     this.emitTypedEvent(EventType.PLAYER_EQUIPMENT_CHANGED, {
       playerId: data.playerId,
-      equipment: this.getEquipmentData(data.playerId)
+      slot: slot as unknown as import('../types/core').EquipmentSlotName,
+      itemId: equipmentSlot.itemId !== null ? equipmentSlot.itemId.toString() : null
     });
     
     this.sendMessage(data.playerId, `Equipped ${itemData.name}.`, 'info');
@@ -338,10 +335,11 @@ export class EquipmentSystem extends SystemBase {
     // Update stats
     this.recalculateStats(data.playerId);
     
-    // Update combat system
+    // Update combat system (emit per-slot change for type consistency)
     this.emitTypedEvent(EventType.PLAYER_EQUIPMENT_CHANGED, {
       playerId: data.playerId,
-      equipment: this.getEquipmentData(data.playerId)
+      slot: slot as unknown as import('../types/core').EquipmentSlotName,
+      itemId: null
     });
     
     this.sendMessage(data.playerId, `Unequipped ${itemName}.`, 'info');
@@ -376,10 +374,11 @@ export class EquipmentSystem extends SystemBase {
     
     this.recalculateStats(playerId);
     
-    // Update combat system
+    // Update combat system (emit per-slot change for type consistency)
     this.emitTypedEvent(EventType.PLAYER_EQUIPMENT_CHANGED, {
       playerId: playerId,
-      equipment: this.getEquipmentData(playerId)
+      slot: equipSlot as unknown as import('../types/core').EquipmentSlotName,
+      itemId: equipmentSlot.itemId !== null ? equipmentSlot.itemId.toString() : null
     });
 
   }
@@ -877,7 +876,7 @@ export class EquipmentSystem extends SystemBase {
       typeof player === 'object' &&
       player !== null &&
       'position' in player &&
-      typeof (player as PlayerWithEquipmentSupport).getBoneTransform === 'function'
+      'getBoneTransform' in player
     );
   }
 

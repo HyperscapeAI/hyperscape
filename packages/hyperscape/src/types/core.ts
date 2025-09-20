@@ -201,7 +201,9 @@ export interface NPCEntity {
 export interface ResourceEntity {
   id: string;
   resource: BiomeResource;
-  mesh: THREE.Object3D;
+  mesh?: THREE.Object3D;
+  instanceId?: number;
+  meshType?: string;
   area: WorldArea;
   respawnTime: number;
   isActive: boolean;
@@ -210,7 +212,9 @@ export interface ResourceEntity {
 export interface MobEntity {
   id: string;
   mobData: MobData;
-  mesh: THREE.Object3D;
+  mesh?: THREE.Object3D;
+  instanceId?: number;
+  meshType?: string;
   area: WorldArea;
   spawnPoint: MobSpawnPoint;
   currentHealth: number;
@@ -276,6 +280,7 @@ export interface TestStation {
   ui: THREE.Object3D | null; // UI element for floating name
   testZone: THREE.Object3D | null; // Visual zone indicator
   isStarting: boolean; // Flag to prevent multiple starts
+  lastResult?: TestResult; // Last test result
 }
 
 // Specific test data types
@@ -649,6 +654,7 @@ export interface InteractableEntity {
   level?: number
   health?: number
   maxHealth?: number
+  instanceId?: number  // For instanced resources
 }
 
 // UI types

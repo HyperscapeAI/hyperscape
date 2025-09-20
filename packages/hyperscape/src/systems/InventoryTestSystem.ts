@@ -29,7 +29,6 @@ import { Logger } from '../utils/Logger';
 export class InventoryTestSystem extends VisualTestFramework {
   private testData = new Map<string, InventoryTestData>();
   private inventorySystem!: InventorySystem;
-  private itemSpawnerSystem!: ItemSpawnerSystem;
 
   constructor(world: World) {
     super(world);
@@ -52,7 +51,6 @@ export class InventoryTestSystem extends VisualTestFramework {
     }
     
     this.inventorySystem = inventorySystem;
-    this.itemSpawnerSystem = itemSpawnerSystem;
     
     // Create test stations
     this.createTestStations();
@@ -135,9 +133,9 @@ export class InventoryTestSystem extends VisualTestFramework {
       }
 
       // Verify item spawner system is available
-      if (!this.itemSpawnerSystem) {
-        Logger.systemError('InventoryTestSystem', `ItemSpawnerSystem is not available`);
-        this.failTest(stationId, 'ItemSpawnerSystem not available for spawning items');
+      if (!this.inventorySystem) {
+        Logger.systemError('InventoryTestSystem', `InventorySystem is not available`);
+        this.failTest(stationId, 'InventorySystem not available for spawning items');
         return;
       }
 
@@ -185,7 +183,7 @@ export class InventoryTestSystem extends VisualTestFramework {
           const quantity = item.stackable ? 10 : 1;
           try {
             // Spawn item (simulate dropping)
-            await this.itemSpawnerSystem.spawnItem(itemId, itemPosition, quantity);
+            await this.inventorySystem.spawnItem(itemId, itemPosition, quantity);
           } catch (spawnError) {
             Logger.systemError('InventoryTestSystem', `Error spawning item ${itemId}`, spawnError instanceof Error ? spawnError : new Error(String(spawnError)));
           }
@@ -313,8 +311,8 @@ export class InventoryTestSystem extends VisualTestFramework {
           const quantity = item.stackable ? 15 : 1;
           
           // Spawn item
-          if (this.itemSpawnerSystem) {
-            await this.itemSpawnerSystem.spawnItem(itemId, itemPosition, quantity);
+          if (this.inventorySystem) {
+            await this.inventorySystem.spawnItem(itemId, itemPosition, quantity);
           }
           
           // Visual
@@ -416,8 +414,8 @@ export class InventoryTestSystem extends VisualTestFramework {
           };
           
           // Spawn item
-          if (this.itemSpawnerSystem) {
-            await this.itemSpawnerSystem.spawnItem(itemId, itemPosition, 1);
+          if (this.inventorySystem) {
+            await this.inventorySystem.spawnItem(itemId, itemPosition, 1);
           }
           
           // Visual with special color for limit test

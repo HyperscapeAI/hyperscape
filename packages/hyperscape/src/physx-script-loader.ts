@@ -14,14 +14,14 @@ interface PhysXWindow extends Window {
 export async function loadPhysXScript(options?: PhysXInitOptions): Promise<PhysXModule> {
   // Check if PhysX is already loaded
   const w = window as PhysXWindow
-  if (typeof w.PhysX === 'function') {
+          if (w.PhysX) {
     console.log('[physx-script-loader] PhysX already loaded, using existing')
     return w.PhysX!(options)
   }
 
   return new Promise((resolve, reject) => {
     // Check again in case it was loaded while we were waiting
-    if (typeof w.PhysX === 'function') {
+          if (w.PhysX) {
       w.PhysX!(options).then(resolve).catch(reject)
       return
     }
@@ -36,7 +36,7 @@ export async function loadPhysXScript(options?: PhysXInitOptions): Promise<PhysX
       // Give it a moment to initialize
       setTimeout(() => {
         const w2 = window as PhysXWindow
-        if (typeof w2.PhysX === 'function') {
+        if (w2.PhysX) {
           console.log('[physx-script-loader] PhysX function found, initializing...')
           const PhysXFn = w2.PhysX!
           PhysXFn(options).then((physx) => {

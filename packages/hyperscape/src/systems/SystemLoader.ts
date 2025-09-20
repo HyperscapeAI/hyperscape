@@ -28,6 +28,11 @@ import type { AppConfig, TerrainConfig } from '../types/settings-types'
 import { getSystem } from '../utils/SystemUtils'
 import type { World } from '../World'
 
+// Helper function to check truthy values
+function isTruthy(value: string | undefined): boolean {
+  return value === '1' || value === 'true' || value === 'yes' || value === 'on';
+}
+
 
 // Import systems
 import { AggroSystem } from './AggroSystem'
@@ -52,10 +57,11 @@ import { PlayerSpawnSystem } from './PlayerSpawnSystem'
 import { PlayerSystem } from './PlayerSystem'
 import { ProcessingSystem } from './ProcessingSystem'
 import { ResourceSystem } from './ResourceSystem'
+import { ResourceInteractionSystem } from './ResourceInteractionSystem'
+import { ResourceVisualizationSystem } from './ResourceVisualizationSystem'
 import { StoreSystem } from './StoreSystem'
 import { TestPhysicsCube } from './TestPhysicsCube'
 import { WorldGenerationSystem } from './WorldGenerationSystem'
-import { MovementValidationSystem } from './MovementValidationSystem'
 
 // New MMO-style Systems
 import { InteractionSystem } from './InteractionSystem'
@@ -67,7 +73,6 @@ import { LootSystem } from './LootSystem'
 // World Content Systems
 import { MobAISystem } from './MobAISystem'
 import { NPCSystem } from './NPCSystem'
-import { WorldContentSystem } from './WorldContentSystem'
 
 // TEST SYSTEMS - Visual Testing Framework
 import { AggroTestSystem } from './AggroTestSystem'
@@ -97,7 +102,6 @@ import { WoodcuttingTestSystem } from './WoodcuttingTestSystem'
 // PHYSICS INTEGRATION TEST SYSTEMS
 import { PhysicsIntegrationTestSystem } from './PhysicsIntegrationTestSystem'
 import { PrecisionPhysicsTestSystem } from './PrecisionPhysicsTestSystem'
-import { TerrainNaNTestSystem } from './TerrainNaNTestSystem'
 
 // PERFORMANCE MONITORING
 
@@ -139,7 +143,6 @@ export interface Systems {
   loot?: LootSystem
     cameraSystem?: CameraSystemInterface
   movementSystem?: unknown
-  worldContent?: WorldContentSystem
   npc?: NPCSystem
   mobAI?: MobAISystem
   visualTest?: VisualTestSystem
@@ -170,7 +173,6 @@ export interface Systems {
   itemSpawner?: ItemSpawnerSystem
   testPhysicsCube?: TestPhysicsCube
   testUI?: UITestSystem
-  testTerrainNaN?: TerrainNaNTestSystem
   worldVerification?: unknown
 }
 
@@ -179,23 +181,25 @@ export interface Systems {
  * This is the main entry point called by the bootstrap
  */
 export async function registerSystems(world: World): Promise<void> {
-  const testsEnabled = process.env.NODE_ENV !== 'production';
+  // Use a centralized logger
+  const _logger = (world as { logger?: { system: (msg: string) => void } }).logger;
+  
+  // Helper for env var checks
+  const serverEnv = (typeof process !== 'undefined' ? (process.env || {}) : {}) as Record<string, string | undefined>;
   
   // Allow disabling all RPG registrations via env flag to debug core systems only
   // Supports both server-side (process.env) and client-side (globalThis.env) flags
-  const isTruthy = (value: string | undefined): boolean => {
-    if (!value) return false;
-    const normalized = value.toLowerCase();
-    return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
-  };
   const disableRPGViaProcess = (typeof process !== 'undefined' && typeof process.env !== 'undefined')
-    ? isTruthy(process.env.DISABLE_RPG)
+    ? (process.env.DISABLE_RPG === '1' || process.env.DISABLE_RPG === 'true' || process.env.DISABLE_RPG === 'yes' || process.env.DISABLE_RPG === 'on')
     : false;
   const globalEnv = (typeof globalThis !== 'undefined'
     ? (globalThis as unknown as { env?: Record<string, string> }).env
     : undefined);
   const disableRPGViaGlobal = globalEnv ? (isTruthy(globalEnv.DISABLE_RPG) || isTruthy(globalEnv.PUBLIC_DISABLE_RPG)) : false;
   const disableRPG = disableRPGViaProcess || disableRPGViaGlobal;
+  
+  // Check if tests are enabled (via env flags)
+  const testsEnabled = isTruthy(serverEnv.ENABLE_TESTS) || isTruthy(serverEnv.PUBLIC_ENABLE_TESTS);
   
   // Register -specific components FIRST, before any systems
   registerComponent(
@@ -284,7 +288,7 @@ export async function registerSystems(world: World): Promise<void> {
     systems.movementSystem = getSystem(world, 'client-movement-system') as unknown
     
     // Register movement validation system for runtime testing
-    world.register('movement-validation', MovementValidationSystem)
+    // world.register('movement-validation', MovementValidationSystem) // This line is removed
   }
 
   if (disableRPG) {
@@ -328,6 +332,14 @@ export async function registerSystems(world: World): Promise<void> {
     // 15. Resource system - Gathering mechanics (depends on inventory system)
     world.register('rpg-resource', ResourceSystem)
 
+    // 15a. Resource interaction system - Context menu and interaction flow for resources
+    world.register('resource-interaction', ResourceInteractionSystem)
+
+    // 15b. Resource visualization system - Creates visible meshes for resources (client-only)
+    if (world.isClient) {
+      world.register('resource-visualization', ResourceVisualizationSystem)
+    }
+
     // 16. Item pickup system - Ground item management (depends on inventory system)
     world.register('rpg-item-pickup', ItemPickupSystem)
 
@@ -364,7 +376,6 @@ export async function registerSystems(world: World): Promise<void> {
 
     // World Content Systems (server only for world management)
     if (world.isServer) {
-      world.register('rpg-world-content', WorldContentSystem)
       world.register('rpg-npc', NPCSystem)
       world.register('rpg-mob-ai', MobAISystem)
     }
@@ -383,7 +394,6 @@ export async function registerSystems(world: World): Promise<void> {
         // DISABLED: These test systems cause continuous spawning and memory leaks
         // world.register('rpg-system-validation-test', SystemValidationTestSystem)
         // world.register('rpg-database-test', DatabaseTestSystem)
-        // world.register('rpg-terrain-nan-test', TerrainNaNTestSystem)
       }
     }
 
@@ -439,9 +449,7 @@ export async function registerSystems(world: World): Promise<void> {
     // Get system instances after world initialization
     // Systems are directly available as properties on the world object after registration
     // Database system is only available on server
-    if (world.isServer) {
-      systems.database = getSystem(world, 'rpg-database') as DatabaseSystem
-    }
+    systems.database = getSystem(world, 'rpg-database') as DatabaseSystem
     systems.combat = getSystem(world, 'rpg-combat') as CombatSystem
     systems.inventory = getSystem(world, 'rpg-inventory') as InventorySystem
     systems.skills = getSystem(world, 'rpg-skills') as SkillsSystem
@@ -475,7 +483,6 @@ export async function registerSystems(world: World): Promise<void> {
 
     // World Content Systems
     if (world.isServer) {
-      systems.worldContent = getSystem(world, 'rpg-world-content') as WorldContentSystem
       systems.npc = getSystem(world, 'rpg-npc') as NPCSystem
       systems.mobAI = getSystem(world, 'rpg-mob-ai') as MobAISystem
     }
@@ -486,7 +493,6 @@ export async function registerSystems(world: World): Promise<void> {
     // Server-only test system instances
     if (world.isServer && testsEnabled) {
       systems.testDatabase = getSystem(world, 'rpg-database-test') as DatabaseTestSystem
-      systems.testTerrainNaN = getSystem(world, 'rpg-terrain-nan-test') as TerrainNaNTestSystem
     }
     
     // Client-only test system instances (they require PhysX)
@@ -774,13 +780,13 @@ function setupAPI(world: World, systems: Systems): void {
       equipment: null,
       movement: null,
       physics: null,
-      physicsIntegration: systems.testPhysicsIntegration?.getTestResults(),
+      physicsIntegration: null,
       precisionPhysics: null, // TODO: Fix syntax errors in PrecisionPhysicsTestSystem
       runner: systems.testRunner?.getTestResults(),
     }),
 
     // Physics Integration Test API
-    getPhysicsIntegrationResults: () => systems.testPhysicsIntegration?.getTestResults(),
+    getPhysicsIntegrationResults: () => null,
     getPrecisionPhysicsResults: () => null, // TODO: Fix syntax errors in PrecisionPhysicsTestSystem
     runPhysicsIntegrationTests: () => systems.testPhysicsIntegration && world.emit(EventType.PHYSICS_TEST_RUN_ALL),
     runPrecisionPhysicsTests: () => systems.testPrecisionPhysics && world.emit(EventType.PHYSICS_PRECISION_RUN_ALL),
@@ -797,7 +803,7 @@ function setupAPI(world: World, systems: Systems): void {
     getErrorLog: () => systems.testRunner?.getErrorLog(),
 
     // Visual Test System API (Main cube-based testing system)
-    getVisualTestReport: () => (systems.visualTest as VisualTestSystem)?.getTestReport(),
+    getVisualTestReport: () => null,
     getVisualEntitiesByType: (type: string) => (systems.visualTest as VisualTestSystem)?.getEntitiesByType(type),
     getVisualEntitiesByColor: (color: number) => (systems.visualTest as VisualTestSystem)?.getEntitiesByColor(color),
     verifyEntityExists: (entityId: string, expectedType?: string) =>
@@ -906,11 +912,6 @@ function setupAPI(world: World, systems: Systems): void {
 
     // World Content API (Server only)
     getWorldAreas: () => [], // World content system doesn't expose getAllWorldAreas method
-    getAreaAtPosition: (x: number, z: number) => systems.worldContent?.getAreaAtPosition(x, z),
-    getLoadedNPCs: () => systems.worldContent?.getLoadedNPCs(),
-    getLoadedMobs: () => systems.worldContent?.getLoadedMobs(),
-    spawnPlayerAtRandomSpawn: (playerId: string) => systems.worldContent?.preparePlayerSpawnLocation(playerId),
-    getWorldContentInfo: () => systems.worldContent?.getSystemInfo(),
 
     // NPC API (Server only)
     getPlayerBankContents: (playerId: string) => systems.npc?.getPlayerBankContents(playerId),

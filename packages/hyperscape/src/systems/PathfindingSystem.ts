@@ -99,6 +99,28 @@ export class PathfindingSystem extends SystemBase {
   }
 
   /**
+   * Get obstacles in the scene for pathfinding
+   */
+  private getObstacles(): THREE.Object3D[] {
+    // Get obstacles from the scene - buildings, walls, etc.
+    const obstacles: THREE.Object3D[] = [];
+    
+    // Try to get obstacles from the stage system
+    const stage = this.world.getSystem('Stage');
+    if (stage && 'scene' in stage && (stage as { scene?: THREE.Scene }).scene) {
+      const scene = (stage as { scene?: THREE.Scene }).scene;
+      scene.traverse((obj: THREE.Object3D) => {
+        // Check if object is an obstacle (has collision, is static, etc.)
+        if (obj.userData?.isObstacle || obj.userData?.collision) {
+          obstacles.push(obj);
+        }
+      });
+    }
+    
+    return obstacles;
+  }
+
+  /**
    * Check if there's a clear line of sight between two points
    */
   private hasLineOfSight(from: THREE.Vector3, to: THREE.Vector3): boolean {
@@ -278,38 +300,17 @@ export class PathfindingSystem extends SystemBase {
    * Check if a surface is walkable based on its normal
    */
   private isWalkable(point: THREE.Vector3 | { x: number; y: number; z: number }, normal?: THREE.Vector3 | { x: number; y: number; z: number }): boolean {
-    if (!normal) return true;
-    
-    // Calculate slope angle
-    const up = new THREE.Vector3(0, 1, 0);
-    const normalVec = toTHREEVector3(normal);
-    const angle = Math.acos(normalVec.dot(up));
-    const maxSlope = Math.PI * 0.25; // 45 degrees
-    
-    return angle < maxSlope;
-  }
-
-  /**
-   * Get all obstacle objects in the world
-   */
-  private getObstacles(): THREE.Object3D[] {
-    const scene = getWorldScene(this.world);
-    if (!scene) return [];
-    
-    return scene.children.filter((child) => {
-      const userData = child.userData;
-      return (
-        userData?.collision === true ||
-        this.TERRAIN_LAYERS.includes(userData?.type) ||
-        userData?.isObstacle === true
-      );
-    }) as THREE.Object3D[];
+    // Check if point is on a valid surface
+    if (!normal) return false;
+    const slope = new THREE.Vector3(normal.x, normal.y, normal.z).angleTo(new THREE.Vector3(0, 1, 0));
+    return slope < Math.PI / 4; // 45 degree slope limit
   }
 
   /**
    * Visualize path for debugging
    */
   debugDrawPath(path: THREE.Vector3[]): void {
+    if (!this.world.isClient) return;
     const scene = getWorldScene(this.world);
     if (!scene || path.length < 2) return;
     

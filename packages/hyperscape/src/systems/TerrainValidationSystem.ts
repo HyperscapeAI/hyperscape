@@ -50,19 +50,31 @@ export class TerrainValidationSystem extends SystemBase {
   };
 
   constructor(world: World) {
-    super(world, { name: 'terrain-validation', dependencies: { required: [], optional: [] }, autoCleanup: true });
+    super(world, { name: 'terrain-validation', dependencies: { required: ['terrain'], optional: [] }, autoCleanup: true });
   }
 
   async init(): Promise<void> {
-    // Find the terrain system
+    // Find the terrain system - should be available due to dependency declaration
     this.terrainSystem = this.world.getSystem<TerrainSystem>('terrain')!;
     
     if (!this.terrainSystem) {
-      throw new Error('[TerrainValidationSystem] ❌ CRITICAL: TerrainSystem not found - cannot validate terrain');
+      // This shouldn't happen if dependencies are properly configured
+      this.logger.error('TerrainSystem not found despite being a required dependency');
+      // Don't throw here - let the system try to find it in start()
     }
   }
 
   start(): void {
+    // Verify terrain system is available
+    if (!this.terrainSystem) {
+      this.terrainSystem = this.world.getSystem<TerrainSystem>('terrain')!;
+      if (!this.terrainSystem) {
+        this.logger.error('CRITICAL: TerrainSystem not found at startup - cannot validate terrain');
+        this.addValidationError('critical', 'startup_validation', 'TerrainSystem not found - cannot validate terrain', {});
+        return;
+      }
+    }
+
     // Run all validation tests at startup
     this.runAllValidationTests().then(() => {
       this.processValidationResults();
@@ -520,6 +532,16 @@ export class TerrainValidationSystem extends SystemBase {
 
   private onTerrainTileUnloaded(_data: unknown): void {
     // Clear walkability cache for unloaded tile
+  }
+
+  private onTerrainChanged(data: { bounds: unknown }): void {
+    // Revalidate affected resources when terrain changes
+    this.revalidateResourcesInArea(data.bounds);
+  }
+
+  private revalidateResourcesInArea(_bounds: unknown): void {
+    // For now, re-run full validation on any terrain change
+    // In a future optimization, this would only re-validate the affected area
   }
 
   private validateEntityPosition(data: { position: { x: number; y: number; z: number }; entityId: string }): void {

@@ -1,7 +1,7 @@
 
 import type { Item } from '../types/core';
 import { AttackType, EquipmentSlotName, ItemType, WeaponType } from '../types/core';
-import { ItemRarity, MobType } from '../types/entities';
+import { ItemRarity, MobType, MobAIState } from '../types/entities';
 import { EventType } from '../types/events';
 import type { Player, World } from '../types/index';
 import { SystemBase } from './SystemBase';
@@ -85,7 +85,7 @@ export class MobSystem extends SystemBase {
     this.subscribe(EventType.ENTITY_DEATH, (data) => this.handleMobDeath({ entityId: data.entityId, killedBy: '', entityType: 'mob' }));
     // ENTITY_DAMAGE_TAKEN is not in EventMap, so it receives the full event
     this.subscribe(EventType.ENTITY_DAMAGE_TAKEN, (data) => this.handleMobDamage(data as { entityId: string; damage: number; damageSource: string; entityType: 'player' | 'mob' }));
-    this.subscribe(EventType.PLAYER_REGISTERED, (_data) => this.onPlayerEnter());
+    this.subscribe(EventType.PLAYER_REGISTERED, (data) => this.onPlayerEnter(data));
     this.subscribe(EventType.MOB_SPAWN_REQUEST, (data) => this.spawnMobAtLocation(data));
     
     // Initialize spawn points (these would normally be loaded from world data)
@@ -104,6 +104,12 @@ export class MobSystem extends SystemBase {
     // if (this.entityManager) {
     //   this.spawnAllMobs();
     // }
+  }
+
+  private onPlayerEnter(data: unknown): void {
+    // Handle player entering the world
+    // Could spawn mobs around the player or adjust mob behavior
+    console.log('[MobSystem] Player entered:', data);
   }
 
   private initializeSpawnPoints(): void {
@@ -189,7 +195,7 @@ export class MobSystem extends SystemBase {
       isAlive: true,
       isAggressive: config.isAggressive,
       aggroRange: config.aggroRange,
-      aiState: 'idle',
+      aiState: 'idle' as const,
       homePosition: { x: position.x, y: position.y, z: position.z },
       spawnLocation: { x: position.x, y: position.y, z: position.z },
       equipment: {
@@ -283,19 +289,6 @@ export class MobSystem extends SystemBase {
         killedBy: data.damageSource,
         entityType: 'mob'
       });
-    }
-  }
-
-  private onPlayerEnter(): void {
-    // Handle player entering world - update mob AI awareness
-    // This allows mobs to detect and potentially aggro on the new player
-    
-    // Notify all aggressive mobs about player presence
-    for (const mob of this.mobs.values()) {
-      if (mob.isAlive && mob.isAggressive && mob.aiState === 'idle') {
-        // Check if player is in aggro range (this would be done in AI update loop)
-        // For now, just log player entry
-      }
     }
   }
 
@@ -617,7 +610,15 @@ export class MobSystem extends SystemBase {
   }
 
   private handleIdleAI(mob: MobInstance): void {
-    if (!mob.isAggressive) return;
+    if (!mob.isAggressive || !mob.position) return;
+    
+    // Validate position has valid coordinates
+    if (typeof mob.position.x !== 'number' || 
+        typeof mob.position.y !== 'number' || 
+        typeof mob.position.z !== 'number') {
+      console.warn(`[MobSystem] Mob ${mob.id} has invalid position coordinates`, mob.position);
+      return;
+    }
     
     // Look for nearby players to aggro
     const nearbyPlayer = this.findNearbyPlayer(mob);
@@ -629,6 +630,14 @@ export class MobSystem extends SystemBase {
   }
 
   private handlePatrolAI(mob: MobInstance, now: number): void {
+    // Validate positions before using
+    if (!mob.position || !mob.homePosition ||
+        typeof mob.position.x !== 'number' || typeof mob.position.y !== 'number' || typeof mob.position.z !== 'number' ||
+        typeof mob.homePosition.x !== 'number' || typeof mob.homePosition.y !== 'number' || typeof mob.homePosition.z !== 'number') {
+      console.warn(`[MobSystem] Mob ${mob.id} has invalid position for patrol`, { position: mob.position, homePosition: mob.homePosition });
+      return;
+    }
+    
     // Simple patrol behavior - move randomly around home position
     if (now - mob.lastAI > 3000) { // Change direction every 3 seconds
       const angle = Math.random() * Math.PI * 2;
@@ -661,6 +670,16 @@ export class MobSystem extends SystemBase {
       return;
     }
     
+    // Validate mob position first
+    if (!mob.position || 
+        typeof mob.position.x !== 'number' || 
+        typeof mob.position.y !== 'number' || 
+        typeof mob.position.z !== 'number') {
+      console.warn(`[MobSystem] handleChaseAI: Mob ${mob.id} has invalid position`, mob.position);
+      mob.aiState = 'idle';
+      return;
+    }
+    
     const targetPlayer = this.getPlayer(mob.target);
     if (!targetPlayer) {
       mob.target = null;
@@ -668,15 +687,30 @@ export class MobSystem extends SystemBase {
       return;
     }
     
-     
-    const distance = calculateDistance(mob.position, targetPlayer.position);
+    // Get player position, preferring the main position property, falling back to node.position
+    const playerPosition = targetPlayer.position || (targetPlayer.node?.position ? 
+      { x: targetPlayer.node.position.x, y: targetPlayer.node.position.y, z: targetPlayer.node.position.z } : null);
     
-    // Check if too far from home - return if so
-    const homeDistance = calculateDistance(mob.position, mob.homePosition);
-    if (homeDistance > this.MAX_CHASE_DISTANCE) {
+    if (!playerPosition) {
+      console.warn(`[MobSystem] Target player ${targetPlayer.id} has no valid position`);
       mob.target = null;
       mob.aiState = 'returning';
       return;
+    }
+    
+    const distance = calculateDistance(mob.position, playerPosition);
+    
+    // Check if too far from home - return if so
+    if (mob.homePosition && 
+        typeof mob.homePosition.x === 'number' && 
+        typeof mob.homePosition.y === 'number' && 
+        typeof mob.homePosition.z === 'number') {
+      const homeDistance = calculateDistance(mob.position, mob.homePosition);
+      if (homeDistance > this.MAX_CHASE_DISTANCE) {
+        mob.target = null;
+        mob.aiState = 'returning';
+        return;
+      }
     }
     
     // If in attack range, start attacking
@@ -693,11 +727,21 @@ export class MobSystem extends SystemBase {
     
     // Move towards target
      
-    this.moveTowardsTarget(mob, targetPlayer.position);
+    this.moveTowardsTarget(mob, playerPosition);
   }
 
   private handleAttackAI(mob: MobInstance): void {
     if (!mob.target) {
+      mob.aiState = 'idle';
+      return;
+    }
+    
+    // Validate mob position first
+    if (!mob.position || 
+        typeof mob.position.x !== 'number' || 
+        typeof mob.position.y !== 'number' || 
+        typeof mob.position.z !== 'number') {
+      console.warn(`[MobSystem] handleAttackAI: Mob ${mob.id} has invalid position`, mob.position);
       mob.aiState = 'idle';
       return;
     }
@@ -710,8 +754,18 @@ export class MobSystem extends SystemBase {
       return;
     }
     
-     
-    const distance = calculateDistance(mob.position, targetPlayer.position);
+    // Get player position, preferring the main position property, falling back to node.position
+    const playerPosition = targetPlayer.position || (targetPlayer.node?.position ? 
+      { x: targetPlayer.node.position.x, y: targetPlayer.node.position.y, z: targetPlayer.node.position.z } : null);
+    
+    if (!playerPosition) {
+      console.warn(`[MobSystem] Target player ${targetPlayer.id} has no valid position`);
+      mob.target = null;
+      mob.aiState = 'idle';
+      return;
+    }
+    
+    const distance = calculateDistance(mob.position, playerPosition);
     const attackRange = mob.equipment.weapon?.type === 'ranged' ? 8 : 2;
     
     // If target moved out of range, chase again
@@ -724,6 +778,15 @@ export class MobSystem extends SystemBase {
   }
 
   private handleReturnAI(mob: MobInstance): void {
+    // Validate positions before using
+    if (!mob.position || !mob.homePosition ||
+        typeof mob.position.x !== 'number' || typeof mob.position.y !== 'number' || typeof mob.position.z !== 'number' ||
+        typeof mob.homePosition.x !== 'number' || typeof mob.homePosition.y !== 'number' || typeof mob.homePosition.z !== 'number') {
+      console.warn(`[MobSystem] handleReturnAI: Mob ${mob.id} has invalid position for returning`, { position: mob.position, homePosition: mob.homePosition });
+      mob.aiState = 'idle';
+      return;
+    }
+    
     const homeDistance = calculateDistance(mob.position, mob.homePosition);
     
     if (homeDistance <= 1) {
@@ -738,22 +801,46 @@ export class MobSystem extends SystemBase {
   private findNearbyPlayer(mob: MobInstance): Player | null {
     const players = this.world.getPlayers();
     
+    // Validate mob position before processing
+    if (!mob.position || 
+        typeof mob.position.x !== 'number' || 
+        typeof mob.position.y !== 'number' || 
+        typeof mob.position.z !== 'number') {
+      console.warn(`[MobSystem] findNearbyPlayer: Mob ${mob.id} has invalid position`, mob.position);
+      return null;
+    }
+
     for (const player of players) {
-      const distance = calculateDistance(mob.position, player.node.position);
+      // Get player position, preferring the main position property, falling back to node.position
+      let playerPosition: { x: number; y: number; z: number } | null = null;
+
+      if (player.position) {
+        playerPosition = player.position;
+      } else if (player.node?.position && typeof player.node.position.x === 'number' &&
+                 typeof player.node.position.y === 'number' && typeof player.node.position.z === 'number') {
+        playerPosition = { x: player.node.position.x, y: player.node.position.y, z: player.node.position.z };
+      }
+
+      if (!playerPosition) {
+        console.warn(`[MobSystem] Player ${player.id} has no valid position`);
+        continue;
+      }
+
+      const distance = calculateDistance(mob.position, playerPosition);
       if (distance <= mob.aggroRange) {
         // Get player combat level for level-based aggro checks
         // Get player combat level through the API
-         
+
         const xpSystem = this.world.getSystem('XPSystem') as XPSystem;
         const playerCombatLevel = xpSystem?.getCombatLevel?.(player.id) || 1;
-        
+
         // GDD: High-level players ignored by low-level aggressive mobs (except special cases)
         if (mob.level < 15 && playerCombatLevel > mob.level * 2) {
           continue; // Skip high-level players for low-level mobs
         }
-        
+
         // Special cases: Dark Warriors and higher always aggressive per GDD
-        if (mob.type === 'dark_warrior' || mob.type === 'black_knight' || 
+        if (mob.type === 'dark_warrior' || mob.type === 'black_knight' ||
             mob.type === 'ice_warrior' || mob.type === 'dark_ranger') {
           return player; // Always aggressive regardless of player level
         }

@@ -517,12 +517,13 @@ export function FieldFile({ world, label, hint, kind: kindName, value, onChange 
       url,
     }
     setLoading(newValue)
-    // upload file
-    if (!world.network || typeof (world.network as { upload?: (file: File) => Promise<unknown> }).upload !== 'function') {
-      console.error('Upload functionality not available')
+    // upload file - strong type assumption
+    if (!world.network) {
+      console.error('Network not available')
       setLoading(null)
       return
     }
+    // Strong type assumption - network has upload method
     await (world.network as { upload: (file: File) => Promise<unknown> }).upload(file)
     // ignore if new value/upload
     if (nRef.current !== n) return

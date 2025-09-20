@@ -91,9 +91,6 @@ export class ProcessingSystem extends SystemBase {
     
   }
 
-  start(): void {
-  }
-
   // Handle item-on-item interactions (tinderbox on logs)
   private handleItemOnItem(data: { playerId: string; primaryItemId: number; primarySlot: number; targetItemId: number; targetSlot: number }): void {
     const { playerId, primaryItemId, primarySlot, targetItemId, targetSlot } = data;

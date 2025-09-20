@@ -64,6 +64,7 @@ interface EquipmentTestData {
 export class EquipmentTestSystem extends VisualTestFramework {
   private readonly testData = new Map<string, EquipmentTestData>()
   private equipmentSystem!: EquipmentSystem
+  private xpSystem!: SkillsSystem
 
   private createInventoryItem(item: Item, quantity: number, slot: number = 0): InventoryItem {
     return {
@@ -74,24 +75,6 @@ export class EquipmentTestSystem extends VisualTestFramework {
       metadata: null
     }
   }
-  private xpSystem!: SkillsSystem
-  private statsSystem: {
-    getPlayerStats(playerId: string): Promise<{
-      attack: number
-      strength: number
-      defense: number
-      ranged: number
-      constitution: number
-      health: number
-      maxHealth: number
-      woodcutting: number
-      fishing: number
-      firemaking: number
-      cooking: number
-      stamina: number
-      maxStamina: number
-    }>
-  } | undefined = undefined // No specific stats system in the codebase
 
   constructor(world: World) {
     super(world)
@@ -1030,11 +1013,15 @@ export class EquipmentTestSystem extends VisualTestFramework {
     let pendingEquipmentAttempts = 0
 
     // Set up event listeners to track equipment results
-    const equipmentSuccessListener = (data: { playerId: string; item: { name: string } }) => {
+    const equipmentSuccessListener = (data: { playerId: string; slot: EquipmentSlotName; itemId: string | null }) => {
       if (data.playerId === testData.player.id) {
-        testData.itemsEquipped++
+        // Count only successful equips (itemId present)
+        if (data.itemId) {
+          testData.itemsEquipped++
+          const item = getItem(data.itemId)
+          Logger.system('EquipmentTestSystem', `Equipment success: ${item ? item.name : data.itemId} for ${data.playerId}`)
+        }
         pendingEquipmentAttempts--
-        Logger.system('EquipmentTestSystem', `Equipment success: ${data.item.name} for ${data.playerId}`)
       }
     }
 

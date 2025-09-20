@@ -1,6 +1,44 @@
 import { System } from './System'
 import type { World } from '../World'
 import * as THREE from 'three'
+import { Entity } from '../entities'
+import { Entities } from './Entities'
+
+interface TestRunnerSystem extends System {
+  isTestRunning?: () => boolean
+}
+
+interface _WorldWithTestRunner extends World {
+  systems: (System | TestRunnerSystem)[]
+  config?: {
+    isTest?: boolean
+  }
+}
+
+interface PlayerWithDetails extends Entity {
+  isLocal?: boolean;
+  isPlayer: boolean;
+  base?: {
+    position: THREE.Vector3;
+    visible: boolean;
+    children: THREE.Object3D[];
+    parent: THREE.Object3D | null;
+  };
+  avatar?: {
+    position?: THREE.Vector3;
+    visible?: boolean;
+    parent: THREE.Object3D | null;
+    vrm?: unknown;
+    children: THREE.Object3D[];
+    traverse(callback: (child: THREE.Object3D) => void): void;
+  };
+  avatarUrl?: string;
+  capsule?: {
+    getGlobalPose?(): { p: { x: number; y: number; z: number } };
+  };
+  moving?: boolean;
+  clickMoveTarget?: { x: number; z: number };
+}
 
 /**
  * ClientDiagnostics - Real-time diagnostics for what's actually happening in the client
@@ -9,7 +47,7 @@ import * as THREE from 'three'
 export class ClientDiagnostics extends System {
   private lastReportTime: number = 0
   private reportInterval: number = 2000 // Report every 2 seconds
-  private player: any = null
+  private player: PlayerWithDetails | null = null
   
   override start(): void {
     console.log('[ClientDiagnostics] 🔍 Starting client diagnostics system')
@@ -22,12 +60,13 @@ export class ClientDiagnostics extends System {
   
   private findPlayer(): void {
     // Look for local player
-    const entities = this.world.entities as any
+    const entities = this.world.entities as Entities
     if (entities.items && entities.items instanceof Map) {
       for (const [_id, entity] of entities.items) {
-        if ((entity as any).isLocal && (entity as any).isPlayer) {
-          this.player = entity
-          console.log('[ClientDiagnostics] Found local player:', this.player.id)
+        const playerEntity = entity as PlayerWithDetails;
+        if (playerEntity.isLocal && playerEntity.isPlayer) {
+          this.player = playerEntity;
+          console.log('[ClientDiagnostics] Found local player:', this.player!.id)
           this.runDiagnostics()
           return
         }
@@ -47,7 +86,7 @@ export class ClientDiagnostics extends System {
     console.log(`[ClientDiagnostics] Player position: (${this.player.position.x.toFixed(2)}, ${this.player.position.y.toFixed(2)}, ${this.player.position.z.toFixed(2)})`)
     
     // 2. Base status
-    const base = this.player.base
+    const base = this.player.base;
     if (base) {
       console.log(`[ClientDiagnostics] Base exists: YES`)
       console.log(`[ClientDiagnostics] Base position: (${base.position.x.toFixed(2)}, ${base.position.y.toFixed(2)}, ${base.position.z.toFixed(2)})`)
@@ -68,11 +107,11 @@ export class ClientDiagnostics extends System {
       }
       console.log(`[ClientDiagnostics] Base in scene: ${inScene ? 'YES at depth ' + depth : 'NO'}`)
     } else {
-      console.log('[ClientDiagnostics] Base exists: NO ❌')
+      console.log(`[ClientDiagnostics] Base exists: NO ❌`)
     }
     
     // 3. Avatar status
-    const avatar = this.player._avatar || this.player.avatar
+    const avatar = this.player.avatar;
     if (avatar) {
       console.log('[ClientDiagnostics] Avatar exists: YES')
       console.log(`[ClientDiagnostics] Avatar type: ${avatar.constructor?.name || typeof avatar}`)
@@ -115,8 +154,8 @@ export class ClientDiagnostics extends System {
       if (avatar.children) {
         console.log(`[ClientDiagnostics] Avatar children: ${avatar.children.length}`)
         let meshCount = 0
-        avatar.traverse((child: any) => {
-          if (child.isMesh) meshCount++
+        avatar.traverse((child: THREE.Object3D) => {
+          if (child instanceof THREE.Mesh) meshCount++
         })
         console.log(`[ClientDiagnostics] Avatar mesh count: ${meshCount}`)
       }
@@ -126,7 +165,7 @@ export class ClientDiagnostics extends System {
     }
     
     // 4. Physics capsule
-    const capsule = this.player.capsule
+    const capsule = this.player.capsule;
     if (capsule) {
       console.log('[ClientDiagnostics] Physics capsule: EXISTS')
       if (capsule.getGlobalPose) {
@@ -141,7 +180,7 @@ export class ClientDiagnostics extends System {
     
     // 5. Movement state
     console.log(`[ClientDiagnostics] Moving: ${this.player.moving}`)
-    console.log(`[ClientDiagnostics] Click target: ${this.player.clickMoveTarget ? `(${this.player.clickMoveTarget.x.toFixed(2)}, ${this.player.clickMoveTarget.z.toFixed(2)})` : 'none'}`)
+
     
     // 6. Camera
     const camera = this.world.camera
@@ -155,9 +194,9 @@ export class ClientDiagnostics extends System {
       let totalMeshes = 0
       let totalVisible = 0
       
-      this.world.stage.scene.traverse((obj: any) => {
+      this.world.stage.scene.traverse(obj => {
         totalObjects++
-        if (obj.isMesh) {
+        if (obj instanceof THREE.Mesh) {
           totalMeshes++
           if (obj.visible) totalVisible++
         }

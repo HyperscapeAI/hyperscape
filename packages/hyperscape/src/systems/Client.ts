@@ -17,27 +17,11 @@ export class Client extends System {
   constructor(world: World) {
     super(world)
     
-    // Create a proxy for the world object that includes Apps system methods
-    const worldProxy = new Proxy(world, {
-      get: (target, prop) => {
-        // Only handle string properties
-        if (typeof prop !== 'string') {
-          return undefined;
-        }
-        
-        // First check if the property exists on the world object itself
-        if (prop in target) {
-          // Access through keyof to avoid unsafe Record cast
-          const key = prop as keyof typeof target
-          return target[key] as unknown
-        }
-        
-        return undefined
-      }
-    })
-    
-          Object.defineProperty(window, 'world', { value: worldProxy, writable: true, configurable: true });
-      Object.defineProperty(window, 'THREE', { value: THREE, writable: true, configurable: true });
+    // Only set window properties if they don't exist or in development
+    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+      (window as any).world = world;
+      (window as any).THREE = THREE;
+    }
   }
 
   async init(options: WorldOptions & { loadYoga?: Promise<void> }): Promise<void> {

@@ -6,7 +6,6 @@ import type {
   NetworkConnection,
   EntityAddedData,
   EntityRemovedData,
-  EntityModifiedData,
   WorldSnapshotData,
   FullWorldStateData,
   NetworkEntity
@@ -21,6 +20,7 @@ export class Network extends SystemBase {
   private localId: string = 'local';
   private lastSyncTime: number = 0;
   private syncInterval: number = 50; // 20Hz sync rate
+  private pendingAcks: Map<string, { type: string; data: unknown; sentTime: number }> = new Map();
   
   constructor(world: World) {
     super(world, { name: 'network', dependencies: { required: [], optional: [] }, autoCleanup: true });
@@ -226,15 +226,17 @@ export class Network extends SystemBase {
       this.world.entities.destroyEntity(entityId);
     });
     
-    // Entity updates
+    // Entity updates (adapter for legacy servers):
+    // Modern servers send { id, changes }. If older shape { entityId, updates } arrives, adapt it.
     this.onMessage('entityModified', (message) => {
       if (message.senderId === this.localId) return;
-      
-      const { entityId, updates } = message.data as EntityModifiedData;
-      const entity = this.world.entities.get(entityId);
+      const payload = message.data as unknown as { id?: string; changes?: Record<string, unknown> } & { entityId?: string; updates?: Record<string, unknown> };
+      const id = payload.id || payload.entityId;
+      const changes = payload.changes || payload.updates || {};
+      if (!id) return;
+      const entity = this.world.entities.get(id);
       if (entity) {
-        // Assume modify method exists on entity
-        (entity as { modify: (updates: unknown) => void }).modify(updates);
+        (entity as { modify: (updates: unknown) => void }).modify(changes);
       }
     });
     
@@ -303,32 +305,6 @@ export class Network extends SystemBase {
     return this.localId;
   }
   
-  // Create mock connection for testing
-  createMockConnection(id: string = 'mock'): NetworkConnection {
-    const connection: NetworkConnection = {
-      id,
-      latency: 0,
-      connected: true,
-      
-      send: (message: NetworkMessage) => {
-        // Echo back to self for testing
-        setTimeout(() => {
-          this.processMessage({
-            ...message,
-            senderId: id
-          });
-        }, 0);
-      },
-      
-      disconnect: () => {
-        connection.connected = false;
-      }
-    };
-    
-    return connection;
-  }
-  
-  // Required System lifecycle methods
   preTick(): void {}
   preFixedUpdate(): void {}
   fixedUpdate(_dt: number): void {}

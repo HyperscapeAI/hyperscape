@@ -1,5 +1,4 @@
 import { ALL_MOBS, getMobsByDifficulty } from '../data/mobs';
-import { ALL_WORLD_AREAS as WORLD_AREAS } from '../data/world-areas';
 import type { MobData, MobSpawnStats } from '../types/core';
 import { EventType } from '../types/events';
 import type { World } from '../types/index';
@@ -38,6 +37,27 @@ export class MobSpawnerSystem extends SystemBase {
     });
     this.subscribe(EventType.MOB_RESPAWN_ALL, (_event) => this.respawnAllMobs());
     
+    this.subscribe(EventType.MOB_SPAWN_POINTS_REGISTERED, (data: { spawnPoints: unknown[] }) => {
+        data.spawnPoints.forEach(spawnPoint => {
+            const spawn = spawnPoint as { type: string; position: { x: number; y: number; z: number } | [number, number, number] | undefined };
+            const mobData = ALL_MOBS[spawn.type as keyof typeof ALL_MOBS];
+            if (mobData) {
+                // Handle both object {x, y, z} and array [x, y, z] formats
+                let position: { x: number; y: number; z: number };
+                if (Array.isArray(spawn.position)) {
+                    position = { x: spawn.position[0], y: spawn.position[1], z: spawn.position[2] };
+                } else if (spawn.position && typeof spawn.position === 'object' && 
+                          'x' in spawn.position && 'y' in spawn.position && 'z' in spawn.position) {
+                    position = spawn.position;
+                } else {
+                    console.warn(`[MobSpawnerSystem] Invalid spawn position for ${spawn.type}, using default (0,0,0)`, spawn.position);
+                    position = { x: 0, y: 0, z: 0 };
+                }
+                this.spawnMobFromData(mobData, position);
+            }
+        });
+    });
+
     // Listen for entity spawned events to track our mobs
     this.subscribe<EntitySpawnedEvent>(EventType.ENTITY_SPAWNED, (data) => {
       // Only handle mob entities
@@ -49,46 +69,20 @@ export class MobSpawnerSystem extends SystemBase {
   }
 
   start(): void {
-    // Initialize spawn points for all difficulty zones
-    this.initializeSpawnPoints();
-    
-    // Spawn all 9 mob types across their appropriate zones
-    this.spawnAllMobTypes();
-  }
-
-  private initializeSpawnPoints(): void {
-    // Load spawn points from externalized world areas data
-    for (const [areaId, area] of Object.entries(WORLD_AREAS)) {
-      if (area.mobSpawns && area.mobSpawns.length > 0) {
-        // Convert mob spawn points to the format expected by this system
-        const spawnPositions = area.mobSpawns.map(spawn => ({
-          x: spawn.position.x,
-          y: spawn.position.y || 2, // Default Y level
-          z: spawn.position.z
-        }));
-        
-        this.spawnPoints.set(areaId, spawnPositions);
-      }
-    }
-  }
-
-  private spawnAllMobTypes(): void {
-    // Spawn mobs in all areas based on their difficulty level
-    for (const [areaId, area] of Object.entries(WORLD_AREAS)) {
-      if (area.mobSpawns && area.mobSpawns.length > 0 && area.difficultyLevel > 0) {
-        // Skip difficulty level 0 (safe zones) - only spawn in combat zones (1-3)
-        this.spawnMobsByDifficulty(area.difficultyLevel as 1 | 2 | 3, areaId);
-      }
-    }
+    // Spawning is now handled by the WorldGenerationSystem via events
   }
 
   private spawnMobsByDifficulty(difficultyLevel: 1 | 2 | 3, spawnZone: string): void {
-    const mobs = getMobsByDifficulty(difficultyLevel);
+    const mobsByDifficulty: { [key: number]: MobData[] } = {
+      1: getMobsByDifficulty(1),
+      2: getMobsByDifficulty(2),
+      3: getMobsByDifficulty(3)
+    };
+
     const spawnPoints = this.spawnPoints.get(spawnZone) || [];
     
-    
     let spawnIndex = 0;
-    for (const mobData of mobs) {
+    for (const mobData of mobsByDifficulty[difficultyLevel]) {
       // Spawn multiple instances of each mob type
       const instancesPerType = 2;
       
@@ -158,7 +152,9 @@ export class MobSpawnerSystem extends SystemBase {
     this.spawnedMobs.clear();
     
     // Respawn all mobs
-    this.spawnAllMobTypes();
+    this.spawnMobsByDifficulty(1, 'default'); // Example: respawn all level 1 mobs in default zone
+    this.spawnMobsByDifficulty(2, 'default'); // Example: respawn all level 2 mobs in default zone
+    this.spawnMobsByDifficulty(3, 'default'); // Example: respawn all level 3 mobs in default zone
   }
 
   // Public API

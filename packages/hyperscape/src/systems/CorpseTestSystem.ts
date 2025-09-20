@@ -622,7 +622,6 @@ export class CorpseTestSystem extends SystemBase {
 
   // Event handlers
   private handleCorpseSpawned(_data: EventPayload<typeof EventType.CORPSE_SPAWNED>): void {
-    // TODO: Add corpse spawned event handling if needed
   }
 
   private handleCorpseInteraction(data: EventPayload<typeof EventType.CORPSE_CLICK>): void {
@@ -652,7 +651,6 @@ export class CorpseTestSystem extends SystemBase {
   }
 
   private handleCorpseLooted(_data: EventPayload<typeof EventType.CORPSE_LOOT_REQUEST>): void {
-    // TODO: Add corpse looted event handling if needed
   }
 
   private handleCorpseCleanup(data: EventPayload<typeof EventType.CORPSE_CLEANUP>): void {
@@ -665,7 +663,6 @@ export class CorpseTestSystem extends SystemBase {
   }
 
   private handleMobDeath(_data: EventPayload<typeof EventType.MOB_DIED>): void {
-    // TODO: Add mob death event handling if needed
   }
 
   // Utility methods

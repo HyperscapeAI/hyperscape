@@ -14,7 +14,24 @@ import type { World } from '../World';
 import { calculateDistance } from '../utils/MathUtils';
 import { SystemBase } from './SystemBase';
 import { EventType } from '../types/events';
-import type { NavigationNode, PathfindingRequest, PathResult, AgentNavigationState } from '../types/game-types'
+import type {
+  NavigationNode,
+  PathfindingRequest,
+  PathResult,
+  AgentNavigationState,
+} from '../types/game-types'
+
+interface TerrainValidationSystem extends SystemBase {
+  getTerrainHeight: (x: number, z: number) => number | null
+  calculateSlope: (x: number, z: number) => number
+  isPositionWalkable: (
+    x: number,
+    z: number,
+    height?: number,
+    slope?: number,
+  ) => boolean
+  getBiomeAtPosition: (x: number, z: number) => string | null
+}
 
 // Types moved to shared types in ../types/game-types
 
@@ -22,12 +39,7 @@ export class AINavigationSystem extends SystemBase {
   private navigationGrid = new Map<string, NavigationNode>();
   private pathfindingQueue: PathfindingRequest[] = [];
   private activeAgents = new Map<string, AgentNavigationState>();
-  private terrainValidationSystem?: {
-    getTerrainHeight: (x: number, z: number) => number | null;
-    calculateSlope: (x: number, z: number) => number;
-    isPositionWalkable: (x: number, z: number, height?: number, slope?: number) => boolean;
-    getBiomeAtPosition: (x: number, z: number) => string | null;
-  };
+  private terrainValidationSystem?: TerrainValidationSystem;
   private isProcessingRequests = false;
   private gridResolution = 2; // 2 meter grid resolution
   private maxPathfindingTime = 50; // 50ms max per frame for pathfinding
@@ -55,20 +67,17 @@ export class AINavigationSystem extends SystemBase {
   };
 
   constructor(world: World) {
-    super(world, { name: 'ai-navigation', dependencies: { required: [], optional: [] }, autoCleanup: true });
+    super(world, { name: 'ai-navigation', dependencies: { required: [], optional: ['terrain-validation'] }, autoCleanup: true });
   }
 
   async init(): Promise<void> {
     
     // Find terrain validation system
-    const system = this.world.getSystem('terrain-validation');
+    const system = this.world.getSystem<TerrainValidationSystem>(
+      'terrain-validation',
+    )
     if (system) {
-      this.terrainValidationSystem = system as unknown as {
-        getTerrainHeight: (x: number, z: number) => number | null;
-        calculateSlope: (x: number, z: number) => number;
-        isPositionWalkable: (x: number, z: number, height?: number, slope?: number) => boolean;
-        getBiomeAtPosition: (x: number, z: number) => string | null;
-      };
+      this.terrainValidationSystem = system
     }
     if (!this.terrainValidationSystem) {
       this.logger.error('TerrainValidationSystem not found! AI navigation will be limited.');
@@ -104,6 +113,20 @@ export class AINavigationSystem extends SystemBase {
         this.processPathfindingRequests();
       }
     }, 16); // ~60fps
+  }
+
+  /**
+   * Get the bounds of the loaded terrain
+   */
+  private getLoadedTerrainBounds(): { minX: number; maxX: number; minZ: number; maxZ: number } | null {
+    // For now, return default bounds
+    // In a real implementation, this would query the terrain system
+    return {
+      minX: -500,
+      maxX: 500,
+      minZ: -500,
+      maxZ: 500
+    };
   }
 
   /**
@@ -304,7 +327,7 @@ export class AINavigationSystem extends SystemBase {
   /**
    * Find path using A* algorithm
    */
-  private async findPath(request: PathfindingRequest): Promise<PathResult> {
+  private findPath(request: PathfindingRequest): PathResult {
     const startTime = performance.now();
     
     // Get start and goal nodes
@@ -621,32 +644,15 @@ export class AINavigationSystem extends SystemBase {
     return this.getTerrainHeight(x, z) !== null;
   }
 
-  private getLoadedTerrainBounds(): { minX: number; maxX: number; minZ: number; maxZ: number } | null {
-    // This would get actual terrain bounds from terrain system
-    // For now, return a default area
-    return {
-      minX: -500,
-      maxX: 500,
-      minZ: -500,
-      maxZ: 500
-    };
-  }
-
-
   // Event handlers
-  private onTerrainChanged(data: { bounds: unknown }): void {
+  private onTerrainChanged(_data: { bounds: unknown }): void {
     // Regenerate affected grid sections
-    this.regenerateGridSection(data.bounds);
+    this.updateGridFromValidation(new Map());
   }
 
   private onValidationComplete(data: { walkabilityMap: Map<string, { isWalkable: boolean; slope: number; biome: string }> }): void {
     // Update navigation grid with new walkability data
     this.updateGridFromValidation(data.walkabilityMap);
-  }
-
-  private regenerateGridSection(_bounds: unknown): void {
-    // Regenerate navigation nodes in the affected area
-    // Implementation would update specific grid sections
   }
 
   private updateGridFromValidation(walkabilityMap: Map<string, { isWalkable: boolean; slope: number; biome: string }>): void {

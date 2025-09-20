@@ -1,5 +1,4 @@
 import type { ButtonEntry, ControlAction, ControlEntry, ControlsBinding, PointerEntry, ScreenEntry, TouchInfo, ValueEntry, VectorEntry, World, WorldOptions, XRInputSource } from '../types'
-import { bindRotations } from '../extras/bindRotations'
 import { buttons, codeToProp } from '../extras/buttons'
 import THREE from '../extras/three'
 import { SystemBase } from './SystemBase'
@@ -43,7 +42,7 @@ let actionIds = 0
 
 const isBrowser = typeof window !== 'undefined'
 
-const controlTypes = {
+export const controlTypes = {
   // key: createButton,
   mouseLeft: createButton,
   mouseRight: createButton,
@@ -67,7 +66,6 @@ export class ClientControls extends SystemBase {
   controls: ControlsBinding[]
   actions: ControlAction[]
   buttonsDown: Set<string>
-  isUserGesture: boolean
   isMac: boolean
   pointer: {
     locked: boolean
@@ -94,7 +92,6 @@ export class ClientControls extends SystemBase {
     this.controls = []
     this.actions = []
     this.buttonsDown = new Set()
-    this.isUserGesture = false
     this.isMac = typeof navigator !== 'undefined' ? /Mac/.test(navigator.platform) : false;
     this.pointer = {
       locked: false,
@@ -470,7 +467,7 @@ export class ClientControls extends SystemBase {
       e.preventDefault()
     }
     const prop = codeToProp[code]
-    const text = e.key
+    const _text = e.key
     this.buttonsDown.add(prop)
     for (const control of this.controls) {
       const button = control.entries[prop]
@@ -481,8 +478,6 @@ export class ClientControls extends SystemBase {
         const capture = buttonEntry.onPress?.()
         if (capture || buttonEntry.capture) break
       }
-      const capture = control.onButtonPress?.(prop, text)
-      if (capture) break
     }
   }
 

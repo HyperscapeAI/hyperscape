@@ -259,11 +259,7 @@ export class AttackStyleSystem extends SystemBase {
     }
 
     const finalXP = Math.floor(baseXP * xpMultiplier);
-    try {
-      data.callback(finalXP);
-    } catch (error) {
-      console.error(`[AttackStyleSystem] Error calling XP callback for player ${playerId}:`, error);
-    }
+    data.callback(finalXP);
 
     // XP logging could be added here if needed
   }
@@ -273,31 +269,19 @@ export class AttackStyleSystem extends SystemBase {
     
     const playerState = this.playerAttackStyles.get(playerId);
     if (!playerState) {
-      try {
-        data.callback(baseDamage);
-      } catch (error) {
-        console.error(`[AttackStyleSystem] Error calling damage callback for player ${playerId}:`, error);
-      }
+      data.callback(baseDamage);
       return;
     }
 
     const attackStyle = this.ATTACK_STYLES[playerState.selectedStyle];
     if (!attackStyle) {
-      try {
-        data.callback(baseDamage);
-      } catch (error) {
-        console.error(`[AttackStyleSystem] Error calling damage callback for player ${playerId}:`, error);
-      }
+      data.callback(baseDamage);
       return;
     }
 
     // Apply damage modifier from attack style
     const finalDamage = Math.floor(baseDamage * attackStyle.damageModifier);
-    try {
-      data.callback(finalDamage);
-    } catch (error) {
-      console.error(`[AttackStyleSystem] Error calling damage callback for player ${playerId}:`, error);
-    }
+    data.callback(finalDamage);
 
   }
 
@@ -306,57 +290,33 @@ export class AttackStyleSystem extends SystemBase {
     
     const playerState = this.playerAttackStyles.get(playerId);
     if (!playerState) {
-      try {
-        data.callback(baseAccuracy);
-      } catch (error) {
-        console.error(`[AttackStyleSystem] Error calling accuracy callback for player ${playerId}:`, error);
-      }
+      data.callback(baseAccuracy);
       return;
     }
 
     const attackStyle = this.ATTACK_STYLES[playerState.selectedStyle];
     if (!attackStyle) {
-      try {
-        data.callback(baseAccuracy);
-      } catch (error) {
-        console.error(`[AttackStyleSystem] Error calling accuracy callback for player ${playerId}:`, error);
-      }
+      data.callback(baseAccuracy);
       return;
     }
 
     // Apply accuracy modifier from attack style
     const finalAccuracy = Math.min(1.0, baseAccuracy * attackStyle.accuracyModifier);
-    try {
-      data.callback(finalAccuracy);
-    } catch (error) {
-      console.error(`[AttackStyleSystem] Error calling accuracy callback for player ${playerId}:`, error);
-    }
+    data.callback(finalAccuracy);
 
   }
 
   private handleGetStyleInfo(data: { playerId: string; callback?: (info: Record<string, unknown> | null) => void }): void {
-    const { playerId } = data;
+    const { playerId, callback } = data;
     
-    // Enhanced validation with detailed logging
-    if (!data.callback) {
-      console.warn(`[AttackStyleSystem] UI_ATTACK_STYLE_GET event received without callback for player ${playerId}`);
-      this.fallbackToUpdateEvent(playerId);
-      return;
-    }
-    
-    if (typeof data.callback !== 'function') {
-      console.warn(`[AttackStyleSystem] UI_ATTACK_STYLE_GET event received with invalid callback for player ${playerId}. Type: ${typeof data.callback}, Value:`, data.callback);
+    if (!callback) {
       this.fallbackToUpdateEvent(playerId);
       return;
     }
     
     const playerState = this.playerAttackStyles.get(playerId);
     if (!playerState) {
-      try {
-        data.callback(null);
-      } catch (error) {
-        console.error(`[AttackStyleSystem] Error calling callback for player ${playerId}:`, error);
-      }
+      callback(null);
       return;
     }
 
@@ -377,13 +337,7 @@ export class AttackStyleSystem extends SystemBase {
       styleHistory: playerState.combatStyleHistory.slice(-10) // Last 10 changes
     };
 
-    // Safe callback execution with error handling
-    try {
-      data.callback(styleInfo);
-    } catch (error) {
-      console.error(`[AttackStyleSystem] Error calling callback for player ${playerId}:`, error);
-      this.fallbackToUpdateEvent(playerId);
-    }
+    callback(styleInfo);
   }
 
   /**

@@ -1,7 +1,8 @@
-import { System, SystemDependencies } from './System'
+import { System } from './System'
 import type { World } from '../types'
 
-const TICK_RATE = 1 / 30
+// Industry standard 60Hz tick rate for responsive gameplay
+const TICK_RATE = 1 / 60
 const TICK_INTERVAL_MS = TICK_RATE * 1000
 
 /**
@@ -18,10 +19,6 @@ export class Server extends System {
   
   constructor(world: World) {
     super(world)
-  }
-
-  getDependencies(): SystemDependencies {
-    return {}; // Server has no dependencies
   }
 
   start() {

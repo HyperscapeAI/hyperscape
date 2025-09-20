@@ -248,12 +248,14 @@ export enum EventType {
   PLAYER_AUTHENTICATED = 'rpg:player:authenticated',
   PLAYER_UPDATED = 'rpg:player:updated',
   PLAYER_SPAWNED = 'rpg:player:spawned',
+  PLAYER_SPAWN_REQUEST = 'rpg:player:spawn_request',
   PLAYER_DATA_LOADED = 'rpg:player:data_loaded',
   PLAYER_DATA_SAVED = 'rpg:player:data_saved',
   PLAYER_SESSION_STARTED = 'rpg:player:session_started',
   PLAYER_SESSION_ENDED = 'rpg:player:session_ended',
   PLAYER_CREATE = 'rpg:player:create',
   PLAYER_SPAWN_COMPLETE = 'rpg:player:spawn_complete',
+  PLAYER_ANIMATION = 'rpg:player:animation',
   
   // Entity Management
   ENTITY_CREATED = 'entity:created',
@@ -315,6 +317,7 @@ export enum EventType {
   // Terrain System
   TERRAIN_TILE_GENERATED = 'terrain:tile:generated',
   TERRAIN_VALIDATION_COMPLETE = 'terrain:validation:complete',
+  TERRAIN_PHYSICS_READY = 'terrain:physics:ready',
 
   // Camera System
   CAMERA_SET_TARGET = 'camera:set_target',
@@ -475,6 +478,7 @@ export enum EventType {
 
   // NPC System
   NPC_SPAWNED = 'rpg:npc:spawned',
+  NPC_SPAWN_REQUEST = 'rpg:npc:spawn_request',
   NPC_INTERACTION = 'rpg:npc:interaction',
   NPC_DIALOGUE = 'rpg:npc:dialogue',
 
@@ -486,6 +490,7 @@ export enum EventType {
   // Mobs
   MOB_SPAWNED = 'rpg:mob:spawned',
   MOB_SPAWN_REQUEST = 'rpg:mob:spawn_request',
+  MOB_SPAWN_POINTS_REGISTERED = 'rpg:mob:spawn_points:registered',
   MOB_DESPAWN = 'rpg:mob:despawn',
   MOB_DESPAWNED = 'rpg:mob:despawned',
   MOB_RESPAWN_ALL = 'rpg:mob:respawn_all',
@@ -735,6 +740,7 @@ export enum EventType {
   WORLD_GENERATE = 'rpg:world:generate',
   WORLD_SPAWN_STRUCTURE = 'rpg:world:spawn_structure',
   ANIMATION_CANCEL = 'rpg:animation:cancel',
+  AVATAR_LOAD_COMPLETE = 'avatar_load_complete',
 }
 
 export type EventPayloads = {

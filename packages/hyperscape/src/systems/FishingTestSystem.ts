@@ -26,7 +26,6 @@ export class FishingTestSystem extends VisualTestFramework {
   private readonly testData = new Map<string, FishingTestData>();
   private resourceSystem!: ResourceSystem;
   private inventorySystem!: InventorySystem;
-  private xpSystem!: SkillsSystem;
 
   constructor(world: World) {
     super(world);
@@ -52,7 +51,6 @@ export class FishingTestSystem extends VisualTestFramework {
     
     this.resourceSystem = resourceSystem;
     this.inventorySystem = inventorySystem;
-    this.xpSystem = xpSystem;
     
     // Listen for resource gathering responses
     this.subscribe(EventType.UI_MESSAGE, (data: UIMessageEvent) => {
@@ -178,15 +176,15 @@ export class FishingTestSystem extends VisualTestFramework {
       const fishingSpot = { x: station.position.x + 2, y: station.position.y, z: station.position.z };
       this.createFishingSpotVisual(stationId, fishingSpot);
 
-      if (!this.xpSystem) {
-        throw new Error('[FishingTestSystem] XPSystem not found!');
+      if (!this.inventorySystem) {
+        throw new Error('[FishingTestSystem] InventorySystem not found!');
       }
 
       // Wait a bit for skills to be initialized
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Get initial fishing XP - handle null case where player skills aren't initialized yet
-      const fishingSkill = this.xpSystem.getSkillData(player.id, 'fishing');
+      const fishingSkill = this.inventorySystem.getSkillData(player.id, 'fishing');
       const initialXP = fishingSkill?.xp || 0;
       
       // If skill data is null, initialize it
@@ -448,15 +446,15 @@ export class FishingTestSystem extends VisualTestFramework {
       const fishingSpot = { x: station.position.x + 2, y: station.position.y, z: station.position.z };
       this.createFishingSpotVisual(stationId, fishingSpot);
 
-      if(!this.xpSystem) {
-        throw new Error('[FishingTestSystem] XPSystem not found!');
+      if(!this.inventorySystem) {
+        throw new Error('[FishingTestSystem] InventorySystem not found!');
       }
 
       // Wait a bit for skills to be initialized
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Get initial fishing XP - handle null case where player skills aren't initialized yet
-      const fishingSkill = this.xpSystem.getSkillData(player.id, 'fishing');
+      const fishingSkill = this.inventorySystem.getSkillData(player.id, 'fishing');
       const initialXP = fishingSkill?.xp || 0;
       
       // If skill data is null, initialize it
@@ -528,15 +526,15 @@ export class FishingTestSystem extends VisualTestFramework {
       const fishingSpot = { x: station.position.x + 2, y: station.position.y, z: station.position.z };
       this.createFishingSpotVisual(stationId, fishingSpot);
 
-      if(!this.xpSystem) {
-        throw new Error('[FishingTestSystem] XPSystem not found!');
+      if(!this.inventorySystem) {
+        throw new Error('[FishingTestSystem] InventorySystem not found!');
       }
 
       // Wait a bit for skills to be initialized
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Get initial fishing XP - handle null case where player skills aren't initialized yet
-      const fishingSkill = this.xpSystem.getSkillData(player.id, 'fishing');
+      const fishingSkill = this.inventorySystem.getSkillData(player.id, 'fishing');
       const initialXP = fishingSkill?.xp || 0;
       
       // If skill data is null, initialize it
@@ -633,12 +631,12 @@ export class FishingTestSystem extends VisualTestFramework {
           if (fishInInventory.length > testData.fishCaught) {
             testData.fishCaught++;
             
-            if(!this.xpSystem) {
-              throw new Error('[FishingTestSystem] XPSystem not found!');
+            if(!this.inventorySystem) {
+              throw new Error('[FishingTestSystem] InventorySystem not found!');
             }
 
             // Test XP gain - handle null case
-            const currentXPSkill = this.xpSystem.getSkillData(testData.player.id, 'fishing');
+            const currentXPSkill = this.inventorySystem.getSkillData(testData.player.id, 'fishing');
             const currentXP = currentXPSkill?.xp || 0;
             if (currentXP > testData.finalFishingXP) {
               testData.finalFishingXP = currentXP;

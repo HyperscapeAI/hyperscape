@@ -143,51 +143,14 @@ export class GroundCheckingSystem extends System {
    */
   private startGroundCheckLoop() {
     const checkLoop = () => {
-      const now = Date.now()
-      
-      for (const entity of this.entities.values()) {
-        // Check if entity needs ground check and enough time has passed
-        if (entity.needsGroundCheck || (now - entity.lastGroundCheck) > this.checkInterval) {
-          this.performGroundCheck(entity)
+      if (this.entities.size > 0) {
+        for (const entity of this.entities.values()) {
+          this.performGroundCheck(entity);
         }
       }
-      
-      // Schedule next check
-      setTimeout(checkLoop, this.checkInterval)
-    }
-    
-    // Start the loop
-    setTimeout(checkLoop, this.checkInterval)
-  }
-
-  /**
-   * Get debug information about registered entities
-   */
-  getDebugInfo() {
-    const info: Array<{
-      id: string;
-      position: { x: string; y: string; z: string };
-      groundHeight: string;
-      needsCheck: boolean;
-      lastCheck: number;
-      groundOffset: number;
-    }> = []
-    for (const entity of this.entities.values()) {
-      const groundResult = this.getGroundHeight(entity.position)
-      info.push({
-        id: entity.id,
-        position: {
-          x: entity.position.x.toFixed(2),
-          y: entity.position.y.toFixed(2),  
-          z: entity.position.z.toFixed(2)
-        },
-        groundHeight: groundResult.groundHeight.toFixed(2),
-        needsCheck: entity.needsGroundCheck,
-        lastCheck: Date.now() - entity.lastGroundCheck,
-        groundOffset: entity.groundOffset
-      })
-    }
-    return info
+      setTimeout(checkLoop, this.checkInterval);
+    };
+    checkLoop();
   }
 
   /**

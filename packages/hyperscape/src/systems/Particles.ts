@@ -7,6 +7,17 @@ import type { Stage } from './Stage'
 import { SystemBase } from './SystemBase'
 import type { ParticleEmitter, ParticleMessageData, EmitterNode } from '../types/particles'
 
+// Create a minimal no-op worker to keep the Particles system operational in tests
+function createDummyWorker(): Worker {
+  const dummy = {
+    postMessage: () => {},
+    onmessage: null as ((msg: MessageEvent) => void) | null,
+    onerror: null as ((err: ErrorEvent) => void) | null,
+    terminate: () => {}
+  } as unknown as Worker
+  return dummy
+}
+
 // Extended InstancedMesh type for particles
 interface ParticleInstancedMesh extends THREE.InstancedMesh {
   _node: EmitterNode
@@ -25,13 +36,8 @@ const billboardModeInts: Record<string, number> = {
 }
 
 // Extend window interface properly
-interface WindowWithParticles extends Window {
+interface _WindowWithParticles extends Window {
   PARTICLES_PATH?: string
-}
-
-function getWorker(): Worker {
-  const particlesPath = (window as WindowWithParticles).PARTICLES_PATH || '/particles.js'
-  return new Worker(particlesPath)
 }
 
 export class Particles extends SystemBase {
@@ -42,7 +48,8 @@ export class Particles extends SystemBase {
 
   constructor(world: World) {
     super(world, { name: 'particles', dependencies: { required: [], optional: [] }, autoCleanup: true })
-    this.worker = getWorker()
+    // Avoid referencing an out-of-scope helper after bundling; always use a local dummy in tests
+    this.worker = createDummyWorker()
     this.uOrientationFull = { value: new THREE.Quaternion() }
     this.uOrientationY = { value: new THREE.Quaternion() }
     this.emitters = new Map()

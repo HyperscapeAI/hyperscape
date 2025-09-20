@@ -20,8 +20,10 @@ dotenv.config({ path: '../../.env' }) // Parent directory .env
 import { createServerWorld } from '../createServerWorld'
 import type { Settings } from '../types'
 import type { NodeWebSocket } from '../types/network-types'
+import type { SQLiteDatabase, SQLiteStatement, SQLiteParam } from '../types/database'
 import { hashFile } from '../utils-server'
-import { getDB } from './db'
+import { getDB, getRawDB } from './db'
+import type { RawDB } from './db'
 import { Storage } from './Storage'
 
 // JSON value type for proper typing
@@ -83,6 +85,47 @@ async function startServer() {
   const storage = new Storage(path.join(worldDir, '/storage.json'))
 
   const world = await createServerWorld()
+  
+  // Get the raw database connection and make it available for DatabaseSystem to reuse
+  // This prevents multiple connections to the same SQLite database
+  const rawDb = getRawDB()
+  if (rawDb) {
+    // Convert RawDB to SQLiteDatabase interface expected by DatabaseSystem
+    const worldWithRawDb = world as { rawDb?: SQLiteDatabase }
+    worldWithRawDb.rawDb = {
+      prepare: (sql: string): SQLiteStatement => {
+        const stmt = rawDb.prepare(sql)
+        return {
+          get<T = Record<string, unknown>>(...params: SQLiteParam[]): T | undefined {
+            return stmt.get(...params) as T | undefined
+          },
+          all<T = Record<string, unknown>>(...params: SQLiteParam[]): T[] {
+            return (stmt.all(...params) as T[]) || []
+          },
+          run(...params: SQLiteParam[]): { changes: number; lastInsertRowid: number } {
+            const result = stmt.run(...params)
+            if (result && typeof result === 'object' && 'changes' in result) {
+              return {
+                changes: (result as { changes?: number }).changes || 0,
+                lastInsertRowid: 0 // Not available in this context
+              }
+            }
+            return { changes: 0, lastInsertRowid: 0 }
+          }
+        }
+      },
+      exec: rawDb.exec.bind(rawDb),
+      close: rawDb.close.bind(rawDb),
+      pragma<T = unknown>(name: string, value?: string | number | boolean): T {
+        if (rawDb.pragma) {
+          return rawDb.pragma(name, value) as T
+        }
+        const sql = value === undefined ? `PRAGMA ${name}` : `PRAGMA ${name}=${String(value)}`
+        rawDb.exec(sql)
+        return undefined as T
+      }
+    }
+  }
 
   world.assetsUrl = process.env['PUBLIC_ASSETS_URL'] || '/world-assets/'
 
@@ -119,6 +162,9 @@ async function startServer() {
   if (worldWithInit.init) {
     await worldWithInit.init({ db, storage, assetsDir })
   }
+  
+  // Actually start the world
+  world.start()
 
   // Entities spawn automatically from world.json if present
   await loadWorldEntities()
@@ -365,7 +411,7 @@ async function startServer() {
       fastify.log.info('[Server] WebSocket connection established')
       fastify.log.info('[Server] Connection type:', typeof connection)
       fastify.log.info('[Server] Connection.socket exists?', !!connection.socket)
-      fastify.log.info('[Server] Connection has .on method?', typeof connection.on === 'function')
+      fastify.log.info('[Server] Connection has .on method?', 'on' in connection)
       
       // Handle network connection if server network exists
       const worldWithNetwork = world
@@ -373,8 +419,8 @@ async function startServer() {
         worldWithNetwork.network &&
         'onConnection' in worldWithNetwork.network &&
         worldWithNetwork.network.onConnection &&
-        socket && (typeof (socket as unknown as { on?: Function; addEventListener?: Function }).on === 'function' ||
-                    typeof (socket as unknown as { on?: Function; addEventListener?: Function }).addEventListener === 'function')
+        socket && ((socket as unknown as { on?: Function; addEventListener?: Function }).on ||
+                    (socket as unknown as { on?: Function; addEventListener?: Function }).addEventListener)
       ) {
         const query = (req.query ?? {}) as Record<string, JSONValue>
         worldWithNetwork.network.onConnection(socket, query)
@@ -496,13 +542,19 @@ async function startServer() {
         commitHash: process.env['COMMIT_HASH'],
       }
       // Iterate through network sockets if they exist (server network only)
-      const sockets = world.network && 'sockets' in world.network ? world.network.sockets : new Map()
-      for (const socket of sockets.values()) {
-        status.connectedUsers.push({
-          id: socket.player.data.userId,
-          position: socket.player.node.position.current.toArray(),
-          name: socket.player.data.name,
-        })
+      interface ServerNetworkWithSockets {
+        sockets: Map<string, { player: { data: { userId: string; name: string }; node: { position: { current: { toArray: () => number[] } } } } }>
+      }
+      const hasSocketsNetwork = world.network && 'sockets' in world.network
+      if (hasSocketsNetwork) {
+        const serverNetwork = world.network as unknown as ServerNetworkWithSockets
+        for (const socket of serverNetwork.sockets.values()) {
+          status.connectedUsers.push({
+            id: socket.player.data.userId,
+            position: socket.player.node.position.current.toArray(),
+            name: socket.player.data.name,
+          })
+        }
       }
 
       return reply.code(200).send(status)
@@ -653,11 +705,13 @@ async function startServer() {
   // Graceful shutdown
   process.on('SIGINT', async () => {
     await fastify.close()
+    world.destroy()
     process.exit(0)
   })
 
   process.on('SIGTERM', async () => {
     await fastify.close()
+    world.destroy()
     process.exit(0)
   })
 }

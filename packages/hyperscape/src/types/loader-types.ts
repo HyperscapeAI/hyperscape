@@ -8,8 +8,7 @@ import type { Texture, DataTexture } from 'three';
 
 // Type guards for LoaderResult types
 export function isLoadedModel(result: unknown): result is LoadedModel {
-  return typeof result === 'object' && result !== null && 
-         'toNodes' in result && typeof (result as LoadedModel).toNodes === 'function';
+  return typeof result === 'object' && result !== null && 'toNodes' in result;
 }
 
 export function isTexture(result: unknown): result is Texture {

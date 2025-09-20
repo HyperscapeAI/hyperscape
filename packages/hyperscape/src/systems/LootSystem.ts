@@ -20,7 +20,6 @@ import { items } from '../data/items';
 import type { DroppedItem, } from '../types/systems';
 import { calculateDistance } from '../utils/EntityUtils';
 import { EntityManager } from './EntityManager';
-import THREE from '../extras/three';
 
 
 export class LootSystem extends SystemBase {
@@ -238,47 +237,6 @@ export class LootSystem extends SystemBase {
   }
 
   /**
-   * Create a visual representation of the corpse
-   */
-  private createCorpseVisual(corpseId: string, position: { x: number; y: number; z: number }, mobType: string): THREE.Mesh | null {
-    if (!this.world.stage.scene) return null;
-    
-    // Create a simple gray cube to represent the corpse
-    const geometry = new THREE.BoxGeometry(1, 0.5, 1); // Flatter than a normal mob
-    const material = new THREE.MeshLambertMaterial({ color: 0x555555 }); // Gray color
-    const corpse = new THREE.Mesh(geometry, material);
-    
-    // Set position
-    corpse.position.set(position.x, position.y + 0.25, position.z); // Slightly above ground
-    
-    // Set metadata
-    corpse.name = corpseId;
-    corpse.userData.type = 'corpse';
-    corpse.userData.mobType = mobType;
-    corpse.userData.mobId = corpseId.replace('corpse_', '');
-    
-    // Add to scene
-    this.world.stage.scene.add(corpse);
-    
-    // Schedule corpse removal after some time (e.g., 5 minutes)
-    setTimeout(() => {
-      if (this.world.stage.scene && corpse.parent) {
-        this.world.stage.scene.remove(corpse);
-        corpse.geometry.dispose();
-        if (Array.isArray(corpse.material)) {
-          corpse.material.forEach(m => m.dispose());
-        } else {
-          corpse.material.dispose();
-        }
-      }
-    }, 300000); // 5 minutes
-    
-
-    
-    return corpse;
-  }
-
-  /**
    * Handle mob death and generate loot
    */
   private async handleMobDeath(data: { mobId: string; mobType: string; level: number; killedBy: string; position: { x: number; y: number; z: number } }): Promise<void> {
@@ -291,8 +249,7 @@ export class LootSystem extends SystemBase {
     }
 
     // Create corpse visual directly without going through entity manager
-    const corpseId = `corpse_${data.mobId}`;
-    this.createCorpseVisual(corpseId, data.position, data.mobType);
+    const _corpseId = `corpse_${data.mobId}`;
 
     const lootItems: Array<{ itemId: string; quantity: number }> = [];
 

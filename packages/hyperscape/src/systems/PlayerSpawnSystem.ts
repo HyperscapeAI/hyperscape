@@ -12,6 +12,7 @@ import THREE from '../extras/three';
 import type { World } from '../types';
 import { EventType } from '../types/events';
 import { equipmentRequirements } from '../data/EquipmentRequirements';
+import { getRandomSpawnPoint } from '../data/world-areas';
 import type { PlayerSpawnData } from '../types/core';
 import { PlayerSpawnSystemInfo as SystemInfo } from '../types/system-types';
 import { SystemBase } from './SystemBase';
@@ -42,13 +43,10 @@ export class PlayerSpawnSystem extends SystemBase {
     
   }
 
-  start(): void {
-  }
-
   /**
    * Handle spawn completion
    */
-  private handleSpawnComplete(event: { playerId: string }): void {
+  private async handleSpawnComplete(event: { playerId: string }): Promise<void> {
     // Send welcome message
     this.emitTypedEvent(EventType.UI_MESSAGE, {
       playerId: event.playerId,
@@ -76,6 +74,58 @@ export class PlayerSpawnSystem extends SystemBase {
     } catch (_e) {
       // ignore
     }
+
+    // Equip starter gear and trigger starter aggro pipeline
+    // Use a short defer to ensure all dependent systems are ready
+    await new Promise<void>(resolve => {
+      const onLoad = (e) => {
+        if (e.playerId === event.playerId && e.success) {
+          this.world.off(EventType.AVATAR_LOAD_COMPLETE, onLoad);
+          resolve();
+        }
+      };
+      this.world.on(EventType.AVATAR_LOAD_COMPLETE, onLoad);
+      setTimeout(resolve, 5000); // Timeout after 5s
+    });
+
+    // Equip each starter item
+    for (const item of this.STARTER_EQUIPMENT) {
+      // Check if player still exists before each equipment
+      if (!this.spawnedPlayers.has(event.playerId)) {
+        this.logger.warn(`[PlayerSpawnSystem] Player ${event.playerId} disconnected during equipment process`);
+        return;
+      }
+      
+      // Force equip the item (bypass inventory checks for starter equipment)
+      this.emitTypedEvent(EventType.EQUIPMENT_EQUIP, {
+        playerId: event.playerId,
+        itemId: item.itemId, // Pass itemId string directly, not the full item object
+        slot: item.slot
+      });
+      
+      // Small delay between equipment
+      await this.delay(50);
+    }
+    
+    // Final check before setting the flag
+    const finalSpawnData = this.spawnedPlayers.get(event.playerId);
+    if (finalSpawnData) {
+      finalSpawnData.hasStarterEquipment = true;
+    }
+    
+    
+    // Trigger aggro after equipment is ready (only if player still exists)
+    if (this.spawnedPlayers.has(event.playerId)) {
+      this.triggerGoblinAggro(event.playerId);
+    }
+    
+    // Emit spawn complete event
+    this.emitTypedEvent(EventType.PLAYER_SPAWNED, {
+      playerId: event.playerId,
+      equipment: this.STARTER_EQUIPMENT,
+      position: this.spawnedPlayers.get(event.playerId)?.position
+    });
+    
   }
 
   /**
@@ -92,38 +142,77 @@ export class PlayerSpawnSystem extends SystemBase {
   /**
    * Handle player join - start spawn process
    */
-  private handlePlayerJoin(event: { playerId: string }): void {
+  private async handlePlayerJoin(event: { playerId: string }): Promise<void> {
     this.logger.info(`handlePlayerJoin called: ${JSON.stringify(event)}`);
     
     if (!event?.playerId) {
       this.logger.error(`ERROR: playerId is undefined in event! ${JSON.stringify(event)}`);
       return;
     }
+
+    // 1. Wait for terrain to be ready before spawning
+    interface TerrainSystem {
+      isReady(): boolean;
+      getHeightAt(x: number, z: number): number;
+    }
+    const terrain = this.world.getSystem('terrain') as TerrainSystem | undefined;
+    if (terrain) {
+      let attempts = 0;
+      while (!terrain.isReady() && attempts < 100) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+        attempts++;
+      }
+      if (attempts >= 100) {
+        console.error('[PlayerSpawnSystem] Terrain not ready after timeout');
+      }
+    }
+
+    // 2. Determine Spawn Point and ground it to terrain
+    const spawnPoint = getRandomSpawnPoint();
     
-    const player = this.world.getPlayer(event.playerId)!;
+    // Ground the spawn point to terrain if available
+    if (terrain && terrain.getHeightAt) {
+      const terrainHeight = terrain.getHeightAt(spawnPoint.x, spawnPoint.z);
+      if (Number.isFinite(terrainHeight)) {
+        spawnPoint.y = terrainHeight + 0.1;
+        this.logger.info(`[PlayerSpawnSystem] Grounded spawn point to terrain: Y=${spawnPoint.y}`);
+      }
+    }
     
-    // Create spawn data
-    const position = { x: player.node.position.x, y: player.node.position.y, z: player.node.position.z };
+    // 3. Emit Spawn Request for PlayerSystem to handle data and initial placement
+    this.emitTypedEvent(EventType.PLAYER_SPAWN_REQUEST, {
+      playerId: event.playerId,
+      position: spawnPoint,
+    });
     
+    // 4. Create spawn data for this system to track equipment/aggro state
     const spawnData: PlayerSpawnData = {
       playerId: event.playerId,
-      position: new THREE.Vector3(position.x, position.y, position.z),
+      position: new THREE.Vector3(spawnPoint.x, spawnPoint.y, spawnPoint.z),
       hasStarterEquipment: false,
       aggroTriggered: false,
       spawnTime: Date.now()
     };
-    
     this.spawnedPlayers.set(event.playerId, spawnData);
-    
-    // Start spawn sequence
-    this.spawnPlayerWithEquipment(event.playerId);
+
+    // 5. The rest of the spawn logic will proceed once PLAYER_SPAWN_COMPLETE is received
+    // This ensures player data is loaded and they are in the world before we equip items.
+    setTimeout(() => {
+      if (!this.spawnedPlayers.has(event.playerId)) {
+        this.world.emit('spawn_error', { playerId: event.playerId, reason: 'timeout' });
+      }
+    }, 5000);
   }
 
   /**
    * Spawn player with starter equipment
    */
   private async spawnPlayerWithEquipment(playerId: string): Promise<void> {
-    const spawnData = this.spawnedPlayers.get(playerId)!;
+    const spawnData = this.spawnedPlayers.get(playerId);
+    if (!spawnData) {
+      this.logger.warn(`[PlayerSpawnSystem] Player ${playerId} disconnected before equipment could be assigned`);
+      return;
+    }
       
       // First, register player with equipment system
       this.emitTypedEvent(EventType.PLAYER_REGISTERED, { playerId: playerId });
@@ -131,8 +220,19 @@ export class PlayerSpawnSystem extends SystemBase {
       // Wait a moment for systems to initialize
       await this.delay(100);
       
+      // Check again if player is still connected after delay
+      if (!this.spawnedPlayers.has(playerId)) {
+        this.logger.warn(`[PlayerSpawnSystem] Player ${playerId} disconnected during equipment initialization`);
+        return;
+      }
+      
       // Equip each starter item
       for (const item of this.STARTER_EQUIPMENT) {
+        // Check if player still exists before each equipment
+        if (!this.spawnedPlayers.has(playerId)) {
+          this.logger.warn(`[PlayerSpawnSystem] Player ${playerId} disconnected during equipment process`);
+          return;
+        }
         
         // Force equip the item (bypass inventory checks for starter equipment)
         this.emitTypedEvent(EventType.EQUIPMENT_EQUIP, {
@@ -145,11 +245,17 @@ export class PlayerSpawnSystem extends SystemBase {
         await this.delay(50);
       }
       
-      spawnData.hasStarterEquipment = true;
+      // Final check before setting the flag
+      const finalSpawnData = this.spawnedPlayers.get(playerId);
+      if (finalSpawnData) {
+        finalSpawnData.hasStarterEquipment = true;
+      }
       
       
-      // Trigger aggro after equipment is ready
-      this.triggerGoblinAggro(playerId);
+      // Trigger aggro after equipment is ready (only if player still exists)
+      if (this.spawnedPlayers.has(playerId)) {
+        this.triggerGoblinAggro(playerId);
+      }
       
       // Emit spawn complete event
       this.emitTypedEvent(EventType.PLAYER_SPAWNED, {
@@ -164,10 +270,14 @@ export class PlayerSpawnSystem extends SystemBase {
    * Trigger goblin aggro near player spawn
    */
   private triggerGoblinAggro(playerId: string): void {
-    const spawnData = this.spawnedPlayers.get(playerId)!;
-    if (spawnData.aggroTriggered) return;
+    const spawnData = this.spawnedPlayers.get(playerId);
+    if (!spawnData || spawnData.aggroTriggered) return;
     
-    const player = this.world.getPlayer(playerId)!;
+    const player = this.world.getPlayer(playerId);
+    if (!player) {
+      this.logger.warn(`[PlayerSpawnSystem] Player ${playerId} not found when triggering aggro`);
+      return;
+    }
     
     // Spawn a few goblins near the player for immediate combat
     const playerPos = player.node.position;

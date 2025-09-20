@@ -27,8 +27,8 @@ const HEALTH_WIDTH = 100 * RES
 const HEALTH_BORDER = 1.5 * RES
 const HEALTH_BORDER_RADIUS = 20 * RES
 
-const PER_ROW = 5
-const PER_COLUMN = 20
+const PER_ROW = 8
+const PER_COLUMN = 32
 const MAX_INSTANCES = PER_ROW * PER_COLUMN
 
 const defaultQuaternion = new THREE.Quaternion(0, 0, 0, 1)
@@ -285,6 +285,26 @@ export class Nametags extends SystemBase {
     this.mesh.instanceMatrix.needsUpdate = true
   }
 
+  private fitText(text: string, maxWidth: number): string {
+    // Measure text and truncate if needed
+    const metrics = this.ctx.measureText(text);
+    if (metrics.width <= maxWidth) {
+      return text;
+    }
+    
+    // Truncate and add ellipsis
+    let truncated = text;
+    while (truncated.length > 0) {
+      truncated = truncated.slice(0, -1);
+      const testText = truncated + '...';
+      const testMetrics = this.ctx.measureText(testText);
+      if (testMetrics.width <= maxWidth) {
+        return testText;
+      }
+    }
+    return '...';
+  }
+
   draw(nametag: Nametag) {
     const idx = nametag.idx
     const row = Math.floor(idx / PER_ROW)
@@ -337,27 +357,6 @@ export class Nametags extends SystemBase {
     }
     // update texture
     this.texture.needsUpdate = true
-  }
-
-  fitText(text: string, maxWidth: number): string {
-    // try full text
-    const width = this.ctx.measureText(text).width
-    if (width <= maxWidth) {
-      return text
-    }
-    // if too long, truncate with ellipsis
-    const ellipsis = '...'
-    let truncated = text
-    const ellipsisWidth = this.ctx.measureText(ellipsis).width
-    while (truncated.length > 0) {
-      truncated = truncated.slice(0, -1)
-      const truncatedWidth = this.ctx.measureText(truncated).width
-      if (truncatedWidth + ellipsisWidth <= maxWidth) {
-        return truncated + ellipsis
-      }
-    }
-    // fallback
-    return ellipsis
   }
 
   undraw(nametag: Nametag) {

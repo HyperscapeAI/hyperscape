@@ -68,12 +68,6 @@ export class ItemSpawnerSystem extends SystemBase {
     this.subscribe<{ position: { x: number; y: number; z: number }; lootTable: string[] }>(EventType.ITEM_SPAWN_LOOT, async (data) => await this.spawnLootItems(data));
   }
 
-  async start(): Promise<void> {
-    // Don't spawn items on startup to avoid memory issues
-    // Items will be spawned on-demand or when shops are accessed
-    this.logger.info('[ItemSpawnerSystem] Skipping automatic item spawning to conserve memory');
-  }
-
   private async spawnAllItemTypes(): Promise<void> {
     // Spawn shop items (tools and basic equipment)
     await this.spawnShopItems();
@@ -226,7 +220,7 @@ export class ItemSpawnerSystem extends SystemBase {
       interactionType: InteractionType.PICKUP,
       interactionDistance: 2,
       description: itemData.description || '',
-      model: itemData.modelPath || null,
+      model: null,
       properties: {
         // Base entity properties
         movementComponent: null,

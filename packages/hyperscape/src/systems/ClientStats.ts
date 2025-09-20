@@ -23,7 +23,6 @@ export class ClientStats extends SystemBase {
   pingHistorySize: number = 30
   maxPing: number = 0.01
   ping!: Panel
-  uiHidden: boolean = false
   
   constructor(world: World) {
     super(world, { name: 'client-stats', dependencies: { required: [], optional: [] }, autoCleanup: true })

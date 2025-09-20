@@ -501,7 +501,15 @@ async function main() {
   console.log(`Building Hyperscape in ${dev ? 'development' : 'production'} mode...`)
  
   if (!dev) {
-    await generateDeclarations()
+    if (typecheck) {
+      if (!serverOnly) {
+        await generateDeclarations()
+      } else {
+        console.log('Skipping declaration generation for server-only build')
+      }
+    } else {
+      console.log('Skipping declaration generation (no-typecheck)')
+    }
   } else {
     await runTypeCheck()
   }

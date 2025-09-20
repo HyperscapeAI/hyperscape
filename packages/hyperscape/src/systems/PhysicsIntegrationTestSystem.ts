@@ -114,7 +114,7 @@ interface TestResult {
   duration: number;
 }
 
-interface TestResults {
+interface _TestResults {
   scenarios: Array<{ name: string } & TestScenario>;
   results: Array<{ name: string } & TestResult>;
   objects: Array<{
@@ -865,31 +865,6 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
   }
 
   /**
-   * Get test results for external inspection
-   */
-  getTestResults(): TestResults {
-    return {
-      scenarios: Array.from(this.testScenarios.entries()).map(([key, value]) => ({
-        name: key,
-        ...value
-      })),
-      results: Array.from(this.testResults.entries()).map(([key, value]) => ({
-        name: key,
-        ...value
-      })),
-      objects: Array.from(this.physicsTestObjects.entries()).map(([key, value]) => ({
-        id: key,
-        type: (value.mesh.userData as PhysicsTestUserData | undefined)?.type || 'unknown',
-        position: { x: value.mesh.position.x, y: value.mesh.position.y, z: value.mesh.position.z }
-      })),
-      testScenarios: Array.from(this.testScenarios.entries()).map(([key, value]) => ({
-        name: key,
-        ...value
-      }))
-    };
-  }
-
-  /**
    * Clean up test objects
    */
   cleanup(): void {
@@ -923,6 +898,13 @@ export class PhysicsIntegrationTestSystem extends SystemBase {
 
   destroy(): void {
     this.cleanup();
+  }
+
+  getTestResults(): Array<{ name: string; passed: boolean; message: string; timestamp: number; duration: number }> {
+    return Array.from(this.testResults.entries()).map(([name, result]) => ({
+      name,
+      ...result
+    }));
   }
 
   // Required System lifecycle methods

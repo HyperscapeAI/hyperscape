@@ -7,7 +7,6 @@ const up = new THREE.Vector3(0, 1, 0)
 const v1 = new THREE.Vector3()
 
 export class ClientAudio extends System {
-  handles: Set<never>; // Unused but kept for potential future use
   ctx: AudioContext;
   masterGain: GainNode;
   groupGains: AudioGroupGains;
@@ -18,7 +17,6 @@ export class ClientAudio extends System {
 
   constructor(world: World) {
     super(world)
-    this.handles = new Set()
     this.ctx = new AudioContext() // new (window.AudioContext || window.webkitAudioContext)();
     this.masterGain = this.ctx.createGain()
     this.masterGain.connect(this.ctx.destination)
@@ -145,7 +143,6 @@ export class ClientAudio extends System {
     this.groupGains.voice.disconnect()
     this.masterGain.disconnect()
     this.ctx.close()
-    this.handles.clear()
     this.queue = []
   }
 }

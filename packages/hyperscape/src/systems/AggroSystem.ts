@@ -55,10 +55,6 @@ export class AggroSystem extends SystemBase {
     this.subscribe(EventType.COMBAT_STARTED, (data: { attackerId: string; targetId: string }) => {
       this.onCombatStarted({ attackerId: data.attackerId, targetId: data.targetId });
     });
-    // COMBAT_ENDED has no entity context in typed payload; ignore in this system
-    this.subscribe(EventType.COMBAT_ENDED, (_data: { sessionId: string; winnerId: string | null }) => {
-      // no-op
-    });
     this.subscribe(EventType.MOB_POSITION_UPDATED, (data: { mobId: string; position: Position3D }) => {
       this.updateMobPosition({ entityId: data.mobId, position: data.position });
     });
@@ -87,10 +83,11 @@ export class AggroSystem extends SystemBase {
   }
 
   private registerMob(mobData: { id: string; type: string; level: number; position: { x: number; y: number; z: number } }): void {
-    // Validate that type exists and is a string before calling toLowerCase()
-    if (!mobData.type || typeof mobData.type !== 'string') {
-      console.warn(`[AggroSystem] Invalid mob type for mob ${mobData.id}: ${mobData.type}. Full mobData:`, mobData);
-      return;
+    // Validate position data
+    if (!mobData.position || typeof mobData.position.x !== 'number' || 
+        typeof mobData.position.y !== 'number' || typeof mobData.position.z !== 'number') {
+      console.warn(`[AggroSystem] Invalid position for mob ${mobData.id}, using default position`);
+      mobData.position = { x: 0, y: 0, z: 0 };
     }
     
     const mobType = mobData.type.toLowerCase();
@@ -107,8 +104,16 @@ export class AggroSystem extends SystemBase {
       isChasing: false,
       isInCombat: false,
       currentTarget: null,
-      homePosition: { ...mobData.position },
-      currentPosition: { ...mobData.position },
+      homePosition: { 
+        x: mobData.position.x || 0,
+        y: mobData.position.y || 0,
+        z: mobData.position.z || 0
+      },
+      currentPosition: { 
+        x: mobData.position.x || 0,
+        y: mobData.position.y || 0,
+        z: mobData.position.z || 0
+      },
       detectionRange: behavior.detectionRange,
       leashRange: behavior.leashRange,
       chaseSpeed: 3.0, // Default chase speed
@@ -144,7 +149,17 @@ export class AggroSystem extends SystemBase {
   private updateMobPosition(data: { entityId: string; position: Position3D }): void {
     const mobState = this.mobStates.get(data.entityId);
     if (mobState) {
-      mobState.currentPosition = { ...data.position };
+      // Validate position before updating
+      if (data.position && typeof data.position.x === 'number' && 
+          typeof data.position.y === 'number' && typeof data.position.z === 'number') {
+        mobState.currentPosition = { 
+          x: data.position.x,
+          y: data.position.y,
+          z: data.position.z
+        };
+      } else {
+        console.warn(`[AggroSystem] Invalid position update for mob ${data.entityId}`, data.position);
+      }
     }
   }
 
@@ -284,7 +299,7 @@ export class AggroSystem extends SystemBase {
     // Emit chase end event
     this.emitTypedEvent(EventType.MOB_CHASE_ENDED, {
       mobId: mobState.mobId,
-      targetPlayerId: previousTarget as string
+      targetPlayerId: previousTarget || ''
     });
     
     // Start returning to home position
@@ -292,6 +307,14 @@ export class AggroSystem extends SystemBase {
   }
 
   private returnToHome(mobState: MobAIStateData): void {
+    // Validate positions before calculating distance
+    if (!mobState.currentPosition || !mobState.homePosition ||
+        typeof mobState.currentPosition.x !== 'number' || typeof mobState.currentPosition.y !== 'number' || typeof mobState.currentPosition.z !== 'number' ||
+        typeof mobState.homePosition.x !== 'number' || typeof mobState.homePosition.y !== 'number' || typeof mobState.homePosition.z !== 'number') {
+      console.warn(`[AggroSystem] Invalid positions for returnToHome for mob ${mobState.mobId}`);
+      return;
+    }
+    
     const homeDistance = calculateDistance(mobState.currentPosition, mobState.homePosition);
     
     if (homeDistance > 2.0) { // If away from home
@@ -316,6 +339,17 @@ export class AggroSystem extends SystemBase {
     for (const [_mobId, mobState] of this.mobStates) {
       // Skip if in combat - combat system handles behavior
       if (mobState.isInCombat) continue;
+      
+      // Validate positions before calculating distance
+      if (!mobState.currentPosition || !mobState.homePosition ||
+          typeof mobState.currentPosition.x !== 'number' || typeof mobState.currentPosition.y !== 'number' || typeof mobState.currentPosition.z !== 'number' ||
+          typeof mobState.homePosition.x !== 'number' || typeof mobState.homePosition.y !== 'number' || typeof mobState.homePosition.z !== 'number') {
+        console.warn(`[AggroSystem] Invalid positions for mob ${mobState.mobId}`, {
+          currentPosition: mobState.currentPosition,
+          homePosition: mobState.homePosition
+        });
+        continue;
+      }
       
       // Check leashing - if too far from home, return
       const homeDistance = calculateDistance(mobState.currentPosition, mobState.homePosition);
@@ -379,7 +413,15 @@ export class AggroSystem extends SystemBase {
     }
     
     const player = this.world.getPlayer(mobState.currentTarget)!;
-    
+
+    // Ensure player has valid position before calculating distance
+    if (!player.node?.position || typeof player.node.position.x !== 'number' ||
+        typeof player.node.position.y !== 'number' || typeof player.node.position.z !== 'number') {
+      console.warn(`[AggroSystem] Player ${player.id} has no valid node position`);
+      this.stopChasing(mobState);
+      return;
+    }
+
     const distance = calculateDistance(mobState.currentPosition, player.node.position);
     const aggroTarget = mobState.aggroTargets.get(mobState.currentTarget);
     
@@ -404,6 +446,11 @@ export class AggroSystem extends SystemBase {
         speed: mobState.chaseSpeed,
         reason: 'chase'
       });
+    } else if (!player.node?.position || typeof player.node.position.x !== 'number' ||
+               typeof player.node.position.y !== 'number' || typeof player.node.position.z !== 'number') {
+      console.warn(`[AggroSystem] Player ${player.id} has no valid node position for movement`);
+      this.stopChasing(mobState);
+      return;
     }
   }
 

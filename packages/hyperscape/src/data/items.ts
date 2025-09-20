@@ -26,7 +26,7 @@ function createItem(partial: Partial<Item> & Pick<Item, 'id' | 'name' | 'type'>)
     examine: `This is a ${partial.name?.toLowerCase() || 'item'}.`,
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: `/assets/models/items/${partial.id || 'default'}.glb`,
+    modelPath: `/assets/models/tools/bronze_hatchet.glb`,
     iconPath: `/icons/${partial.id || 'default'}.png`,
     healAmount: 0,
     stats: {
@@ -59,7 +59,7 @@ function createWeapon(partial: Partial<Item> & Pick<Item, 'id' | 'name'> & { wea
     stackable: false,
     maxStackSize: 1,
     weight: 2.0,
-    modelPath: `/assets/models/weapons/${partial.id}.glb`
+    modelPath: `/assets/models/tools/bronze_hatchet.glb`
   });
 }
 
@@ -136,7 +136,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is a legendary sword made of mithril.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/assets/models/weapons/mithril_sword.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/mithril_sword.png',
     healAmount: 0,
     stats: {
@@ -174,7 +174,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is a simple bow made of wood.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/assets/models/weapons/wood_bow.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/wood_bow.png',
     healAmount: 0,
     stats: {
@@ -211,7 +211,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is a sturdy bow made of oak.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/assets/models/weapons/oak_bow.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/oak_bow.png',
     healAmount: 0,
     stats: {
@@ -248,7 +248,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is a fine bow made of willow.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/assets/models/weapons/willow_bow.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/willow_bow.png',
     healAmount: 0,
     stats: {
@@ -286,7 +286,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is a basic shield made of bronze.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/assets/models/weapons/bronze_shield.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/bronze_shield.png',
     healAmount: 0,
     stats: {
@@ -323,7 +323,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is a sturdy shield made of steel.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/assets/models/weapons/steel_shield.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/steel_shield.png',
     healAmount: 0,
     stats: {
@@ -360,7 +360,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is a legendary shield made of mithril.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/assets/models/weapons/mithril_shield.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/mithril_shield.png',
     healAmount: 0,
     stats: {
@@ -398,7 +398,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is a basic helmet made of bronze.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/assets/models/armor/bronze_helmet.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/bronze_helmet.png',
     healAmount: 0,
     stats: {
@@ -435,7 +435,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is a sturdy helmet made of steel.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/assets/models/armor/steel_helmet.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/steel_helmet.png',
     healAmount: 0,
     stats: {
@@ -472,7 +472,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is a legendary helmet made of mithril.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/assets/models/armor/mithril_helmet.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/mithril_helmet.png',
     healAmount: 0,
     stats: {
@@ -510,7 +510,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is basic body armor made of bronze.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/assets/models/armor/bronze_body.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/bronze_body.png',
     healAmount: 0,
     stats: {
@@ -547,7 +547,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is sturdy body armor made of steel.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/assets/models/armor/steel_body.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/steel_body.png',
     healAmount: 0,
     stats: {
@@ -584,7 +584,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is legendary body armor made of mithril.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/armor/mithril_body.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/mithril_body.png',
     healAmount: 0,
     stats: {
@@ -622,7 +622,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is basic leg armor made of bronze.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/armor/bronze_legs.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/bronze_legs.png',
     healAmount: 0,
     stats: {
@@ -659,7 +659,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is sturdy leg armor made of steel.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/armor/steel_legs.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/steel_legs.png',
     healAmount: 0,
     stats: {
@@ -696,7 +696,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is legendary leg armor made of mithril.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/armor/mithril_legs.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/mithril_legs.png',
     healAmount: 0,
     stats: {
@@ -734,7 +734,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is a basic helmet made of leather.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/armor/leather_helmet.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/leather_helmet.png',
     healAmount: 0,
     stats: {
@@ -771,7 +771,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is a reinforced leather helmet.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/armor/hard_leather_helmet.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/hard_leather_helmet.png',
     healAmount: 0,
     stats: {
@@ -808,7 +808,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is a leather helmet reinforced with metal studs.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/armor/studded_leather_helmet.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/studded_leather_helmet.png',
     healAmount: 0,
     stats: {
@@ -846,7 +846,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is basic body armor made of leather.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/armor/leather_body.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/leather_body.png',
     healAmount: 0,
     stats: {
@@ -883,7 +883,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is reinforced leather body armor.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/armor/hard_leather_body.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/hard_leather_body.png',
     healAmount: 0,
     stats: {
@@ -920,7 +920,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is leather body armor reinforced with metal studs.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/armor/studded_leather_body.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/studded_leather_body.png',
     healAmount: 0,
     stats: {
@@ -958,7 +958,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is basic leg armor made of leather.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/armor/leather_legs.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/leather_legs.png',
     healAmount: 0,
     stats: {
@@ -995,7 +995,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is reinforced leather leg armor.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/armor/hard_leather_legs.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/hard_leather_legs.png',
     healAmount: 0,
     stats: {
@@ -1032,7 +1032,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is leather leg armor reinforced with metal studs.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/armor/studded_leather_legs.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/studded_leather_legs.png',
     healAmount: 0,
     stats: {
@@ -1070,7 +1070,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'These are basic arrows for bows.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/arrows/arrows.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/arrows.png',
     healAmount: 0,
     stats: {
@@ -1145,7 +1145,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is a basic fishing rod.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/tools/fishing_rod.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/fishing_rod.png',
     healAmount: 0,
     stats: {
@@ -1182,7 +1182,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is used to light fires.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/assets/models/tools/tinderbox.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/tinderbox.png',
     healAmount: 0,
     stats: {
@@ -1220,7 +1220,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'These are wood logs from trees.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/assets/models/resources/logs.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/logs.png',
     healAmount: 0,
     stats: {
@@ -1257,7 +1257,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'These are sturdy oak logs.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/resources/oak_logs.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/oak_logs.png',
     healAmount: 0,
     stats: {
@@ -1294,7 +1294,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'These are flexible willow logs.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/resources/willow_logs.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/willow_logs.png',
     healAmount: 0,
     stats: {
@@ -1332,7 +1332,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is a generic raw fish.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/resources/raw_fish.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/raw_fish.png',
     healAmount: 0,
     stats: {
@@ -1369,7 +1369,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is a generic cooked fish that heals 5 HP.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/consumables/cooked_fish.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/cooked_fish.png',
     healAmount: 5,
     stats: {
@@ -1407,7 +1407,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'These are fresh shrimps from the water.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/resources/raw_shrimps.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/raw_shrimps.png',
     healAmount: 0,
     stats: {
@@ -1444,7 +1444,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is a small but tasty fish.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/resources/raw_sardine.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/raw_sardine.png',
     healAmount: 0,
     stats: {
@@ -1481,7 +1481,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is a medium-sized freshwater fish.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/resources/raw_trout.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/raw_trout.png',
     healAmount: 0,
     stats: {
@@ -1518,7 +1518,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is a large and nutritious fish.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/resources/raw_salmon.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/raw_salmon.png',
     healAmount: 0,
     stats: {
@@ -1556,7 +1556,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'These are delicious cooked shrimps that heal 3 HP.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/consumables/cooked_shrimps.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/cooked_shrimps.png',
     healAmount: 3,
     stats: {
@@ -1593,7 +1593,7 @@ export const ITEMS: Map<string, Item> = new Map([
     examine: 'This is a well-cooked sardine that heals 4 HP.',
     tradeable: true,
     rarity: ItemRarity.COMMON,
-    modelPath: '/models/consumables/cooked_sardine.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/cooked_sardine.png',
     healAmount: 4,
     stats: {
@@ -1621,7 +1621,7 @@ export const ITEMS: Map<string, Item> = new Map([
     value: 25,
     weight: 0.3,
     healAmount: 7,
-    modelPath: '/models/consumables/cooked_trout.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/cooked_trout.png'
   })],
 
@@ -1633,7 +1633,7 @@ export const ITEMS: Map<string, Item> = new Map([
     value: 45,
     weight: 0.4,
     healAmount: 9,
-    modelPath: '/models/consumables/cooked_salmon.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/cooked_salmon.png'
   })],
 
@@ -1646,7 +1646,7 @@ export const ITEMS: Map<string, Item> = new Map([
     value: 1,
     weight: 0.1,
     healAmount: 0,
-    modelPath: '/models/consumables/burnt_shrimps.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/burnt_shrimps.png'
   })],
 
@@ -1658,7 +1658,7 @@ export const ITEMS: Map<string, Item> = new Map([
     value: 1,
     weight: 0.1,
     healAmount: 0,
-    modelPath: '/models/consumables/burnt_sardine.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/burnt_sardine.png'
   })],
 
@@ -1670,7 +1670,7 @@ export const ITEMS: Map<string, Item> = new Map([
     value: 1,
     weight: 0.1,
     healAmount: 0,
-    modelPath: '/models/consumables/burnt_trout.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/burnt_trout.png'
   })],
 
@@ -1682,7 +1682,7 @@ export const ITEMS: Map<string, Item> = new Map([
     value: 1,
     weight: 0.1,
     healAmount: 0,
-    modelPath: '/models/consumables/burnt_salmon.glb',
+    modelPath: '/assets/models/tools/bronze_hatchet.glb',
     iconPath: '/icons/burnt_salmon.png'
   })]
 ])

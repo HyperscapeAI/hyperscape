@@ -19,7 +19,7 @@ declare global {
   }
 }
 
-export function useFullscreen(targetRef: React.RefObject<HTMLElement>) {
+export function useFullscreen(targetRef: React.RefObject<HTMLElement>): [boolean, boolean, (value?: boolean) => void] {
   const [enabled, setEnabled] = useState(false)
 
   const supported = useMemo(() => {

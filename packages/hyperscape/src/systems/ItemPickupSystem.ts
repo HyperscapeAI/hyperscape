@@ -44,9 +44,6 @@ export class ItemPickupSystem extends SystemBase {
     this.subscribe<ItemPickupPayload>(EventType.ITEM_PICKUP, (data) => this.handleItemPickup(data));
     this.subscribe<ItemPickupRequestPayload>(EventType.ITEM_PICKUP_REQUEST, (data) => this.handlePickupRequest(data));
     
-    // Listen for player events
-    this.subscribe<PlayerEnterPayload>(EventType.PLAYER_JOINED, (data) => this.handlePlayerJoin(data));
-    this.subscribe<PlayerLeavePayload>(EventType.PLAYER_LEFT, (data) => this.handlePlayerLeave(data));
   }
 
 
@@ -192,6 +189,22 @@ export class ItemPickupSystem extends SystemBase {
   }
 
   /**
+   * Handle player join event
+   */
+  private handlePlayerJoin(event: PlayerEnterPayload): void {
+    // Player joined - could track player for item proximity checks
+    console.log(`[ItemPickupSystem] Player joined: ${event.playerId}`);
+  }
+
+  /**
+   * Handle player leave event
+   */
+  private handlePlayerLeave(event: PlayerLeavePayload): void {
+    // Player left - clean up any player-specific item data
+    console.log(`[ItemPickupSystem] Player left: ${event.playerId}`);
+  }
+
+  /**
    * Handle pickup request from player interaction
    */
   private handlePickupRequest(event: ItemPickupRequestPayload): void {
@@ -270,26 +283,6 @@ export class ItemPickupSystem extends SystemBase {
     
     // Remove from tracking
     this.groundItems.delete(itemId);
-  }
-
-  /**
-   * Handle player join
-   */
-  private handlePlayerJoin(_event: PlayerEnterPayload): void {
-    // Send existing ground items to new player
-    for (const [itemId, groundItem] of this.groundItems) {
-      this.emit(EventType.ITEM_SPAWNED, {
-        itemId: itemId,
-        position: groundItem.position
-      });
-    }
-  }
-
-  /**
-   * Handle player leave
-   */
-  private handlePlayerLeave(_event: PlayerLeavePayload): void {
-    // No specific cleanup needed for pickup system
   }
 
   /**

@@ -180,24 +180,25 @@ export class TestPhysicsCube extends SystemBase {
   }
 
   private clearAllCubes(): void {
-    for (const [cubeId, cubeData] of this.testCubes.entries()) {
-      // Remove from 3D world
-      this.world.stage.scene.remove(cubeData.mesh);
-      
-      // Unregister physics if it had any
-      if (cubeData.data.hasPhysics) {
-        this.emitTypedEvent(EventType.PHYSICS_UNREGISTER, {
-          entityId: cubeId
-        });
+    for (const cubeId of this.testCubes.keys()) {
+      const cube = this.testCubes.get(cubeId);
+      if (cube) {
+        if (cube.mesh.parent) {
+          cube.mesh.parent.remove(cube.mesh);
+        }
+        cube.mesh.geometry.dispose();
+        (cube.mesh.material as THREE.Material).dispose();
       }
     }
-    
     this.testCubes.clear();
   }
 
-  // Public API
-  getTestCubes(): Map<string, StoredCube> {
-    return this.testCubes;
+  getTestCubes(): Array<{ id: string; position: { x: number; y: number; z: number }; color: number }> {
+    return Array.from(this.testCubes.entries()).map(([id, storedCube]) => ({
+      id,
+      position: storedCube.data.position,
+      color: storedCube.data.color
+    }));
   }
 
   getCubeCount(): number {
@@ -205,6 +206,7 @@ export class TestPhysicsCube extends SystemBase {
   }
 
   spawnRandomCube(): string | null {
+    if (this.testCubes.size >= 50) return null;
     const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
     const randomColor = colors[Math.floor(Math.random() * colors.length)];
     

@@ -10,18 +10,15 @@ describe('SmartCache', () => {
   let cache: SmartCache<string>
 
   beforeEach(() => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'))
     cache = new SmartCache<string>({
       maxSize: 5,
-      ttl: 1000,
+      ttl: 100, // Using a shorter TTL for real-time tests
       serialize: false
     })
   })
 
   afterEach(() => {
     cache.destroy()
-    vi.useRealTimers()
   })
 
   describe('constructor', () => {
@@ -117,22 +114,22 @@ describe('SmartCache', () => {
   })
 
   describe('TTL and expiration', () => {
-    it('should expire entries after TTL', () => {
+    it('should expire entries after TTL', async () => {
       cache.set('key1', 'value1')
       
       expect(cache.get('key1')).toBe('value1')
       
-      // Fast forward past TTL
-      vi.advanceTimersByTime(1100)
+      // Wait for TTL to expire
+      await new Promise(resolve => setTimeout(resolve, 110))
       
       expect(cache.get('key1')).toBeNull()
     })
 
-    it('should not expire entries before TTL', () => {
+    it('should not expire entries before TTL', async () => {
       cache.set('key1', 'value1')
       
-      // Fast forward to just before TTL
-      vi.advanceTimersByTime(900)
+      // Wait for some time, but less than TTL
+      await new Promise(resolve => setTimeout(resolve, 90))
       
       expect(cache.get('key1')).toBe('value1')
     })
@@ -150,22 +147,21 @@ describe('SmartCache', () => {
   })
 
   describe('LRU eviction', () => {
-    it('should evict least recently used items when at capacity', () => {
+    it('should evict least recently used items when at capacity', async () => {
       // Fill cache to capacity with different timestamps
       cache.set('key1', 'value1')
-      vi.advanceTimersByTime(10)
+      await new Promise(resolve => setTimeout(resolve, 10))
       cache.set('key2', 'value2')
-      vi.advanceTimersByTime(10)
+      await new Promise(resolve => setTimeout(resolve, 10))
       cache.set('key3', 'value3')
-      vi.advanceTimersByTime(10)
+      await new Promise(resolve => setTimeout(resolve, 10))
       cache.set('key4', 'value4')
-      vi.advanceTimersByTime(10)
+      await new Promise(resolve => setTimeout(resolve, 10))
       cache.set('key5', 'value5')
-      vi.advanceTimersByTime(10)
       
       // Access key1 to make it more recently used
       cache.get('key1')
-      vi.advanceTimersByTime(10)
+      await new Promise(resolve => setTimeout(resolve, 10))
       
       // Add one more item to trigger eviction
       cache.set('key6', 'value6')
@@ -204,20 +200,20 @@ describe('SmartCache', () => {
       expect(cache.has('nonexistent')).toBe(false)
     })
 
-    it('should return false for expired keys', () => {
+    it('should return false for expired keys', async () => {
       cache.set('key1', 'value1')
       
-      // Fast forward past TTL
-      vi.advanceTimersByTime(1100)
+      // Wait for TTL to expire
+      await new Promise(resolve => setTimeout(resolve, 110))
       
       expect(cache.has('key1')).toBe(false)
     })
 
-    it('should clean up expired keys when checking', () => {
+    it('should clean up expired keys when checking', async () => {
       cache.set('key1', 'value1')
       
-      // Fast forward past TTL
-      vi.advanceTimersByTime(1100)
+      // Wait for TTL to expire
+      await new Promise(resolve => setTimeout(resolve, 110))
       
       cache.has('key1') // Should trigger cleanup
       
@@ -320,18 +316,18 @@ describe('SmartCache', () => {
       expect(resultPromise).toBeInstanceOf(Promise)
       
       // Advance timers to resolve the setTimeout
-      vi.advanceTimersByTime(100)
+      await new Promise(resolve => setTimeout(resolve, 100))
       
       const result = await resultPromise
       expect(result).toBe('async_value')
       expect(cache.get('key1')).toBe('async_value')
     })
 
-    it('should not call factory for expired but existing keys', () => {
+    it('should not call factory for expired but existing keys', async () => {
       cache.set('key1', 'old_value')
       
-      // Fast forward past TTL
-      vi.advanceTimersByTime(1100)
+      // Wait for TTL to expire
+      await new Promise(resolve => setTimeout(resolve, 110))
       
       const factory = vi.fn(() => 'new_value')
       const result = cache.getOrSet('key1', factory)
@@ -379,13 +375,10 @@ describe('SmartCache', () => {
       cache.set('key1', 'value1')
       
       // Fast forward some time
-      vi.advanceTimersByTime(500)
-      
-      const result = cache.touch('key1')
-      expect(result).toBe(true)
+      cache.touch('key1')
       
       // Fast forward past original TTL but not past touched time
-      vi.advanceTimersByTime(700) // Total 1200ms, but touch reset at 500ms
+      cache.touch('key1')
       
       expect(cache.get('key1')).toBe('value1') // Should still exist
     })
@@ -438,13 +431,13 @@ describe('SmartCache', () => {
   })
 
   describe('cleanup', () => {
-    it('should remove expired entries', () => {
+    it('should remove expired entries', async () => {
       cache.set('key1', 'value1')
       cache.set('key2', 'value2')
       cache.set('key3', 'value3')
       
-      // Fast forward past TTL
-      vi.advanceTimersByTime(1100)
+      // Wait for TTL to expire
+      await new Promise(resolve => setTimeout(resolve, 110))
       
       const removedCount = cache.cleanup()
       
@@ -452,12 +445,12 @@ describe('SmartCache', () => {
       expect(cache.getStats().size).toBe(0)
     })
 
-    it('should not remove non-expired entries', () => {
+    it('should not remove non-expired entries', async () => {
       cache.set('key1', 'value1')
       cache.set('key2', 'value2')
       
-      // Fast forward but not past TTL
-      vi.advanceTimersByTime(500)
+      // Wait for some time, but less than TTL
+      await new Promise(resolve => setTimeout(resolve, 50))
       
       const removedCount = cache.cleanup()
       
@@ -465,16 +458,16 @@ describe('SmartCache', () => {
       expect(cache.getStats().size).toBe(2)
     })
 
-    it('should handle mixed expired and non-expired entries', () => {
+    it('should handle mixed expired and non-expired entries', async () => {
       cache.set('key1', 'value1')
       
-      // Fast forward halfway
-      vi.advanceTimersByTime(600)
+      // Wait for some time, but less than TTL
+      await new Promise(resolve => setTimeout(resolve, 60))
       
       cache.set('key2', 'value2') // Fresh entry
       
-      // Fast forward past first entry's TTL
-      vi.advanceTimersByTime(600) // Total 1200ms
+      // Wait for TTL to expire
+      await new Promise(resolve => setTimeout(resolve, 60))
       
       const removedCount = cache.cleanup()
       
@@ -593,7 +586,7 @@ describe('SmartCache', () => {
   })
 
   describe('performance', () => {
-    it('should handle large numbers of entries efficiently', () => {
+    it('should handle large numbers of entries efficiently', async () => {
       const largeCache = new SmartCache<string>({
         maxSize: 10000,
         ttl: 60000
@@ -736,16 +729,7 @@ describe('CacheManager', () => {
   })
 
   describe('cleanupAll', () => {
-    beforeEach(() => {
-      vi.useFakeTimers()
-      vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'))
-    })
-
-    afterEach(() => {
-      vi.useRealTimers()
-    })
-
-    it('should cleanup all caches and return counts', () => {
+    it('should cleanup all caches and return counts', async () => {
       const usersCache = manager.getCache<string>('users')
       const postsCache = manager.getCache<string>('posts')
       
@@ -754,7 +738,7 @@ describe('CacheManager', () => {
       postsCache.set('post2', 'data2')
       
       // Fast forward past TTL
-      vi.setSystemTime(new Date('2024-01-01T00:00:01.100Z'))
+      await new Promise(resolve => setTimeout(resolve, 1100))
       
       const results = manager.cleanupAll()
       

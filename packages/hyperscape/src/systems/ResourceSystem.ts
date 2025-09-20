@@ -113,12 +113,8 @@ export class ResourceSystem extends SystemBase {
   }
 
   start(): void {
-    // Gathering progress is updated via system lifecycle methods
-  }
-
-  // Add lifecycle method for gathering updates
-  update(): void {
-    this.updateGathering();
+    // Start listening to gathering events
+    this.createInterval(() => this.updateGathering(), 500); // Check every 500ms
   }
 
   /**
@@ -163,6 +159,8 @@ export class ResourceSystem extends SystemBase {
         
       case 'rock':
       case 'ore':
+      case 'gem':
+      case 'rare_ore':
         skillRequired = 'mining';
         toolRequired = 'bronze_pickaxe'; // Bronze Pickaxe
         respawnTime = 120000; // 2 minute respawn
@@ -181,7 +179,7 @@ export class ResourceSystem extends SystemBase {
     }
     
     const resourceType: 'tree' | 'fishing_spot' | 'ore' | 'herb_patch' = 
-      type === 'rock' ? 'ore' : 
+      (type === 'rock' || type === 'ore' || type === 'gem' || type === 'rare_ore') ? 'ore' : 
       type === 'fish' ? 'fishing_spot' : 
       type === 'herb' ? 'herb_patch' :
       'tree';

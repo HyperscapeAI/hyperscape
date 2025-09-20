@@ -56,7 +56,6 @@ export class LootDropTestSystem extends VisualTestFramework {
     // Listen for loot events from both mob systems using proper event bus subscription
     this.subscribe<{ mobId: string; mobType: string; level: number; killedBy: string; position: { x: number; y: number; z: number } }>(EventType.MOB_DIED, (data) => this.handleMobDeath(data));
     this.subscribe<{ itemId: string; position: { x: number; y: number; z: number } }>(EventType.LOOT_DROPPED, (data) => this.handleLootDropped(data));
-    this.subscribe<{ playerId: string; itemId: string }>(EventType.ITEM_PICKUP, (data) => this.handlePickupRequest(data));
     this.subscribe<{ playerId: string; item: { id: string; name: string; stackable?: boolean; quantity?: number } }>(EventType.INVENTORY_ITEM_ADDED, (data) => this.handleInventoryAdd(data));
     // Allow tests to be triggered explicitly
     this.subscribe(EventType.TEST_RUN_ALL, () => this.runAllTests());
@@ -67,6 +66,12 @@ export class LootDropTestSystem extends VisualTestFramework {
   start(): void {
     // Auto-run once on start
     this.runAllTests();
+  }
+
+  private handlePickupRequest(data: { playerId: string; itemId: string }): void {
+    // Handle item pickup request for testing
+    console.log(`[LootDropTestSystem] Pickup request from ${data.playerId} for item ${data.itemId}`);
+    // Could track pickup attempts for test validation
   }
 
   protected createTestStations(): void {
@@ -640,9 +645,6 @@ export class LootDropTestSystem extends VisualTestFramework {
         break;
       }
     }
-  }
-
-  private handlePickupRequest(_data: { playerId: string; itemId: string }): void {
   }
 
   private handleInventoryAdd(data: { playerId: string; item: { id: string; name: string; stackable?: boolean; quantity?: number } }): void {

@@ -19,10 +19,7 @@ export class ServerEnvironment extends System {
   }
 
   async start() {
-    if ('on' in this.world.settings) {
-      // Assume on method exists on settings
-      (this.world.settings as { on: (event: string, handler: (changes: Record<string, unknown>) => void) => void }).on('change', this.onSettingsChange)
-    }
+    this.world.settings?.on('change', this.onSettingsChange)
     // Load initial environment model
     await this.updateModel()
   }

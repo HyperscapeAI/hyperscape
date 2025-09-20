@@ -193,7 +193,7 @@ describe('SystemUtils', () => {
     })
 
     it('should throw error when getSystem returns null', () => {
-      vi.mocked(mockWorld.getSystem).mockReturnValue(undefined)
+      vi.spyOn(mockWorld, 'getSystem').mockReturnValue(undefined)
       
       expect(() => requireSystem(mockWorld, 'test-system'))
         .toThrow("Required system 'test-system' not found in world")

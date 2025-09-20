@@ -1,5 +1,4 @@
 import { ITEMS } from '../data/items'
-import type { CombatBonuses, ItemBonuses } from '../types/core'
 import {
   EquipmentRow,
   EquipmentSaveItem,
@@ -13,53 +12,6 @@ import {
 } from '../types/database'
 import type { World } from '../types/index'
 import { SystemBase } from './SystemBase'
-import path from 'node:path'
-import fs from 'fs-extra'
-// Helper functions to extract bonuses from either simple or complex bonus structures
-function getAttackBonus(bonuses: ItemBonuses | CombatBonuses | null | undefined): number {
-  if (!bonuses) return 0
-
-  // Check if it has simple ItemBonuses structure
-  if ('attack' in bonuses && typeof bonuses.attack === 'number') {
-    return bonuses.attack
-  }
-
-  // Check if it has CombatBonuses structure - use the highest attack value
-  const combatBonuses = bonuses as CombatBonuses
-  const attackValues = [combatBonuses.attackStab || 0, combatBonuses.attackSlash || 0, combatBonuses.attackCrush || 0]
-  return Math.max(...attackValues)
-}
-
-function getDefenseBonus(bonuses: ItemBonuses | CombatBonuses | null | undefined): number {
-  if (!bonuses) return 0
-
-  // Check if it has simple ItemBonuses structure
-  if ('defense' in bonuses && typeof bonuses.defense === 'number') {
-    return bonuses.defense
-  }
-
-  // Check if it has CombatBonuses structure - use the highest defense value
-  const combatBonuses = bonuses as CombatBonuses
-  const defenseValues = [
-    combatBonuses.defenseStab || 0,
-    combatBonuses.defenseSlash || 0,
-    combatBonuses.defenseCrush || 0,
-  ]
-  return Math.max(...defenseValues)
-}
-
-function getRangedBonus(bonuses: ItemBonuses | CombatBonuses | null | undefined): number {
-  if (!bonuses) return 0
-
-  // Check if it has simple ItemBonuses structure
-  if ('ranged' in bonuses && typeof bonuses.ranged === 'number') {
-    return bonuses.ranged
-  }
-
-  // Check if it has CombatBonuses structure
-  const combatBonuses = bonuses as CombatBonuses
-  return combatBonuses.attackRanged || 0
-}
 
 export class DatabaseSystem extends SystemBase {
   private db: SQLiteDatabase | null = null
@@ -85,16 +37,8 @@ export class DatabaseSystem extends SystemBase {
     // Use appropriate database path based on environment
     const serverWorld = this.world as { isServer?: boolean }
     if (serverWorld.isServer) {
-      const envWorld = process.env['WORLD'] || 'world'
-      const worldDir = path.isAbsolute(envWorld) ? envWorld : path.join(process.cwd(), envWorld)
-      // Ensure the world directory exists before opening the database
-      try {
-        fs.ensureDirSync(worldDir)
-      } catch (_err) {
-        // best effort; opening DB will throw if still missing
-      }
-      // Align DB filename with server usage
-      this.dbPath = path.join(worldDir, 'db.sqlite')
+      // Will be resolved in initializeDependencies() with dynamic imports
+      this.dbPath = 'world/db.sqlite'
     } else {
       this.dbPath = ':memory:'
     }
@@ -103,6 +47,33 @@ export class DatabaseSystem extends SystemBase {
   private async initializeDependencies(): Promise<void> {
     const serverWorld = this.world as { isServer?: boolean }
     if (serverWorld.isServer) {
+      // Dynamically import Node.js modules only for server
+      const fs = await import('fs-extra')
+      const path = await import('node:path')
+      
+      // Set up the proper database path
+      const envWorld = process.env['WORLD'] || 'world'
+      const worldDir = path.isAbsolute(envWorld) ? envWorld : path.join(process.cwd(), envWorld)
+      
+      // Ensure the world directory exists before opening the database
+      try {
+        fs.ensureDirSync(worldDir)
+      } catch (_err) {
+        // best effort; opening DB will throw if still missing
+      }
+      
+      // Align DB filename with server usage
+      this.dbPath = path.join(worldDir, 'db.sqlite')
+      
+      // Check if there's an existing raw database connection we can reuse
+      const worldWithRawDb = this.world as { rawDb?: SQLiteDatabase }
+      if (worldWithRawDb.rawDb) {
+        // Reuse the existing raw database connection from the world
+        this.db = worldWithRawDb.rawDb
+        console.log('DatabaseSystem', 'Reusing existing raw database connection from world')
+        return
+      }
+
       const isBun = typeof process !== 'undefined' && !!(process as unknown as { versions?: { bun?: string } }).versions?.bun
       // Ensure directory still exists (in case constructor path resolution changed)
       try {
@@ -163,7 +134,13 @@ export class DatabaseSystem extends SystemBase {
         this.db.pragma('journal_mode = WAL')
         this.db.pragma('synchronous = NORMAL')
         this.db.pragma('foreign_keys = ON')
-        console.log('DatabaseSystem', 'Initialized SQLite via bun:sqlite')
+        this.db.pragma('busy_timeout = 5000')
+        
+        // Store the raw database connection on the world for sharing
+        const worldToShare = this.world as { rawDb?: SQLiteDatabase }
+        worldToShare.rawDb = adapter
+        
+        console.log('DatabaseSystem', 'Initialized SQLite via bun:sqlite with WAL mode')
       } else {
         // Node.js runtime: use better-sqlite3
         const better = (await import('better-sqlite3')) as unknown as { default?: new (path: string) => unknown } & (new (path: string) => unknown)
@@ -217,7 +194,13 @@ export class DatabaseSystem extends SystemBase {
         this.db.pragma('journal_mode', 'WAL')
         this.db.pragma('synchronous', 'NORMAL')
         this.db.pragma('foreign_keys', 'ON')
-        console.log('DatabaseSystem', 'Initialized SQLite via better-sqlite3')
+        this.db.pragma('busy_timeout', 5000)
+        
+        // Store the raw database connection on the world for sharing
+        const worldToShare = this.world as { rawDb?: SQLiteDatabase }
+        worldToShare.rawDb = adapter
+        
+        console.log('DatabaseSystem', 'Initialized SQLite via better-sqlite3 with WAL mode')
       }
     } else {
       console.warn('DatabaseSystem', 'Running on client - creating mock database')
@@ -275,7 +258,7 @@ export class DatabaseSystem extends SystemBase {
     if (this.db) {
       try {
         // Close database connection if method exists
-        if ('close' in this.db && typeof this.db.close === 'function') {
+        if ('close' in this.db) {
           this.db.close()
         }
         console.log('DatabaseSystem', 'Database connection closed')
@@ -494,9 +477,9 @@ export class DatabaseSystem extends SystemBase {
           attackLevel: item.requirements?.skills?.attack || null,
           defenseLevel: item.requirements?.skills?.defense || null,
           rangedLevel: item.requirements?.skills?.ranged || null,
-          attackBonus: getAttackBonus(item.bonuses),
-          defenseBonus: getDefenseBonus(item.bonuses),
-          rangedBonus: getRangedBonus(item.bonuses),
+          attackBonus: item.bonuses?.attack || 0,
+          defenseBonus: item.bonuses?.defense || 0,
+          rangedBonus: item.bonuses?.ranged || 0,
           heals: item.healAmount || null,
         }))
 

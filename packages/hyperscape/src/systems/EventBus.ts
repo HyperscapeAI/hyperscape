@@ -208,32 +208,6 @@ export class EventBus extends EventEmitter {
     this.eventHistory.length = 0;
     this.removeAllListeners();
   }
-
-  /**
-   * Get system performance metrics
-   */
-  getMetrics(): {
-    activeSubscriptions: number;
-    totalEventsEmitted: number;
-    eventTypeCounts: Record<string, number>;
-    averageEventsPerSecond: number;
-  } {
-    const now = Date.now();
-    const oneSecondAgo = now - 1000;
-    const recentEvents = this.eventHistory.filter(event => event.timestamp > oneSecondAgo);
-    
-    const eventTypeCounts: Record<string, number> = {};
-    this.eventHistory.forEach(event => {
-      eventTypeCounts[event.type] = (eventTypeCounts[event.type] || 0) + 1;
-    });
-
-    return {
-      activeSubscriptions: this.activeSubscriptions.size,
-      totalEventsEmitted: this.eventHistory.length,
-      eventTypeCounts,
-      averageEventsPerSecond: recentEvents.length
-    };
-  }
 }
 
 export type { SystemEvent, EventHandler, EventSubscription };

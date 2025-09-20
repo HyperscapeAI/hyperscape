@@ -28,7 +28,7 @@ export class PlayerEntity extends CombatantEntity {
   // Player-specific UI elements (nameTag, healthBar now in Entity)
   private staminaBarUI: THREE.Sprite | null = null;
 
-  constructor(world: World, data: PlayerEntityData) {
+  constructor(world: World, data: PlayerEntityData, local?: boolean) {
     // Convert PlayerEntityData to CombatantConfig format
     const config: CombatantConfig = {
       id: data.id,
@@ -179,10 +179,26 @@ export class PlayerEntity extends CombatantEntity {
       }
     };
     
-    super(world, config);
+    super(world, config, local);
     // Ensure type is serialized as string 'player' for client-side entity construction
     this.type = 'player';
     (this.data as { type?: string }).type = 'player';
+    
+    // CRITICAL: Set owner field for network identification
+    if (data.owner !== undefined) {
+      (this.data as any).owner = data.owner;
+    }
+    
+    // Also preserve other network/identity fields
+    if (data.userId !== undefined) {
+      (this.data as any).userId = data.userId;
+    }
+    if (data.avatar !== undefined) {
+      (this.data as any).avatar = data.avatar;
+    }
+    if (data.sessionAvatar !== undefined) {
+      (this.data as any).sessionAvatar = data.sessionAvatar;
+    }
     
     // Initialize player-specific properties
     this.playerId = data.playerId || data.id;

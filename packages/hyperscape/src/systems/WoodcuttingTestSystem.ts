@@ -50,38 +50,6 @@ export class WoodcuttingTestSystem extends VisualTestFramework {
     super(world)
   }
 
-  // Override createPlayer to emit SKILLS_UPDATED events for reactive patterns
-  protected createPlayer(config: {
-    id: string;
-    name: string;
-    position: { x: number; y: number; z: number };
-    stats?: Record<string, number>;
-  }): PlayerEntity {
-    const player = super.createPlayer(config);
-
-    // Emit SKILLS_UPDATED event for reactive patterns
-    if (config.stats) {
-      const skills: Record<string, { level: number; xp: number }> = {};
-      
-      // Convert stats to skills format (assuming level-based skills)
-      Object.entries(config.stats).forEach(([skill, level]) => {
-        if (typeof level === 'number' && skill !== 'health' && skill !== 'maxHealth') {
-          const xp = level > 1 ? Math.pow(level - 1, 2) * 75 : 0; // Reverse calculate XP from level
-          skills[skill] = { level, xp };
-        }
-      });
-
-      if (Object.keys(skills).length > 0) {
-        this.emitTypedEvent(EventType.SKILLS_UPDATED, {
-          playerId: player.id,
-          skills
-        });
-      }
-    }
-
-    return player;
-  }
-
   async init(): Promise<void> {
     await super.init()
 

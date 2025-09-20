@@ -203,4 +203,32 @@ export class MetricsCollector {
   setLogFrequentMetrics(enabled: boolean): void {
     this.logFrequentMetrics = enabled;
   }
+
+  /**
+   * Record a gauge metric value
+   */
+  gauge(name: string, value: number): void {
+    // Store gauge values in performance metrics
+    if (name === 'memory_usage_mb') {
+      this.performanceMetrics.memoryUsage = value * 1024 * 1024; // Convert MB to bytes
+    }
+    // Could add more gauge types here
+    if (this.logFrequentMetrics) {
+      console.log(`[MetricsCollector] Gauge ${name}: ${value}`);
+    }
+  }
+
+  /**
+   * Shutdown the metrics collector
+   */
+  shutdown(): void {
+    // Clean up any resources, reset metrics if needed
+    if (this.logFrequentMetrics) {
+      console.log('[MetricsCollector] Shutting down metrics collection');
+    }
+    // Reset start times
+    this.renderStartTime = 0;
+    this.physicsStartTime = 0;
+    this.systemStartTime = 0;
+  }
 }

@@ -48,9 +48,6 @@ export class EntityCullingSystem extends SystemBase {
     this.subscribe(EventType.ENTITY_DEATH, (data: { entityId: string }) => this.onEntityDestroyed(data));
   }
   
-  start(): void {
-  }
-  
   update(_dt: number): void {
     const now = Date.now();
     

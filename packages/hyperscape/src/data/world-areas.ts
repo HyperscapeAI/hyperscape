@@ -585,16 +585,6 @@ export function getSafeZones(): WorldArea[] {
   return Object.values(ALL_WORLD_AREAS).filter(area => area.safeZone);
 }
 
-export function getAreaAtPosition(x: number, z: number): WorldArea | null {
-  for (const area of Object.values(ALL_WORLD_AREAS)) {
-    if (x >= area.bounds.minX && x <= area.bounds.maxX &&
-        z >= area.bounds.minZ && z <= area.bounds.maxZ) {
-      return area;
-    }
-  }
-  return null;
-}
-
 export function getConnectedAreas(areaId: string): WorldArea[] {
   const area = getAreaById(areaId);
   if (!area) return [];
@@ -623,9 +613,9 @@ export function getMobSpawnsInArea(areaId: string): MobSpawnPoint[] {
  * Player Spawn Points for Random Assignment
  */
 export const PLAYER_SPAWN_POINTS: WorldPosition[] = [
-  { x: 0, y: 1, z: 0 },     // Lumbridge center
-  { x: 100, y: 1, z: 0 },   // Draynor center  
-  { x: -100, y: 1, z: 100 } // Falador center
+  { x: 0, y: 50, z: 0 },     // Lumbridge center - Y will be grounded to terrain
+  { x: 100, y: 50, z: 0 },   // Draynor center - Y will be grounded to terrain
+  { x: -100, y: 50, z: 100 } // Falador center - Y will be grounded to terrain
 ];
 
 export function getRandomSpawnPoint(): WorldPosition {

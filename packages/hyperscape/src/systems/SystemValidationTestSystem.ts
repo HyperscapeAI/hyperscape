@@ -154,67 +154,6 @@ export class SystemValidationTestSystem extends SystemBase {
     });
   }
 
-  // Test specific system integrations
-  private testSystemIntegrations(): void {
-    
-    // Test Equipment <-> Item Pickup integration
-    this.testEquipmentItemPickupIntegration();
-    
-    // Test Loot <-> Combat integration
-    this.testLootCombatIntegration();
-    
-    // Test Inventory <-> Equipment integration
-    this.testInventoryEquipmentIntegration();
-  }
-
-  private testEquipmentItemPickupIntegration(): void {
-    // Test event flow: drop item -> pickup item -> equip item
-    this.emitTypedEvent(EventType.ITEM_DROP, {
-      itemId: 'test_sword',
-      position: { x: 0, y: 0, z: 0 },
-      playerId: 'test_player'
-    });
-    
-    this.emitTypedEvent(EventType.ITEM_PICKUP, {
-      itemId: 'test_sword',
-      playerId: 'test_player'
-    });
-    
-    this.emitTypedEvent(EventType.EQUIPMENT_EQUIP, {
-      itemId: 'test_sword',
-      playerId: 'test_player'
-    });
-  }
-
-  private testLootCombatIntegration(): void {
-    // Test event flow: mob death -> loot drop
-    this.emitTypedEvent(EventType.MOB_DIED, {
-      mobId: 'test_goblin',
-      mobType: 'goblin',
-      position: { x: 5, y: 0, z: 5 },
-      killedBy: 'test_player'
-    });
-  }
-
-  private testInventoryEquipmentIntegration(): void {
-    // Test event flow: add item to inventory -> equip from inventory
-    this.emitTypedEvent(EventType.INVENTORY_ITEM_ADDED, {
-      playerId: 'test_player',
-      item: {
-        id: 'test_player_test_helmet_validation',
-        itemId: 'test_helmet',
-        quantity: 1,
-        slot: 0, // Will be handled by inventory system
-        metadata: null
-      }
-    });
-    
-    this.emitTypedEvent(EventType.EQUIPMENT_EQUIP, {
-      itemId: 'test_helmet',
-      playerId: 'test_player'
-    });
-  }
-
   /**
    * Get current system rating based on test performance
    */

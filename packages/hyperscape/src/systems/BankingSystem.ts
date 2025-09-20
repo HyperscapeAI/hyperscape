@@ -208,50 +208,61 @@ export class BankingSystem extends SystemBase {
     const bank = playerBanks.get(bankId);
     if (!bank) return;
 
-    // Check if player has the item in inventory - simplified approach without callbacks
-    // For now, we'll assume the item exists and let the inventory system handle validation
-    // This simplifies the type constraints and avoids callback function issues
-    
-    // Try to remove item from player inventory first
-    this.emitTypedEvent(EventType.INVENTORY_ITEM_REMOVED, {
+    // Remove item from inventory, then add to bank if successful
+    this.emitTypedEvent(EventType.INVENTORY_CHECK, {
       playerId: data.playerId,
-      itemId: data.itemId,
-      quantity: data.quantity
-    });
-
-    // Add item to bank - simplified approach assuming item properties
-    const existingItem = bank.items.find(bankItem => bankItem.id === itemId);
-    if (existingItem) {
-      // Stack with existing item
-      existingItem.quantity += data.quantity;
-    } else {
-      // Add new item to bank
-      if (bank.items.length >= bank.maxSlots) {
-        this.emitTypedEvent(EventType.UI_MESSAGE, {
-          playerId: data.playerId,
-          message: 'Bank is full.',
-          type: 'error'
-        });
-        return;
-      }
-      bank.items.push({
-        id: itemId,
-        name: `Item ${itemId}`, // Simplified name
-        quantity: data.quantity,
-        stackable: true // Assume stackable for simplicity
-      });
-    }
-
-    // Emit success event
-    this.emitTypedEvent(EventType.BANK_DEPOSIT_SUCCESS, {
-      playerId: data.playerId,
-      itemId: data.itemId,
+      itemId,
       quantity: data.quantity,
-      bankId: bankId
+      callback: (hasItem, itemInfo) => {
+        if (hasItem && itemInfo) {
+          this.emitTypedEvent(EventType.INVENTORY_ITEM_REMOVED, {
+            playerId: data.playerId,
+            itemId: data.itemId,
+            quantity: data.quantity,
+          });
+
+          const existingItem = bank.items.find(bankItem => bankItem.id === itemId);
+          if (existingItem) {
+            existingItem.quantity += data.quantity;
+          } else {
+            if (bank.items.length >= bank.maxSlots) {
+              this.emitTypedEvent(EventType.UI_MESSAGE, {
+                playerId: data.playerId,
+                message: 'Bank is full.',
+                type: 'error',
+              });
+              // Refund item if bank is full
+              this.emitTypedEvent(EventType.INVENTORY_ITEM_ADDED, {
+                playerId: data.playerId,
+                item: { id: `inv_${data.playerId}_${Date.now()}`, itemId: data.itemId, quantity: data.quantity, slot: -1, metadata: null },
+              });
+              return;
+            }
+            bank.items.push({
+              id: itemId,
+              name: itemInfo.name,
+              quantity: data.quantity,
+              stackable: itemInfo.stackable,
+            });
+          }
+
+          this.emitTypedEvent(EventType.BANK_DEPOSIT_SUCCESS, {
+            playerId: data.playerId,
+            itemId: data.itemId,
+            quantity: data.quantity,
+            bankId: bankId,
+          });
+
+          this.updateBankInterface(data.playerId, bankId);
+        } else {
+          this.emitTypedEvent(EventType.UI_MESSAGE, {
+            playerId: data.playerId,
+            message: 'Item not found in inventory.',
+            type: 'error',
+          });
+        }
+      },
     });
-    
-    // Update bank interface
-    this.updateBankInterface(data.playerId, bankId);
   }
 
   private withdrawItem(data: BankWithdrawEvent): void {

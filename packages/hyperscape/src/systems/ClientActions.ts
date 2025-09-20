@@ -25,7 +25,7 @@ const _m1 = new THREE.Matrix4()
 
 // Use Action class from core/nodes/Action.ts directly
 
-interface ClientActionHandler {
+export interface ClientActionHandler {
   start: (node: Action) => void
   update: (delta: number) => void
   stop: () => void
@@ -138,13 +138,8 @@ export class ClientActions extends SystemBase {
       // ... existing VR code ...
     } else {
       // Desktop mode action rendering
-      const graphicsSystem = this.world.findSystem('ClientGraphics') as GraphicsSystem | undefined;
-      const _worldToScreenFactor = graphicsSystem?.worldToScreenFactor || 0.001
-      
+      const _graphicsSystem = this.world.findSystem('ClientGraphics') as GraphicsSystem | undefined;
       // ... existing code ...
-      let _scaleFactor = 1; // Define scaleFactor variable
-      
-      if (xrSystem?.session) _scaleFactor *= 0.2 // shrink because its HUGE in VR
       
       if (actionsSystem?.btnDown) {
         // Action trigger UI feedback handled in createAction.update when btnDown is true

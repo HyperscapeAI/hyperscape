@@ -460,7 +460,7 @@ export class VisualTestSystem extends SystemBase {
           armor: null
         },
         lootTable: 'goblin_drops',
-        aiState: 'idle',
+        aiState: 'idle' as const,
         target: null,
         lastAI: Date.now(),
         homePosition: { x: goblins[i].x, y: 2, z: goblins[i].z }
@@ -522,7 +522,7 @@ export class VisualTestSystem extends SystemBase {
           armor: { id: 2, name: 'Leather Vest' }
         },
         lootTable: 'bandit_drops',
-        aiState: 'idle',
+        aiState: 'idle' as const,
         target: null,
         lastAI: Date.now(),
         homePosition: { x: bandits[i].x, y: 2, z: bandits[i].z }
@@ -672,8 +672,7 @@ export class VisualTestSystem extends SystemBase {
   }
 
   getEntityPosition(entityId: string): { x: number; y: number; z: number } | null {
-    const entity = this.entities.get(entityId);
-    return entity ? { ...entity.position } : null;
+    return this.entities.get(entityId)?.position || null;
   }
 
   getEntitiesInArea(center: { x: number; y: number; z: number }, radius: number): VisualTestEntity[] {
@@ -708,36 +707,6 @@ export class VisualTestSystem extends SystemBase {
   verifyEntityColor(entityId: string, expectedColor: number): boolean {
     const entity = this.entities.get(entityId);
     return entity ? entity.color === expectedColor : false;
-  }
-
-  // Get test report for debugging
-  getTestReport(): Record<string, unknown> {
-    const report = {
-      totalEntities: this.entities.size,
-      entitiesByType: {} as Record<string, number>,
-      entitiesByColor: {} as Record<number, number>,
-      positions: {} as Record<string, [number, number, number]>
-    };
-
-    for (const [id, entity] of this.entities) {
-      // Count by type
-      if (!report.entitiesByType[entity.type]) {
-        report.entitiesByType[entity.type] = 0;
-      }
-      report.entitiesByType[entity.type]++;
-
-      // Count by color
-      const colorHex = `#${entity.color.toString(16).padStart(6, '0')}`;
-      if (!report.entitiesByColor[colorHex]) {
-        report.entitiesByColor[colorHex] = 0;
-      }
-      report.entitiesByColor[colorHex]++;
-
-      // Store positions
-      report.positions[id] = [entity.position.x, entity.position.y, entity.position.z];
-    }
-
-    return report;
   }
 
   destroy(): void {
@@ -989,6 +958,14 @@ export class VisualTestSystem extends SystemBase {
     
     if (entityCount === 0) return 100;
     return Math.max(0, 100 - (entityCount / maxEntities) * 100);
+  }
+
+  getTestReport(): { entities: number; coverage: string; timestamp: number } {
+    return {
+      entities: this.entities.size,
+      coverage: this.entities.size > 0 ? 'full' : 'none',
+      timestamp: Date.now()
+    };
   }
 
   // Required System lifecycle methods

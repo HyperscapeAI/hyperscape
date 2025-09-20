@@ -6,7 +6,6 @@ import { TerrainSystem } from './TerrainSystem';
 import { IPlayerSystemForPersistence } from '../types/core';
 import type { WorldChunk } from '../types/core';
 import type { WorldChunkData, PlayerSessionRow } from '../types/database';
-import { Logger } from '../utils/Logger';
 // DatabaseSystem is imported dynamically on server only
 
 /**
@@ -49,8 +48,8 @@ export class PersistenceSystem extends SystemBase {
     super(world, {
       name: 'rpg-persistence',
       dependencies: {
-        required: ['rpg-database'], // Needs database for persistence
-        optional: ['rpg-player', 'terrain'] // Can save player and terrain data if available
+        required: [], // Database is server-only; presence enforced at runtime on server
+        optional: ['rpg-database', 'rpg-player', 'terrain'] // Use if available
       },
       autoCleanup: true
     });
@@ -66,13 +65,13 @@ export class PersistenceSystem extends SystemBase {
     
     this.playerSystem = (getSystem(this.world, 'rpg-player') as IPlayerSystemForPersistence | null) || undefined;
     if (!this.playerSystem) {
-      Logger.systemWarn('PersistenceSystem', 'PlayerSystem not found - player persistence will be limited');
+      this.logger.warn('PlayerSystem not found - player persistence will be limited');
     }
     
     this.terrainSystem = getSystem<TerrainSystem>(this.world, 'terrain') || undefined;
     if (!this.terrainSystem) {
       // This is expected in test environments without terrain, so use debug level
-      console.debug('[PersistenceSystem] TerrainSystem not found - chunk persistence will be limited');
+      this.logger.debug('TerrainSystem not found - chunk persistence will be limited');
     }
     
     // Subscribe to critical persistence events using type-safe event system
@@ -100,6 +99,37 @@ export class PersistenceSystem extends SystemBase {
   }
 
   /**
+   * Handle test save request
+   */
+  private handleTestSave(data: { playerId: string; data: Record<string, unknown> }): void {
+    // Save test data for a player
+    this.logger.info(`Test save for player ${data.playerId}`);
+    // In a real implementation, this would save the data to storage
+    // For now, just emit a success event
+    this.emitTypedEvent(EventType.PERSISTENCE_SAVE, {
+      playerId: data.playerId,
+      success: true
+    });
+  }
+
+  /**
+   * Handle test load request
+   */
+  private handleTestLoad(data: { playerId: string }): void {
+    // Load test data for a player
+    this.logger.info(`Test load for player ${data.playerId}`);
+    // In a real implementation, this would load the data from storage
+    // For now, just emit a success event with mock data
+    this.emitTypedEvent(EventType.PERSISTENCE_LOAD, {
+      playerId: data.playerId,
+      data: {
+        testData: 'loaded'
+      },
+      success: true
+    });
+  }
+
+  /**
    * Parse a chunk ID string like "chunk_10_20" to coordinates
    */
   private parseChunkId(chunkId: string): { x: number; z: number } {
@@ -107,12 +137,12 @@ export class PersistenceSystem extends SystemBase {
     if (parts.length >= 3) {
       return { x: parseInt(parts[1], 10), z: parseInt(parts[2], 10) };
     }
-    Logger.systemWarn('PersistenceSystem', `Invalid chunk ID format: ${chunkId}`);
+    this.logger.warn(`Invalid chunk ID format: ${chunkId}`);
     return { x: 0, z: 0 };
   }
 
   start(): void {
-    Logger.system('PersistenceSystem', 'Starting persistence services...');
+    this.logger.info('Starting persistence services...');
     
     // Initialize last execution times
     const now = Date.now();
@@ -121,13 +151,13 @@ export class PersistenceSystem extends SystemBase {
     this.lastSessionCleanup = now;
     this.lastMaintenance = now;
     
-    Logger.system('PersistenceSystem', 'Persistence services started - using frame-based updates');
+    this.logger.info('Persistence services started - using frame-based updates');
   }
 
   destroy(): void {
     // Perform final save before shutting down
     this.performPeriodicSave().catch(error => {
-      Logger.systemError('PersistenceSystem', 'Failed to perform final save', error instanceof Error ? error : new Error(String(error)));
+      this.logger.error('Failed to perform final save', error instanceof Error ? error : new Error(String(error)));
     });
     
     // Clear persistence state
@@ -148,7 +178,7 @@ export class PersistenceSystem extends SystemBase {
     // Call parent cleanup (handles event listeners automatically)
     super.destroy();
     
-    Logger.system('PersistenceSystem', 'Persistence system destroyed');
+    this.logger.info('Persistence system destroyed');
   }
 
   // Event Handlers
@@ -167,7 +197,7 @@ export class PersistenceSystem extends SystemBase {
       
       await this.databaseSystem.createPlayerSession(sessionData);
     } catch (_error) {
-      Logger.systemError('PersistenceSystem', `Failed to create session for player ${event.playerId}`, _error instanceof Error ? _error : new Error(String(_error)));
+      this.logger.error(`Failed to create session for player ${event.playerId}`, _error instanceof Error ? _error : new Error(String(_error)));
     }
   }
 
@@ -184,7 +214,7 @@ export class PersistenceSystem extends SystemBase {
         this.stats.sessionsEnded++;
       }
     } catch (_error) {
-      Logger.systemError('PersistenceSystem', `Failed to end session for player ${event.playerId}`, _error instanceof Error ? _error : new Error(String(_error)));
+      this.logger.error(`Failed to end session for player ${event.playerId}`, _error instanceof Error ? _error : new Error(String(_error)));
     }
   }
 
@@ -195,7 +225,7 @@ export class PersistenceSystem extends SystemBase {
       // Update chunk activity
       this.databaseSystem.updateChunkPlayerCount(event.chunkX, event.chunkZ, 1);
     } catch (_error) {
-      Logger.systemError('PersistenceSystem', 'Failed to update chunk activity', _error instanceof Error ? _error : new Error(String(_error)));
+      this.logger.error('Failed to update chunk activity', _error instanceof Error ? _error : new Error(String(_error)));
     }
   }
 
@@ -206,7 +236,7 @@ export class PersistenceSystem extends SystemBase {
       // Update chunk activity
       this.databaseSystem.updateChunkPlayerCount(event.chunkX, event.chunkZ, 0);
     } catch (_error) {
-      Logger.systemError('PersistenceSystem', 'Failed to update chunk activity', _error instanceof Error ? _error : new Error(String(_error)));
+      this.logger.error('Failed to update chunk activity', _error instanceof Error ? _error : new Error(String(_error)));
     }
   }
 
@@ -252,10 +282,10 @@ export class PersistenceSystem extends SystemBase {
       this.stats.lastSaveTime = Date.now();
 
       if (saveCount > 0) {
-        Logger.system('PersistenceSystem', `💾 Periodic save completed: ${saveCount} items in ${duration}ms`);
+        this.logger.info(`💾 Periodic save completed: ${saveCount} items in ${duration}ms`);
       }
     } catch (_error) {
-      Logger.systemError('PersistenceSystem', 'Periodic save failed', _error instanceof Error ? _error : new Error(String(_error)));
+      this.logger.error('Periodic save failed', _error instanceof Error ? _error : new Error(String(_error)));
     }
   }
 
@@ -278,10 +308,10 @@ export class PersistenceSystem extends SystemBase {
       }
 
       if (inactiveChunks.length > 0) {
-        Logger.system('PersistenceSystem', `🧹 Chunk cleanup: ${inactiveChunks.length} inactive chunks processed`);
+        this.logger.info(`🧹 Chunk cleanup: ${inactiveChunks.length} inactive chunks processed`);
       }
     } catch (_error) {
-      Logger.systemError('PersistenceSystem', 'Chunk cleanup failed', _error instanceof Error ? _error : new Error(String(_error)));
+      this.logger.error('Chunk cleanup failed', _error instanceof Error ? _error : new Error(String(_error)));
     }
   }
 
@@ -300,7 +330,7 @@ export class PersistenceSystem extends SystemBase {
         }
       }
     } catch (_error) {
-      Logger.systemError('PersistenceSystem', 'Session cleanup failed', _error instanceof Error ? _error : new Error(String(_error)));
+      this.logger.error('Session cleanup failed', _error instanceof Error ? _error : new Error(String(_error)));
     }
   }
 
@@ -320,21 +350,65 @@ export class PersistenceSystem extends SystemBase {
 
       this.stats.lastMaintenanceTime = Date.now();
 
-      Logger.system('PersistenceSystem', '🔧 Maintenance completed', {
+      this.logger.info('🔧 Maintenance completed', {
         oldSessionsDeleted,
         oldActivityDeleted,
         dbStats
       });
     } catch (_error) {
-      Logger.systemError('PersistenceSystem', 'Maintenance failed', _error instanceof Error ? _error : new Error(String(_error)));
+      this.logger.error('Maintenance failed', _error instanceof Error ? _error : new Error(String(_error)));
     }
   }
 
   // Helper methods
   private async getActiveChunks(): Promise<WorldChunk[]> {
-    // This would need to be implemented to get active chunks from the terrain system
-    // For now, return empty array
-    return [];
+    const activeChunksData = this.terrainSystem?.getActiveChunks() || [];
+    return activeChunksData.map(chunkData => {
+      const chunkId = `${chunkData.x}_${chunkData.z}`;
+      const worldArea = {
+        id: 'wilderness',
+        name: 'Wilderness',
+        description: 'An untamed wilderness area',
+        difficultyLevel: 1,
+        bounds: {
+          minX: chunkData.x * 100,
+          maxX: (chunkData.x + 1) * 100,
+          minZ: chunkData.z * 100,
+          maxZ: (chunkData.z + 1) * 100,
+        },
+        biomeType: 'plains',
+        safeZone: false,
+        npcs: [],
+        resources: [],
+        mobSpawns: [],
+        connections: [],
+        specialFeatures: [],
+      }
+      
+      return {
+        id: chunkId,
+        chunkX: chunkData.x,
+        chunkZ: chunkData.z,
+        bounds: { minX: chunkData.x * 100, maxX: (chunkData.x + 1) * 100, minZ: chunkData.z * 100, maxZ: (chunkData.z + 1) * 100 },
+        area: worldArea,
+        npcs: [],
+        resources: [],
+        mobs: [],
+        terrainMesh: undefined,
+        isLoaded: true,
+        data: {},
+        lastActivity: new Date(),
+        playerCount: 0,
+        needsReset: false,
+        biome: 'plains',
+        heightData: [],
+        resourceStates: {},
+        mobSpawnStates: {},
+        playerModifications: {},
+        chunkSeed: 0,
+        lastActiveTime: new Date()
+      } as WorldChunk;
+    });
   }
 
   // Public API
@@ -350,50 +424,6 @@ export class PersistenceSystem extends SystemBase {
     await this.performMaintenance();
   }
 
-  private async handleTestSave(data: { playerId: string; data: Record<string, unknown> }): Promise<void> {
-    Logger.system('PersistenceSystem', `Test save requested for player ${data.playerId}`);
-    
-    // Simulate saving player data
-    try {
-      // In a real implementation, this would save to database
-      // For testing, we'll just emit a success message
-      this.emitTypedEvent(EventType.UI_MESSAGE, {
-        playerId: data.playerId,
-        message: 'Player data saved successfully',
-        type: 'success' as const
-      });
-    } catch (_error) {
-              Logger.systemError('PersistenceSystem', 'Test save failed', _error instanceof Error ? _error : new Error(String(_error)));
-      this.emitTypedEvent(EventType.UI_MESSAGE, {
-        playerId: data.playerId,
-        message: `Failed to save data: ${_error instanceof Error ? _error.message : String(_error)}`,
-        type: 'error' as const
-      });
-    }
-  }
-
-  private async handleTestLoad(data: { playerId: string }): Promise<void> {
-    Logger.system('PersistenceSystem', `Test load requested for player ${data.playerId}`);
-    
-    // Simulate loading player data
-    try {
-      // In a real implementation, this would load from database
-      // For testing, we'll return some dummy data immediately
-      this.emitTypedEvent(EventType.UI_MESSAGE, {
-        playerId: data.playerId,
-        message: 'Player data loaded successfully',
-        type: 'success' as const
-      });
-    } catch (_error) {
-              Logger.systemError('PersistenceSystem', 'Test load failed', _error instanceof Error ? _error : new Error(String(_error)));
-      this.emitTypedEvent(EventType.UI_MESSAGE, {
-        playerId: data.playerId,
-        message: `Failed to load data: ${_error instanceof Error ? _error.message : String(_error)}`,
-        type: 'error' as const
-      });
-    }
-  }
-
   getStats(): typeof this.stats {
     return { ...this.stats };
   }
@@ -406,7 +436,7 @@ export class PersistenceSystem extends SystemBase {
     if (now - this.lastPeriodicSave >= this.PERIODIC_SAVE_INTERVAL) {
       this.lastPeriodicSave = now;
       this.performPeriodicSave().catch(error => {
-        Logger.systemError('PersistenceSystem', 'Periodic save failed', error instanceof Error ? error : new Error(String(error)));
+        this.logger.error('Periodic save failed', error instanceof Error ? error : new Error(String(error)));
       });
     }
     
@@ -414,7 +444,7 @@ export class PersistenceSystem extends SystemBase {
     if (now - this.lastChunkCleanup >= this.CHUNK_CLEANUP_INTERVAL) {
       this.lastChunkCleanup = now;
       this.performChunkCleanup().catch(error => {
-        Logger.systemError('PersistenceSystem', 'Chunk cleanup failed', error instanceof Error ? error : new Error(String(error)));
+        this.logger.error('Chunk cleanup failed', error instanceof Error ? error : new Error(String(error)));
       });
     }
     
@@ -422,7 +452,7 @@ export class PersistenceSystem extends SystemBase {
     if (now - this.lastSessionCleanup >= this.SESSION_CLEANUP_INTERVAL) {
       this.lastSessionCleanup = now;
       this.performSessionCleanup().catch(error => {
-        Logger.systemError('PersistenceSystem', 'Session cleanup failed', error instanceof Error ? error : new Error(String(error)));
+        this.logger.error('Session cleanup failed', error instanceof Error ? error : new Error(String(error)));
       });
     }
     
@@ -430,7 +460,7 @@ export class PersistenceSystem extends SystemBase {
     if (now - this.lastMaintenance >= this.MAINTENANCE_INTERVAL) {
       this.lastMaintenance = now;
       this.performMaintenance().catch(error => {
-        Logger.systemError('PersistenceSystem', 'Maintenance failed', error instanceof Error ? error : new Error(String(error)));
+        this.logger.error('Maintenance failed', error instanceof Error ? error : new Error(String(error)));
       });
     }
   }

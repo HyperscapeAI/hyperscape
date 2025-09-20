@@ -129,6 +129,7 @@ export interface EventMap {
   [EventType.PLAYER_SESSION_ENDED]: { playerId: string; sessionId: string };
   [EventType.PLAYER_CREATE]: { playerId: string; playerData: Player };
   [EventType.PLAYER_SPAWN_COMPLETE]: { playerId: string; position: Position3D };
+  [EventType.PLAYER_ANIMATION]: { playerId: string; animation: string; duration?: number };
   [EventType.PLAYER_HEALTH_UPDATED]: { playerId: string; health: number; maxHealth: number };
   [EventType.PLAYER_SKILLS_UPDATED]: { playerId: string; skills: SkillsData };
   [EventType.PLAYER_TELEPORT_REQUEST]: { playerId: string; position: Position3D; rotationY: number };
@@ -349,9 +350,10 @@ export interface EventMap {
   [EventType.UI_CREATE]: { uiId: string; uiType: 'inventory' | 'equipment' | 'skills' | 'chat' | 'bank' | 'store' | 'dialog'; data: Record<string, string | number | boolean> };
   [EventType.UI_OPEN_MENU]: (
     { playerId: string; inventoryElement: HTMLElement; equipmentElement?: HTMLElement } |
-    { playerId: string; actions: Array<'use' | 'drop' | 'examine' | 'equip' | 'unequip'>; menuType: 'context' | 'main' | 'options' }
+    { playerId: string; actions: Array<'use' | 'drop' | 'examine' | 'equip' | 'unequip'>; menuType: 'context' | 'main' | 'options' } |
+    { playerId: string; type: 'context'; position: { x: number; y: number }; actions: Array<{ id: string; label: string; icon?: string; enabled: boolean; onClick: () => void }>; targetId: string; targetType: 'resource' }
   );
-  [EventType.UI_CLOSE_MENU]: { playerId: string; menuType: 'context' | 'main' | 'options' };
+  [EventType.UI_CLOSE_MENU]: { playerId?: string; menuType?: 'context' | 'main' | 'options' } | Record<string, never>;
   [EventType.UI_CLOSE_ALL]: { playerId: string };
   [EventType.UI_SET_VIEWPORT]: { width: number; height: number };
   [EventType.UI_DRAG_DROP]: { playerId: string; sourceId: string; targetId: string };

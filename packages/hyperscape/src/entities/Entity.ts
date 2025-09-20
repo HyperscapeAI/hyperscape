@@ -1,95 +1,100 @@
-import type {
-  Entity as IEntity,
-  Quaternion,
-  Vector3
-} from '../types';
-import type { EntityData } from '../types/index';
-import { Component, createComponent } from '../components';
-import THREE from '../extras/three';
-import { getPhysX } from '../PhysXManager';
-import { type PhysXRigidDynamic } from '../systems/Physics';
-import { getWorldNetwork } from '../utils/SystemUtils';
-import type { World } from '../World';
-import { EventType } from '../types/events';
-import { GAME_CONSTANTS } from '../constants/GameConstants';
-import type { MeshUserData } from '../types/core';
-import type { Position3D } from '../types/index';
-import type { EntityInteractionData, EntityConfig } from '../types/entities';
-import { EntityType } from '../types/entities';
-import { toPosition3D } from '../types/utilities';
-import { UIRenderer } from '../utils/UIRenderer';
-import { SafeLoaderWrapper } from '../types/loader-types';
+import type { Entity as IEntity, Quaternion, Vector3 } from '../types'
+import type { EntityData } from '../types/index'
+import { Component, createComponent } from '../components'
+import THREE from '../extras/three'
+import { getPhysX } from '../PhysXManager'
+import { type PhysXRigidDynamic } from '../systems/Physics'
+import { getWorldNetwork } from '../utils/SystemUtils'
+import type { World } from '../World'
+import { EventType } from '../types/events'
+import { GAME_CONSTANTS } from '../constants/GameConstants'
+import type { MeshUserData } from '../types/core'
+import type { Position3D } from '../types/index'
+import type { EntityInteractionData, EntityConfig } from '../types/entities'
+import { EntityType } from '../types/entities'
+import { toPosition3D } from '../types/utilities'
+import { UIRenderer } from '../utils/UIRenderer'
+import { SafeLoaderWrapper } from '../types/loader-types'
 
 // Re-export types for external use
-export type { EntityConfig };
+export type { EntityConfig }
 
-// Type alias for event callbacks
-type EventCallback = (data: unknown) => void;
+// Type alias for event callbacks (exported for API extractor)
+export type EventCallback = (data: unknown) => void
 
 export class Entity implements IEntity {
-  world: World;
-  data: EntityData;
-  id: string;
-  name: string;
-  type: string;
-  node: THREE.Object3D<THREE.Object3DEventMap>;
-  components: Map<string, Component>;
-  velocity: Vector3;
-  isPlayer: boolean;
-  active: boolean = true;
-  destroyed: boolean = false;
-  
+  world: World
+  data: EntityData
+  id: string
+  name: string
+  type: string
+  node: THREE.Object3D<THREE.Object3DEventMap>
+  components: Map<string, Component>
+  velocity: Vector3
+  isPlayer: boolean
+  active: boolean = true
+
+  // Plugin-specific extensions
+  base?: {
+    position: Vector3
+    visible?: boolean
+    children?: unknown[]
+    parent?: unknown | null
+    quaternion?: Quaternion
+  } | THREE.Object3D
+  destroyed: boolean = false
+
   // Physics body reference
-  private rigidBody?: PhysXRigidDynamic;
-  
+  private rigidBody?: PhysXRigidDynamic
+
   // Additional properties for plugin compatibility
-  metadata?: Record<string, unknown>;
-  
+  metadata?: Record<string, unknown>
+
   // RPG-specific properties
-  protected config: EntityConfig;
-  public mesh: THREE.Mesh | THREE.Group | THREE.Object3D | null = null;
-  public nodes: Map<string, THREE.Object3D> = new Map(); // Child nodes by ID
-  public worldNodes: Set<THREE.Object3D> = new Set(); // Nodes added to world
-  public listeners: Record<string, Set<EventCallback>> = {}; // Event listeners
-  public worldListeners: Map<(data: unknown) => void, string> = new Map(); // World event listeners
-  protected lastUpdate = 0;
-  
-  protected health: number = 0;
-  protected maxHealth: number = 100;
-  protected level: number = 1;
-  
+  protected config: EntityConfig
+  public mesh: THREE.Mesh | THREE.Group | THREE.Object3D | null = null
+  public nodes: Map<string, THREE.Object3D> = new Map() // Child nodes by ID
+  public worldNodes: Set<THREE.Object3D> = new Set() // Nodes added to world
+  public listeners: Record<string, Set<EventCallback>> = {} // Event listeners
+  public worldListeners: Map<(data: unknown) => void, string> = new Map() // World event listeners
+  protected lastUpdate = 0
+
+  protected health: number = 0
+  protected maxHealth: number = 100
+  protected level: number = 1
+
   // UI elements
-  protected nameSprite: THREE.Sprite | null = null;
-  protected healthSprite: THREE.Sprite | null = null;
-  
+  protected nameSprite: THREE.Sprite | null = null
+  protected healthSprite: THREE.Sprite | null = null
+
   // Network state
-  public networkDirty = false; // Needs network sync
-  public networkVersion = 0; // Version for conflict resolution
+  public networkDirty = false // Needs network sync
+  public networkVersion = 0 // Version for conflict resolution
 
   // Interpolation state
-  protected networkPos?: Position3D;
-  protected networkQuat?: THREE.Quaternion;
-  protected networkSca?: Position3D;
-  
+  protected networkPos?: Position3D
+  protected networkQuat?: THREE.Quaternion
+  protected networkSca?: Position3D
+
   constructor(world: World, dataOrConfig: EntityData | EntityConfig, local?: boolean) {
-    this.world = world;
-    
+    this.world = world
+
     // Handle both EntityData and EntityConfig formats
-    let entityData: EntityData;
-    let config: EntityConfig | undefined;
-    
+    let entityData: EntityData
+    let config: EntityConfig | undefined
+
     if ('position' in dataOrConfig && Array.isArray(dataOrConfig.position)) {
       // It's EntityData format
-      entityData = dataOrConfig as EntityData;
+      entityData = dataOrConfig as EntityData
     } else if ('position' in dataOrConfig && typeof dataOrConfig.position === 'object') {
       // It's EntityConfig format
-      config = dataOrConfig as EntityConfig;
-      
+      config = dataOrConfig as EntityConfig
+
       // Validate position to prevent NaN values
-      const validX = (typeof config.position.x === 'number' && !isNaN(config.position.x)) ? config.position.x : 0;
-      const validY = (typeof config.position.y === 'number' && !isNaN(config.position.y)) ? config.position.y : 0;
-      const validZ = (typeof config.position.z === 'number' && !isNaN(config.position.z)) ? config.position.z : 0;
-      
+      const validX = typeof config.position.x === 'number' && !isNaN(config.position.x) ? config.position.x : 0
+      const validY = typeof config.position.y === 'number' && !isNaN(config.position.y) ? config.position.y : 0
+      const validZ = typeof config.position.z === 'number' && !isNaN(config.position.z) ? config.position.z : 0
+
       // Convert EntityConfig to EntityData format
       entityData = {
         id: config.id,
@@ -97,22 +102,22 @@ export class Entity implements IEntity {
         type: config.type,
         position: [validX, validY, validZ],
         quaternion: config.rotation ? [config.rotation.x, config.rotation.y, config.rotation.z, 1] : undefined,
-        scale: config.scale ? [config.scale.x, config.scale.y, config.scale.z] : undefined
-      };
+        scale: config.scale ? [config.scale.x, config.scale.y, config.scale.z] : undefined,
+      }
     } else {
       // Default EntityData
-      entityData = dataOrConfig as EntityData;
+      entityData = dataOrConfig as EntityData
     }
-    
-    this.data = entityData;
-    this.id = entityData.id;
-    this.name = entityData.name || 'entity';
-    this.type = entityData.type || 'generic';
-    this.isPlayer = entityData.type === 'player';
-    
+
+    this.data = entityData
+    this.id = entityData.id
+    this.name = entityData.name || 'entity'
+    this.type = entityData.type || 'generic'
+    this.isPlayer = entityData.type === 'player'
+
     // Initialize config
     if (config) {
-      this.config = { ...config };
+      this.config = { ...config }
     } else {
       // Create default config from EntityData
       this.config = {
@@ -134,19 +139,19 @@ export class Entity implements IEntity {
           healthComponent: null,
           visualComponent: null,
           health: { current: this.health, max: this.maxHealth },
-          level: 1
-        }
-      };
+          level: 1,
+        },
+      }
     }
-    
+
     // Initialize components map
-    this.components = new Map();
-    
+    this.components = new Map()
+
     // Create Three.js node
-    this.node = new THREE.Object3D() as THREE.Object3D<THREE.Object3DEventMap>;
-    this.node.name = this.name;
-    this.node.userData.entity = this;
-    
+    this.node = new THREE.Object3D() as THREE.Object3D<THREE.Object3DEventMap>
+    this.node.name = this.name
+    this.node.userData.entity = this
+
     // Set up userData with proper typing
     const userData: MeshUserData = {
       type: this.config.type,
@@ -154,381 +159,402 @@ export class Entity implements IEntity {
       name: this.config.name,
       interactable: this.config.interactable,
       mobData: null, // Most entities are not mobs, override in MobEntity
-      ...this.node.userData // Preserve any existing userData
-    };
-    this.node.userData = userData;
-    
-    // Set default transform values - no longer read from EntityData
-    this.node.position.set(0, 0, 0);
-    this.node.quaternion.set(0, 0, 0, 1);
-    this.node.scale.set(1, 1, 1); // Always assume scale of 1,1,1
-    
-    // Initialize velocity as THREE.Vector3
-    this.velocity = new THREE.Vector3(0, 0, 0);
-    
-    // Initialize RPG-specific properties
-    const healthData = config?.properties?.health;
-    if (healthData && typeof healthData === 'object' && 'current' in healthData && 'max' in healthData) {
-      this.health = healthData.current;
-      this.maxHealth = healthData.max;
-    } else {
-      this.health = GAME_CONSTANTS.PLAYER.DEFAULT_HEALTH;
-      this.maxHealth = GAME_CONSTANTS.PLAYER.DEFAULT_MAX_HEALTH;
+      ...this.node.userData, // Preserve any existing userData
     }
-    this.level = config?.properties?.level as number || 1;
-    
+    this.node.userData = userData
+
+    // Set default transform values and apply initial transform from EntityData when present
+    this.node.position.set(0, 0, 0)
+    this.node.quaternion.set(0, 0, 0, 1)
+    this.node.scale.set(1, 1, 1) // Always assume scale of 1,1,1
+    if (Array.isArray(entityData.position) && entityData.position.length === 3) {
+      const [px, py, pz] = entityData.position as [number, number, number]
+
+      // Log player positions for debugging
+      if (entityData.type === 'player') {
+        console.log(`[Entity] Player ${entityData.id} constructor received position:`, { px, py, pz })
+      }
+
+      if (Number.isFinite(px) && Number.isFinite(py) && Number.isFinite(pz)) {
+        this.node.position.set(px, py, pz)
+
+        // Don't throw on low Y values - the server sends the correct position but terrain might not be ready yet
+        // The position will be corrected by server updates
+        if (entityData.type === 'player' && Math.abs(py) < 0.5) {
+          console.warn(`[Entity] Player ${entityData.id} spawning at low Y=${py}. Will be corrected by server.`)
+        }
+      } else {
+        if (entityData.type === 'player') {
+          throw new Error(`[Entity] Player ${entityData.id} has invalid position values: [${px}, ${py}, ${pz}]`)
+        }
+      }
+    } else if (entityData.type === 'player') {
+      console.error('[Entity] Player entityData:', entityData)
+      throw new Error(`[Entity] Player ${entityData.id} has no valid position in entityData`)
+    }
+    if (Array.isArray(entityData.quaternion) && entityData.quaternion.length === 4) {
+      const [qx, qy, qz, qw] = entityData.quaternion as [number, number, number, number]
+      if (Number.isFinite(qx) && Number.isFinite(qy) && Number.isFinite(qz) && Number.isFinite(qw)) {
+        this.node.quaternion.set(qx, qy, qz, qw)
+      }
+    }
+
+    // Initialize velocity as THREE.Vector3
+    this.velocity = new THREE.Vector3(0, 0, 0)
+
+    // Initialize RPG-specific properties
+    const healthData = config?.properties?.health
+    if (healthData && typeof healthData === 'object' && 'current' in healthData && 'max' in healthData) {
+      this.health = healthData.current
+      this.maxHealth = healthData.max
+    } else {
+      this.health = GAME_CONSTANTS.PLAYER.DEFAULT_HEALTH
+      this.maxHealth = GAME_CONSTANTS.PLAYER.DEFAULT_MAX_HEALTH
+    }
+    this.level = (config?.properties?.level as number) || 1
+
     // Add to world scene
     if (this.world.stage.scene) {
-      this.world.stage.scene.add(this.node);
+      this.world.stage.scene.add(this.node)
     }
-    
+
     // Automatically add transform component for ECS architecture
     this.addComponent('transform', {
       position: this.position,
       rotation: this.rotation,
-      scale: this.scale
-    });
-    
+      scale: this.scale,
+    })
+
     // Initialize common components
-    this.initializeRPGComponents();
-    
+    this.initializeRPGComponents()
+
     // Network sync for local entities
-    const network = getWorldNetwork(this.world);
+    const network = getWorldNetwork(this.world)
     if (local && network) {
-      network.send('entityAdded', this.serialize());
+      network.send('entityAdded', this.serialize())
     }
   }
-  
+
   // Transform getters - return THREE.Vector3 instances
   get position(): Vector3 {
-    return this.node.position;
+    return this.node.position
   }
-  
+
   set position(value: Vector3) {
-    this.node.position.set(value.x, value.y, value.z);
-    this.syncPhysicsTransform();
+    this.node.position.set(value.x, value.y, value.z)
+    this.syncPhysicsTransform()
   }
-  
+
   get rotation(): Quaternion {
-    return this.node.quaternion.clone();
+    return this.node.quaternion.clone()
   }
-  
+
   set rotation(value: Quaternion) {
-    this.node.quaternion.set(value.x, value.y, value.z, value.w);
-    this.syncPhysicsTransform();
+    this.node.quaternion.set(value.x, value.y, value.z, value.w)
+    this.syncPhysicsTransform()
   }
-  
+
   get scale(): Vector3 {
     // Strong type assumption - node.scale is always Vector3
-    return this.node.scale;
+    return this.node.scale
   }
-  
-  set scale(value: Vector3) {
-    this.node.scale.set(value.x, value.y, value.z);
-  }
-  
 
-  
+  set scale(value: Vector3) {
+    this.node.scale.set(value.x, value.y, value.z)
+  }
+
   // Component management
   addComponent<T extends Component = Component>(type: string, data?: Record<string, unknown>): T {
     // Check if component already exists
     if (this.components.has(type)) {
-      console.warn(`Entity ${this.id} already has component ${type}`);
+      console.warn(`Entity ${this.id} already has component ${type}`)
       // Strong type assumption - component is guaranteed to exist and be of correct type
-      return this.components.get(type)! as T;
+      return this.components.get(type)! as T
     }
-    
+
     // Create component using the registry
-    const component = createComponent(type, this, data);
+    const component = createComponent(type, this, data)
     if (!component) {
-      throw new Error(`Failed to create component of type: ${type}`);
+      throw new Error(`Failed to create component of type: ${type}`)
     }
-    
+
     // Store component
-    this.components.set(type, component);
-    
-    // Initialize component if it has init method
+    this.components.set(type, component)
+
+    // Initialize component if it has an init method
     if (component.init) {
-      component.init();
+      component.init()
     }
-    
+
     // Handle special component types (legacy compatibility)
-    this.handleSpecialComponent(type, component);
-    
+    this.handleSpecialComponent(type, component)
+
     // Emit event
     this.world.emit(EventType.ENTITY_COMPONENT_ADDED, {
       entityId: this.id,
       componentType: type,
-      component
-    });
-    
+      component,
+    })
+
     // Strong type assumption - component creation succeeded
-    return component as T;
+    return component as T
   }
-  
+
   removeComponent(type: string): void {
-    const component = this.components.get(type);
-    if (!component) return;
-    
+    const component = this.components.get(type)
+    if (!component) return
+
     // Destroy component if it has destroy method
     if (component.destroy) {
-      component.destroy();
+      component.destroy()
     }
-    
+
     // Handle special component cleanup
-    this.handleSpecialComponentRemoval(type, component);
-    
+    this.handleSpecialComponentRemoval(type, component)
+
     // Remove from map
-    this.components.delete(type);
-    
+    this.components.delete(type)
+
     // Emit event
     this.world.emit(EventType.ENTITY_COMPONENT_REMOVED, {
       entityId: this.id,
-      componentType: type
-    });
+      componentType: type,
+    })
   }
-  
+
   getComponent<T extends Component = Component>(type: string): T | null {
-    const component = this.components.get(type);
-    return component ? component as T : null;
+    const component = this.components.get(type)
+    return component ? (component as T) : null
   }
-  
+
   hasComponent(type: string): boolean {
-    return this.components.has(type);
+    return this.components.has(type)
   }
-  
+
   removeAllComponents(): void {
     // Remove all components
     for (const type of Array.from(this.components.keys())) {
-      this.removeComponent(type);
+      this.removeComponent(type)
     }
   }
-  
+
   // Physics methods
   applyForce(force: Vector3): void {
-    if (!this.rigidBody) return;
-    
-    if (this.world.physics) {
-      const PhysX = getPhysX();
-      if (PhysX) {
-        const physicsForce = new PhysX.PxVec3(force.x, force.y, force.z);
-        this.rigidBody.addForce(physicsForce);
-      }
-    }
+    if (!this.rigidBody) return
+    const PhysX = getPhysX()
+    const physicsForce = new PhysX!.PxVec3(force.x, force.y, force.z)
+    this.rigidBody.addForce(physicsForce)
   }
-  
-  applyImpulse(impulse: Vector3): void {
-    if (!this.rigidBody) return;
-    
-    if (this.world.physics) {
-      const PhysX = getPhysX();
-      if (PhysX) {
 
-        // Assume rigidBody has getMass, getLinearVelocity, and setLinearVelocity methods
-        const mass = this.rigidBody.getMass();
-        const currentVel = this.rigidBody.getLinearVelocity();
-        const deltaV = new PhysX.PxVec3(impulse.x / mass, impulse.y / mass, impulse.z / mass);
-        // Add deltaV to currentVel
-        const newVel = new PhysX.PxVec3(
-          currentVel.x + deltaV.x,
-          currentVel.y + deltaV.y,
-          currentVel.z + deltaV.z
-        );
-        this.rigidBody.setLinearVelocity(newVel, true);
-      }
-    }
+  applyImpulse(impulse: Vector3): void {
+    if (!this.rigidBody) return
+
+    const PhysX = getPhysX()
+
+    // Assume rigidBody has getMass, getLinearVelocity, and setLinearVelocity methods
+    const mass = this.rigidBody.getMass()
+    const currentVel = this.rigidBody.getLinearVelocity()
+    const deltaV = new PhysX!.PxVec3(impulse.x / mass, impulse.y / mass, impulse.z / mass)
+    // Add deltaV to currentVel
+    const newVel = new PhysX!.PxVec3(currentVel.x + deltaV.x, currentVel.y + deltaV.y, currentVel.z + deltaV.z)
+    this.rigidBody.setLinearVelocity(newVel, true)
   }
-  
+
   // Set velocity updates the THREE.Vector3 instance and syncs with physics if enabled
   setVelocity(vel: Vector3): void {
-    this.velocity = vel;
-    
+    this.velocity = vel
+
     // Apply to physics body if available
     if (this.rigidBody) {
-      this.world.physics.setLinearVelocity(this.rigidBody, this.velocity);
+      this.world.physics.setLinearVelocity(this.rigidBody, this.velocity)
     }
   }
-  
+
   // Get velocity returns the THREE.Vector3 instance
   getVelocity(): Vector3 {
-    return this.velocity;
+    return this.velocity
   }
-  
+
   // Late update methods - for components
   lateUpdate(delta: number): void {
     // Update components with lateUpdate
     for (const component of this.components.values()) {
-      component.lateUpdate?.(delta);
+      if (component.lateUpdate) {
+        component.lateUpdate(delta)
+      }
     }
   }
-  
+
   postLateUpdate(delta: number): void {
     // Update components with postLateUpdate
     for (const component of this.components.values()) {
-      component.postLateUpdate?.(delta);
+      if (component.postLateUpdate) {
+        component.postLateUpdate(delta)
+      }
     }
   }
-  
 
-  
   // Serialization
   serialize(): EntityData {
     const serialized: EntityData = {
       id: this.id,
       name: this.name,
       type: this.type,
+      // CRITICAL: Use current position from node, not stale data
+      position: [this.node.position.x, this.node.position.y, this.node.position.z],
+      quaternion: [this.node.quaternion.x, this.node.quaternion.y, this.node.quaternion.z, this.node.quaternion.w],
       // Add data properties dynamically
-    };
+    }
 
     // Copy data properties - assume all enumerable properties should be serialized
     for (const key in this.data) {
+      // Skip position and quaternion as we've already set them from node
+      if (key === 'position' || key === 'quaternion') continue
+
       // Strong assumption - if key exists in data, it should be serialized
-      const value = this.data[key as keyof EntityData];
+      const value = this.data[key as keyof EntityData]
       if (value !== undefined) {
         Object.defineProperty(serialized, key, {
           value,
           writable: true,
           enumerable: true,
-          configurable: true
-        });
+          configurable: true,
+        })
       }
     }
 
-    return serialized;
+    return serialized
   }
-  
+
   // Modification from network/data
   modify(data: Partial<EntityData>): void {
     // Update data - transform properties no longer part of EntityData
-    Object.assign(this.data, data);
-    
+    Object.assign(this.data, data)
+
     // Transform is now handled directly by Entity, not through data
     // Use setPosition(), setRotation() methods instead for transform updates
   }
-  
+
   // Network event handling
   onEvent(version: number, name: string, data: unknown, networkId: string): void {
     // Handle entity-specific network events
     this.world.emit(`entity:${this.id}:network:${name}`, {
       version,
       data,
-      networkId
-    });
+      networkId,
+    })
   }
-  
 
-  
   // Helper methods
   syncPhysicsTransform(): void {
-    if (!this.rigidBody || !this.world.physics?.world) return;
-    
+    if (!this.rigidBody || !this.world.physics?.world) return
+
     // Sync Three.js transform to physics body
-    const pos = this.position;
-    const rot = this.rotation;
-    
-    const PhysX = getPhysX();
-    if (!PhysX) return;
-    
+    const pos = this.position
+    const rot = this.rotation
+
+    const PhysX = getPhysX()
+    if (!PhysX) return
+
     const transform = new PhysX.PxTransform(
       new PhysX.PxVec3(pos.x, pos.y, pos.z),
       new PhysX.PxQuat(rot.x, rot.y, rot.z, rot.w)
-    );
-    
-    this.rigidBody.setGlobalPose(transform);
-    
+    )
+
+    this.rigidBody.setGlobalPose(transform)
+
     // PhysX manages object lifecycle - no manual deletion needed
   }
-  
+
   handleSpecialComponent(type: string, component: Component): void {
     switch (type) {
       case 'rigidbody':
-        this.createPhysicsBody(component);
-        break;
+        this.createPhysicsBody(component)
+        break
       case 'collider':
-        this.updateCollider(component);
-        break;
+        this.updateCollider(component)
+        break
       case 'mesh':
-        this.updateMesh(component);
-        break;
+        this.updateMesh(component)
+        break
     }
   }
-  
+
   private handleSpecialComponentRemoval(type: string, component: Component): void {
     switch (type) {
       case 'rigidbody':
-        this.removePhysicsBody();
-        break;
+        this.removePhysicsBody()
+        break
       case 'mesh':
-        this.removeMesh(component);
-        break;
+        this.removeMesh(component)
+        break
     }
   }
-  
+
   private createPhysicsBody(_component: Component): void {
     // Create physics rigid body based on component data
     // Implementation depends on physics engine integration
   }
-  
+
   private removePhysicsBody(): void {
     if (this.rigidBody) {
       // Remove from physics world
-      this.rigidBody = undefined;
+      this.rigidBody = undefined
     }
   }
-  
+
   private updateCollider(_component: Component): void {
     // Update physics collider shape
     // Implementation depends on physics engine
   }
-  
+
   private updateMesh(component: Component): void {
     // Add/update Three.js mesh from component data
-    const meshData = component.data;
+    const meshData = component.data
     if (meshData.geometry && meshData.material) {
       // Create or update mesh
     }
   }
-  
+
   private removeMesh(_component: Component): void {
     // Remove mesh from node
     // Implementation depends on mesh management
   }
-  
+
   private isDefaultRotation(): boolean {
-    return this.rotation.x === 0 && this.rotation.y === 0 && 
-           this.rotation.z === 0 && this.rotation.w === 1;
+    return this.rotation.x === 0 && this.rotation.y === 0 && this.rotation.z === 0 && this.rotation.w === 1
   }
-  
+
   private isDefaultScale(): boolean {
-    return this.scale.x === 1 && this.scale.y === 1 && this.scale.z === 1;
+    return this.scale.x === 1 && this.scale.y === 1 && this.scale.z === 1
   }
-  
+
   private mapStringToEntityType(type?: string): EntityType {
-    if (!type) return EntityType.STATIC;
-    
+    if (!type) return EntityType.STATIC
+
     switch (type.toLowerCase()) {
       case 'player':
-        return EntityType.PLAYER;
+        return EntityType.PLAYER
       case 'mob':
-        return EntityType.MOB;
+        return EntityType.MOB
       case 'item':
-        return EntityType.ITEM;
+        return EntityType.ITEM
       case 'npc':
-        return EntityType.NPC;
+        return EntityType.NPC
       case 'resource':
-        return EntityType.RESOURCE;
+        return EntityType.RESOURCE
       case 'static':
       default:
-        return EntityType.STATIC;
+        return EntityType.STATIC
     }
   }
   /**
    * Initialize common components - merged from BaseEntity
    */
   protected initializeRPGComponents(): void {
-    this.addHealthComponent();
-    this.addCombatComponent();
-    this.addVisualComponent();
+    this.addHealthComponent()
+    this.addCombatComponent()
+    this.addVisualComponent()
   }
 
   /**
@@ -539,8 +565,8 @@ export class Entity implements IEntity {
       current: this.health,
       max: this.maxHealth,
       regenerationRate: GAME_CONSTANTS.PLAYER.HEALTH_REGEN_RATE,
-      isDead: false
-    });
+      isDead: false,
+    })
   }
 
   /**
@@ -553,8 +579,8 @@ export class Entity implements IEntity {
       lastAttackTime: 0,
       attackCooldown: GAME_CONSTANTS.COMBAT.ATTACK_COOLDOWN,
       damage: GAME_CONSTANTS.COMBAT.DEFAULT_DAMAGE,
-      range: GAME_CONSTANTS.COMBAT.MELEE_RANGE
-    });
+      range: GAME_CONSTANTS.COMBAT.MELEE_RANGE,
+    })
   }
 
   /**
@@ -565,8 +591,8 @@ export class Entity implements IEntity {
       mesh: null,
       nameSprite: null,
       healthSprite: null,
-      isVisible: true
-    });
+      isVisible: true,
+    })
   }
 
   /**
@@ -575,23 +601,23 @@ export class Entity implements IEntity {
   protected initializeVisuals(): void {
     // Create main mesh - implemented by subclasses
     // Note: createMesh is async in Entity, so this will be called from init()
-    
+
     // Create name tag if entity has a name
     if (this.name) {
-      this.createNameTag();
+      this.createNameTag()
     }
 
     // Create health bar for entities with health
     if (this.maxHealth > 0) {
-      this.createHealthBar();
+      this.createHealthBar()
     }
 
     // Update visual component
-    const visualComponent = this.getComponent('visual');
+    const visualComponent = this.getComponent('visual')
     if (visualComponent && visualComponent.data) {
-      visualComponent.data.mesh = this.mesh;
-      visualComponent.data.nameSprite = this.nameSprite;
-      visualComponent.data.healthSprite = this.healthSprite;
+      visualComponent.data.mesh = this.mesh
+      visualComponent.data.nameSprite = this.nameSprite
+      visualComponent.data.healthSprite = this.healthSprite
     }
   }
 
@@ -599,18 +625,18 @@ export class Entity implements IEntity {
    * Create name tag sprite using UIRenderer - from BaseEntity
    */
   protected createNameTag(): void {
-    if (!this.name) return;
+    if (!this.name) return
 
     const nameCanvas = UIRenderer.createNameTag(this.name, {
       width: GAME_CONSTANTS.UI.NAME_TAG_WIDTH,
-      height: GAME_CONSTANTS.UI.NAME_TAG_HEIGHT
-    });
+      height: GAME_CONSTANTS.UI.NAME_TAG_HEIGHT,
+    })
 
-    this.nameSprite = UIRenderer.createSpriteFromCanvas(nameCanvas, GAME_CONSTANTS.UI.SPRITE_SCALE);
+    this.nameSprite = UIRenderer.createSpriteFromCanvas(nameCanvas, GAME_CONSTANTS.UI.SPRITE_SCALE)
     if (this.nameSprite) {
-      this.nameSprite.position.set(0, 2.5, 0); // Position above the entity
+      this.nameSprite.position.set(0, 2.5, 0) // Position above the entity
       if (this.world.stage.scene) {
-        this.world.stage.scene.add(this.nameSprite);
+        this.world.stage.scene.add(this.nameSprite)
       }
     }
   }
@@ -621,14 +647,14 @@ export class Entity implements IEntity {
   protected createHealthBar(): void {
     const healthCanvas = UIRenderer.createHealthBar(this.health, this.maxHealth, {
       width: GAME_CONSTANTS.UI.HEALTH_BAR_WIDTH,
-      height: GAME_CONSTANTS.UI.HEALTH_BAR_HEIGHT
-    });
+      height: GAME_CONSTANTS.UI.HEALTH_BAR_HEIGHT,
+    })
 
-    this.healthSprite = UIRenderer.createSpriteFromCanvas(healthCanvas, GAME_CONSTANTS.UI.SPRITE_SCALE);
+    this.healthSprite = UIRenderer.createSpriteFromCanvas(healthCanvas, GAME_CONSTANTS.UI.SPRITE_SCALE)
     if (this.healthSprite) {
-      this.healthSprite.position.set(0, 2.0, 0); // Position above the entity, below name tag
+      this.healthSprite.position.set(0, 2.0, 0) // Position above the entity, below name tag
       if (this.world.stage.scene) {
-        this.world.stage.scene.add(this.healthSprite);
+        this.world.stage.scene.add(this.healthSprite)
       }
     }
   }
@@ -637,49 +663,49 @@ export class Entity implements IEntity {
    * Update health bar sprite - from BaseEntity
    */
   protected updateHealthBar(): void {
-    if (!this.healthSprite) return;
+    if (!this.healthSprite) return
 
     const healthCanvas = UIRenderer.createHealthBar(this.health, this.maxHealth, {
       width: GAME_CONSTANTS.UI.HEALTH_BAR_WIDTH,
-      height: GAME_CONSTANTS.UI.HEALTH_BAR_HEIGHT
-    });
+      height: GAME_CONSTANTS.UI.HEALTH_BAR_HEIGHT,
+    })
 
-    UIRenderer.updateSpriteTexture(this.healthSprite, healthCanvas);
+    UIRenderer.updateSpriteTexture(this.healthSprite, healthCanvas)
   }
 
   /**
    * Update health and refresh health bar - from BaseEntity
    */
   public setHealth(newHealth: number): void {
-    this.health = Math.max(0, Math.min(this.maxHealth, newHealth));
-    
+    this.health = Math.max(0, Math.min(this.maxHealth, newHealth))
+
     // Update health component
-    const healthComponent = this.getComponent('health');
+    const healthComponent = this.getComponent('health')
     if (healthComponent && healthComponent.data) {
-      healthComponent.data.current = this.health;
-      healthComponent.data.isDead = this.health <= 0;
+      healthComponent.data.current = this.health
+      healthComponent.data.isDead = this.health <= 0
     }
 
     // Update health bar visual
-    this.updateHealthBar();
+    this.updateHealthBar()
 
     // Emit health change event
     this.world.emit('entity:health_changed', {
       entityId: this.id,
       health: this.health,
       maxHealth: this.maxHealth,
-      isDead: this.health <= 0
-    });
+      isDead: this.health <= 0,
+    })
   }
 
   /**
    * Damage this entity - from BaseEntity
    */
   public damage(amount: number, source?: string): boolean {
-    if (this.health <= 0) return false;
+    if (this.health <= 0) return false
 
-    const newHealth = this.health - amount;
-    this.setHealth(newHealth);
+    const newHealth = this.health - amount
+    this.setHealth(newHealth)
 
     // Emit damage event
     this.world.emit('entity:damaged', {
@@ -687,248 +713,278 @@ export class Entity implements IEntity {
       damage: amount,
       sourceId: source,
       remainingHealth: this.health,
-      isDead: this.health <= 0
-    });
+      isDead: this.health <= 0,
+    })
 
-    return true;
+    return true
   }
 
   /**
    * Heal this entity - from BaseEntity
    */
   public heal(amount: number): boolean {
-    if (this.health >= this.maxHealth) return false;
+    if (this.health >= this.maxHealth) return false
 
-    const newHealth = this.health + amount;
-    this.setHealth(newHealth);
+    const newHealth = this.health + amount
+    this.setHealth(newHealth)
 
     // Emit heal event
     this.world.emit('entity:healed', {
       entityId: this.id,
       healAmount: amount,
-      newHealth: this.health
-    });
+      newHealth: this.health,
+    })
 
-    return true;
+    return true
   }
 
   /**
    * Check if entity is alive - from BaseEntity
    */
   public isAlive(): boolean {
-    return this.health > 0;
+    return this.health > 0
   }
 
   /**
    * Check if entity is dead - from BaseEntity
    */
   public isDead(): boolean {
-    return this.health <= 0;
+    return this.health <= 0
   }
 
   /**
    * Get entity's current health - from BaseEntity
    */
   public getHealth(): number {
-    return this.health;
+    return this.health
   }
 
   /**
    * Get entity's maximum health - from BaseEntity
    */
   public getMaxHealth(): number {
-    return this.maxHealth;
+    return this.maxHealth
   }
 
   /**
    * Get entity's level - from BaseEntity
    */
   public getLevel(): number {
-    return this.level;
+    return this.level
   }
 
   /**
    * Set entity level - from BaseEntity
    */
   public setLevel(newLevel: number): void {
-    this.level = Math.max(1, newLevel);
-    
+    this.level = Math.max(1, newLevel)
+
     // Emit level change event
     this.world.emit('entity:level_changed', {
       entityId: this.id,
-      newLevel: this.level
-    });
+      newLevel: this.level,
+    })
   }
-  
+
   // Position getter/setter compatibility methods for Position3D
   public getPosition(): Position3D {
     return {
       x: this.position.x,
       y: this.position.y,
-      z: this.position.z
-    };
+      z: this.position.z,
+    }
   }
-  
+
   public setPosition(posOrX: Position3D | number, y?: number, z?: number): void {
     if (typeof posOrX === 'object') {
-      this.position.set(posOrX.x, posOrX.y, posOrX.z);
-      this.config.position = { x: posOrX.x, y: posOrX.y, z: posOrX.z };
+      this.position.set(posOrX.x, posOrX.y, posOrX.z)
+      this.config.position = { x: posOrX.x, y: posOrX.y, z: posOrX.z }
     } else {
-      this.position.set(posOrX, y!, z!);
-      this.config.position = { x: posOrX, y: y!, z: z! };
+      this.position.set(posOrX, y!, z!)
+      this.config.position = { x: posOrX, y: y!, z: z! }
     }
     // Position is already set via this.position, no sync needed
-    this.markNetworkDirty();
+    this.markNetworkDirty()
   }
-  
+
   getDistanceTo(point: Position3D): number {
-    const pos = this.getPosition();
-    const dx = pos.x - point.x;
-    const dy = pos.y - point.y;
-    const dz = pos.z - point.z;
-    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const pos = this.getPosition()
+    const dx = pos.x - point.x
+    const dy = pos.y - point.y
+    const dz = pos.z - point.z
+    return Math.sqrt(dx * dx + dy * dy + dz * dz)
   }
 
   isPlayerInRange(playerPosition: Position3D): boolean {
-    const distance = this.getDistanceTo(playerPosition);
-    return distance <= (this.config.interactionDistance || 5);
+    const distance = this.getDistanceTo(playerPosition)
+    return distance <= (this.config.interactionDistance || 5)
+  }
+
+  /**
+   * Check if we're running in a client environment with full browser APIs
+   * This is more robust than just checking world.isClient as it verifies actual Canvas API availability
+   */
+  protected isClientEnvironment(): boolean {
+    // First check the world and network flags - if explicitly server, return false
+    if (this.world.network && this.world.network.isServer === true) {
+      return false
+    }
+    
+    // Check if explicitly client
+    if (this.world.isClient === true || (this.world.network && this.world.network.isClient === true)) {
+      return true
+    }
+    
+    // Fallback: Check for real browser Canvas API
+    // The server polyfill and jsdom don't provide the full Canvas 2D context
+    if (typeof document !== 'undefined') {
+      try {
+        const testCanvas = document.createElement('canvas')
+        const ctx = testCanvas.getContext('2d')
+        // Strong type assumption - if we have a context, it's a full CanvasRenderingContext2D
+        return ctx !== null
+      } catch {
+        return false
+      }
+    }
+    
+    return false
   }
 
   async init(): Promise<void> {
     try {
       // Create the visual representation
-      await this.createMesh();
+      await this.createMesh()
 
       // Initialize UI elements (name tag, health bar) - only on client
-      if (this.world.isClient) {
-        this.initializeVisuals();
+      // Check if we're in a real browser environment with full Canvas API support
+      const isClientEnvironment = this.isClientEnvironment()
+      
+      if (isClientEnvironment) {
+        this.initializeVisuals()
       }
 
       // Load model if specified
       if (this.config.model) {
-        await this.loadModel();
+        await this.loadModel()
       }
 
       // Note: Entity constructor already adds node to scene
 
       // Set up interaction system
-      this.setupInteraction();
+      this.setupInteraction()
 
       // Call custom initialization
-      await this.onInit();
-
+      await this.onInit()
     } catch (error) {
-      console.error(`Failed to initialize Entity ${this.id}:`, error);
-      throw error;
+      console.error(`Failed to initialize Entity ${this.id}:`, error)
+      throw error
     }
   }
 
   protected async loadModel(): Promise<void> {
-    if (!this.config.model || !this.world.loader) return;
-    
+    if (!this.config.model || !this.world.loader) return
+
     // Skip model loading on server side - models are only needed for client rendering
-    if (this.world.isServer) return;
+    if (this.world.isServer) return
 
     try {
       // Load the model
-      const safeLoader = new SafeLoaderWrapper(this.world.loader);
+      const safeLoader = new SafeLoaderWrapper(this.world.loader)
       const model = await safeLoader.loadModel(this.config.model)
-      // Convert the loaded model into a THREE.Object3D via toNodes when available
-      let modelObject: THREE.Object3D | null = null
-      if (typeof model.toNodes === 'function') {
-        const nodes = model.toNodes()
-        const possible = nodes.get('root') || nodes.get('model') || nodes.get(this.name) || null
-        const isThreeObject3D = (obj: unknown): obj is THREE.Object3D => {
-          return !!obj && typeof obj === 'object' && 'isObject3D' in (obj as Record<string, unknown>)
-        }
-        if (isThreeObject3D(possible)) {
-          modelObject = possible
-        }
+      // Convert the loaded model into a THREE.Object3D via toNodes
+      const nodes = model.toNodes()
+      const possible = nodes.get('root') || nodes.get('model') || nodes.get(this.name) || null
+      const isThreeObject3D = (obj: unknown): obj is THREE.Object3D => {
+        return !!obj && typeof obj === 'object' && 'isObject3D' in (obj as Record<string, unknown>)
+      }
+      let modelObject: THREE.Object3D | null = null;
+      if (isThreeObject3D(possible)) {
+        modelObject = possible
       }
       // Fallback: if no nodes map provided, skip assignment
       if (!modelObject) {
         throw new Error('Loaded model did not provide a THREE.Object3D node')
       }
-      
+
       // Clear existing mesh
       if (this.mesh) {
-        this.node.remove(this.mesh);
+        this.node.remove(this.mesh)
       }
 
-      this.mesh = modelObject;
+      this.mesh = modelObject
       if (this.mesh) {
-        this.mesh.name = `${this.name}_Model`;
+        this.mesh.name = `${this.name}_Model`
       }
-      
+
       // Set up userData with proper typing
       const userData: MeshUserData = {
-        ...this.node.userData as MeshUserData,
+        ...(this.node.userData as MeshUserData),
         type: this.config.type,
         entityId: this.id,
-        interactable: this.config.interactable
-      };
+        interactable: this.config.interactable,
+      }
       if (this.mesh) {
-        this.mesh.userData = userData;
+        this.mesh.userData = userData
 
         // Collect all child nodes
-        this.collectNodes(this.mesh);
+        this.collectNodes(this.mesh)
 
         // Add to node
-        this.node.add(this.mesh);
+        this.node.add(this.mesh)
       }
-    
     } catch (error) {
-      console.error(`Failed to load model for entity ${this.id}:`, error);
+      console.error(`Failed to load model for entity ${this.id}:`, error)
     }
   }
 
   protected collectNodes(node: THREE.Object3D): void {
     if (node.name) {
-      this.nodes.set(node.name, node);
+      this.nodes.set(node.name, node)
     }
 
     node.children.forEach(child => {
-      this.collectNodes(child as THREE.Object3D);
-    });
+      this.collectNodes(child as THREE.Object3D)
+    })
   }
 
   // Default mesh creation - override in subclasses
   protected async createMesh(): Promise<void> {
     // Default implementation creates a simple box mesh
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
-    const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.name = `${this.name}_Mesh`;
-    this.mesh = mesh;
-    
+    const geometry = new THREE.BoxGeometry(1, 1, 1)
+    const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 })
+    const mesh = new THREE.Mesh(geometry, material)
+    mesh.name = `${this.name}_Mesh`
+    this.mesh = mesh
+
     // Set up userData
     const userData: MeshUserData = {
       type: this.config.type,
       entityId: this.id,
       name: this.config.name,
       interactable: this.config.interactable,
-      mobData: null
-    };
+      mobData: null,
+    }
     if (this.mesh) {
       // Spread userData to match THREE.js userData type
-      this.mesh.userData = { ...userData };
+      this.mesh.userData = { ...userData }
     }
-    
+
     // @ts-ignore - THREE.js type compatibility issue
-    this.node.add(this.mesh);
+    this.node.add(this.mesh)
   }
 
   // Default interaction handler - override in subclasses
   protected async onInteract(data: EntityInteractionData): Promise<void> {
     // Default implementation logs interaction
-    console.log(`Entity ${this.id} interacted with by player ${data.playerId}`);
-    
+    console.log(`Entity ${this.id} interacted with by player ${data.playerId}`)
+
     // Emit interaction event
     this.world.emit('entity:interacted', {
       entityId: this.id,
       playerId: data.playerId,
-      position: data.playerPosition
-    });
+      position: data.playerPosition,
+    })
   }
 
   // Custom initialization hook
@@ -938,7 +994,7 @@ export class Entity implements IEntity {
 
   private setupInteraction(): void {
     // Set up interaction target with proper typing
-    const target = this.mesh || this.node;
+    const target = this.mesh || this.node
     const userData: MeshUserData = {
       type: this.config.type,
       entityId: this.id,
@@ -946,37 +1002,39 @@ export class Entity implements IEntity {
       interactable: this.config.interactable,
       mobData: null,
       interactionDistance: this.config.interactionDistance,
-      interactionType: this.config.interactionType || undefined
-    };
-    target.userData = userData;
+      interactionType: this.config.interactionType || undefined,
+    }
+    target.userData = userData
 
     // Listen for interaction events and track handler for cleanup
     const onInteractHandler = async (data: unknown) => {
-      const typed = data as EntityInteractionData;
+      const typed = data as EntityInteractionData
       if (typed && typed.entityId === this.id) {
-        await this.onInteract(typed);
+        await this.onInteract(typed)
       }
-    };
-    this.world.on(EventType.ENTITY_INTERACT, onInteractHandler);
+    }
+    this.world.on(EventType.ENTITY_INTERACT, onInteractHandler)
     // Track listener with exact function reference and event name
-    this.worldListeners.set(onInteractHandler, EventType.ENTITY_INTERACT);
+    this.worldListeners.set(onInteractHandler, EventType.ENTITY_INTERACT)
   }
 
   update(delta: number): void {
     // Update components
     for (const component of this.components.values()) {
-      component.update?.(delta);
+      if (component.update) {
+        component.update(delta)
+      }
     }
 
-    const now = this.world.getTime();
-    if (now - this.lastUpdate < 16) return; // Limit to ~60fps
-    this.lastUpdate = now;
+    const now = this.world.getTime()
+    if (now - this.lastUpdate < 16) return // Limit to ~60fps
+    this.lastUpdate = now
 
     // Update based on client/server
     if (this.world.isServer) {
-      this.serverUpdate(delta);
+      this.serverUpdate(delta)
     } else {
-      this.clientUpdate(delta);
+      this.clientUpdate(delta)
     }
   }
 
@@ -994,11 +1052,13 @@ export class Entity implements IEntity {
   fixedUpdate(delta: number): void {
     // Update components with fixedUpdate
     for (const component of this.components.values()) {
-      component.fixedUpdate?.(delta);
+      if (component.fixedUpdate) {
+        component.fixedUpdate(delta)
+      }
     }
 
     if (this.world.isServer) {
-      this.serverFixedUpdate(delta);
+      this.serverFixedUpdate(delta)
     }
   }
 
@@ -1009,15 +1069,15 @@ export class Entity implements IEntity {
 
   // Mark this entity as needing network sync
   markNetworkDirty(): void {
-    this.networkDirty = true;
-    this.networkVersion++;
+    this.networkDirty = true
+    this.networkVersion++
   }
 
   // Get data for network synchronization
   getNetworkData(): Record<string, unknown> {
-    const position = toPosition3D(this.node.position);
-    const rotation = this.node.quaternion;
-    const scale = { x: this.node.scale.x, y: this.node.scale.y, z: this.node.scale.z };
+    const position = toPosition3D(this.node.position)
+    const rotation = this.node.quaternion
+    const scale = { x: this.node.scale.x, y: this.node.scale.y, z: this.node.scale.z }
 
     return {
       id: this.id,
@@ -1028,165 +1088,161 @@ export class Entity implements IEntity {
       scale,
       visible: this.node.visible,
       networkVersion: this.networkVersion,
-      properties: this.config.properties || {}
-    };
+      properties: this.config.properties || {},
+    }
   }
 
   // Apply network data (client-side)
   applyNetworkData(data: Record<string, unknown>): void {
-    this.networkVersion = data.networkVersion as number;
-    this.node.visible = data.visible as boolean;
-    this.config.properties = { ...this.config.properties, ...data.properties as Record<string, unknown> };
+    this.networkVersion = data.networkVersion as number
+    this.node.visible = data.visible as boolean
+    this.config.properties = { ...this.config.properties, ...(data.properties as Record<string, unknown>) }
   }
-
-
 
   // Handle interaction request
   async handleInteraction(data: EntityInteractionData): Promise<void> {
     // Call the interaction handler directly - assume data is valid
-    await this.onInteract(data);
+    await this.onInteract(data)
   }
 
   // Property management
   getProperty<T>(key: string, defaultValue?: T): T {
-    return (this.config.properties?.[key] ?? defaultValue) as T;
+    return (this.config.properties?.[key] ?? defaultValue) as T
   }
 
   setProperty(key: string, value: unknown): void {
-    this.config.properties[key] = value;
-    this.markNetworkDirty();
+    this.config.properties[key] = value
+    this.markNetworkDirty()
   }
 
   // Event system with typed versions
   on<T = unknown>(event: string, callback: (data: T) => void): void {
     if (!this.listeners[event]) {
-      this.listeners[event] = new Set();
+      this.listeners[event] = new Set()
     }
-    this.listeners[event].add(callback as EventCallback);
+    this.listeners[event].add(callback as EventCallback)
   }
 
   off<T = unknown>(event: string, callback: (data: T) => void): void {
-    this.listeners[event].delete(callback as EventCallback);
+    this.listeners[event].delete(callback as EventCallback)
   }
 
   emit<T = unknown>(event: string, data?: T): void {
     // Call local listeners first
-    this.listeners[event]?.forEach(callback => callback(data));
-    
+    this.listeners[event]?.forEach(callback => callback(data))
+
     // Also emit to world events
-    this.world.emit(`entity:${this.id}:${event}`, data);
+    this.world.emit(`entity:${this.id}:${event}`, data)
   }
 
   // Visibility
   setVisible(visible: boolean): void {
-    this.node.visible = visible;
-    this.config.visible = visible;
-    this.markNetworkDirty();
+    this.node.visible = visible
+    this.config.visible = visible
+    this.markNetworkDirty()
   }
 
   // Cleanup
   destroy(local?: boolean): void {
-    
+    // Re-entrancy guard: prevent recursive destroy calls
+    if (this.destroyed) return
+    this.destroyed = true
+
     // Clean up UI elements first - from BaseEntity
     if (this.nameSprite && this.world.stage.scene) {
-      this.world.stage.scene.remove(this.nameSprite);
+      this.world.stage.scene.remove(this.nameSprite)
       if (this.nameSprite.material instanceof THREE.SpriteMaterial && this.nameSprite.material.map) {
-        this.nameSprite.material.map.dispose();
+        this.nameSprite.material.map.dispose()
       }
-      this.nameSprite.material.dispose();
-      this.nameSprite = null;
+      this.nameSprite.material.dispose()
+      this.nameSprite = null
     }
 
     if (this.healthSprite && this.world.stage.scene) {
-      this.world.stage.scene.remove(this.healthSprite);
+      this.world.stage.scene.remove(this.healthSprite)
       if (this.healthSprite.material instanceof THREE.SpriteMaterial && this.healthSprite.material.map) {
-        this.healthSprite.material.map.dispose();
+        this.healthSprite.material.map.dispose()
       }
-      this.healthSprite.material.dispose();
-      this.healthSprite = null;
+      this.healthSprite.material.dispose()
+      this.healthSprite = null
     }
-    
+
     // Destroy all components
     for (const type of Array.from(this.components.keys())) {
-      this.removeComponent(type);
+      this.removeComponent(type)
     }
-    
+
     // Remove from scene
     if (this.node.parent) {
       // @ts-ignore - THREE.js type compatibility issue
-      this.node.parent.remove(this.node);
+      this.node.parent.remove(this.node)
     }
-    
+
     // Clean up physics
     if (this.rigidBody && this.world.physics?.world) {
       // Remove rigid body from physics world
       // Implementation depends on physics engine
     }
-    
+
     // Network sync
-    const network = getWorldNetwork(this.world);
+    const network = getWorldNetwork(this.world)
     if (local && network) {
-      network.send('entityRemoved', this.id);
+      network.send('entityRemoved', this.id)
     }
-    
-    // Emit destroy event
-    this.world.emit(EventType.ENTITY_DEATH, {
-      entityId: this.id
-    });
-    
-    // Mark as destroyed
-    this.destroyed = true;
+
+    // Note: Do not emit ENTITY_DEATH here to avoid recursive destruction loops.
+    // Destruction is requested via the EventBus and coordinated by EntityManager.
 
     // Clear event listeners
-    this.clearEventListeners();
+    this.clearEventListeners()
 
     // Remove from world
     this.worldNodes.forEach(node => {
       if (node.parent) {
         // @ts-ignore - THREE.js type compatibility issue
-        node.parent.remove(node);
+        node.parent.remove(node)
       }
-    });
-    this.worldNodes.clear();
+    })
+    this.worldNodes.clear()
 
     // Dispose of THREE.js resources
     if (this.mesh) {
-      this.disposeMesh(this.mesh);
+      this.disposeMesh(this.mesh)
     }
 
     // Clear references
-    this.nodes.clear();
-    this.mesh = null;
+    this.nodes.clear()
+    this.mesh = null
   }
 
   private clearEventListeners(): void {
     // Clear local event listeners
     Object.keys(this.listeners).forEach(event => {
-      this.listeners[event].clear();
-    });
+      this.listeners[event].clear()
+    })
 
     // Clear world event listeners
     this.worldListeners.forEach((eventName, callback) => {
-      this.world.off(eventName, callback);
-    });
-    this.worldListeners.clear();
+      this.world.off(eventName, callback)
+    })
+    this.worldListeners.clear()
   }
 
   private disposeMesh(object: THREE.Mesh | THREE.Group | THREE.Object3D): void {
     object.traverse(child => {
       if (child instanceof THREE.Mesh) {
         if (child.geometry) {
-          child.geometry.dispose();
+          child.geometry.dispose()
         }
         if (child.material) {
           if (Array.isArray(child.material)) {
-            child.material.forEach(material => material.dispose());
+            child.material.forEach(material => material.dispose())
           } else {
-            child.material.dispose();
+            child.material.dispose()
           }
         }
       }
-    });
+    })
   }
 
   // Debug information
@@ -1202,7 +1258,7 @@ export class Entity implements IEntity {
       networkDirty: this.networkDirty,
       networkVersion: this.networkVersion,
       nodeCount: this.nodes.size,
-      properties: this.config.properties
-    };
+      properties: this.config.properties,
+    }
   }
 }

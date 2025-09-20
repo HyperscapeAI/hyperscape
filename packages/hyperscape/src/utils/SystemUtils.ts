@@ -40,7 +40,7 @@ export function hasSystem(world: World, systemKey: string): boolean {
 /**
  * Type-safe access to world network
  */
-export function getWorldNetwork(world: World): { send: <T = unknown>(type: string, data: T) => void } | null {
+export function getWorldNetwork(world: World): { send: (type: string, data: unknown) => void } | null {
   if (!world || !world.network) {
     return null;
   }

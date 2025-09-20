@@ -2,7 +2,7 @@ import THREE from '../extras/three'
 import type { NodeData } from '../types/index'
 import type { World } from '../World'
 
-interface NodeStats {
+export interface NodeStats {
   triangles?: number;
   texBytes?: number;
   nodes?: number;
@@ -10,7 +10,7 @@ interface NodeStats {
 }
 
 // Base type for all node proxies - allows extensibility
-type NodeProxy = Record<string, unknown>
+export type NodeProxy = Record<string, unknown>
 
 // Component properties and transform tracking constants
 const COMPONENT_PROPERTIES = new Set(['x', 'y', 'z'])
@@ -154,13 +154,11 @@ export class Node {
       get(target, prop) {
         const value = target[prop];
         // Wrap methods to track transform changes
-        if (typeof value === 'function' && typeof prop === 'string') {
+        if (typeof prop === 'string' && TRANSFORM_MODIFYING_METHODS.has(prop)) {
           return function(...args: unknown[]) {
             const result = value.apply(target, args);
             // Check if this method modifies the vector
-            if (TRANSFORM_MODIFYING_METHODS.has(prop)) {
-              self.setTransformed();
-            }
+            self.setTransformed();
             return result;
           };
         }
@@ -188,7 +186,7 @@ export class Node {
       get(target, prop) {
         const value = target[prop];
         // Wrap methods to track transform changes
-        if (typeof value === 'function' && typeof prop === 'string') {
+        if (typeof prop === 'string' && TRANSFORM_MODIFYING_METHODS.has(prop)) {
           return function(...args: unknown[]) {
             // For scale.set(), ensure no zero values
             if (prop === 'set' && args.length >= 3) {
@@ -198,9 +196,7 @@ export class Node {
             }
             const result = value.apply(target, args);
             // Check if this method modifies the vector
-            if (TRANSFORM_MODIFYING_METHODS.has(prop)) {
-              self.setTransformed();
-            }
+            self.setTransformed();
             return result;
           };
         }

@@ -35,15 +35,6 @@ interface ResourceTestData {
 
 export class ResourceGatheringTestSystem extends VisualTestFramework {
   private testData = new Map<string, ResourceTestData>();
-  private testResults = new Map<string, {
-    passed: boolean;
-    data?: {
-      resourcesGathered?: number;
-      expectedResources?: number;
-      duration?: number;
-      xpGained?: number;
-    };
-  }>();
   private resourceSystem!: ResourceSystem;
   private processingSystem!: ProcessingSystem;
   private xpSystem!: SkillsSystem;

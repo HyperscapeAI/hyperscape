@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Item } from '../../types/core';
 import { ItemType, ItemRarity, EquipmentSlotName } from '../../types/core';
 import { ItemRegistry } from './ItemRegistry';
+import { dataManager } from '../../data/DataManager';
 
 // Helper function to create complete Item objects for testing
 function createTestItem(overrides: Partial<Item>): Item {
@@ -37,44 +38,30 @@ function createTestItem(overrides: Partial<Item>): Item {
   };
 }
 
-// Mock DataManager
-vi.mock('../../data/DataManager', () => {
-  const ItemType = {
-    WEAPON: 'weapon',
-    ARMOR: 'armor',
-    MISC: 'misc'
-  };
-
-  const mockItems = new Map([
-    ['bronze_sword', {
-      id: '1',
-      name: 'Bronze sword',
-      type: ItemType.WEAPON,
-      stackable: false,
-      value: 50,
-      equipSlot: 'weapon'
-    }],
-    ['iron_helmet', {
-      id: '2',
-      name: 'Iron helmet',
-      type: ItemType.ARMOR,
-      stackable: false,
-      value: 100,
-      equipSlot: 'helmet'
-    }]
-  ]);
-
-  return {
-    dataManager: {
-      getAllItems: () => mockItems
-    }
-  };
-});
-
 describe('ItemRegistry', () => {
   let registry: ItemRegistry;
 
   beforeEach(() => {
+    const mockItems = new Map([
+      ['bronze_sword', {
+        id: '1',
+        name: 'Bronze sword',
+        type: ItemType.WEAPON,
+        stackable: false,
+        value: 50,
+        equipSlot: 'weapon'
+      }],
+      ['iron_helmet', {
+        id: '2',
+        name: 'Iron helmet',
+        type: ItemType.ARMOR,
+        stackable: false,
+        value: 100,
+        equipSlot: 'helmet'
+      }]
+    ]);
+
+    vi.spyOn(dataManager, 'getAllItems').mockReturnValue(mockItems as Map<string, Item>);
     registry = new ItemRegistry();
   });
 

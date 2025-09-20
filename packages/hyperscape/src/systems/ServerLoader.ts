@@ -7,10 +7,8 @@ import { GLTFLoader } from '../libs/gltfloader/GLTFLoader'
 import { createEmoteFactory } from '../extras/createEmoteFactory'
 import { createNode } from '../extras/createNode'
 import { glbToNodes } from '../extras/glbToNodes'
-import { Node } from '../nodes'
-import { World } from '../World'
-import { System } from './System'
-import type { GLBData } from '../types'
+import type { GLBData, HSNode as INode, World } from '../types';
+import { System } from './System';
 
 /**
  * Server Loader System
@@ -117,8 +115,8 @@ export class ServerLoader extends System {
               const model = {
                 toNodes() {
                   const clonedNode = node.clone(true)
-                  const nodeMap = new Map<string, Node>()
-                  nodeMap.set('root', clonedNode)
+                  const nodeMap = new Map<string, INode>()
+                  nodeMap.set('root', clonedNode as INode)
                   return nodeMap
                 },
                 getStats() {
@@ -159,15 +157,22 @@ export class ServerLoader extends System {
       promise = new Promise<unknown>((resolve, reject) => {
         try {
           // NOTE: we can't load vrms on the server yet but we don't need 'em anyway
-          let node: Node
+          let node: INode
           const glb = {
             toNodes: () => {
               if (!node) {
                 node = createNode('group')
                 const node2 = createNode('avatar', { id: 'avatar', factory: null })
-                node.add(node2)
+                ;(node as { add: (child: INode) => void }).add(node2)
               }
-              return node.clone(true)
+              const clone = node.clone(true)
+              const nodeMap = new Map<string, INode>()
+              nodeMap.set('root', clone as INode)
+              const avatarNode = (clone as { get: (id: string) => INode | undefined }).get('avatar')
+              if (avatarNode) {
+                nodeMap.set('avatar', avatarNode)
+              }
+              return nodeMap
             },
           }
           this.results.set(key, glb)

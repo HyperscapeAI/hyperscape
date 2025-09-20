@@ -57,7 +57,9 @@ export interface ResourceNode {
   id: string;
   type: 'tree' | 'rock' | 'ore' | 'herb' | 'fish' | 'gem' | 'rare_ore';
   position: Position3D | THREE.Vector3;
-  mesh: THREE.Mesh | null;
+  mesh?: THREE.Mesh | null; // For non-instanced meshes
+  instanceId?: number | null;
+  meshType?: string;
   health: number;
   maxHealth: number;
   respawnTime: number;

@@ -1,6 +1,7 @@
 import type { Settings as ISettings, World } from '../types/index';
 import type { SettingsChanges, SettingsData } from '../types/settings-types';
 import { System } from './System';
+import { hasRole } from '../utils';
 
 export class Settings extends System implements ISettings {
   title: string | null = null;
@@ -17,16 +18,9 @@ export class Settings extends System implements ISettings {
     super(world);
   }
 
-  get(key: string): unknown {
-    if (key in this) {
-      return (this as Record<string, unknown>)[key];
-    }
-    return undefined;
-  }
-
   set(key: string, value: unknown, broadcast = false): void {
-    this.modify(key, value);
-    if (broadcast && this.world.network && 'send' in this.world.network) {
+    const player = this.world.entities.player as { data?: { roles?: string[] } } | undefined
+    if (broadcast && !this.world.isServer && player && !hasRole(player.data?.roles, 'admin')) {
       (this.world.network as { send: (type: string, data: unknown) => void }).send('settingsModified', { key, value });
     }
   }

@@ -387,7 +387,7 @@ function Chat({ world }: { world: World }) {
     world.chat.send(msg)
     if (isTouch) {
       // setActive(false)
-      if (e.target && 'blur' in e.target && typeof e.target.blur === 'function') {
+      if (e.target && e.target instanceof HTMLElement) {
         e.target.blur()
       }
       setTimeout(() => setActive(false), 10)

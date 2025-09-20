@@ -59,15 +59,5 @@ export class LODs extends System {
 
   override destroy(): void {
     this.nodes = [];
-    this.cursor = 0;
-  }
-
-  // Helper methods for testing and debugging
-  getNodeCount(): number {
-    return this.nodes.length;
-  }
-
-  getCursor(): number {
-    return this.cursor;
   }
 } 

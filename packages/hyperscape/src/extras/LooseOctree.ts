@@ -7,7 +7,7 @@ import type {
   OctreeItem
 } from '../types/physics'
 
-interface OctreeHelper {
+export interface OctreeHelper {
   init: () => void;
   insert: (node: LooseOctreeNode) => void;
   remove: (node: LooseOctreeNode) => void;
@@ -25,7 +25,7 @@ const MIN_RADIUS = 0.2
 
 // https://anteru.net/blog/2008/loose-octrees/
 
-interface LooseOctreeOptions {
+export interface LooseOctreeOptions {
   scene: THREE.Scene;
   center: THREE.Vector3;
   size: number;
@@ -162,7 +162,7 @@ export class LooseOctree {
   }
 }
 
-class LooseOctreeNode {
+export class LooseOctreeNode {
   children: LooseOctreeNode[]
   octree: LooseOctree
   parent: LooseOctreeNode | null

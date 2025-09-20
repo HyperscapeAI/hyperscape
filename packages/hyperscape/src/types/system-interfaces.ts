@@ -49,7 +49,7 @@ export interface NetworkSystem extends System {
   isClient: boolean
   isServer: boolean
   send(event: string, data: unknown): void
-  disconnect(): void
+  disconnect(): Promise<void>
 }
 
 export interface EntitiesSystem extends System {

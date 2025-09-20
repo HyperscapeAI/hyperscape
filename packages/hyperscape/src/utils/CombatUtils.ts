@@ -8,8 +8,9 @@ import { EventType } from '../types/events';
 import { calculateDistance, getEntityWithComponent } from './EntityUtils';
 
 // Import proper health and skill structures
-import type { CanAttackResult, CombatAttackResult, StatsComponent } from '../types/combat-types';
+import type { CanAttackResult, CombatAttackResult } from '../types/combat-types';
 import type { Player } from '../types/core';
+import { StatsComponent } from '../components/StatsComponent';
 
 /**
  * Safe stats component access

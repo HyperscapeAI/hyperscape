@@ -68,52 +68,19 @@ export class PerformanceMonitor extends SystemBase {
   }
   
   private checkMemoryUsage(): void {
-    // Try to get memory usage if available
-    if (typeof performance !== 'undefined' && 'memory' in performance) {
-      // Define proper type for Chrome's performance.memory API
-      const memoryInfo = (performance as typeof performance & {
-        memory?: {
-          usedJSHeapSize?: number;
-          totalJSHeapSize?: number;
-          jsHeapSizeLimit?: number;
-        };
-      }).memory;
-      if (memoryInfo && memoryInfo.usedJSHeapSize) {
-        this.metricsCollector.reportMemoryUsage(memoryInfo.usedJSHeapSize);
+    const now = Date.now();
+    if (now - this.lastMemoryCheck > this.memoryCheckInterval) {
+      this.lastMemoryCheck = now;
+      if (typeof performance !== 'undefined' && 'memory' in performance) {
+        const memoryPerf = performance as { memory?: { usedJSHeapSize: number } };
+        if (memoryPerf.memory && memoryPerf.memory.usedJSHeapSize) {
+          this.metricsCollector.reportMemoryUsage(memoryPerf.memory.usedJSHeapSize);
+        }
       }
     }
   }
-  
-  getSystemRating(): string {
-    const metrics = this.metricsCollector.getMetrics();
-    
-    let health = 100;
-    const features = ['Performance Monitoring', 'Render Timing', 'Physics Timing', 'Memory Tracking'];
-    
-    // Deduct health based on performance issues
-    if (metrics.performance.renderTime && metrics.performance.renderTime > 16.67) {
-      health -= 20; // Below 60fps
-    }
-    if (metrics.performance.physicsTime && metrics.performance.physicsTime > 10) {
-      health -= 20; // Physics taking too long
-    }
-    
-    return JSON.stringify({
-      health,
-      score: health,
-      features,
-      performance: {
-        renderFrames: this.renderFrameCount,
-        physicsFrames: this.physicsFrameCount,
-        avgRenderTime: metrics.performance.renderTime || 0,
-        avgPhysicsTime: metrics.performance.physicsTime || 0,
-        memoryUsage: metrics.performance.memoryUsage || 0
-      }
-    });
-  }
-  
+
   destroy(): void {
-    // Reset metrics on destroy
     this.metricsCollector.reset();
   }
 }

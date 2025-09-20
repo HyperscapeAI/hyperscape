@@ -9,6 +9,19 @@ import { Entity } from './Entity'
 import { Avatar, Nametag, Group, Mesh, UI, UIView, UIText } from '../nodes'
 import { EventType } from '../types/events'
 
+interface AvatarWithInstance {
+  instance: {
+    destroy: () => void
+    move: (matrix: THREE.Matrix4) => void
+    update: (delta: number) => void
+  } | null
+  getHeadToHeight?: () => number
+  setEmote?: (emote: string) => void
+  getBoneTransform?: (boneName: string) => THREE.Matrix4 | null
+  deactivate?: () => void
+  emote?: string | null
+}
+
 let capsuleGeometry: THREE.CapsuleGeometry
 {
   const radius = 0.3
@@ -20,6 +33,8 @@ let capsuleGeometry: THREE.CapsuleGeometry
 
 export class PlayerRemote extends Entity implements HotReloadable {
   isPlayer: boolean;
+  // Explicit non-local flag for tests
+  isLocal: boolean = false;
   base!: Group;
   body!: Mesh;
   collider!: Mesh;
@@ -39,6 +54,8 @@ export class PlayerRemote extends Entity implements HotReloadable {
   destroyed: boolean = false;
   private lastEmote?: string;
   private prevPosition: THREE.Vector3 = new THREE.Vector3();
+  public velocity = new THREE.Vector3();
+  public enableInterpolation: boolean = false; // Disabled - ensure basic movement works first
   
   constructor(world: World, data: EntityData, local?: boolean) {
     super(world, data, local)
@@ -48,10 +65,20 @@ export class PlayerRemote extends Entity implements HotReloadable {
     this.init()
   }
 
+  /**
+   * Override initializeVisuals to skip UIRenderer-based UI elements
+   * PlayerRemote uses its own Nametag node system instead
+   */
+  protected initializeVisuals(): void {
+    // Skip UIRenderer - we use Nametag nodes instead
+    // Do not call super.initializeVisuals()
+  }
+
   async init(): Promise<void> {
     this.base = createNode('group') as Group
     // Position and rotation are now handled by Entity base class
     // Use entity's position/rotation properties instead of data
+    console.log(`[PlayerRemote] Initializing ${this.id} at position: (${this.position.x.toFixed(1)}, ${this.position.y.toFixed(1)}, ${this.position.z.toFixed(1)})`)
 
     this.body = createNode('rigidbody', { type: 'kinematic' }) as Mesh
     this.body.active = this.data.effect?.anchorId ? false : true
@@ -102,10 +129,11 @@ export class PlayerRemote extends Entity implements HotReloadable {
 
     this.aura?.activate(this.world)
     this.base.activate(this.world)
-
-    // Ensure base node starts aligned with the entity transform so the avatar follows
-    this.base.position.copy(this.position)
-    this.base.quaternion.copy(this.node.quaternion)
+    
+    // Note: Group nodes don't have Three.js representations - their children handle their own scene addition
+    // The base node is activated separately and manages its own scene presence
+    
+    // Base node is used for UI elements (nametag, bubble)
 
     // Start avatar loading but don't await it - let it complete asynchronously
     this.applyAvatar().catch(err => {
@@ -143,28 +171,23 @@ export class PlayerRemote extends Entity implements HotReloadable {
           this.avatar.deactivate()
         }
         // If avatar has an instance, destroy it to clean up VRM scene
-        if ((this.avatar as any).instance && (this.avatar as any).instance.destroy) {
-          (this.avatar as any).instance.destroy()
+        const avatarWithInstance = this.avatar as AvatarWithInstance;
+        if (avatarWithInstance.instance && avatarWithInstance.instance.destroy) {
+          avatarWithInstance.instance.destroy()
         }
       }
       
       // Use the same pattern as PlayerLocal
       const isAvatarNodeMap = (v: unknown): v is { toNodes: () => Map<string, Avatar> } =>
-        typeof v === 'object' && v !== null && 'toNodes' in v && typeof (v as { toNodes: unknown }).toNodes === 'function'
-      
+        typeof v === 'object' && v !== null && 'toNodes' in v
+
       if (!isAvatarNodeMap(src)) {
         console.error('[PlayerRemote] Avatar loader did not return expected node map, got:', src)
         return
       }
       
-      // Pass VRM hooks so the avatar can add itself to the scene
-      const vrmHooks = {
-        scene: this.world.stage.scene,
-        octree: this.world.stage.octree,
-        camera: this.world.camera,
-        loader: this.world.loader
-      }
-      const nodeMap = (src as { toNodes: (hooks?: unknown) => Map<string, Avatar> }).toNodes(vrmHooks)
+      // Note: VRM hooks will be set on the avatar node before mounting
+      const nodeMap = (src as { toNodes: (hooks?: unknown) => Map<string, Avatar> }).toNodes()
       console.log('[PlayerRemote] NodeMap type:', nodeMap?.constructor?.name, 'keys:', nodeMap instanceof Map ? Array.from(nodeMap.keys()) : 'not a map')
       
       // Check if nodeMap is actually a Map
@@ -180,8 +203,8 @@ export class PlayerRemote extends Entity implements HotReloadable {
       }
       
       // The avatar node is a child of the root node or in the map directly
-      const avatarNode = nodeMap.get('avatar') || ((rootNode as any).get ? (rootNode as any).get('avatar') : null)
-      console.log('[PlayerRemote] Root node:', rootNode, 'Avatar node:', avatarNode)
+      const avatarNode = nodeMap.get('avatar') || (rootNode as Group).get('avatar')
+      // console.log('[PlayerRemote] Root node:', rootNode, 'Avatar node:', avatarNode)
       
       // Use the avatar node if we found it, otherwise try root
       const nodeToUse = avatarNode || rootNode
@@ -192,23 +215,36 @@ export class PlayerRemote extends Entity implements HotReloadable {
       }
       
       this.avatar = nodeToUse as Avatar
-      console.log('[PlayerRemote] Using node:', nodeToUse)
       
       // Set up the avatar node properly
-      if ((nodeToUse as any).ctx !== this.world) {
-        (nodeToUse as any).ctx = this.world
+      const nodeObj = nodeToUse as unknown as { ctx?: World; parent?: { matrixWorld: THREE.Matrix4 }; activate?: (world: World) => void; mount?: () => Promise<void>; hooks?: unknown }
+      if (nodeObj.ctx !== this.world) {
+        nodeObj.ctx = this.world
       }
+      
+      // Check current hooks
+      console.log('[PlayerRemote] Current avatar hooks:', nodeObj.hooks ? Object.keys(nodeObj.hooks) : 'none')
+      
+      // Use world.stage.scene and manually update position
+      const vrmHooks = {
+        scene: this.world.stage.scene,
+        octree: this.world.stage.octree,
+        camera: this.world.camera,
+        loader: this.world.loader
+      }
+      nodeObj.hooks = vrmHooks
+      console.log('[PlayerRemote] New hooks set:', Object.keys(vrmHooks))
       
       // Set the parent to base's matrix so it follows the remote player
-      (nodeToUse as any).parent = { matrixWorld: this.base.matrixWorld }
+      nodeObj.parent = { matrixWorld: this.base.matrixWorld }
       
       // Activate and mount the avatar node
-      if ((nodeToUse as any).activate) {
-        (nodeToUse as any).activate(this.world)
+      if (nodeObj.activate) {
+        nodeObj.activate(this.world)
       }
       
-      if ((nodeToUse as any).mount) {
-        await (nodeToUse as any).mount()
+      if (nodeObj.mount) {
+        await nodeObj.mount()
       }
       
       // The avatar instance will be managed by the VRM factory
@@ -233,8 +269,8 @@ export class PlayerRemote extends Entity implements HotReloadable {
       if (this.avatar) {
         if ('emote' in this.avatar) {
           ;(this.avatar as unknown as { emote: string | null }).emote = Emotes.IDLE
-        } else if (typeof (this.avatar as any).setEmote === 'function') {
-          ;(this.avatar as any).setEmote(Emotes.IDLE)
+        } else if ('setEmote' in this.avatar) {
+          ;(this.avatar as Avatar).setEmote(Emotes.IDLE)
         }
         this.lastEmote = Emotes.IDLE
       }
@@ -259,33 +295,76 @@ export class PlayerRemote extends Entity implements HotReloadable {
   update(delta: number): void {
     const anchor = this.getAnchorMatrix()
     if (!anchor) {
+      // Update lerp values
       this.lerpPosition.update(delta)
       this.lerpQuaternion.update(delta)
+      
+      // FORCE APPLY POSITION - no interpolation bullshit
+      if (!this.enableInterpolation) {
+        // Get the target position directly from lerp.current and apply it
+        const targetPos = this.lerpPosition.current
+        if (targetPos) {
+          this.node.position.copy(targetPos)
+          this.position.copy(targetPos)
+          // Position applied directly without interpolation
+        }
+        
+        const targetRot = this.lerpQuaternion.current
+        if (targetRot) {
+          this.node.quaternion.copy(targetRot)
+        }
+      } else {
+        // Use interpolated values
+        this.node.position.copy(this.lerpPosition.value)
+        this.position.copy(this.lerpPosition.value)
+        this.node.quaternion.copy(this.lerpQuaternion.value)
+      }
     }
 
-    // Mirror entity transform into base node so the avatar follows correctly
-    if (this.base) {
-      this.base.position.copy(this.position)
-      this.base.quaternion.copy(this.node.quaternion)
+    // Update node matrices for rendering
+    if (this.node) {
+      this.node.updateMatrix()
+      this.node.updateMatrixWorld(true)
     }
     
-    // Drive avatar instance from base transform (like PlayerLocal does)
-    if (this.avatar && (this.avatar as any).instance) {
-      const instance = (this.avatar as any).instance
-      if (instance && typeof instance.move === 'function' && this.base) {
-        // Drive the avatar instance with the base's matrix if available
-        const baseAny = this.base as unknown as { updateTransform?: () => void; matrixWorld?: THREE.Matrix4 };
-        if (typeof baseAny.updateTransform === 'function') {
-          baseAny.updateTransform()
-        }
-        if (baseAny.matrixWorld) {
-          instance.move(baseAny.matrixWorld)
+    // Update avatar position to follow player
+    if (this.avatar && (this.avatar as AvatarWithInstance).instance) {
+      const instance = (this.avatar as AvatarWithInstance).instance
+      const instanceWithRaw = instance as unknown as { raw?: { scene?: THREE.Object3D } }
+      
+      // Directly set the avatar scene position
+      if (instanceWithRaw?.raw?.scene) {
+        const avatarScene = instanceWithRaw.raw.scene
+        
+        // The VRM scene has matrixAutoUpdate = false, so we need to update matrices manually
+        const worldMatrix = new THREE.Matrix4()
+        worldMatrix.compose(
+          this.node.position,
+          this.node.quaternion,
+          new THREE.Vector3(1, 1, 1)
+        )
+        
+        // Set both matrix and matrixWorld since auto update is disabled
+        avatarScene.matrix.copy(worldMatrix)
+        avatarScene.matrixWorld.copy(worldMatrix)
+        
+        // Debug logging occasionally
+        if (Math.random() < 0.01) {
+          console.log('[PlayerRemote] Moving avatar:', {
+            id: this.id,
+            nodePos: this.node.position.toArray(),
+            avatarMatrixWorld: avatarScene.matrixWorld.elements.slice(12, 15), // Translation part
+            matrixAutoUpdate: avatarScene.matrixAutoUpdate
+          })
         }
       }
-      // Call update for animation updates (mixer, skeleton, etc)
-      if (instance && typeof instance.update === 'function') {
+      
+      // Update avatar animations
+      if (instance.update) {
         instance.update(delta)
       }
+    } else if (Math.random() < 0.001) {
+      console.warn(`[PlayerRemote] No avatar instance for ${this.id}`)
     }
 
     // Use server-provided emote state directly - no inference
@@ -319,8 +398,8 @@ export class PlayerRemote extends Entity implements HotReloadable {
       if (desiredUrl !== this.lastEmote) {
         if ('emote' in this.avatar) {
           ;(this.avatar as unknown as { emote: string | null }).emote = desiredUrl
-        } else if (typeof (this.avatar as any).setEmote === 'function') {
-          ;(this.avatar as any).setEmote(desiredUrl)
+        } else if ('setEmote' in this.avatar) {
+          ;(this.avatar as Avatar).setEmote(desiredUrl)
         }
         this.lastEmote = desiredUrl
       }
@@ -377,12 +456,17 @@ export class PlayerRemote extends Entity implements HotReloadable {
     if (Object.prototype.hasOwnProperty.call(data, 'p')) {
       // Position is no longer stored in EntityData, apply directly to entity transform
       this.lerpPosition.pushArray(data.p!, this.teleport || null)
+      // Apply position immediately for responsiveness
+      if (Array.isArray(data.p) && data.p.length === 3) {
+        // Update both base and node positions IMMEDIATELY
+        this.node.position.set(data.p[0] as number, data.p[1] as number, data.p[2] as number)
+        this.position.set(data.p[0] as number, data.p[1] as number, data.p[2] as number)
+      }
     }
     if (Object.prototype.hasOwnProperty.call(data, 'q')) {
       // Rotation is no longer stored in EntityData, apply directly to entity transform
       this.lerpQuaternion.pushArray(data.q!, this.teleport || null)
       // When explicit rotation update arrives, clear any movement-facing override to avoid fighting network
-      this.lastEmote = this.lastEmote // no-op, kept for clarity
     }
     if (Object.prototype.hasOwnProperty.call(data, 'e')) {
       this.data.emote = data.e
@@ -409,6 +493,9 @@ export class PlayerRemote extends Entity implements HotReloadable {
     }
     if (Object.prototype.hasOwnProperty.call(data, 'roles')) {
       this.data.roles = data.roles as string[]
+    }
+    if (Object.prototype.hasOwnProperty.call(data, 'v') && data.v && Array.isArray(data.v) && data.v.length === 3) {
+      this.velocity.set(data.v[0] ?? 0, data.v[1] ?? 0, data.v[2] ?? 0);
     }
     if (avatarChanged) {
       this.applyAvatar().catch(err => {
@@ -444,5 +531,9 @@ export class PlayerRemote extends Entity implements HotReloadable {
     if (local) {
       this.world.network.send('entityRemoved', this.data.id)
     }
+  }
+
+  public toggleInterpolation(enabled: boolean): void {
+    this.enableInterpolation = enabled;
   }
 }

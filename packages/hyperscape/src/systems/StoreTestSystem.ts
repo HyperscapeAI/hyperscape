@@ -18,6 +18,8 @@ import { getSystem } from '../utils/SystemUtils';
 import { StoreSystem } from './StoreSystem';
 import { InventorySystem } from './InventorySystem';
 import { EventType } from '../types/events';
+import * as THREE from 'three';
+import { Logger } from '../utils/Logger';
 import type { Inventory, InventoryItem, PlayerEquipmentItems } from '../types/core';
 
 interface StoreTestData {
@@ -121,6 +123,28 @@ export class StoreTestSystem extends VisualTestFramework {
       default:
         this.failTest(stationId, `Unknown store test: ${stationId}`);
     }
+  }
+
+  /**
+   * Create a visual representation of a store
+   */
+  private createStoreVisual(storeId: string, position: { x: number; y: number; z: number }, storeType: string): void {
+    // Create a simple cube to represent the store
+    const geometry = new THREE.BoxGeometry(2, 2, 2);
+    const material = new THREE.MeshBasicMaterial({ 
+      color: storeType === 'general_store' ? 0x8B4513 : 0x4169E1  // Brown for general, blue for others
+    });
+    const storeMesh = new THREE.Mesh(geometry, material);
+    storeMesh.position.set(position.x, position.y + 1, position.z);
+    storeMesh.name = `store_${storeId}`;
+    
+    // Add to scene if available
+    const stage = this.world.getSystem('Stage');
+    if (stage && 'scene' in stage) {
+      (stage as { scene: { add: (mesh: THREE.Mesh) => void } }).scene.add(storeMesh);
+    }
+    
+    Logger.system('StoreTestSystem', `Created store visual for ${storeType} at`, position);
   }
 
   private async runBasicPurchaseTest(stationId: string): Promise<void> {
@@ -555,33 +579,6 @@ export class StoreTestSystem extends VisualTestFramework {
     } catch (error) {
       this.failTest(stationId, `Bulk store test error: ${error}`);
     }
-  }
-
-  private createStoreVisual(stationId: string, location: { x: number; y: number; z: number }, storeType: string): void {
-    const storeColors = {
-      'general_store': '#8b4513',      // Brown
-      'buy_back_store': '#cd853f',     // Sandy brown
-      'expensive_store': '#ffd700',    // Gold
-      'limited_stock_store': '#ff6347', // Tomato red
-      'bulk_trading_post': '#4682b4'   // Steel blue
-    };
-
-    this.emitTypedEvent(EventType.TEST_STORE_CREATE, {
-      id: `store_${stationId}`,
-      position: location,
-      color: storeColors[storeType] || '#8b4513',
-      size: { x: 1.5, y: 1.5, z: 1.5 },
-      type: storeType
-    });
-
-    // Add store NPC visual
-    this.emitTypedEvent(EventType.TEST_NPC_CREATE, {
-      id: `store_npc_${stationId}`,
-      position: { x: location.x - 0.5, y: location.y, z: location.z },
-      color: '#ffb347', // Peach for shopkeeper
-      size: { x: 0.6, y: 1.8, z: 0.6 },
-      name: 'Shopkeeper'
-    });
   }
 
   private startPurchaseSequence(stationId: string): void {

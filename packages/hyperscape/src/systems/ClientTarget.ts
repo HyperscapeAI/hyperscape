@@ -4,6 +4,17 @@ import { System } from './System'
 import type { World, WorldOptions } from '../types'
 
 // Using built-in DOM types for DOMRect and HTMLDivElement
+// Minimal inline SVG for target indicator (kept local to avoid external deps)
+const targetSVG = `
+  <svg width="30" height="30" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="15" cy="15" r="13" stroke="#00FF7F" stroke-width="2" opacity="0.9"/>
+    <circle cx="15" cy="15" r="3" fill="#00FF7F" opacity="0.9"/>
+    <line x1="15" y1="0" x2="15" y2="6" stroke="#00FF7F" stroke-width="2" opacity="0.9"/>
+    <line x1="15" y1="24" x2="15" y2="30" stroke="#00FF7F" stroke-width="2" opacity="0.9"/>
+    <line x1="0" y1="15" x2="6" y2="15" stroke="#00FF7F" stroke-width="2" opacity="0.9"/>
+    <line x1="24" y1="15" x2="30" y2="15" stroke="#00FF7F" stroke-width="2" opacity="0.9"/>
+  </svg>
+`
 
 export class ClientTarget extends System {
   ui: { active: boolean; appendChild: (element: HTMLElement) => void; removeChild: (element: HTMLElement) => void; getBoundingClientRect: () => DOMRect } | null = null
@@ -96,27 +107,6 @@ export class ClientTarget extends System {
     this.hide()
   }
 }
-
-const targetSVG = `
-<svg
-  xmlns='http://www.w3.org/2000/svg'
-  width='24'
-  height='24'
-  viewBox='0 0 24 24'
-  fill='none'
-  stroke='currentColor'
-  stroke-width='2'
-  stroke-linecap='round'
-  stroke-linejoin='round'
-  class='lucide lucide-crosshair'
->
-  <circle cx='12' cy='12' r='10' />
-  <line x1='22' x2='18' y1='12' y2='12' />
-  <line x1='6' x2='2' y1='12' y2='12' />
-  <line x1='12' x2='12' y1='6' y2='2' />
-  <line x1='12' x2='12' y1='22' y2='18' />
-</svg>
-`
 
 /**
  * Intersect a line from (cx, cy) to (x, y) with the 2D rectangle

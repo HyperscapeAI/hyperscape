@@ -133,7 +133,6 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
   private gravity = -9.81; // m/s²
   private testStartTime = 0;
   private updateCounter = 0;
-  private lastPosition?: THREE.Vector3;
   private scenariosInitialized = false;
   private enabled = true; // Flag to disable system if physics not available
   

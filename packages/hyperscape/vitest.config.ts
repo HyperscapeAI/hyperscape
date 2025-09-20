@@ -6,19 +6,25 @@ export default defineConfig({
     // Game engine testing configuration
     globals: true,
     environment: 'jsdom',
-    setupFiles: ['./src/__tests__/setup.ts'],
+    setupFiles: [resolve(__dirname, './src/__tests__/setup.ts')],
     
     // Include patterns - exclude Playwright tests
-    include: ['**/*.test.{js,ts}', '**/*-test.{js,ts}'], // Include both .test and -test files
+    include: ['src/**/*.test.ts'],
     exclude: [
       'node_modules/**',
-      '**/*.spec.{js,ts}', // Exclude .spec files (Playwright convention)
+      '**/node_modules/**',
+      'src/tests/**', // Exclude playwright tests in src/tests
+      '**/tests/**',
+      'packages/hyperscape/src/tests/**',
+      '**/*.spec.{js,ts,mjs}', // Exclude .spec files (Playwright convention)
       'rpg-world/**/*.spec.js', // Explicitly exclude Playwright specs
       'rpg-world/test-geometric-validation.spec.js', // Specific exclusion
       'rpg-world/test-dynamic-items-real.spec.js', // Specific exclusion  
       'rpg-world/test-weapon-grip-system.spec.js', // Specific exclusion
       'e2e/**',
-      'tests/e2e/**'
+      'tests/e2e/**',
+      '**/__tests__/**/*.spec.{js,ts,mjs}',
+      './src/tests/*.spec.ts'
     ],
     
     // Performance optimizations for physics/rendering tests
@@ -56,7 +62,7 @@ export default defineConfig({
     },
     
     // Custom reporters for game metrics
-    reporters: ['default', './src/__tests__/reporters/game-metrics-reporter.ts'],
+    reporters: ['default', resolve(__dirname, './src/__tests__/reporters/game-metrics-reporter.ts')],
     
     // WebGL/Canvas mocking
     deps: {

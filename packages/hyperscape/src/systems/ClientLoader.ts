@@ -10,7 +10,7 @@ import { glbToNodes } from '../extras/glbToNodes'
 import { patchTextureLoader } from '../extras/textureLoaderPatch'
 import THREE from '../extras/three'
 import { Node } from '../nodes/Node'
-import type { GLBData, HSNode as INode, LoadedAvatar, LoadedEmote, LoadedModel, LoaderResult, VideoFactory, World } from '../types'
+import type { GLBData, HSNode as INode, LoadedAvatar, LoadedEmote, LoadedModel, LoaderResult, VideoFactory, World, WorldOptions } from '../types'
 import { EventType } from '../types/events'
 import { SystemBase } from './SystemBase'
 
@@ -41,6 +41,7 @@ export class ClientLoader extends SystemBase {
   preloader?: Promise<void> | null
   constructor(world: World) {
     super(world, { name: 'client-loader', dependencies: { required: [], optional: [] }, autoCleanup: true })
+    console.log('[ClientLoader] Constructor called')
     this.files = new Map()
     this.promises = new Map()
     this.results = new Map()
@@ -54,7 +55,15 @@ export class ClientLoader extends SystemBase {
     patchTextureLoader()
   }
 
+  async init(options: WorldOptions): Promise<void> {
+    console.log('[ClientLoader] init() called')
+    await super.init(options)
+  }
+
   start() {
+    console.log('[ClientLoader] start() called')
+    console.log('[ClientLoader] world.stage exists?', !!this.world.stage)
+    console.log('[ClientLoader] world.stage.scene exists?', !!(this.world.stage && this.world.stage.scene))
     this.vrmHooks = {
       camera: this.world.camera,
       scene: this.world.stage.scene,
@@ -312,6 +321,7 @@ export class ClientLoader extends SystemBase {
               if (customHooks) {
                 const clonedAvatar = clone.get('avatar')
                 if (clonedAvatar) {
+                  console.log('[ClientLoader] Applying custom hooks to cloned avatar')
                   Object.assign(clonedAvatar, { hooks: customHooks })
                 }
               }
@@ -482,22 +492,22 @@ export class ClientLoader extends SystemBase {
         const testGet = node.get('avatar')
         console.log('[ClientLoader] Test node.get("avatar"):', testGet ? { id: testGet.id, name: testGet.name } : 'null')
         
-          const logger = this.logger
-          const avatar: LoadedAvatar = {
+        const logger = this.logger
+        const avatar: LoadedAvatar = {
           toNodes(customHooks) {
-              logger.info('toNodes called')
+            logger.info('toNodes called')
             
             // Test get() on original node
-              const originalAvatar = node.get('avatar')
-              logger.info(`Original node.get("avatar"): ${originalAvatar ? 'FOUND' : 'NOT FOUND'}`)
+            const originalAvatar = node.get('avatar')
+            logger.info(`Original node.get("avatar"): ${originalAvatar ? 'FOUND' : 'NOT FOUND'}`)
             
             // Clone the node tree
             const clone = node.clone(true)
-              logger.info(`After clone: cloneChildren=${clone.children.length}`)
+            logger.info(`After clone: cloneChildren=${clone.children.length}`)
             
             // Test get() on cloned node
-              const clonedAvatar = clone.get('avatar')
-              logger.info(`Clone.get("avatar"): ${clonedAvatar ? 'FOUND' : 'NOT FOUND'}`)
+            const clonedAvatar = clone.get('avatar')
+            logger.info(`Clone.get("avatar"): ${clonedAvatar ? 'FOUND' : 'NOT FOUND'}`)
             
             // Apply custom hooks if provided
             if (customHooks && clonedAvatar) {
@@ -510,19 +520,19 @@ export class ClientLoader extends SystemBase {
             
             // Try multiple ways to get the avatar
             let avatarForMap = clonedAvatar
-              if (!avatarForMap && clone.children.length > 0) {
-                logger.warn('Using first child as fallback')
+            if (!avatarForMap && clone.children.length > 0) {
+              logger.warn('Using first child as fallback')
               avatarForMap = clone.children[0]
             }
             
-              if (avatarForMap) {
-                nodeMap.set('avatar', nodeToINode(avatarForMap))
-                logger.info('Added avatar to map')
-              } else {
-                logger.error('NO AVATAR FOUND TO ADD TO MAP!')
-              }
+            if (avatarForMap) {
+              nodeMap.set('avatar', nodeToINode(avatarForMap))
+              logger.info('Added avatar to map')
+            } else {
+              logger.error('NO AVATAR FOUND TO ADD TO MAP!')
+            }
             
-              logger.info(`Final nodeMap keys: ${Array.from(nodeMap.keys()).join(',')}`)
+            logger.info(`Final nodeMap keys: ${Array.from(nodeMap.keys()).join(',')}`)
             return nodeMap
           },
           getStats() {

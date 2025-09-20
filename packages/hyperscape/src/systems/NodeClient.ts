@@ -1,4 +1,4 @@
-import { System, SystemDependencies } from './System'
+import { System } from './System'
 import type { World } from '../types'
 
 const TICK_RATE = 1 / 30
@@ -18,10 +18,6 @@ export class NodeClient extends System {
   
   constructor(world: World) {
     super(world)
-  }
-
-  getDependencies(): SystemDependencies {
-    return {}; // NodeClient has no dependencies
   }
 
   start() {

@@ -65,8 +65,19 @@ export class PhysicsTestSystem extends SystemBase {
     await this.testLayerMasks();
     await this.testNavigationRaycasting();
     
-    // Report results
-    this.reportResults();
+  }
+
+  private reportResults(): void {
+    // Report test results
+    const passed = Array.from(this.testResults.values()).filter(r => r).length;
+    const total = this.testResults.size;
+    
+    Logger.system('PhysicsTestSystem', `Physics tests completed: ${passed}/${total} passed`);
+    
+    // Report individual results
+    for (const [testName, result] of this.testResults.entries()) {
+      Logger.system('PhysicsTestSystem', `${testName}: ${result ? 'PASSED' : 'FAILED'}`);
+    }
   }
 
   private async testBasicRaycasting(): Promise<void> {
@@ -214,16 +225,13 @@ export class PhysicsTestSystem extends SystemBase {
   }
   
   private clearTestObjects(): void {
-    for (const [_id, obj] of this.testObjects) {
-      obj.mesh.parent?.remove(obj.mesh);
+    for (const testObject of this.testObjects.values()) {
+      if (testObject.mesh.parent) {
+        testObject.mesh.parent.remove(testObject.mesh);
+      }
+      testObject.mesh.geometry.dispose();
+      (testObject.mesh.material as THREE.Material).dispose();
     }
     this.testObjects.clear();
-  }
-  
-  private reportResults(): void {
-    Logger.system('PhysicsTestSystem', 'Test Results:');
-    for (const [test, passed] of this.testResults) {
-      Logger.system('PhysicsTestSystem', `  ${test}: ${passed ? '✅ PASS' : '❌ FAIL'}`);
-    }
   }
 }

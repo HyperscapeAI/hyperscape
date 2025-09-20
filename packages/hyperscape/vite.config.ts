@@ -38,7 +38,25 @@ export default defineConfig({
   server: {
     port: Number(process.env.VITE_PORT) || 3333,
     open: false,
-    host: true
+    host: true,
+    proxy: {
+      // Forward asset requests to Fastify server so asset:// resolves during Vite dev
+      '/world-assets': {
+        target: process.env.SERVER_ORIGIN || 'http://localhost:4444',
+        changeOrigin: true,
+      },
+      // Expose server-provided public envs in dev
+      '/env.js': {
+        target: process.env.SERVER_ORIGIN || 'http://localhost:4444',
+        changeOrigin: true,
+      },
+      // Optional: forward WS to server if needed
+      '/ws': {
+        target: process.env.SERVER_ORIGIN?.replace('http', 'ws') || 'ws://localhost:4444',
+        ws: true,
+        changeOrigin: true,
+      },
+    }
   },
   
   resolve: {
@@ -53,6 +71,7 @@ export default defineConfig({
   
   optimizeDeps: {
     include: ['three', 'react', 'react-dom'],
+    exclude: ['@playwright/test'], // Exclude Playwright from optimization
     esbuildOptions: {
       target: 'esnext' // Support top-level await
     }

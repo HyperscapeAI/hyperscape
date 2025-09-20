@@ -32,6 +32,35 @@ export interface NameTagOptions {
 export class UIRenderer {
   
   /**
+   * Check if a canvas context is valid and has all required methods
+   */
+  private static isValidContext(context: unknown): context is CanvasRenderingContext2D {
+    if (!context || typeof context !== 'object') {
+      return false;
+    }
+    
+    const ctx = context as Record<string, unknown>;
+    const requiredMethods = [
+      'fillRect', 'strokeRect', 'clearRect',
+      'fillText', 'strokeText',
+      'beginPath', 'closePath', 'fill', 'stroke',
+      'moveTo', 'lineTo', 'quadraticCurveTo',
+      'arc', 'arcTo',
+      'drawImage', 'save', 'restore'
+    ];
+    
+    // Check if all required methods exist and are functions
+    for (const method of requiredMethods) {
+      if (typeof ctx[method] !== 'function') {
+        console.warn(`[UIRenderer] Canvas context missing method: ${method}`);
+        return false;
+      }
+    }
+    
+    return true;
+  }
+  
+  /**
    * Create and render a health bar on a canvas
    */
   static createHealthBar(
@@ -53,17 +82,28 @@ export class UIRenderer {
     canvas.height = height;
     
     const context = canvas.getContext('2d');
-    if (!context) throw new Error('Could not get canvas context');
+    if (!context || !this.isValidContext(context)) {
+      console.error('[UIRenderer] Invalid or incomplete canvas context for health bar creation');
+      // Return a minimal canvas to prevent crashes
+      const fallbackCanvas = document.createElement('canvas');
+      fallbackCanvas.width = width;
+      fallbackCanvas.height = height;
+      return fallbackCanvas;
+    }
 
-    this.renderHealthBar(context, currentHealth, maxHealth, {
-      width,
-      height,
-      backgroundColor,
-      fillColor,
-      borderColor,
-      borderWidth,
-      percentage: Math.max(0, Math.min(1, currentHealth / maxHealth))
-    });
+    try {
+      this.renderHealthBar(context, currentHealth, maxHealth, {
+        width,
+        height,
+        backgroundColor,
+        fillColor,
+        borderColor,
+        borderWidth,
+        percentage: Math.max(0, Math.min(1, currentHealth / maxHealth))
+      });
+    } catch (error) {
+      console.warn('[UIRenderer] Failed to render health bar:', error);
+    }
 
     return canvas;
   }
@@ -78,7 +118,10 @@ export class UIRenderer {
     options: BarOptions = {}
   ): void {
     const context = canvas.getContext('2d');
-    if (!context) return;
+    if (!context || !this.isValidContext(context)) {
+      console.warn('[UIRenderer] Invalid canvas context for health bar update');
+      return;
+    }
 
     const {
       width = canvas.width,
@@ -109,11 +152,16 @@ export class UIRenderer {
     maxHealth: number,
     options: Required<BarOptions>
   ): void {
+    // Check if context has required methods
+    if (!context || !this.isValidContext(context)) {
+      console.warn('[UIRenderer] Invalid canvas context provided to renderHealthBar');
+      return;
+    }
+
     const { width, height, backgroundColor, fillColor, borderColor, borderWidth, percentage } = options;
     const healthPercent = percentage;
 
-    // Clear canvas
-    context.clearRect(0, 0, width, height);
+    // Not clearing explicitly; we redraw the full background each time below
 
     // Draw background
     context.fillStyle = backgroundColor;
@@ -168,15 +216,19 @@ export class UIRenderer {
     canvas.height = height;
     
     const context = canvas.getContext('2d');
-    if (!context) throw new Error('Could not get canvas context');
-
-    // Clear canvas
-    context.clearRect(0, 0, width, height);
+    if (!context || !this.isValidContext(context)) {
+      console.error('[UIRenderer] Invalid or incomplete canvas context for name tag creation');
+      // Return a minimal canvas to prevent crashes
+      const fallbackCanvas = document.createElement('canvas');
+      fallbackCanvas.width = width;
+      fallbackCanvas.height = height;
+      return fallbackCanvas;
+    }
 
     // Draw background with rounded corners
     this.drawRoundedRect(context, 0, 0, width, height, borderRadius, backgroundColor);
 
-    // Draw text
+    // Draw text - strong type assumption
     context.fillStyle = textColor;
     context.font = `${fontSize}px ${fontFamily}`;
     context.textAlign = 'center';
@@ -209,7 +261,10 @@ export class UIRenderer {
     canvas.height = totalHeight;
     
     const context = canvas.getContext('2d');
-    if (!context) throw new Error('Could not get canvas context');
+    if (!context || !this.isValidContext(context)) {
+      console.error('[UIRenderer] Invalid canvas context for player UI creation');
+      return canvas; // Return the empty canvas
+    }
 
     // Draw name tag
     const nameCanvas = this.createNameTag(name, { ...nameTagOptions, width: totalWidth, height: nameTagHeight });
@@ -270,6 +325,12 @@ export class UIRenderer {
     radius: number,
     fillStyle: string
   ): void {
+    // Check if context has required methods
+    if (!context || !this.isValidContext(context)) {
+      console.warn('[UIRenderer] Invalid canvas context provided to drawRoundedRect');
+      return;
+    }
+
     context.fillStyle = fillStyle;
     context.beginPath();
     context.moveTo(x + radius, y);
@@ -309,7 +370,10 @@ export class UIRenderer {
     canvas.height = height;
     
     const context = canvas.getContext('2d');
-    if (!context) throw new Error('Could not get canvas context');
+    if (!context || !this.isValidContext(context)) {
+      console.error('[UIRenderer] Invalid canvas context for progress bar creation');
+      return canvas; // Return the empty canvas
+    }
 
     // Render the bar
     this.renderHealthBar(context, current, max, {
@@ -322,7 +386,7 @@ export class UIRenderer {
       percentage: current / max
     });
 
-    // Add label text
+    // Add label text - strong type assumption
     context.fillStyle = labelColor;
     context.font = '12px Arial, sans-serif';
     context.textAlign = 'center';

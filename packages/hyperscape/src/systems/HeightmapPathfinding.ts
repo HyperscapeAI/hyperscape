@@ -10,6 +10,7 @@
 import THREE from '../extras/three';
 import type { World } from '../types/index';
 import { SystemBase } from './SystemBase';
+import type { TerrainSystem } from './TerrainSystem';
 
 interface GridNode {
   x: number;
@@ -26,8 +27,7 @@ export class HeightmapPathfinding extends SystemBase {
   private gridResolution = 2.0; // 2 meter grid cells
   private readonly MAX_SLOPE = 30; // Maximum walkable slope in degrees
   private readonly MAX_PATH_LENGTH = 100; // Prevent infinite searches
-  private navigationGrid = new Map<string, GridNode>();
-  private terrainSystem: any = null;
+  private terrainSystem: TerrainSystem | null = null;
   
   constructor(world: World) {
     super(world, {
@@ -41,7 +41,7 @@ export class HeightmapPathfinding extends SystemBase {
   
   async init(): Promise<void> {
     // Get terrain system if available
-    this.terrainSystem = this.world.getSystem('terrain');
+    this.terrainSystem = this.world.getSystem('terrain') as TerrainSystem | null;
     
     if (!this.terrainSystem) {
       this.logger.info('No terrain system found - will use flat plane navigation');
@@ -73,7 +73,7 @@ export class HeightmapPathfinding extends SystemBase {
   private isDirectPathWalkable(start: THREE.Vector3, end: THREE.Vector3): boolean {
     const distance = start.distanceTo(end);
     const steps = Math.ceil(distance / this.gridResolution);
-    const direction = new THREE.Vector3().subVectors(end, start).normalize();
+    const _direction = new THREE.Vector3().subVectors(end, start).normalize();
     
     let prevHeight = this.getHeightAt(start.x, start.z);
     
@@ -153,7 +153,7 @@ export class HeightmapPathfinding extends SystemBase {
         const tentativeG = current.g + this.distance(current, neighbor);
         
         // Find existing node in open set
-        let existingNode = openSet.find(n => n.x === neighbor.x && n.z === neighbor.z);
+        const existingNode = openSet.find(n => n.x === neighbor.x && n.z === neighbor.z);
         
         if (!existingNode) {
           // New node
@@ -183,7 +183,7 @@ export class HeightmapPathfinding extends SystemBase {
     if (!this.terrainSystem) return 0;
     
     // Try to get height from terrain system
-    if (this.terrainSystem.getHeightAt) {
+    if (this.terrainSystem?.getHeightAt) {
       const height = this.terrainSystem.getHeightAt(x, z);
       return height ?? 0;
     }

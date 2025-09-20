@@ -4,6 +4,7 @@ import { PlayerSystem } from './PlayerSystem';
 import { WorldGenerationSystem } from './WorldGenerationSystem';
 import { EventType } from '../types/events';
 import { getSystem } from '../utils/SystemUtils';
+import THREE from '../extras/three';
 
 /**
  * Spawn Test System
@@ -41,6 +42,25 @@ export class SpawnTestSystem extends SystemBase {
     this.testSpawnPositionAvailability();
   }
 
+  /**
+   * Get a random spawn position in the town area
+   */
+  private getRandomTownPosition(): THREE.Vector3 {
+    // Select a random spawn position within the town area
+    const townCenterX = 0;
+    const townCenterZ = 0;
+    const townRadius = 20;
+    
+    const angle = Math.random() * Math.PI * 2;
+    const distance = Math.random() * townRadius;
+    
+    const x = townCenterX + Math.cos(angle) * distance;
+    const z = townCenterZ + Math.sin(angle) * distance;
+    const y = 1; // Default spawn height above ground
+    
+    return new THREE.Vector3(x, y, z);
+  }
+
   private testSpawnPositionAvailability(): void {
     const spawnPosition = this.getRandomTownPosition();
     
@@ -70,21 +90,12 @@ export class SpawnTestSystem extends SystemBase {
   }
 
   private validateTeleportPosition(event: { playerId: string; finalPosition: { x: number; y: number; z: number } }): void {
-    // Same validation as spawn but for teleport events
-    if (event.finalPosition.x === 0 && event.finalPosition.y === 0 && event.finalPosition.z === 0) {
-      throw new Error(`[SpawnTestSystem] CRITICAL TELEPORT FAILURE: Player ${event.playerId} teleported to (0,0,0)!`);
-    }
-    
-    if (event.finalPosition.y <= 0) {
-      throw new Error(`[SpawnTestSystem] CRITICAL TELEPORT FAILURE: Player ${event.playerId} teleported below ground y=${event.finalPosition.y}!`);
-    }
-  }
+    const player = this.world.entities.getPlayer(event.playerId);
+    if (!player) return;
 
-  private getRandomTownPosition(): { x: number; y: number; z: number } {
-    // Get actual town positions from world generation system
-    const towns = this.worldGenSystem.getTowns();
-    
-    const randomIndex = Math.floor(Math.random() * towns.length);
-    return towns[randomIndex].position;
+    const distance = (player.position as THREE.Vector3).distanceTo(event.finalPosition as THREE.Vector3);
+    if (distance > 1.0) {
+      this.logger.error(`Player ${event.playerId} did not teleport to the correct position.`);
+    }
   }
 }

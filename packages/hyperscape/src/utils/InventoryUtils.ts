@@ -21,8 +21,12 @@ export interface InventoryComponent {
  * Safe inventory access with validation
  */
 export function getInventory(world: World, entityId: string): InventoryComponent | null {
-  const result = getEntityWithComponent<InventoryComponent>(world, entityId, 'inventory');
-  return result?.component || null;
+  const result = getEntityWithComponent(world, entityId, 'inventory');
+  if (!result || !result.component) return null;
+  
+  // The inventory component is structured as an InventoryComponent
+  // Cast through unknown to convert from generic Component type
+  return result.component as unknown as InventoryComponent;
 }
 
 /**

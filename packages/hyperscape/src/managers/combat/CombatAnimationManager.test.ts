@@ -3,7 +3,7 @@
  * Tests animation management, queueing, and combat animation triggers
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { CombatAnimationManager } from './CombatAnimationManager'
 import type { World } from '../../World'
 import type { Entity } from '../../entities/Entity'
@@ -243,21 +243,7 @@ describe('CombatAnimationManager', () => {
   })
 
   describe('update', () => {
-    let dateNowSpy: MockInstance
-    let mockNow = 0
-
-    beforeEach(() => {
-      vi.useFakeTimers()
-      mockNow = Date.now()
-      dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => mockNow)
-    })
-
-    afterEach(() => {
-      vi.useRealTimers()
-      dateNowSpy.mockRestore()
-    })
-
-    it('should process animation timeouts', () => {
+    it('should process animation timeouts', async () => {
       // Start an animation
       animationManager.playAttackAnimation(
         mockEntity,
@@ -268,8 +254,7 @@ describe('CombatAnimationManager', () => {
       expect(animationManager.isAnimating('test-entity-1')).toBe(true)
 
       // Simulate passage of time (attack animations typically last ~600ms)
-      mockNow += 700
-      vi.advanceTimersByTime(700)
+      await new Promise(resolve => setTimeout(resolve, 700))
       animationManager.update(700)
 
       // Animation should have completed
@@ -391,20 +376,6 @@ describe('CombatAnimationManager', () => {
   })
 
   describe('edge cases', () => {
-    let dateNowSpy: MockInstance
-    let mockNow = 0
-
-    beforeEach(() => {
-      vi.useFakeTimers()
-      mockNow = Date.now()
-      dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => mockNow)
-    })
-
-    afterEach(() => {
-      vi.useRealTimers()
-      dateNowSpy.mockRestore()
-    })
-
     it('should handle entity with no inventory component', () => {
       const mockGetComponent = vi.fn(() => null)
       const entityWithoutInventory = {
@@ -446,7 +417,7 @@ describe('CombatAnimationManager', () => {
       expect(animationManager.getCurrentAnimation('test-entity-1')).toBe('block')
     })
 
-    it('should handle very long delta times', () => {
+    it('should handle very long delta times', async () => {
       animationManager.playAttackAnimation(
         mockEntity,
         'melee' as AttackType,
@@ -454,8 +425,7 @@ describe('CombatAnimationManager', () => {
       )
 
       // Very long delta (multiple seconds)
-      mockNow += 5000
-      vi.advanceTimersByTime(5000)
+      await new Promise(resolve => setTimeout(resolve, 5000))
       animationManager.update(5000)
 
       // Animation should have completed

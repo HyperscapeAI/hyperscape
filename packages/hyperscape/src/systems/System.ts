@@ -1,6 +1,6 @@
 import EventEmitter from 'eventemitter3';
 
-import type { WorldOptions, System as ISystem } from '../types/index';
+import type { WorldOptions } from '../types/index';
 
 import { World } from '../World';
 
@@ -17,7 +17,7 @@ export interface SystemDependencies {
  * Base class for all game systems
  * Systems manage specific aspects of the game world (physics, rendering, entities, etc.)
  */
-export abstract class System extends EventEmitter implements ISystem {
+export abstract class System extends EventEmitter {
   world: World;
   protected initialized: boolean = false;
   protected started: boolean = false;

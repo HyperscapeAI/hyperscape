@@ -4,6 +4,7 @@
  */
 
 import type { Entity, Position2D, Position3D, Vector3, World } from '../types';
+import { Component } from '../components/Component';
 import THREE from '../extras/three';
 
 export interface EntityComponent {
@@ -24,19 +25,18 @@ export function getEntity(world: World, entityId: string): Entity | null {
 /**
  * Safe component retrieval with validation
  */
-export function getComponent<T = EntityComponent>(entity: Entity | null, componentName: string): T | null {
-  if (!entity || typeof entity.getComponent !== 'function') {
+export function getComponent<T extends Component = Component>(entity: Entity | null, componentName: string): T | null {
+  if (!entity) {
     return null;
   }
-  const entityWithComponent = entity as Entity & { getComponent: (name: string) => unknown };
-  const component = entityWithComponent.getComponent(componentName);
-  return component as T | null;
+  // Strong type assumption - entity has getComponent method
+  return entity.getComponent<T>(componentName);
 }
 
 /**
  * Get entity with specific component validation
  */
-export function getEntityWithComponent<T = EntityComponent>(
+export function getEntityWithComponent<T extends Component = Component>(
   world: World, 
   entityId: string, 
   componentName: string

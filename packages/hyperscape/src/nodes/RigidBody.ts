@@ -254,7 +254,7 @@ export class RigidBody extends Node {
     if (this.actor) {
       // this.untrack()
       // this.untrack = null
-      if (this.actorHandle && 'destroy' in this.actorHandle && typeof this.actorHandle.destroy === 'function') {
+      if (this.actorHandle) {
         this.actorHandle.destroy()
       }
       this.actorHandle = null

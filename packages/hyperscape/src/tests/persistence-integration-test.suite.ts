@@ -360,7 +360,7 @@ export class PersistenceIntegrationTestSuite {
             }
             break
           case 'updateHealth':
-            if (this.playerSystem && typeof (this.playerSystem as { updateHealth?: Function }).updateHealth === 'function') {
+            if (this.playerSystem) {
               await (this.playerSystem as {
                 updateHealth: (data: import('../types/events').HealthUpdateEvent) => Promise<void>
               }).updateHealth({
@@ -940,7 +940,7 @@ export class PersistenceIntegrationTestSuite {
 
   private async simulatePlayerEnter(playerId: string, playerName: string, clientToken?: string): Promise<void> {
     if (this.playerSystem && 'onPlayerEnter' in this.playerSystem) {
-      if (typeof (this.playerSystem as { onPlayerEnter?: Function }).onPlayerEnter === 'function') {
+      if (this.playerSystem) {
         await (this.playerSystem as {
           onPlayerEnter: (data: {
             playerId: string
@@ -955,7 +955,7 @@ export class PersistenceIntegrationTestSuite {
   }
 
   private async simulatePlayerLeave(playerId: string): Promise<void> {
-    if (this.playerSystem && typeof (this.playerSystem as { onPlayerLeave?: Function }).onPlayerLeave === 'function') {
+    if (this.playerSystem) {
       await (this.playerSystem as { onPlayerLeave: (data: { playerId: string }) => Promise<void> }).onPlayerLeave({ playerId })
     }
   }

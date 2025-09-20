@@ -11,16 +11,10 @@ export class NodeEnvironment extends System {
   base: unknown
   constructor(world: World) {
     super(world)
-
-    this.model = null
-    this.skys = []
-    this.sky = null
-    this.skyN = 0
-    this.bgUrl = null
-    this.hdrUrl = null
+    this.base = {}
   }
 
   async init(options: unknown): Promise<void> {
-    this.base = (options as Record<string, unknown>).baseEnvironment
+    this.base = (options as { baseEnvironment?: unknown }).baseEnvironment || {}
   }
 }

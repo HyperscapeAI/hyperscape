@@ -35,9 +35,14 @@ import { Physics } from './systems/Physics'
 import { registerSystems } from './systems/SystemLoader'
 // ClientMovementFix removed - integrated into core movement systems
 import { ClientDiagnostics } from './systems/ClientDiagnostics'
-import { AvatarFix } from './systems/AvatarFix'
-import { RaycastTestSystem } from './systems/RaycastTestSystem'
-import { InteractionSystem } from './systems/InteractionSystem'
+// Import client input system for keyboard movement
+import { ClientInputSystem } from './systems/ClientInputSystem'
+// Expose spawning utilities for browser tests
+import { CircularSpawnArea } from './managers/spawning/CircularSpawnArea'
+
+// Multiplayer movement systems
+import { EntityInterpolationSystem } from './systems/EntityInterpolationSystem'
+import { DeltaCompressionSystem } from './systems/DeltaCompressionSystem'
 
 import type { StageSystem } from './types/system-interfaces'
 import { LODs } from './systems/LODs'
@@ -46,19 +51,22 @@ import { Particles } from './systems/Particles'
 import { Wind } from './systems/Wind'
 import { XR } from './systems/XR'
 
-// Module interface for dynamic imports
-interface Module {
-  registerSystems(world: World): Promise<void>
-}
 
 // Window extension for browser testing
 interface WindowWithWorld extends Window {
-  world: World
-  THREE: typeof THREE
+  world?: World
+  THREE?: typeof THREE
 }
 
 export function createClientWorld() {
   const world = new World()
+  
+  // Expose constructors for browser tests immediately so tests can access without waiting
+  if (typeof window !== 'undefined') {
+    const anyWin = window as unknown as { Hyperscape?: Record<string, unknown> };
+    anyWin.Hyperscape = anyWin.Hyperscape || {};
+    anyWin.Hyperscape.CircularSpawnArea = CircularSpawnArea;
+  }
   
   // Register core client systems
   world.register('client', Client);
@@ -88,6 +96,13 @@ export function createClientWorld() {
   
   // Register heightmap-based pathfinding (only activates with terrain)
   world.register('heightmap-pathfinding', HeightmapPathfinding);
+  
+  // Register client input system for keyboard/mouse movement
+  world.register('client-input', ClientInputSystem);
+  
+  // Register unified multiplayer movement systems
+  world.register('entity-interpolation', EntityInterpolationSystem);
+  world.register('delta-compression', DeltaCompressionSystem);
   
   // Register comprehensive movement test system only when explicitly enabled
   const shouldEnableMovementTest =
@@ -119,54 +134,51 @@ export function createClientWorld() {
 
   
   // Create a promise that resolves when RPG systems are loaded
-  const systemsLoadedPromise = new Promise<void>((resolve) => {
-    // Register RPG game systems after core systems are ready
-    setTimeout(async () => {
-      try {
-        console.log('[Client World] Registering RPG game systems...');
-        await registerSystems(world);
-        console.log('[Client World] RPG game systems registered successfully');
+  const systemsLoadedPromise = (async () => {
+    try {
+      console.log('[Client World] Registering RPG game systems...');
+      await registerSystems(world);
+      console.log('[Client World] RPG game systems registered successfully');
+      
+      // Register client helper systems
+      world.register('client-diagnostics', ClientDiagnostics);
+      
+      // Temporarily disable raycast test system to prevent canvas/ground plane conflicts
+      // if (typeof window !== 'undefined' && (window as any).__ENABLE_RAYCAST_TEST__) {
+      //   world.register('raycast-test', RaycastTestSystem);
+      //   console.log('[Client World] Raycast test system registered');
+      // }
+      
+      console.log('[Client World] Client helper systems registered');
+      // Expose selected constructors for browser-based tests (static import ensures availability)
+      const anyWin = window as unknown as { Hyperscape?: Record<string, unknown> };
+      anyWin.Hyperscape = anyWin.Hyperscape || {};
+      anyWin.Hyperscape.CircularSpawnArea = CircularSpawnArea;
+      
+      // Update world object in browser window after systems are loaded
+      if (typeof window !== 'undefined') {
+        const windowWithWorld = window as WindowWithWorld;
+        windowWithWorld.world = world;
         
-        // Register client helper systems
-        // world.register('client-movement-fix', ClientMovementFix); // Disabled for now
-        world.register('client-diagnostics', ClientDiagnostics);
-        // world.register('avatar-fix', AvatarFix); // Disabled - avatar is properly managed in PlayerLocal
-        
-        // Temporarily disable raycast test system to prevent canvas/ground plane conflicts
-        // if (typeof window !== 'undefined' && (window as any).__ENABLE_RAYCAST_TEST__) {
-        //     world.register('raycast-test', RaycastTestSystem);
-        //     console.log('[Client World] Raycast test system registered');
-        // }
-        
-        console.log('[Client World] Client helper systems registered');
-        
-        // Update world object in browser window after systems are loaded
-        if (typeof window !== 'undefined') {
-          const windowWithWorld = window as WindowWithWorld;
-          windowWithWorld.world = world;
-          
-          // Also expose Three.js if available from stage system
-          const stageSystem = world.stage as StageSystem;
-          if (stageSystem && stageSystem.THREE) {
-            windowWithWorld.THREE = stageSystem.THREE;
-          }
-        }
-        
-      } catch (error) {
-        console.error('[Client World] Failed to register RPG game systems:', error);
-        if (error instanceof Error) {
-          console.error('[Client World] Error stack:', error.stack);
-        }
-        
-        // Still expose world object even if systems fail
-        if (typeof window !== 'undefined') {
-          const windowWithWorld = window as WindowWithWorld;
-          windowWithWorld.world = world;
+        // Also expose Three.js if available from stage system
+        const stageSystem = world.stage as StageSystem;
+        if (stageSystem && stageSystem.THREE) {
+          windowWithWorld.THREE = stageSystem.THREE;
         }
       }
-      resolve();
-    }, 100); // Reduced timeout since we'll wait for it properly
-  });
+    } catch (error) {
+      console.error('[Client World] Failed to register RPG game systems:', error);
+      if (error instanceof Error) {
+        console.error('[Client World] Error stack:', error.stack);
+      }
+      
+      // Still expose world object even if systems fail
+      if (typeof window !== 'undefined') {
+        const windowWithWorld = window as WindowWithWorld;
+        windowWithWorld.world = world;
+      }
+    }
+  })();
   
   // Store the promise on the world instance so it can be awaited
   (world as World & { systemsLoadedPromise: Promise<void> }).systemsLoadedPromise = systemsLoadedPromise;

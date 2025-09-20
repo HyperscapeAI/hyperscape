@@ -12,7 +12,6 @@
  */
 
 import { World } from '../World';
-import type { System } from './System';
 import { EventType } from '../types/events';
 import { getItem } from '../data/items';
 import type { DeathTestData } from '../types/test'
@@ -23,9 +22,6 @@ import type { PlayerHealth } from '../types/core';
 
 export class DeathTestSystem extends VisualTestFramework {
   private testData = new Map<string, DeathTestData>();
-  private combatSystem: System | null = null;
-  private inventorySystem: System | null = null;
-  private playerSystem: System | null = null;
 
   constructor(world: World) {
     super(world);
@@ -33,24 +29,6 @@ export class DeathTestSystem extends VisualTestFramework {
 
   async init(): Promise<void> {
     await super.init();
-    
-    
-    // Get required systems
-    this.combatSystem = this.world.systems.find((s: System) => s.constructor.name === 'CombatSystem') || null;
-    this.inventorySystem = this.world.systems.find((s: System) => s.constructor.name === 'InventorySystem') || null;
-    this.playerSystem = this.world.systems.find((s: System) => s.constructor.name === 'PlayerSystem') || null;
-    
-    if (!this.combatSystem) {
-      throw new Error('[DeathTestSystem] CombatSystem not found - required for death tests');
-    }
-    
-    if (!this.inventorySystem) {
-      throw new Error('[DeathTestSystem] InventorySystem not found - required for death tests');
-    }
-    
-    if (!this.playerSystem) {
-      throw new Error('[DeathTestSystem] PlayerSystem not found - required for death tests');
-    }
     
     // Listen for death and respawn events
     this.subscribe(EventType.PLAYER_DIED, (data) => this.handlePlayerDeath(data));

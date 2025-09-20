@@ -63,10 +63,10 @@ export class ItemActionTestSystem extends SystemBase {
     this.subscribe(EventType.UI_OPEN_MENU, (data) => this.handleContextMenuShown(data));
     this.subscribe(EventType.UI_CLOSE_MENU, (data) => this.handleContextMenuHidden(data));
     this.subscribe(EventType.ITEM_ACTION_EXECUTE, (data) => this.handleActionExecuted(data));
-    this.subscribe(EventType.ITEM_EXAMINE, (data) => this.handleItemExamine(data));
-    this.subscribe(EventType.EQUIPMENT_EQUIP, (data) => this.handleItemEquip(data));
-    this.subscribe(EventType.ITEM_DROP, (data) => this.handleItemDrop(data));
-    this.subscribe(EventType.ITEM_CONSUME, (data) => this.handleItemConsume(data));
+    this.subscribe(EventType.ITEM_EXAMINE, (data) => this.handleItemExamineEvent(data));
+    this.subscribe(EventType.EQUIPMENT_EQUIP, (data) => this.handleItemEquipEvent(data));
+    this.subscribe(EventType.ITEM_DROP, (data) => this.handleItemDropEvent(data));
+    this.subscribe(EventType.ITEM_CONSUME, (data) => this.handleItemConsumeEvent(data));
     
     this.createTestStations();
   }
@@ -402,11 +402,7 @@ export class ItemActionTestSystem extends SystemBase {
   }
 
   private async createTestPlayer(playerId: string, position: { x: number; y: number; z: number }): Promise<void> {
-    // Register test player with entity manager
-    this.emitTypedEvent(EventType.PLAYER_JOINED, {
-      playerId: playerId,
-      name: playerId
-    });
+    // Do not emit PLAYER_JOINED before entity exists; Entities.add will emit when appropriate
         
     // Create fake player entity using the proper EntityData structure
     const playerData: EntityData = {
@@ -713,25 +709,47 @@ export class ItemActionTestSystem extends SystemBase {
     // Don't simulate menu - let the actual ItemActionSystem handle it
   }
 
-  private handleContextMenuShown(data: { playerId: string; actions?: string[] }): void {
+  private handleContextMenuShown(data: 
+    { playerId: string; inventoryElement: HTMLElement; equipmentElement?: HTMLElement } |
+    { playerId: string; actions: Array<'use' | 'drop' | 'examine' | 'equip' | 'unequip'>; menuType: 'context' | 'main' | 'options' } |
+    { playerId: string; type: 'context'; position: { x: number; y: number }; actions: Array<{ id: string; label: string; icon?: string; enabled: boolean; onClick: () => void }>; targetId: string; targetType: 'resource' }
+  ): void {
     
     // Find matching test
     for (const [_testId, testData] of this.testData) {
       if (testData.playerId === data.playerId) {
         testData.menuShown = true;
-        testData.actionsAvailable = data.actions || [];
+        
+        // Extract actions based on the data structure
+        if ('actions' in data) {
+          if (Array.isArray(data.actions)) {
+            // Check if it's an array of strings or objects
+            const firstAction = data.actions[0];
+            if (firstAction && typeof firstAction === 'object' && 'label' in firstAction) {
+              // It's an array of action objects, extract labels
+              testData.actionsAvailable = data.actions.map(action => action.label);
+            } else {
+              // It's an array of strings
+              testData.actionsAvailable = data.actions as string[];
+            }
+          }
+        } else {
+          testData.actionsAvailable = [];
+        }
         break;
       }
     }
   }
 
-  private handleContextMenuHidden(data: { playerId: string }): void {
+  private handleContextMenuHidden(data: { playerId?: string; menuType?: 'context' | 'main' | 'options' } | Record<string, never>): void {
     
-    // Find matching test
-    for (const [_testId, testData] of this.testData) {
-      if (testData.playerId === data.playerId) {
-        testData.menuDisappeared = true;
-        break;
+    // Find matching test - handle optional playerId
+    if ('playerId' in data && data.playerId) {
+      for (const [_testId, testData] of this.testData) {
+        if (testData.playerId === data.playerId) {
+          testData.menuDisappeared = true;
+          break;
+        }
       }
     }
   }
@@ -745,22 +763,6 @@ export class ItemActionTestSystem extends SystemBase {
         break;
       }
     }
-  }
-
-  private handleItemExamine(_data: unknown): void {
-    // Handle item examine event
-  }
-
-  private handleItemEquip(_data: unknown): void {
-    // Handle item equip event
-  }
-
-  private handleItemDrop(_data: unknown): void {
-    // Handle item drop event
-  }
-
-  private handleItemConsume(_data: unknown): void {
-    // Handle item consume event
   }
 
   // Utility methods
@@ -986,6 +988,26 @@ export class ItemActionTestSystem extends SystemBase {
   postLateUpdate(): void {}
   commit(): void {}
   postTick(): void {}
+
+  private handleItemExamineEvent(data: unknown): void {
+    // Log item examine event for testing
+    Logger.system('ItemActionTestSystem', `Item examine event: ${JSON.stringify(data)}`);
+  }
+
+  private handleItemEquipEvent(data: unknown): void {
+    // Log item equip event for testing
+    Logger.system('ItemActionTestSystem', `Item equip event: ${JSON.stringify(data)}`);
+  }
+
+  private handleItemDropEvent(data: unknown): void {
+    // Log item drop event for testing
+    Logger.system('ItemActionTestSystem', `Item drop event: ${JSON.stringify(data)}`);
+  }
+
+  private handleItemConsumeEvent(data: unknown): void {
+    // Log item consume event for testing
+    Logger.system('ItemActionTestSystem', `Item consume event: ${JSON.stringify(data)}`);
+  }
 
   destroy(): void {
     this.testData.clear();

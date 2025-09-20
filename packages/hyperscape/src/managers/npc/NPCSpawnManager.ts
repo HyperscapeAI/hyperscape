@@ -134,21 +134,28 @@ export class NPCSpawnManager {
       z: spawnPoint.position.z + Math.sin(angle) * distance
     };
     
+    // Get NPC type for spawning
+    const npcType = this.getNPCTypeFromId(spawnPoint.npcId);
+    
     // Use NPCSystem to spawn the NPC
-    const npc = this.npcSystem.spawnNPC({
-      npcId: spawnPoint.npcId,
+    const spawnedNPC = this.npcSystem.spawnNPC({
+      npcId: spawnPoint.npcId.toString(),
+      name: `${npcType}_${spawnPoint.id}`,
+      type: npcType,
       position,
-      spawnerId: spawnPoint.id
+      services: this.getServicesForNPCType(npcType),
+      modelPath: this.getModelPathForNPCType(npcType)
     });
     
-    if (npc) {
+    // Track the spawn if successful
+    if (spawnedNPC) {
       spawnPoint.currentCount++;
       spawnPoint.lastSpawnTime = Date.now();
       
       // Emit world event for test integration and systems listening for spawns
       this.world.emit('rpg:mob:spawned', {
         spawnerId: spawnPoint.id,
-        npcId: (npc as { id?: string }).id ?? 'unknown',
+        npcId: spawnedNPC.id,
         position
       });
     }
@@ -220,5 +227,53 @@ export class NPCSpawnManager {
       'goblin': 30000 // Goblins respawn in 30 seconds
     };
     return respawnTimes[npcType] || 300000; // Default 5 minutes
+  }
+
+  /**
+   * Get NPC type from numeric ID (reverse mapping)
+   */
+  private getNPCTypeFromId(npcId: number): string {
+    const idToType: Record<number, string> = {
+      100: 'bank',
+      101: 'general_store',
+      102: 'weapon_store',
+      103: 'armor_store',
+      200: 'quest_giver',
+      2: 'guard',
+      1: 'goblin'
+    };
+    return idToType[npcId] || 'unknown';
+  }
+
+  /**
+   * Get services for NPC type
+   */
+  private getServicesForNPCType(npcType: string): string[] {
+    const services: Record<string, string[]> = {
+      'bank': ['deposit', 'withdraw'],
+      'general_store': ['buy', 'sell'],
+      'weapon_store': ['buy', 'sell'],
+      'armor_store': ['buy', 'sell'],
+      'quest_giver': ['quest'],
+      'guard': [],
+      'goblin': []
+    };
+    return services[npcType] || [];
+  }
+
+  /**
+   * Get model path for NPC type
+   */
+  private getModelPathForNPCType(npcType: string): string {
+    const models: Record<string, string> = {
+      'bank': '/models/npcs/banker.glb',
+      'general_store': '/models/npcs/merchant.glb',
+      'weapon_store': '/models/npcs/blacksmith.glb',
+      'armor_store': '/models/npcs/armorer.glb',
+      'quest_giver': '/models/npcs/villager.glb',
+      'guard': '/models/npcs/guard.glb',
+      'goblin': '/models/mobs/goblin.glb'
+    };
+    return models[npcType] || '/models/npcs/default.glb';
   }
 }

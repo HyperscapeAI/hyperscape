@@ -13,6 +13,7 @@ import {
   PlayerEquipmentItems
 } from '../types/core'
 import { InteractionHandler } from './InteractionHandler'
+import { ResourceContextMenu } from '../client/components/ResourceContextMenu'
 
 // No local interfaces - use shared types with proper type assertions
 
@@ -52,6 +53,19 @@ export function Interface({ world }: { world: World }) {
     itemId: string
     actions: string[]
   } | null>(null)
+  const [resourceContextMenu, setResourceContextMenu] = useState<{
+    visible: boolean
+    position: { x: number; y: number }
+    actions: Array<{ id: string; label: string; icon?: string; enabled: boolean; onClick: () => void }>
+    targetId: string
+    targetType: string
+  }>({
+    visible: false,
+    position: { x: 0, y: 0 },
+    actions: [],
+    targetId: '',
+    targetType: ''
+  })
   const [damageNumbers, setDamageNumbers] = useState<DamageNumber[]>([])
 
   useEffect(() => {
@@ -179,6 +193,32 @@ export function Interface({ world }: { world: World }) {
       })
     }
 
+    const handleResourceMenu = (rawData: unknown) => {
+      const data = rawData as {
+        playerId: string
+        type?: 'context'
+        position?: { x: number; y: number }
+        actions?: Array<{ id: string; label: string; icon?: string; enabled: boolean; onClick: () => void }>
+        targetId?: string
+        targetType?: 'resource'
+      }
+      
+      if (data.playerId !== localPlayer.id) return
+      
+      // Check if this is a resource context menu
+      if (data.type === 'context' && data.targetType === 'resource' && data.actions && data.position) {
+        setResourceContextMenu({
+          visible: true,
+          position: data.position,
+          actions: data.actions,
+          targetId: data.targetId || '',
+          targetType: data.targetType
+        })
+        // Close regular context menu if open
+        setContextMenu(null)
+      }
+    }
+
     const handleCombatEvent = (rawData: unknown) => {
       const data = rawData as { damage?: number; amount?: number; type?: string; x?: number; y?: number }
       // Add damage numbers for combat events
@@ -225,6 +265,10 @@ export function Interface({ world }: { world: World }) {
     typedWorld.on(EventType.STORE_CLOSE, handleStoreClose)
     // Removed STORE_INTERFACE_UPDATE - UI updates reactively to STORE_BUY/STORE_SELL events
     typedWorld.on(EventType.UI_CONTEXT_MENU, handleContextMenu)
+    typedWorld.on(EventType.UI_OPEN_MENU, handleResourceMenu)
+    typedWorld.on(EventType.UI_CLOSE_MENU, () => {
+      setResourceContextMenu({ visible: false, position: { x: 0, y: 0 }, actions: [], targetId: '', targetType: '' })
+    })
     typedWorld.on(EventType.COMBAT_DAMAGE_DEALT, handleCombatEvent)
     typedWorld.on(EventType.COMBAT_HEAL, handleCombatEvent)
     typedWorld.on(EventType.SKILLS_XP_GAINED, handleCombatEvent)
@@ -259,6 +303,8 @@ export function Interface({ world }: { world: World }) {
       typedWorld.off(EventType.STORE_CLOSE, handleStoreClose)
       // Removed STORE_INTERFACE_UPDATE listener cleanup
       typedWorld.off(EventType.UI_CONTEXT_MENU, handleContextMenu)
+      typedWorld.off(EventType.UI_OPEN_MENU, handleResourceMenu)
+      typedWorld.off(EventType.UI_CLOSE_MENU, () => {})
       typedWorld.off(EventType.COMBAT_DAMAGE_DEALT, handleCombatEvent)
       typedWorld.off(EventType.COMBAT_HEAL, handleCombatEvent)
       typedWorld.off(EventType.SKILLS_XP_GAINED, handleCombatEvent)
@@ -383,6 +429,14 @@ export function Interface({ world }: { world: World }) {
           world={world}
         />
       )}
+      <ResourceContextMenu
+        visible={resourceContextMenu.visible}
+        position={resourceContextMenu.position}
+        actions={resourceContextMenu.actions}
+        targetId={resourceContextMenu.targetId}
+        targetType={resourceContextMenu.targetType}
+        onClose={() => setResourceContextMenu({ visible: false, position: { x: 0, y: 0 }, actions: [], targetId: '', targetType: '' })}
+      />
       <ButtonPanel
         onInventoryClick={() => setShowInventory(!showInventory)}
         showInventory={showInventory}
@@ -409,7 +463,9 @@ function ButtonPanel({
     width: '3rem',
     height: '3rem',
     background: 'rgba(11, 10, 21, 0.9)',
-    border: '0.0625rem solid #2a2b39',
+    borderWidth: '0.0625rem',
+    borderStyle: 'solid',
+    borderColor: '#2a2b39',
     borderRadius: '0.375rem',
     color: '#ffffff',
     cursor: 'pointer',
@@ -1089,7 +1145,7 @@ function UnifiedInventoryEquipment({
 }
 
 // Inventory Component
-function Inventory({
+function _Inventory({
   items,
   onClose,
   world,
@@ -1424,7 +1480,7 @@ function Inventory({
 }
 
 // Equipment Component
-function EquipmentPanel({
+function _EquipmentPanel({
   equipment,
   stats,
   onClose,

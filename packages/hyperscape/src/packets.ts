@@ -11,6 +11,7 @@ const names = [
   'chatCleared',
   'entityAdded',
   'entityModified',
+  'moveRequest',
   'entityEvent',
   'entityRemoved',
   'playerTeleport',
@@ -21,6 +22,13 @@ const names = [
   'kick',
   'ping',
   'pong',
+  // New packets for multiplayer movement
+  'input',
+  'inputAck',
+  'correction',
+  'playerState',
+  'serverStateUpdate',
+  'deltaUpdate',
 ]
 
 const byName: Record<string, PacketInfo> = {}

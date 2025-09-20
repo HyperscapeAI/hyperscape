@@ -68,9 +68,7 @@ export type SystemDatabase = TypedKnexDatabase;
  * Type guard to check if an object is a valid database instance
  */
 export function isDatabaseInstance(db: unknown): db is SystemDatabase {
-  return typeof db === 'function' && 
-         db !== null && 
-         typeof db === 'object' || typeof db === 'function';
+  return typeof db === 'function' && db !== null;
 }
 
 /**
@@ -95,7 +93,7 @@ export interface DatabaseHelpers {
   /**
    * Create or update user
    */
-  upsertUser: (db: SystemDatabase, userData: Omit<UserRow, 'createdAt'> & { createdAt?: string }) => Promise<void>;
+  upsertUser: (db: SystemDatabase, userData: Pick<UserRow, 'id' | 'name' | 'avatar' | 'roles'> & { createdAt?: string }) => Promise<void>;
 }
 
 /**
@@ -108,25 +106,43 @@ export const dbHelpers: DatabaseHelpers = {
   },
 
   async setConfig(db: SystemDatabase, key: string, value: string): Promise<void> {
-    await db('config')
-      .insert({ key, value })
-      .onConflict('key')
-      .merge({ value });
+    // Fallback upsert compatible with mock DB (no onConflict)
+    const existing = await db('config').where('key', key).first();
+    if (existing) {
+      await db('config').where('key', key).update({ value });
+      return;
+    }
+    try {
+      await db('config').insert({ key, value });
+    } catch (_err) {
+      // If insert fails due to unique constraint in real DB, try update
+      await db('config').where('key', key).update({ value });
+    }
   },
 
   async getUser(db: SystemDatabase, userId: string): Promise<UserRow | undefined> {
     return await db('users').where('id', userId).first();
   },
 
-  async upsertUser(db: SystemDatabase, userData: Omit<UserRow, 'createdAt'> & { createdAt?: string }): Promise<void> {
-    const userWithTimestamp = {
-      ...userData,
-      createdAt: userData.createdAt || new Date().toISOString()
+  async upsertUser(db: SystemDatabase, userData: Pick<UserRow, 'id' | 'name' | 'avatar' | 'roles'> & { createdAt?: string }): Promise<void> {
+    const userWithTimestamp: UserRow = {
+      id: userData.id as string,
+      name: userData.name as string,
+      avatar: (userData.avatar ?? null) as string | null,
+      roles: userData.roles as string,
+      createdAt: (userData.createdAt || new Date().toISOString()) as string
     };
     
-    await db('users')
-      .insert(userWithTimestamp)
-      .onConflict('id')
-      .merge(userWithTimestamp);
+    // Fallback upsert compatible with mock DB (no onConflict)
+    const existing = await db('users').where('id', userWithTimestamp.id).first();
+    if (existing) {
+      await db('users').where('id', userWithTimestamp.id).update(userWithTimestamp);
+      return;
+    }
+    try {
+      await db('users').insert(userWithTimestamp);
+    } catch (_err) {
+      await db('users').where('id', userWithTimestamp.id).update(userWithTimestamp);
+    }
   }
 };

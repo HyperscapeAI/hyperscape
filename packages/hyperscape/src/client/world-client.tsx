@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import THREE from '../extras/three'
 
 import { createClientWorld } from '../createClientWorld'
+import type { World } from '../types'
 import { EventType } from '../types/events'
 import { CoreUI } from './components/CoreUI'
 import type { ClientProps } from '../types/client-types'
@@ -56,14 +57,15 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
         fogColor: null,
       }
       
+      // Use wsUrl prop if provided (already resolved by parent App component)
+      // The App component handles environment variables, so we should prioritize the prop
       let finalWsUrl: string
-      if (typeof wsUrl === 'function') {
-        const result = wsUrl()
-        finalWsUrl = result instanceof Promise ? await result : result
+      if (wsUrl) {
+        finalWsUrl = wsUrl as string
       } else {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-        const defaultWsUrl = `${protocol}//${window.location.host}/ws`
-        finalWsUrl = wsUrl || defaultWsUrl
+        // Fallback if no prop provided
+        finalWsUrl = window.env?.PUBLIC_WS_URL || 
+          `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
       }
       
       console.log('[Client] WebSocket URL:', finalWsUrl)
@@ -87,6 +89,17 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
       }
       
       console.log('[Client] Initializing world with config:', config)
+
+      // Ensure RPG systems are registered before initializing the world
+      const maybeWorld = world as unknown as World & { systemsLoadedPromise?: Promise<void> }
+      if (maybeWorld.systemsLoadedPromise) {
+        try {
+          await maybeWorld.systemsLoadedPromise
+          console.log('[Client] RPG systems loaded before world.init')
+        } catch (e) {
+          console.warn('[Client] Proceeding without awaiting systemsLoadedPromise due to error:', e)
+        }
+      }
       
       try {
         await world.init(config)

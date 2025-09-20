@@ -490,18 +490,8 @@ export class NPCBehaviorManager {
   /**
    * Get entity position
    */
-  private getEntityPosition(entity: Entity | Entity): Position3D | null {
-    if ('getPosition' in entity && typeof entity.getPosition === 'function') {
-      return (entity as Entity).getPosition();
-    }
-    if (entity.position) {
-      return {
-        x: entity.position.x,
-        y: entity.position.y,
-        z: entity.position.z
-      };
-    }
-    return null;
+  private getEntityPosition(entity: Entity): Position3D {
+    return entity.position;
   }
   
 

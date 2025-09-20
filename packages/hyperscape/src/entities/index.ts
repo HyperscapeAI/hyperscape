@@ -29,7 +29,6 @@ export { Entity } from './Entity';
 // Specialized base classes
 export { CombatantEntity } from './CombatantEntity';
 export { InteractableEntity } from './InteractableEntity';
-export { StorageEntity } from './StorageEntity';
 
 // Concrete entity classes
 export { ItemEntity } from './ItemEntity';
@@ -37,5 +36,3 @@ export { MobEntity } from './MobEntity';
 export { ResourceEntity } from './ResourceEntity';
 export { NPCEntity } from './NPCEntity';
 export { PlayerEntity } from './PlayerEntity';
-export { BankEntity } from './BankEntity';
-export { HeadstoneEntity } from './HeadstoneEntity';

@@ -1,6 +1,6 @@
 // Dynamic imports for Node.js modules to avoid Vite resolution issues
 
-class LocalStorage {
+export class LocalStorage {
   get(key: string): unknown {
     const data = localStorage.getItem(key)
     if (data === null) return null
@@ -17,7 +17,7 @@ class LocalStorage {
   }
 }
 
-class NodeStorage {
+export class NodeStorage {
   file: string = '';
   data: Record<string, unknown> = {};
   private fs: typeof import('node:fs/promises') | null = null;

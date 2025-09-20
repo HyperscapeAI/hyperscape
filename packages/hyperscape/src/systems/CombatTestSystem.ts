@@ -19,7 +19,6 @@ import type { CombatSystem } from './CombatSystem';
 import type { EquipmentSystem } from './EquipmentSystem';
 import type { MobSystem } from './MobSystem';
 import { VisualTestFramework } from './VisualTestFramework';
-import { MetricsCollector } from '../utils/MetricsCollector';
 import type { PlayerEntity } from '../types/test'
 import { Logger } from '../utils/Logger';
 
@@ -28,7 +27,6 @@ export class CombatTestSystem extends VisualTestFramework {
   private mobSystem!: MobSystem;
   private combatSystem!: CombatSystem;
   private equipmentSystem!: EquipmentSystem;
-  private metricsCollector: MetricsCollector;
 
   constructor(world: World) {
     super(world, {
@@ -39,7 +37,6 @@ export class CombatTestSystem extends VisualTestFramework {
       },
       autoCleanup: true
     });
-    this.metricsCollector = MetricsCollector.getInstance();
   }
 
   async init(): Promise<void> {
@@ -236,7 +233,7 @@ export class CombatTestSystem extends VisualTestFramework {
       
       // Debug: Check if player is registered with entity manager
       const entityManager = this.world.getSystem('rpg-entity-manager');
-      if (entityManager && 'getEntity' in entityManager && typeof entityManager.getEntity === 'function') {
+      if (entityManager && 'getEntity' in entityManager) {
         const playerEntity = (entityManager as { getEntity(id: string): unknown }).getEntity(player.id);
         Logger.system('CombatTestSystem', ` Player ${player.id} registered with entity manager`, { registered: !!playerEntity });
       }
@@ -421,7 +418,7 @@ export class CombatTestSystem extends VisualTestFramework {
       
       // Debug: Check if player is registered with entity manager
       const entityManager = this.world.getSystem('rpg-entity-manager');
-      if (entityManager && 'getEntity' in entityManager && typeof entityManager.getEntity === 'function') {
+      if (entityManager && 'getEntity' in entityManager) {
         const playerEntity = (entityManager as { getEntity(id: string): unknown }).getEntity(player.id);
         Logger.system('CombatTestSystem', ` Ranged player ${player.id} registered with entity manager`, { registered: !!playerEntity });
       }
@@ -605,7 +602,7 @@ export class CombatTestSystem extends VisualTestFramework {
       
       // Debug: Check if player is registered with entity manager
       const entityManager = this.world.getSystem('rpg-entity-manager');
-      if (entityManager && 'getEntity' in entityManager && typeof entityManager.getEntity === 'function') {
+      if (entityManager && 'getEntity' in entityManager) {
         const playerEntity = (entityManager as { getEntity(id: string): unknown }).getEntity(player.id);
         Logger.system('CombatTestSystem', ` Mixed player ${player.id} registered with entity manager`, { registered: !!playerEntity });
       }

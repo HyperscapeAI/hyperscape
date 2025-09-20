@@ -13,11 +13,7 @@ class BaseActionRegistry {
   }
   
   unregister(name: string): boolean {
-    const removed = this.actions.delete(name);
-    if (removed) {
-      // Action successfully removed from registry
-    }
-    return removed;
+    return this.actions.delete(name);
   }
   
   get(name: string): ActionDefinition | undefined {
@@ -155,7 +151,7 @@ export class ActionRegistry extends SystemBase {
       execute: async (context: ActionContext, params: Record<string, unknown>) => {
         const playerId = context.playerId || context.world.network.id;
         const slot = params.slot as number;
-        if (typeof slot !== 'number' || slot < 0) {
+        if (slot < 0) {
           return { success: false, message: 'Invalid slot number provided' };
         }
         this.emitTypedEvent(EventType.INVENTORY_USE, { playerId, itemId: params.itemId as string, slot });
@@ -390,18 +386,14 @@ export class ActionRegistry extends SystemBase {
    */
   destroy(): void {
     // Clear all registered actions by creating a new ActionRegistry
-    if (this.actionRegistryInstance) {
-      // Get all action names and unregister them
-      const allActions = this.actionRegistryInstance.getAll();
-      for (const action of allActions) {
-        this.actionRegistryInstance.unregister(action.name);
-      }
+    // Get all action names and unregister them
+    const allActions = this.actionRegistryInstance.getAll();
+    for (const action of allActions) {
+      this.actionRegistryInstance.unregister(action.name);
     }
     
     // Clear from world
     this.world.actionRegistry = undefined;
-    
-
     
     // Call parent cleanup
     super.destroy();

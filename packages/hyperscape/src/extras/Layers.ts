@@ -40,6 +40,8 @@ add('terrain', ['camera', 'player', 'environment', 'prop', 'tool'])
 // Basic obstacle/building layers for raycast checks
 add('obstacle', ['player', 'environment'])
 add('building', ['player', 'environment'])
+// Internal helper ground plane used by Physics bootstrap; must not participate in queries or collisions
+add('ground_helper', [])
 
 for (const key in Groups) {
   Layers[key] = {

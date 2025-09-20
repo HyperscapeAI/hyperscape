@@ -1,10 +1,11 @@
 
 import type { World } from '../types/index';
-import { STARTER_TOWNS } from '../data/world-areas';
-import { Town } from '../types/core';
+import { ALL_WORLD_AREAS, STARTER_TOWNS } from '../data/world-areas';
+import { Town, WorldArea } from '../types/core';
 import { SystemBase } from './SystemBase';
 import { EventType } from '../types/events';
 import { Logger } from '../utils/Logger';
+import { TerrainSystem } from './TerrainSystem';
 
 /**
  * World Generation System
@@ -13,18 +14,132 @@ import { Logger } from '../utils/Logger';
  * - Banks and stores
  * - Decorative elements
  * - Zone boundaries
- * - Mob spawn points
- * - Resource spawn points
+ * - Mob spawn points from authored data
+ * Listens to terrain tile generation events to place content.
  */
 export class WorldGenerationSystem extends SystemBase {
   private towns = new Map<string, Town>();
   private worldStructures = new Map<string, { type: string; position: { x: number; y: number; z: number }; config: Record<string, unknown> }>();
-  private mobSpawnPoints: Array<{ position: { x: number; y: number; z: number }; mobType: string; spawnRadius: number; difficulty: number }> = [];
-  private resourceSpawnPoints: Array<{ position: { x: number; y: number; z: number }; type: string; subType: string }> = [];
+  private terrainSystem!: TerrainSystem;
   
+  constructor(world: World) {
+    super(world, {
+      name: 'rpg-world-generation',
+      dependencies: {
+        required: ['terrain'],
+        optional: ['rpg-safezone', 'rpg-mob', 'rpg-resource', 'rpg-banking', 'rpg-store']
+      },
+      autoCleanup: true
+    });
+  }
+
+  async init(): Promise<void> {
+    this.terrainSystem = this.world.getSystem<TerrainSystem>('terrain')!;
+    
+    // Set up type-safe event subscriptions for world generation
+    this.subscribe<{ tileX: number, tileZ: number, biome: string }>(EventType.TERRAIN_TILE_GENERATED, (data) => this.onTileGenerated(data));
+    this.subscribe(EventType.PLAYER_JOINED, (data) => this.onPlayerEnter(data as { playerId: string }));
+    this.subscribe(EventType.PLAYER_LEFT, (data) => this.onPlayerLeave(data as { playerId: string }));
+    
+    // Generate towns immediately as they are static placements
+    this.generateTowns();
+    
+  }
+
+  private onTileGenerated(data: { tileX: number, tileZ: number, biome: string }): void {
+    const TILE_SIZE = this.terrainSystem.getTileSize();
+    const tileBounds = {
+        minX: data.tileX * TILE_SIZE,
+        maxX: (data.tileX + 1) * TILE_SIZE,
+        minZ: data.tileZ * TILE_SIZE,
+        maxZ: (data.tileZ + 1) * TILE_SIZE,
+    };
+
+    // Find which world areas overlap with this new tile
+    const overlappingAreas: WorldArea[] = [];
+    for (const area of Object.values(ALL_WORLD_AREAS)) {
+        const areaBounds = area.bounds;
+        // Simple bounding box overlap check
+        if (tileBounds.minX < areaBounds.maxX && tileBounds.maxX > areaBounds.minX &&
+            tileBounds.minZ < areaBounds.maxZ && tileBounds.maxZ > areaBounds.minZ) {
+            overlappingAreas.push(area);
+        }
+    }
+
+    if (overlappingAreas.length > 0) {
+        this.generateContentForTile(data, overlappingAreas);
+    }
+  }
+
   /**
-   * Convert externalized world area data to Town format
+   * Handle player entering the world
    */
+  private onPlayerEnter(data: { playerId: string }): void {
+    // Player entered - could trigger additional world generation
+    Logger.system('WorldGenerationSystem', `Player ${data.playerId} entered the world`);
+    // Could trigger generation of content around the player's spawn area
+  }
+
+  /**
+   * Handle player leaving the world
+   */
+  private onPlayerLeave(data: { playerId: string }): void {
+    // Player left - could clean up player-specific world content
+    Logger.system('WorldGenerationSystem', `Player ${data.playerId} left the world`);
+    // Could clean up or save player-specific world state
+  }
+
+  private generateContentForTile(tileData: { tileX: number, tileZ: number }, areas: WorldArea[]): void {
+    for (const area of areas) {
+        // Spawn NPCs from world-areas.ts data if they fall within this tile
+        this.generateNPCsForArea(area, tileData);
+
+        // Spawn mob spawn points
+        this.generateMobSpawnsForArea(area, tileData);
+
+        // NOTE: Procedural resources like trees/rocks are now handled by TerrainSystem.
+        // Authored/special resources could be spawned here.
+    }
+  }
+
+  private generateNPCsForArea(area: WorldArea, tileData: { tileX: number, tileZ: number }): void {
+    const TILE_SIZE = this.terrainSystem.getTileSize();
+    for (const npc of area.npcs) {
+        const npcTileX = Math.floor(npc.position.x / TILE_SIZE);
+        const npcTileZ = Math.floor(npc.position.z / TILE_SIZE);
+
+        if (npcTileX === tileData.tileX && npcTileZ === tileData.tileZ) {
+            this.emitTypedEvent(EventType.NPC_SPAWN_REQUEST, {
+                npcId: npc.id,
+                name: npc.name,
+                type: npc.type,
+                position: npc.position,
+                services: npc.services,
+                modelPath: npc.modelPath,
+            });
+        }
+    }
+  }
+
+  private generateMobSpawnsForArea(area: WorldArea, tileData: { tileX: number, tileZ: number }): void {
+    const TILE_SIZE = this.terrainSystem.getTileSize();
+    for (const spawnPoint of area.mobSpawns) {
+        const spawnTileX = Math.floor(spawnPoint.position.x / TILE_SIZE);
+        const spawnTileZ = Math.floor(spawnPoint.position.z / TILE_SIZE);
+
+        if (spawnTileX === tileData.tileX && spawnTileZ === tileData.tileZ) {
+            this.emitTypedEvent(EventType.MOB_SPAWN_POINTS_REGISTERED, {
+                spawnPoints: [{
+                    id: `${spawnPoint.mobId}_${Math.random()}`,
+                    type: spawnPoint.mobId,
+                    subType: spawnPoint.mobId,
+                    position: spawnPoint.position,
+                }]
+            });
+        }
+    }
+  }
+
   private getStarterTownConfigs(): Town[] {
     return Object.values(STARTER_TOWNS).map(area => ({
       id: area.id,
@@ -44,46 +159,7 @@ export class WorldGenerationSystem extends SystemBase {
     }));
   }
 
-  constructor(world: World) {
-    super(world, {
-      name: 'rpg-world-generation',
-      dependencies: {
-        required: [],
-        optional: ['rpg-safezone', 'rpg-mob', 'rpg-resource', 'rpg-banking', 'rpg-store']
-      },
-      autoCleanup: true
-    });
-  }
-
-  async init(): Promise<void> {
-    
-    // Set up type-safe event subscriptions for world generation
-    this.subscribe<{ seed?: number; config?: Record<string, unknown> }>(EventType.WORLD_GENERATE, (_data) => this.generateWorld());
-    this.subscribe<{ type: string; position: { x: number; y: number; z: number }; config?: Record<string, unknown> }>(EventType.WORLD_SPAWN_STRUCTURE, (data) => this.spawnStructure(data));
-    
-    // Generate world content immediately (resources come from TerrainSystem)
-    this.generateTowns();
-    this.generateMobSpawnPoints();
-    
-  }
-
-
-
-  private generateWorld(): void {
-    
-    // Generate all starter towns
-    this.generateTowns();
-    
-    // Generate other world features (no explicit roads/resources here)
-    this.generateWorldFeatures();
-    
-    // Generate spawn points (resources handled by TerrainSystem)
-    this.generateMobSpawnPoints();
-    
-  }
-
   private generateTowns(): void {
-    // Generate towns from externalized data
     const townConfigs = this.getStarterTownConfigs();
     for (const townConfig of townConfigs) {
       this.generateTown(townConfig);
@@ -93,232 +169,34 @@ export class WorldGenerationSystem extends SystemBase {
   }
 
   private generateTown(config: Town): void {
-    
-    // Store town data
     this.towns.set(config.id, config);
     
-    // Register safe zone with combat system
+    // Create a safe zone
     this.emitTypedEvent(EventType.ENTITY_SPAWNED, {
+      entityType: 'safezone',
       entityId: `safezone_${config.id}`,
-      entityType: 'safezone'
+      position: config.position,
+      radius: config.safeZoneRadius,
     });
     
-    // Emit town generated event for other systems to use
-    this.emitTypedEvent(EventType.ENTITY_SPAWNED, {
-      entityId: config.id,
-      entityType: 'town'
-    });
-    
-    // Generate physical structures (visual indicators)
+    // Generate town structures, which will in turn spawn NPCs
     this.generateTownStructures(config);
   }
 
   private generateTownStructures(town: Town): void {
-    // Town center marker - create visual app
-    this.emitTypedEvent(EventType.ENTITY_SPAWNED, {
-      entityId: `town_center_${town.id}`,
-      entityType: 'town_center'
-    });
-    
-    // Bank building - create visual app
+    // Spawning of structures and NPCs is now handled by onTileGenerated
+    // But we can still emit events for systems that need to know about banks/stores
     if (town.hasBank) {
-      const bankPosition = {
-        x: town.position.x - 8,
-        y: town.position.y,
-        z: town.position.z
-      };
-      
-      this.emitTypedEvent(EventType.ENTITY_SPAWNED, {
-        entityId: `bank_${town.id}`,
-        entityType: 'bank'
-      });
-      
-      // Register bank location with banking system
       this.emitTypedEvent(EventType.BANK_OPEN, {
         bankId: `bank_${town.id}`,
-        position: bankPosition,
+        position: { x: town.position.x - 8, y: town.position.y, z: town.position.z },
         townId: town.id
       });
     }
     
-    // Store building - create visual app
     if (town.hasStore) {
-      const storePosition = {
-        x: town.position.x + 8,
-        y: town.position.y,
-        z: town.position.z
-      };
-      
-      const shopkeeperNames = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve'];
-      const shopkeeperName = shopkeeperNames[Object.keys(this.towns).length % shopkeeperNames.length];
-      
-      this.emitTypedEvent(EventType.ENTITY_SPAWNED, {
-        entityId: `store_${town.id}`,
-        entityType: 'store'
-      });
-      
-      // Register store location with store system
-      this.emitTypedEvent(EventType.STORE_REGISTER_NPC, {
-        npcId: `store_npc_${town.id}`,
-        storeId: `store_${town.id}`,
-        position: storePosition,
-        name: shopkeeperName,
-        area: town.id
-      });
+        // The NPC spawn request will be handled when the tile loads
     }
-    
-    // Town decorations
-    this.generateTownDecorations(town);
-  }
-
-  private generateTownDecorations(town: Town): void {
-    // Add some decorative elements like wells, benches, etc.
-    const decorations = [
-      { type: 'well', offset: { x: 0, z: -6 } },
-      { type: 'bench', offset: { x: -4, z: 2 } },
-      { type: 'bench', offset: { x: 4, z: 2 } },
-      { type: 'lamp_post', offset: { x: -6, z: -6 } },
-      { type: 'lamp_post', offset: { x: 6, z: -6 } },
-      { type: 'lamp_post', offset: { x: -6, z: 6 } },
-      { type: 'lamp_post', offset: { x: 6, z: 6 } }
-    ];
-    
-    for (const deco of decorations) {
-      this.emitTypedEvent(EventType.ENTITY_SPAWNED, {
-        entityId: `${deco.type}_${town.id}_${decorations.indexOf(deco)}`,
-        entityType: deco.type
-      });
-    }
-  }
-
-  private generateWorldFeatures(): void {
-    // (Road visuals are handled by TerrainSystem via noise-based paths)
-    
-    // Generate zone boundaries
-    this.generateZoneBoundaries();
-  }
-
-  // DEPRECATED: Roads are now rendered by TerrainSystem as noise-based paths
-  private generateRoads(): void {}
-
-  private generateZoneBoundaries(): void {
-    // Visual indicators for different difficulty zones
-    const zones = [
-      { name: 'Beginner Zone', center: { x: 0, z: 0 }, radius: 150, level: '1-5' },
-      { name: 'Intermediate Zone', center: { x: 200, z: 0 }, radius: 100, level: '5-10' },
-      { name: 'Advanced Zone', center: { x: -200, z: 0 }, radius: 100, level: '10-15' }
-    ];
-    
-    for (const zone of zones) {
-      this.emitTypedEvent(EventType.ENTITY_SPAWNED, {
-        entityId: `zone_${zone.name.replace(/\s+/g, '_').toLowerCase()}`,
-        entityType: 'zone_marker'
-      });
-    }
-  }
-
-  private generateMobSpawnPoints(): void {
-    
-    // Define mob spawn areas based on difficulty zones
-    const spawnAreas = [
-      // Level 1 areas - Goblins, Bandits, Barbarians
-      { center: { x: 50, y: 2, z: 50 }, radius: 30, mobTypes: ['goblin', 'bandit', 'barbarian'], difficulty: 1 },
-      { center: { x: -50, y: 2, z: 50 }, radius: 30, mobTypes: ['goblin', 'bandit'], difficulty: 1 },
-      { center: { x: 50, y: 2, z: -50 }, radius: 30, mobTypes: ['barbarian', 'goblin'], difficulty: 1 },
-      { center: { x: -50, y: 2, z: -50 }, radius: 30, mobTypes: ['bandit', 'barbarian'], difficulty: 1 },
-      
-      // Level 2 areas - Hobgoblins, Guards, Dark Warriors
-      { center: { x: 150, y: 2, z: 150 }, radius: 40, mobTypes: ['hobgoblin', 'guard'], difficulty: 2 },
-      { center: { x: -150, y: 2, z: 150 }, radius: 40, mobTypes: ['dark_warrior', 'hobgoblin'], difficulty: 2 },
-      { center: { x: 150, y: 2, z: -150 }, radius: 40, mobTypes: ['guard', 'dark_warrior'], difficulty: 2 },
-      
-      // Level 3 areas - Black Knights, Ice Warriors, Dark Rangers
-      { center: { x: 250, y: 2, z: 250 }, radius: 50, mobTypes: ['black_knight', 'ice_warrior'], difficulty: 3 },
-      { center: { x: -250, y: 2, z: 250 }, radius: 50, mobTypes: ['dark_ranger', 'black_knight'], difficulty: 3 },
-      { center: { x: 0, y: 2, z: 300 }, radius: 60, mobTypes: ['ice_warrior', 'dark_ranger'], difficulty: 3 }
-    ];
-    
-    // Generate spawn points within each area
-    for (const area of spawnAreas) {
-      const pointsPerArea = 1; // Minimal spawn points to avoid memory issues
-      
-      for (let i = 0; i < pointsPerArea; i++) {
-        const angle = (i / pointsPerArea) * Math.PI * 2;
-        const distance = Math.random() * area.radius;
-        const x = area.center.x + Math.cos(angle) * distance;
-        const z = area.center.z + Math.sin(angle) * distance;
-        
-        const spawnPoint = {
-          position: { x, y: area.center.y, z },
-          mobType: area.mobTypes[Math.floor(Math.random() * area.mobTypes.length)],
-          spawnRadius: 10,
-          difficulty: area.difficulty
-        };
-        
-        this.mobSpawnPoints.push(spawnPoint);
-        
-        // Emit individual mob spawn request for each mob
-        this.emitTypedEvent(EventType.MOB_SPAWN_REQUEST, {
-          mobType: spawnPoint.mobType,
-          level: spawnPoint.difficulty,
-          position: spawnPoint.position,
-          respawnTime: 300000, // 5 minutes
-          name: `${spawnPoint.mobType.charAt(0).toUpperCase() + spawnPoint.mobType.slice(1).replace(/_/g, ' ')}`,
-          aggroRange: spawnPoint.spawnRadius
-        });
-      }
-    }
-    
-    Logger.system('WorldGenerationSystem', `Generated ${this.mobSpawnPoints.length} mob spawn points`);
-  }
-
-  private generateResourceSpawnPoints(): void {
-    
-    // Generate tree spawn points
-    for (let i = 0; i < 10; i++) { // Reduced from 50 to avoid memory issues
-      const x = (Math.random() - 0.5) * 400; // Spread across 400x400 world
-      const z = (Math.random() - 0.5) * 400;
-      
-      this.resourceSpawnPoints.push({
-        position: { x, y: 2, z },
-        type: 'tree',
-        subType: 'regular'
-      });
-    }
-    
-    // Generate fishing spot locations
-    const fishingSpots = [
-      { x: 25, y: 2, z: 25 }, { x: -25, y: 2, z: 25 }, { x: 25, y: 2, z: -25 },
-      { x: 75, y: 2, z: 75 }, { x: -75, y: 2, z: -75 }, { x: 125, y: 2, z: 0 }
-    ];
-    
-    for (const spot of fishingSpots) {
-      this.resourceSpawnPoints.push({
-        position: spot,
-        type: 'fishing_spot',
-        subType: 'lake'
-      });
-    }
-    
-    
-    // Notify resource system about spawn points
-    this.emitTypedEvent(EventType.ENTITY_SPAWNED, {
-      spawnPoints: this.resourceSpawnPoints
-    });
-  }
-
-  private spawnStructure(data: { type: string; position: { x: number; y: number; z: number; }; config?: Record<string, unknown>; }): void {
-    // This would be handled by the actual world/entity system
-    // For now, just log what would be spawned
-    
-    // Store structure data
-    const structureData = {
-      type: data.type,
-      position: data.position,
-      config: data.config || {}
-    };
-    const structureId = `${structureData.type}_${Date.now()}`;
-    this.worldStructures.set(structureId, structureData);
   }
 
   // API methods for other systems
@@ -361,33 +239,59 @@ export class WorldGenerationSystem extends SystemBase {
     return false;
   }
 
-  getMobSpawnPoints(): Array<{ position: { x: number; y: number; z: number }; mobType: string; spawnRadius: number; difficulty: number }> {
-    return [...this.mobSpawnPoints];
+  /**
+   * Get mob spawn points (for testing)
+   */
+  getMobSpawnPoints(): Array<{ id: string; type: string; position: { x: number; y: number; z: number } }> {
+    const mobSpawnPoints: Array<{ id: string; type: string; position: { x: number; y: number; z: number } }> = [];
+    
+    // Iterate through all world areas and collect mob spawn points
+    for (const area of Object.values(ALL_WORLD_AREAS)) {
+      if (area.mobSpawns && area.mobSpawns.length > 0) {
+        for (const spawn of area.mobSpawns) {
+          mobSpawnPoints.push({
+            id: `${area.id}_mob_${spawn.mobId}`,
+            type: spawn.mobId,
+            position: spawn.position
+          });
+        }
+      }
+    }
+    
+    return mobSpawnPoints;
   }
 
-  getResourceSpawnPoints(): Array<{ position: { x: number; y: number; z: number }; type: string; subType: string }> {
-    return [...this.resourceSpawnPoints];
+  /**
+   * Get resource spawn points (for testing)
+   */
+  getResourceSpawnPoints(): Array<{ id: string; type: string; position: { x: number; y: number; z: number } }> {
+    const resourceSpawnPoints: Array<{ id: string; type: string; position: { x: number; y: number; z: number } }> = [];
+    
+    // Iterate through all world areas and collect resource spawn points
+    for (const area of Object.values(ALL_WORLD_AREAS)) {
+      if (area.resources && area.resources.length > 0) {
+        for (const resource of area.resources) {
+          resourceSpawnPoints.push({
+            id: `${area.id}_resource_${resource.resourceId}`,
+            type: resource.resourceId,
+            position: resource.position
+          });
+        }
+      }
+    }
+    
+    return resourceSpawnPoints;
   }
-
-  getWorldStructures(): Map<string, { type: string; position: { x: number; y: number; z: number }; config: Record<string, unknown> }> {
-    return this.worldStructures;
-  }
-
-
 
   /**
    * Cleanup when system is destroyed
    */
   destroy(): void {
-    // Clear all world generation data
     this.towns.clear();
     this.worldStructures.clear();
-    this.mobSpawnPoints.length = 0;
-    this.resourceSpawnPoints.length = 0;
     
     Logger.system('WorldGenerationSystem', 'World generation system destroyed and cleaned up');
     
-    // Call parent cleanup
     super.destroy();
   }
 } 

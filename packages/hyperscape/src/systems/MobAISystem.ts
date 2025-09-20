@@ -57,7 +57,6 @@ export class MobAISystem extends SystemBase {
     this.subscribe(EventType.MOB_DAMAGED, (data) => this.handleMobDamaged(data));
     // MOB_DIED is in EventMap, so it receives just the data
     this.subscribe(EventType.MOB_DIED, (data) => this.handleMobKilled(data));
-    this.subscribe(EventType.COMBAT_ATTACK, (data) => this.handleCombatAttack(data));
   }
 
   /**
@@ -196,24 +195,6 @@ export class MobAISystem extends SystemBase {
     if (!mob || !aiState) return;
     
     this.killMob(mobId, killerId);
-  }
-
-  /**
-   * Handle combat attack events
-   */
-  private handleCombatAttack(data: { attackerId: string; targetId: string; attackType: 'melee' | 'ranged' | 'magic' }): void {
-    const { attackerId, targetId } = data;
-    
-    // If target is a mob, make it aware of the attacker
-    if (this.activeMobs.has(targetId)) {
-      const aiState = this.mobStates.get(targetId);
-      if (aiState && aiState.state !== 'combat' && aiState.state !== 'chase') {
-        // Set the attacker as the mob's target
-        aiState.targetId = attackerId;
-        aiState.state = 'chase';
-        Logger.debug('MobAISystem', { message: `Mob ${targetId} is now targeting attacker ${attackerId}` });
-      }
-    }
   }
 
   /**
@@ -613,9 +594,15 @@ export class MobAISystem extends SystemBase {
       if (!mobData.behavior.aggressive) continue;
       
       for (const player of players) {
-        
+        // Ensure player has valid position before calculating distance
+        if (!player.node?.position || typeof player.node.position.x !== 'number' ||
+            typeof player.node.position.y !== 'number' || typeof player.node.position.z !== 'number') {
+          console.warn(`[MobAISystem] Player ${player.id} has no valid node position`);
+          continue;
+        }
+
         const distance = mob.mesh!.position.distanceTo(player.node.position);
-        
+
         // Check aggro range
         const mobData = this.getMobData(mob);
         const aggroRange = mobData.behavior.aggroRange || 10;

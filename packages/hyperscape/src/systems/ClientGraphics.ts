@@ -175,8 +175,8 @@ export class ClientGraphics extends System {
     if ('aspect' in this.world.camera) {
       ;(this.world.camera as unknown as { aspect: number }).aspect = this.aspect
     }
-    if ('updateProjectionMatrix' in this.world.camera && typeof (this.world.camera as unknown as { updateProjectionMatrix: () => void }).updateProjectionMatrix === 'function') {
-      ;(this.world.camera as unknown as { updateProjectionMatrix: () => void }).updateProjectionMatrix()
+    if ('updateProjectionMatrix' in this.world.camera) {
+      (this.world.camera as { updateProjectionMatrix: () => void }).updateProjectionMatrix()
     }
     this.renderer.setSize(this.width, this.height)
     this.composer.setSize(this.width, this.height)
@@ -185,47 +185,13 @@ export class ClientGraphics extends System {
   }
 
   render() {
-    try {
-      // Clean up any null/undefined objects in the scene before rendering
-      this.cleanupScene();
-      
-      if (this.renderer.xr?.isPresenting || !this.usePostprocessing) {
-        this.renderer.render(this.world.stage.scene, this.world.camera as unknown as THREE.Camera)
-      } else {
-        this.composer.render()
-      }
-      if (this.xrDimensionsNeeded) {
-        this.updateXRDimensions()
-      }
-    } catch (error) {
-      // keep console error here for render loop debugging
-      console.error('[ClientGraphics] Render error:', error)
-      // Always fall back to regular rendering once if postprocessing fails
-      if (this.usePostprocessing) {
-        this.usePostprocessing = false
-        try {
-          this.renderer.render(this.world.stage.scene, this.world.camera as unknown as THREE.Camera)
-        } catch (fallbackError) {
-          console.error('[ClientGraphics] Fallback render also failed:', fallbackError)
-        }
-      }
+    if (this.renderer.xr?.isPresenting || !this.usePostprocessing) {
+      this.renderer.render(this.world.stage.scene, this.world.camera as unknown as THREE.Camera)
+    } else {
+      this.composer.render()
     }
-  }
-
-  private cleanupScene() {
-    // Remove any null/undefined objects that might cause render errors
-    const toRemove: THREE.Object3D[] = [];
-    this.world.stage.scene.traverse((obj) => {
-      if (!obj || obj.visible === null || obj.visible === undefined) {
-        toRemove.push(obj);
-      }
-    });
-    
-    for (const obj of toRemove) {
-      if (obj.parent) {
-        obj.parent.remove(obj);
-        console.log('[ClientGraphics] Removed null/invalid object from scene');
-      }
+    if (this.xrDimensionsNeeded) {
+      this.updateXRDimensions()
     }
   }
 

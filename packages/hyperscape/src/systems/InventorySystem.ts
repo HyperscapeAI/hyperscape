@@ -12,7 +12,6 @@ import type {
 } from '../types/core';
 import type {
   InventoryCanAddEvent,
-  InventoryHasEquippedEvent,
   InventoryRemoveCoinsEvent,
   InventoryCheckEvent,
   InventoryItemInfo
@@ -95,9 +94,6 @@ export class InventorySystem extends SystemBase {
     // Subscribe to inventory check events
     this.subscribe(EventType.INVENTORY_CHECK, (data) => {
       this.handleInventoryCheck(data);
-    });
-    this.subscribe(EventType.INVENTORY_HAS_EQUIPPED, (data) => {
-      this.handleHasEquipped(data);
     });
   }
 
@@ -738,18 +734,6 @@ export class InventorySystem extends SystemBase {
     data.callback(hasItem, inventorySlot);
   }
 
-  private handleHasEquipped(data: InventoryHasEquippedEvent): void {
-    // Check if the player has the specified item type in their inventory
-    const inventory = this.getOrCreateInventory(data.playerId);
-    
-    const hasItem = inventory.items.some(item => {
-      const itemData = getItem(item.itemId);
-      return itemData && itemData.type === data.itemType;
-    });
-    
-    data.callback(hasItem);
-  }
-  
   private handleInventoryAdd(data: InventoryItemAddedPayload): void {
     // Validate the event data exists
     if (!data) {
@@ -785,7 +769,35 @@ export class InventorySystem extends SystemBase {
     this.addItem({ playerId, itemId, quantity });
   }
 
+  /**
+   * Get skill data for a specific skill
+   * Returns null if the skill doesn't exist or player has no data
+   */
+  getSkillData(_playerId: string, _skillName: string): { xp: number, level: number } | null {
+    // For now, return default skill data
+    // This would normally be stored with player data
+    const defaultSkillData = {
+      xp: 0,
+      level: 1
+    };
+    return defaultSkillData;
+  }
+
+  /**
+   * Spawn an item in the world (for tests)
+   * This is a test helper method
+   */
+  async spawnItem(itemId: string, position: { x: number, y: number, z: number }, quantity: number): Promise<void> {
+    // Emit event to spawn the item in the world
+    this.emitTypedEvent(EventType.ITEM_SPAWN, {
+      itemId,
+      position,
+      quantity
+    });
+  }
+
   destroy(): void {
+    // Clear all player inventories on system shutdown
     this.playerInventories.clear();
     // Call parent cleanup (handles event listeners, timers, etc.)
     super.destroy();

@@ -7,6 +7,7 @@ import { playerTokenManager } from './PlayerTokenManager'
 import THREE from '../extras/three'
 import { installThreeJSExtensions } from '../physics/vector-conversions'
 import type { World } from '../types'
+import { CircularSpawnArea } from '../managers/spawning/CircularSpawnArea'
 
 // Set global environment flags
 (globalThis as typeof globalThis & { isBrowser?: boolean; isServer?: boolean }).isBrowser = true;
@@ -16,7 +17,8 @@ import type { World } from '../types'
 declare global {
   interface Window {
     env?: Record<string, string>
-    THREE?: typeof THREE
+    THREE?: any // Use 'any' to avoid conflicts with test declarations
+    world?: any // Add world as optional with flexible type
   }
 }
 
@@ -73,6 +75,10 @@ function App() {
             const globalWindow = window as Window & { world?: unknown; THREE?: unknown };
             globalWindow.world = world;
             globalWindow.THREE = THREE;
+            // Expose testing helpers for browser-based tests
+            const anyWin = window as unknown as { Hyperscape?: Record<string, unknown> };
+            anyWin.Hyperscape = anyWin.Hyperscape || {};
+            anyWin.Hyperscape.CircularSpawnArea = CircularSpawnArea;
           }
         }} />
       </ErrorBoundary>

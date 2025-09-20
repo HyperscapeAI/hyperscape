@@ -392,6 +392,10 @@ export interface WorldOptions {
   maxDeltaTime?: number;
   fixedDeltaTime?: number;
   db?: import('./database-types').SystemDatabase;
+  // Client-network convenience options (optional)
+  wsUrl?: string;
+  name?: string;
+  avatar?: string;
 }
 
 // Use the actual World class from core/World.ts
@@ -740,6 +744,45 @@ export interface PhysicsMaterial {
   restitution: number;
 }
 
+// Character Controller types
+export interface CharacterController {
+  id: string;
+  position: Vector3;
+  velocity: Vector3;
+  isGrounded: boolean;
+  radius: number;
+  height: number;
+  maxSpeed: number;
+  move: (displacement: Vector3) => void;
+  jump: () => void;
+  walkToward: (
+    targetPosition: { x: number; y?: number; z: number },
+    speed?: number
+  ) => Vector3;
+  walk?: (direction: { x: number; z: number }, speed?: number) => Vector3;
+  setPosition: (position: Vector3) => void;
+  getPosition: () => Vector3;
+  getVelocity: () => Vector3;
+}
+
+export interface CharacterControllerOptions {
+  id: string;
+  position?: Vector3;
+  radius?: number;
+  height?: number;
+  maxSpeed?: number;
+  move?: (displacement: Vector3) => void;
+  jump?: () => void;
+  walkToward?: (
+    targetPosition: { x: number; y?: number; z: number },
+    speed?: number
+  ) => Vector3;
+  walk?: (direction: { x: number; z: number }, speed?: number) => Vector3;
+  setPosition?: (position: Vector3) => void;
+  getPosition?: () => Vector3;
+  getVelocity?: () => Vector3;
+}
+
 // Physics system interface
 export interface Physics {
   // Core physics methods
@@ -767,10 +810,15 @@ export interface Physics {
   
   // Actor management
   addActor(actor: unknown, handle?: unknown): unknown;
+
+  // Plugin-specific extensions
+  enabled?: boolean;
+  timeStep?: number;
+  gravity?: Vector3;
+  controllers?: Map<string, CharacterController>;
+  step?: (deltaTime: number) => void;
+  createCharacterController?: (options: CharacterControllerOptions) => CharacterController;
 }
-
-
-
 
 
 // Network Types

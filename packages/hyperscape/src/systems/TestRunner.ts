@@ -64,7 +64,6 @@ export class TestRunner extends SystemBase {
   async init(): Promise<void> {
     // Set up type-safe event subscriptions for test management
     this.subscribe(EventType.TEST_RUN_ALL, () => this.runAllTests());
-    this.subscribe(EventType.TEST_RUN_SUITE, (data: { suiteName: string }) => this.runTestSuite(data));
     
     // Listen for individual test completions
     this.testSystems.forEach(systemName => {
@@ -177,15 +176,6 @@ export class TestRunner extends SystemBase {
     }
 
     this.testResults.set(systemName, testSuite);
-  }
-
-  private async runTestSuite(data: { suiteName: string }): Promise<void> {
-    
-    if (this.testSystems.includes(data.suiteName)) {
-      await this.runTestSystem(data.suiteName);
-    } else {
-              Logger.systemError('TestRunner', `Unknown test suite: ${data.suiteName}`);
-    }
   }
 
   private async generateFinalReport(): Promise<void> {

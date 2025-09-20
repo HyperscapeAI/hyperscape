@@ -10,43 +10,23 @@
 
 import THREE from '../extras/three'
 import { waitForPhysX } from '../PhysXManager'
-import type { InventoryItem, Item, PlayerEquipment, PlayerEquipmentItems, PlayerHealth, Skills } from '../types/core'
+import type { InventoryItem, Item, PlayerEquipment, PlayerEquipmentItems, PlayerHealth, Skills, TestStation, TestResult } from '../types/core'
 import type { PlayerEntity } from '../types/test'
 import { calculateDistance } from '../utils/EntityUtils'
 import { fixPositionIfAtGroundLevel } from '../utils/GroundPositioningUtils'
+import { SystemBase } from './SystemBase';
+import { EventType } from '../types/events';
 
-export interface TestStation {
-  id: string
-  name: string
-  position: { x: number; y: number; z: number }
-  status: 'idle' | 'running' | 'passed' | 'failed'
-  lastRunTime: number
-  totalRuns: number
-  successCount: number
-  failureCount: number
-  currentError: string // Always exists, empty string when no error
-  timeoutMs: number
-  ui: Record<string, unknown> // Always created
-  testZone: Record<string, unknown> // Always created
-}
-
-export interface TestResult {
-  success: boolean
-  error?: string
-  duration: number
-  details?: Record<string, unknown>
-}
+// Using imported types from core instead of redefining them
 
 // Shared fake player registry across all test framework instances
 // Using a module-level constant instead of globals
 const SHARED_FAKE_PLAYERS = new Map<string, PlayerEntity>()
 
 import type { World } from '../types'
-import { EventType } from '../types/events'
 import { Logger } from '../utils/Logger'
 import { getSystem } from '../utils/SystemUtils'
 import { EntityManager } from './EntityManager'
-import { SystemBase } from './SystemBase'
 
 export abstract class VisualTestFramework extends SystemBase {
   protected testStations = new Map<string, TestStation>()
@@ -127,8 +107,32 @@ export abstract class VisualTestFramework extends SystemBase {
     }
 
     // Listen for world events (server only)
-    this.subscribe(EventType.TEST_STATION_CREATED, (data: { station: TestStation }) => this.onTestStationCreated(data))
-    this.subscribe(EventType.TEST_RESULT, (data: { stationId: string; result: TestResult }) => this.onTestResult(data))
+    this.subscribe(EventType.TEST_STATION_CREATED, (station: TestStation) => this.onTestStationCreated(station))
+    this.subscribe(EventType.TEST_RESULT, (data: { stationId: string; result: TestResult }) => this.onTestResult(data.stationId, data.result))
+  }
+
+  /**
+   * Handle test station created event
+   */
+  private onTestStationCreated(station: TestStation): void {
+    // Handle test station creation
+    Logger.system(this.constructor.name, `Test station created: ${station.name}`);
+  }
+
+  /**
+   * Handle test result event
+   */
+  private onTestResult(stationId: string, result: TestResult): void {
+    // Handle test result
+    const station = this.testStations.get(stationId);
+    if (station) {
+      // Update station status based on result
+      station.status = result.passed ? 'passed' : 'failed';
+      if (!result.passed && result.error) {
+        station.currentError = result.error;
+      }
+      Logger.system(this.constructor.name, `Test result for ${stationId}: ${result.passed ? 'PASSED' : 'FAILED'}`);
+    }
   }
 
   start(): void {
@@ -193,8 +197,9 @@ export abstract class VisualTestFramework extends SystemBase {
       failureCount: 0,
       currentError: '', // Always exists, empty when no error
       timeoutMs: config.timeoutMs || 30000, // 30 seconds default
-      ui: {}, // Will be populated in createStationVisuals
-      testZone: {}, // Will be populated in createStationVisuals
+      ui: null, // Visual elements are managed via events, not stored directly
+      testZone: null, // Visual elements are managed via events, not stored directly  
+      isStarting: false,
     }
 
     // Create visual indicators
@@ -203,7 +208,7 @@ export abstract class VisualTestFramework extends SystemBase {
     this.testStations.set(config.id, station)
 
     // Notify world
-    this.emitTypedEvent(EventType.TEST_STATION_CREATED, { station })
+    this.emitTypedEvent(EventType.TEST_STATION_CREATED, { station: station as TestStation })
 
     return station
   }
@@ -212,12 +217,11 @@ export abstract class VisualTestFramework extends SystemBase {
    * Creates visual indicators for a test station
    */
   private createStationVisuals(station: TestStation): void {
-    // Create floating name UI
-    const ui = this.createFloatingNameUI(station)
-    station.ui = ui
+    // Create floating name UI (emits events for visual creation)
+    this.createFloatingNameUI(station)
 
-    // Create colored zone indicator (cube at ground level)
-    station.testZone = this.createTestZoneIndicator(station)
+    // Create colored zone indicator (emits events for visual creation)
+    this.createTestZoneIndicator(station)
 
     this.updateStationVisuals(station)
   }
@@ -302,7 +306,7 @@ export abstract class VisualTestFramework extends SystemBase {
     let statusText = `${station.status.toUpperCase()}`
     statusText += `\nRuns: ${station.totalRuns} | Success: ${successRate}%`
 
-    if (station.status === 'failed' && station.currentError !== '') {
+    if (station.status === 'failed' && station.currentError) {
       statusText += `\nError: ${station.currentError.substring(0, 30)}...`
     }
 
@@ -531,13 +535,7 @@ export abstract class VisualTestFramework extends SystemBase {
     
     // Then emit PLAYER_REGISTERED for any other systems that need it
     this.emitTypedEvent(EventType.PLAYER_REGISTERED, {
-      id: config.id,
-      name: config.name,
-      health: player.health.current,
-      maxHealth: player.health.max,
-      position: { x: player.node.position.x, y: player.node.position.y, z: player.node.position.z },
-      stats: playerSkills,
-      isAlive: true,
+      playerId: player.id,
     })
 
     // Register fake player with entity manager for combat system to find them
@@ -553,7 +551,7 @@ export abstract class VisualTestFramework extends SystemBase {
     // CRITICAL: Also register fake player with XP system for aggro system to work
 
     // Initialize fake player inventory
-    this.emitTypedEvent(EventType.PLAYER_INIT, { id: config.id })
+    this.emitTypedEvent(EventType.PLAYER_INIT, { playerId: config.id })
             Logger.system(this.constructor.name, `Triggered inventory initialization for fake player ${config.id}`)
 
     // Add any items that were set in the fake player's inventory using proper event system
@@ -588,26 +586,7 @@ export abstract class VisualTestFramework extends SystemBase {
 
     // Ensure systems are ready before registering fake players
 
-    // Register the fake player with all systems
-    this.emitTypedEvent(EventType.PLAYER_REGISTERED, {
-      playerId: player.id,
-      playerData: {
-        id: player.id,
-        name: player.name,
-        position: { x: player.node.position.x, y: player.node.position.y, z: player.node.position.z },
-        combatLevel: 3, // Starting combat level
-        isAlive: true,
-        stats: this.convertPlayerStatsToStats(playerSkills),
-        equipment: player.equipment || {
-          weapon: null,
-          shield: null,
-          helmet: null,
-          body: null,
-          legs: null,
-          arrows: null
-        },
-      },
-    })
+    // Registration already emitted above with correct payload
 
     // Set skill levels if specified in fake player stats
     const skillLevels: Record<string, number> = {}
@@ -639,7 +618,6 @@ export abstract class VisualTestFramework extends SystemBase {
     // Emit initial position update for aggro system
     this.emitTypedEvent(EventType.PLAYER_POSITION_UPDATED, {
       playerId: config.id,
-      entityId: config.id,
       position: { x: player.node.position.x, y: player.node.position.y, z: player.node.position.z },
     })
 
@@ -710,13 +688,13 @@ export abstract class VisualTestFramework extends SystemBase {
 
     // Update the mock entity's node.position (THREE.Vector3)
     const mockEntity = this.world.entities.get(playerId);
-    if (mockEntity && mockEntity.node && mockEntity.node.position && typeof mockEntity.node.position.set === 'function') {
+    if (mockEntity && mockEntity.node && mockEntity.node.position) {
       mockEntity.node.position.set(fixedPosition.x, fixedPosition.y, fixedPosition.z);
     }
 
     // Update visual
     this.emitTypedEvent(EventType.PLAYER_POSITION_UPDATED, {
-      id: `fake_player_${playerId}`,
+      playerId: playerId,
       position: { ...fixedPosition, y: fixedPosition.y + 1 },
     })
 
@@ -802,7 +780,7 @@ export abstract class VisualTestFramework extends SystemBase {
   /**
    * Marks a test as passed
    */
-  protected passTest(stationId: string, details?: Record<string, unknown>): void {
+  protected passTest(stationId: string, _details?: Record<string, unknown>): void {
     const station = this.testStations.get(stationId)
     if (!station) return
 
@@ -819,10 +797,20 @@ export abstract class VisualTestFramework extends SystemBase {
 
     const duration = Date.now() - station.lastRunTime
 
-    // Emit result
+    // Emit result with proper TestResult structure
+    const testResult: TestResult = {
+      testName: station.name,
+      systemName: this.constructor.name,
+      passed: true,
+      error: null,
+      duration,
+      timestamp: Date.now(),
+      data: null // Details can be passed but TestResult expects specific test data types
+    }
+    
     this.emitTypedEvent(EventType.TEST_RESULT, {
       stationId,
-      result: { success: true, duration, details },
+      result: testResult,
     })
 
     // DISABLED: Automatic restart causes infinite loops
@@ -854,10 +842,20 @@ export abstract class VisualTestFramework extends SystemBase {
     const duration = Date.now() - station.lastRunTime
           Logger.systemError('VisualTestFramework', `Test failed: ${station.name} - ${error} (${duration}ms)`)
 
-    // Emit result
+    // Emit result with proper TestResult structure
+    const testResult: TestResult = {
+      testName: station.name,
+      systemName: this.constructor.name,
+      passed: false,
+      error,
+      duration,
+      timestamp: Date.now(),
+      data: null
+    }
+    
     this.emitTypedEvent(EventType.TEST_RESULT, {
       stationId,
-      result: { success: false, error, duration },
+      result: testResult,
     })
 
     // DISABLED: Automatic restart causes infinite loops
@@ -922,20 +920,6 @@ export abstract class VisualTestFramework extends SystemBase {
         this.failTest(stationId, `Test execution error: ${error}`)
       }
     }, delayMs)
-  }
-
-  /**
-   * Event handlers
-   */
-  private onTestStationCreated(_data: { station: TestStation }): void {
-    // Event is already logged in createTestStation method
-  }
-
-  private onTestResult(data: { stationId: string; result: TestResult }): void {
-    const station = this.testStations.get(data.stationId)
-    if (station) {
-      // Test result processed successfully
-    }
   }
 
   /**

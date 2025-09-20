@@ -9,14 +9,24 @@
  */
 
 import { World } from '../World';
-import { getMobById } from '../data/mobs';
 import { Entity, EntityConfig } from '../entities/Entity';
 import { ItemEntity } from '../entities/ItemEntity';
 import { MobEntity } from '../entities/MobEntity';
 import { NPCEntity } from '../entities/NPCEntity';
 import { ResourceEntity } from '../entities/ResourceEntity';
-import { NPCBehavior, NPCState } from '../types/core';
-import type { ItemEntityConfig, ItemEntityProperties, ItemSpawnData, MobEntityConfig, MobSpawnData, NPCEntityConfig, NPCEntityProperties, NPCSpawnData, ResourceEntityConfig, ResourceEntityProperties, ResourceSpawnData } from '../types/entities';
+import type { 
+  ItemEntityConfig, 
+  ItemEntityProperties, 
+  ItemSpawnData, 
+  MobEntityConfig, 
+  MobSpawnData, 
+  NPCEntityConfig, 
+  NPCEntityProperties as _NPCEntityProperties, 
+  NPCSpawnData as _NPCSpawnData, 
+  ResourceEntityConfig, 
+  ResourceEntityProperties as _ResourceEntityProperties, 
+  ResourceSpawnData as _ResourceSpawnData 
+} from '../types/entities';
 import { EntityType, InteractionType, ItemRarity, MobAIState, MobType, NPCType, ResourceType } from '../types/entities';
 import { EventType } from '../types/events';
 import type { EntitySpawnedEvent } from '../types/systems';
@@ -87,15 +97,9 @@ export class EntityManager extends SystemBase {
         'fish': ResourceType.FISHING_SPOT
       };
       this.handleResourceSpawn({ 
-        resourceType: resourceTypeMap[data.resourceType] || ResourceType.TREE, 
-        position: { x: 0, y: 0, z: 0 }, 
-        customId: `resource_${Date.now()}`,
-        name: 'resource',
-        model: null,
-        respawnTime: 60000,
-        toolRequired: 'none',
-        skillRequired: 'none',
-        xpReward: 10
+        resourceId: `resource_${Date.now()}`,
+        resourceType: resourceTypeMap[data.resourceType] || 'tree', 
+        position: { x: 0, y: 0, z: 0 }
       });
     });
     this.subscribe(EventType.RESOURCE_HARVEST, (data) => this.handleResourceHarvest({ entityId: data.resourceId, playerId: data.playerId, amount: data.success ? 1 : 0 }));
@@ -348,9 +352,21 @@ export class EntityManager extends SystemBase {
     Logger.system('EntityManager', 'Handling mob spawn request', { data });
     
     // Validate required data
-    const position = data.position;
+    let position = data.position;
     if (!position) {
       throw new Error('[EntityManager] Mob spawn position is required');
+    }
+    
+    // Validate position has valid x, y, z coordinates
+    if (typeof position.x !== 'number' || typeof position.y !== 'number' || typeof position.z !== 'number') {
+      console.error('[EntityManager] Invalid mob spawn position - missing or non-numeric coordinates:', position);
+      // Create a valid position object with default coordinates
+      position = {
+        x: typeof position.x === 'number' ? position.x : 0,
+        y: typeof position.y === 'number' ? position.y : 0,  
+        z: typeof position.z === 'number' ? position.z : 0
+      };
+      console.warn('[EntityManager] Using default coordinates for missing values:', position);
     }
     
     const mobType = data.mobType;
@@ -515,256 +531,6 @@ export class EntityManager extends SystemBase {
     this.networkDirtyEntities.clear();
   }
 
-  private getItemType(_itemId: string): string {
-    // Get item type from data
-    return 'misc';
-  }
-
-  private isItemStackable(_itemId: string): boolean {
-    // Check if item is stackable
-    return true;
-  }
-
-  private getItemValue(_itemId: string): number {
-    // Get item value
-    return 1;
-  }
-
-  /**
-   * Get item weight - simplified without defensive checks
-   */
-  private getItemWeight(_itemId: string): number {
-    // Weight calculation based on item type
-    return 1;
-  }
-
-  private getItemRarity(_itemId: string): string {
-    // Get item rarity
-    return 'common';
-  }
-
-  private getMobMaxHealth(mobType: string, level: number): number {
-    // Get health from externalized mob data
-    const mobData = getMobById(mobType);
-    if (mobData) {
-      // Use the health from mob data, with level scaling
-      return mobData.stats.health + (level * 10);
-    }
-    
-    // Fallback for unknown mob types
-    Logger.system('EntityManager', ` Unknown mob type: ${mobType}`);
-    return 50 + (level * 10);
-  }
-
-  private getMobAttackPower(mobType: string, level: number): number {
-    // Get attack power from externalized mob data
-    const mobData = getMobById(mobType);
-    if (mobData) {
-      // Use the attack from mob data, with level scaling
-      return mobData.stats.attack + (level * 2);
-    }
-    
-    // Fallback for unknown mob types
-    Logger.system('EntityManager', ` Unknown mob type: ${mobType}`);
-    return 10 + (level * 2);
-  }
-
-  private getMobDefense(mobType: string, level: number): number {
-    // Get defense from externalized mob data
-    const mobData = getMobById(mobType);
-    if (mobData) {
-      // Use the defense from mob data, with level scaling
-      return mobData.stats.defense + level;
-    }
-    
-    // Fallback for unknown mob types
-    Logger.system('EntityManager', ` Unknown mob type: ${mobType}`);
-    return 5 + level;
-  }
-
-  private getMobAttackSpeed(_mobType: string): number {
-    // Attack speed in attacks per second
-    return 1.0;
-  }
-
-  private getMobMoveSpeed(mobType: string): number {
-    // Movement speed
-    const speeds = {
-      goblin: 4,
-      bandit: 5,
-      barbarian: 3,
-      hobgoblin: 4,
-      guard: 3,
-      dark_warrior: 4,
-      black_knight: 2.5,
-      ice_warrior: 3,
-      dark_ranger: 6
-    };
-    
-    return speeds[mobType];
-  }
-
-  private getMobAggroRange(_mobType: string): number {
-    // Aggro detection range
-    return 10;
-  }
-
-  private getMobCombatRange(_mobType: string): number {
-    // Combat engagement range
-    return 2;
-  }
-
-  private getMobXPReward(mobType: string, level: number): number {
-    // XP reward calculation
-    const baseXP = {
-      goblin: 15,
-      bandit: 20,
-      barbarian: 25,
-      hobgoblin: 30,
-      guard: 40,
-      dark_warrior: 50,
-      black_knight: 80,
-      ice_warrior: 60,
-      dark_ranger: 70
-    };
-    
-    return baseXP[mobType] * level;
-  }
-
-  private getMobLootTable(mobType: string): Array<{ itemId: string; chance: number; minQuantity: number; maxQuantity: number }> {
-    // Simplified loot tables
-    const tables = {
-      goblin: [
-        { itemId: 'coins', chance: 1.0, minQuantity: 1, maxQuantity: 5 },
-        { itemId: 'bronze_sword', chance: 0.1, minQuantity: 1, maxQuantity: 1 }
-      ],
-      bandit: [
-        { itemId: 'coins', chance: 1.0, minQuantity: 5, maxQuantity: 15 },
-        { itemId: 'bronze_shield', chance: 0.15, minQuantity: 1, maxQuantity: 1 }
-      ],
-      barbarian: [
-        { itemId: 'coins', chance: 1.0, minQuantity: 8, maxQuantity: 20 },
-        { itemId: 'bronze_body', chance: 0.1, minQuantity: 1, maxQuantity: 1 }
-      ]
-    };
-    
-    return tables[mobType] || [];
-  }
-
-  private async handleResourceSpawn(data: ResourceSpawnData): Promise<void> {
-    const config: EntityConfig<ResourceEntityProperties> = {
-      id: data.customId || `resource_${this.nextEntityId++}`,
-      name: data.name || 'Resource',
-      type: EntityType.RESOURCE,
-      position: data.position || { x: 0, y: 0, z: 0 },
-      rotation: { x: 0, y: 0, z: 0 },
-      scale: { x: 1, y: 1, z: 1 },
-      visible: true,
-      interactable: true,
-      interactionType: InteractionType.GATHER,
-      interactionDistance: 3,
-      description: data.name || 'Resource',
-      model: null,
-      properties: {
-        movementComponent: null,
-        combatComponent: null,
-        healthComponent: null,
-        visualComponent: null,
-        health: {
-          current: 1,
-          max: 1
-        },
-        level: 1,
-        resourceType: data.resourceType,
-        harvestable: true,
-        respawnTime: data.respawnTime || 60000,
-        toolRequired: data.toolRequired,
-        skillRequired: data.skillRequired,
-        xpReward: data.xpReward || 10
-      }
-    };
-    
-    await this.spawnEntity(config);
-  }
-
-  private handleResourceHarvest(data: { entityId: string; playerId: string; amount: number }): void {
-    const resource = this.entities.get(data.entityId);
-    if (!resource) {
-      Logger.system('EntityManager', ` Cannot harvest resource - entity ${data.entityId} not found`);
-      return;
-    }
-    
-    resource.setProperty('harvestable', false);
-    
-    // Schedule respawn
-    setTimeout(() => {
-      if (this.entities.has(data.entityId)) {
-        resource.setProperty('harvestable', true);
-      }
-    }, resource.getProperty('respawnTime'));
-  }
-
-  private async handleNPCSpawn(data: NPCSpawnData): Promise<void> {
-    const config: EntityConfig<NPCEntityProperties> = {
-      id: data.customId || `npc_${this.nextEntityId++}`,
-      name: data.name || 'NPC',
-      type: EntityType.NPC,
-      position: data.position || { x: 0, y: 0, z: 0 },
-      rotation: { x: 0, y: 0, z: 0 },
-      scale: { x: 1, y: 1, z: 1 },
-      visible: true,
-      interactable: true,
-      interactionType: InteractionType.TALK,
-      interactionDistance: 3,
-      description: data.name || 'NPC',
-      model: null,
-      properties: {
-        dialogue: data.dialogues ? data.dialogues.map(d => d.text) : [],
-        shopInventory: data.shopkeeper ? [] : [],
-        questGiver: data.questGiver || false,
-        npcComponent: { 
-          behavior: NPCBehavior.PASSIVE,
-          state: NPCState.IDLE,
-          currentTarget: null,
-          spawnPoint: data.position || { x: 0, y: 0, z: 0 },
-          wanderRadius: 0,
-          aggroRange: 0,
-          isHostile: false,
-          combatLevel: 1,
-          aggressionLevel: 0,
-          dialogueLines: data.dialogues ? data.dialogues.map(d => d.text) : [],
-          dialogue: (data.dialogues ? data.dialogues.map(d => d.text) : []).join('\n'),
-          services: []
-        },
-        movementComponent: null,
-        combatComponent: null,
-        healthComponent: null,
-        visualComponent: null,
-        health: {
-          current: 1,
-          max: 1
-        },
-        level: 1
-      }
-    };
-    
-    await this.spawnEntity(config);
-  }
-
-  private handleNPCDialogue(data: { entityId: string; playerId: string; dialogueId: string }): void {
-    const npc = this.entities.get(data.entityId);
-    if (!npc) {
-      Logger.system('EntityManager', ` Cannot start NPC dialogue - entity ${data.entityId} not found`);
-      return;
-    }
-    
-    this.emitTypedEvent(EventType.NPC_DIALOGUE, {
-      playerId: data.playerId,
-      npcId: data.entityId,
-      dialogue: npc.getProperty('dialogue')
-    });
-  }
-
   getDebugInfo(): {
     totalEntities: number;
     entitiesByType: Record<string, number>;
@@ -849,6 +615,254 @@ export class EntityManager extends SystemBase {
     }
 
     return this.spawnEntity(itemConfig)
+  }
+
+  // Helper methods for mob stats calculation
+  private getMobMaxHealth(mobType: string, level: number): number {
+    const baseHealth: Record<string, number> = {
+      'goblin': 50,
+      'wolf': 80,
+      'bandit': 100,
+      'skeleton': 60,
+      'zombie': 120,
+      'spider': 40,
+      'orc': 150,
+      'troll': 200,
+      'dragon': 500
+    };
+    return (baseHealth[mobType] || 100) + (level - 1) * 10;
+  }
+
+  private getMobAttackPower(mobType: string, level: number): number {
+    const baseAttack: Record<string, number> = {
+      'goblin': 5,
+      'wolf': 8,
+      'bandit': 10,
+      'skeleton': 6,
+      'zombie': 7,
+      'spider': 4,
+      'orc': 12,
+      'troll': 15,
+      'dragon': 30
+    };
+    return (baseAttack[mobType] || 5) + (level - 1) * 2;
+  }
+
+  private getMobDefense(mobType: string, level: number): number {
+    const baseDefense: Record<string, number> = {
+      'goblin': 2,
+      'wolf': 3,
+      'bandit': 5,
+      'skeleton': 3,
+      'zombie': 8,
+      'spider': 1,
+      'orc': 6,
+      'troll': 10,
+      'dragon': 15
+    };
+    return (baseDefense[mobType] || 2) + (level - 1);
+  }
+
+  private getMobAttackSpeed(mobType: string): number {
+    const attackSpeed: Record<string, number> = {
+      'goblin': 1.5,
+      'wolf': 1.0,
+      'bandit': 1.2,
+      'skeleton': 1.8,
+      'zombie': 2.5,
+      'spider': 0.8,
+      'orc': 1.5,
+      'troll': 2.0,
+      'dragon': 3.0
+    };
+    return attackSpeed[mobType] || 1.5;
+  }
+
+  private getMobMoveSpeed(mobType: string): number {
+    const moveSpeed: Record<string, number> = {
+      'goblin': 5,
+      'wolf': 8,
+      'bandit': 5,
+      'skeleton': 4,
+      'zombie': 3,
+      'spider': 7,
+      'orc': 4,
+      'troll': 3,
+      'dragon': 6
+    };
+    return moveSpeed[mobType] || 5;
+  }
+
+  private getMobAggroRange(mobType: string): number {
+    const aggroRange: Record<string, number> = {
+      'goblin': 10,
+      'wolf': 15,
+      'bandit': 12,
+      'skeleton': 10,
+      'zombie': 8,
+      'spider': 12,
+      'orc': 10,
+      'troll': 8,
+      'dragon': 20
+    };
+    return aggroRange[mobType] || 10;
+  }
+
+  private getMobCombatRange(mobType: string): number {
+    const combatRange: Record<string, number> = {
+      'goblin': 2,
+      'wolf': 2,
+      'bandit': 2,
+      'skeleton': 2,
+      'zombie': 2,
+      'spider': 2,
+      'orc': 2,
+      'troll': 3,
+      'dragon': 5
+    };
+    return combatRange[mobType] || 2;
+  }
+
+  private getMobXPReward(mobType: string, level: number): number {
+    const baseXP: Record<string, number> = {
+      'goblin': 10,
+      'wolf': 15,
+      'bandit': 20,
+      'skeleton': 12,
+      'zombie': 18,
+      'spider': 8,
+      'orc': 25,
+      'troll': 35,
+      'dragon': 100
+    };
+    return (baseXP[mobType] || 10) * level;
+  }
+
+  private getMobLootTable(mobType: string): Array<{ itemId: string; chance: number; minQuantity: number; maxQuantity: number }> {
+    const lootTables: Record<string, Array<{ itemId: string; chance: number; minQuantity: number; maxQuantity: number }>> = {
+      'goblin': [
+        { itemId: 'coins', chance: 0.8, minQuantity: 1, maxQuantity: 10 },
+        { itemId: 'goblin_ear', chance: 0.3, minQuantity: 1, maxQuantity: 2 }
+      ],
+      'wolf': [
+        { itemId: 'wolf_pelt', chance: 0.5, minQuantity: 1, maxQuantity: 1 },
+        { itemId: 'wolf_fang', chance: 0.4, minQuantity: 1, maxQuantity: 2 }
+      ],
+      'bandit': [
+        { itemId: 'coins', chance: 0.9, minQuantity: 5, maxQuantity: 20 },
+        { itemId: 'iron_sword', chance: 0.2, minQuantity: 1, maxQuantity: 1 },
+        { itemId: 'leather_armor', chance: 0.15, minQuantity: 1, maxQuantity: 1 }
+      ],
+      'skeleton': [
+        { itemId: 'bone', chance: 0.7, minQuantity: 1, maxQuantity: 3 },
+        { itemId: 'arrow', chance: 0.4, minQuantity: 1, maxQuantity: 5 }
+      ],
+      'zombie': [
+        { itemId: 'rotten_flesh', chance: 0.8, minQuantity: 1, maxQuantity: 2 }
+      ],
+      'spider': [
+        { itemId: 'spider_silk', chance: 0.6, minQuantity: 1, maxQuantity: 3 },
+        { itemId: 'spider_eye', chance: 0.3, minQuantity: 1, maxQuantity: 1 }
+      ],
+      'orc': [
+        { itemId: 'coins', chance: 0.8, minQuantity: 10, maxQuantity: 30 },
+        { itemId: 'orc_tusk', chance: 0.4, minQuantity: 1, maxQuantity: 2 },
+        { itemId: 'iron_axe', chance: 0.1, minQuantity: 1, maxQuantity: 1 }
+      ],
+      'troll': [
+        { itemId: 'troll_hide', chance: 0.5, minQuantity: 1, maxQuantity: 1 },
+        { itemId: 'coins', chance: 0.7, minQuantity: 20, maxQuantity: 50 }
+      ],
+      'dragon': [
+        { itemId: 'dragon_scale', chance: 0.8, minQuantity: 1, maxQuantity: 3 },
+        { itemId: 'dragon_claw', chance: 0.6, minQuantity: 1, maxQuantity: 2 },
+        { itemId: 'coins', chance: 1.0, minQuantity: 100, maxQuantity: 500 }
+      ]
+    };
+    return lootTables[mobType] || [{ itemId: 'coins', chance: 0.5, minQuantity: 1, maxQuantity: 5 }];
+  }
+
+  private getItemWeight(_itemId: string): number {
+    // Default weight for items - could be expanded with item data
+    return 1;
+  }
+
+  private handleResourceSpawn(data: { resourceId: string, position: { x: number, y: number, z: number }, resourceType: string }): void {
+    // Resource spawn logic
+    this.spawnResource(data.resourceId, data.position, data.resourceType);
+  }
+
+  private async spawnResource(resourceId: string, position: { x: number, y: number, z: number }, resourceType: string): Promise<Entity | null> {
+    const config: ResourceEntityConfig = {
+      id: resourceId,
+      type: EntityType.RESOURCE,
+      name: `Resource_${resourceType}`,
+      position: position,
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 1, y: 1, z: 1 },
+      visible: true,
+      interactable: true,
+      interactionType: InteractionType.GATHER,
+      interactionDistance: 3,
+      description: `A ${resourceType} resource`,
+      model: null,
+      resourceType: resourceType as ResourceType,
+      resourceId: resourceId,
+      harvestSkill: 'woodcutting',
+      requiredLevel: 1,
+      harvestTime: 3000,  // 3 seconds to harvest
+      respawnTime: 60000,
+      harvestYield: [
+        { itemId: 'wood', quantity: 1, chance: 1.0 }
+      ],
+      depleted: false,
+      lastHarvestTime: 0,
+      properties: {
+        health: {
+          current: 1,
+          max: 1
+        },
+        resourceType: resourceType as ResourceType,
+        harvestable: true,
+        respawnTime: 60000,
+        toolRequired: 'none',
+        skillRequired: 'none',
+        xpReward: 10,
+        movementComponent: null,
+        combatComponent: null,
+        healthComponent: null,
+        visualComponent: null,
+        level: 1,
+      }
+    };
+    
+    return this.spawnEntity(config);
+  }
+
+  private async handleResourceHarvest(_data: { entityId: string, playerId: string, amount: number }): Promise<void> {
+    // Resource harvest logic would go here
+    // For now, just log it
+    Logger.system('EntityManager', 'Resource harvest event received');
+  }
+
+  private handleNPCSpawn(data: { 
+    customId: string,
+    name: string,
+    npcType: NPCType,
+    position: { x: number, y: number, z: number },
+    model: unknown,
+    dialogues: string[],
+    questGiver: boolean,
+    shopkeeper: boolean,
+    bankTeller: boolean
+  }): void {
+    // NPC spawn logic
+    Logger.system('EntityManager', `NPC spawn event received for ${data.name}`);
+  }
+
+  private handleNPCDialogue(_data: { entityId: string, playerId: string, dialogueId: string }): void {
+    // NPC dialogue logic
+    Logger.system('EntityManager', 'NPC dialogue event received');
   }
 
   /**

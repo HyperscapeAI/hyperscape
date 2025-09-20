@@ -19,6 +19,11 @@ const CHAT_MAX_MESSAGES = 50;
 
 export type ChatListener = (messages: ChatMessage[]) => void;
 
+// Interface for players that can chat
+interface PlayerWithChat extends Player {
+  chat(text: string): void;
+}
+
 export class Chat extends SystemBase {
   msgs: ChatMessage[];
   private chatListeners: Set<ChatListener>;
@@ -48,7 +53,7 @@ export class Chat extends SystemBase {
     
     // trigger player chat animation if applicable
     if (msg.fromId) {
-      const player = this.world.entities.players?.get(msg.fromId) as Player & { chat: (text: string) => void } | undefined;
+      const player = this.world.entities.players?.get(msg.fromId) as PlayerWithChat | undefined;
       if (player) {
         player.chat(msg.body);
       }
@@ -150,6 +155,7 @@ export class Chat extends SystemBase {
   }
 
   // Overloads to remain compatible with SystemBase while supporting chat listeners
+  subscribe(callback: ChatListener): () => void;
   subscribe<K extends keyof EventMap>(
     eventType: K,
     handler: (data: EventMap[K]) => void | Promise<void>
@@ -158,13 +164,12 @@ export class Chat extends SystemBase {
     eventType: string,
     handler: (data: T) => void | Promise<void>
   ): EventSubscription;
-  subscribe(callback: ChatListener): () => void;
   // Implementation
   subscribe(
     arg1: ChatListener | keyof EventMap | string,
     arg2?: ((data: unknown) => void | Promise<void>)
   ): EventSubscription | (() => void) {
-    if (typeof arg1 === 'function') {
+    if (!arg2) {
       const callback = arg1 as ChatListener;
       this.chatListeners.add(callback);
       callback(this.msgs);

@@ -514,7 +514,7 @@ function Prefs({ world, hidden: _hidden }: PrefsProps) {
           label='Fullscreen'
           hint='Toggle fullscreen. Not supported in some browsers'
           value={isFullscreen as boolean}
-          onChange={value => { if (canFullscreen && typeof toggleFullscreen === 'function') toggleFullscreen(value) }}
+          onChange={value => { if (canFullscreen) toggleFullscreen(value) }}
           trueLabel='Enabled'
           falseLabel='Disabled'
         />

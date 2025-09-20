@@ -85,18 +85,18 @@ export class CombatSystem extends SystemBase {
 
   }
 
-  private handleAttack(data: { 
-    attackerId: string; 
+  private handleAttack(data: {
+    attackerId: string;
     targetId: string;
     attackerType: 'player' | 'mob';
     targetType: 'player' | 'mob';
     attackType: AttackType;
   }): void {
-    // Validate attack request
-    if (data.attackType === AttackType.MELEE) {
-      this.handleMeleeAttack(data);
-    } else if (data.attackType === AttackType.RANGED) {
+    // Delegate to appropriate attack handler
+    if (data.attackType === AttackType.RANGED) {
       this.handleRangedAttack(data);
+    } else {
+      this.handleMeleeAttack(data);
     }
   }
 

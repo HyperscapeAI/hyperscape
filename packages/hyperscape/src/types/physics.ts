@@ -90,6 +90,7 @@ export interface PhysXInfo {
   errorCb: PxDefaultErrorCallback
   foundation: PxFoundation
   physics: PxPhysics
+  cooking?: unknown // Optional - not available in all PhysX builds
 }
 
 // Strong type assertions for PhysX components

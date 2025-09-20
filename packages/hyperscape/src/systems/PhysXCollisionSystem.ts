@@ -47,13 +47,20 @@ export class PhysXCollisionSystem extends SystemBase {
   private static readonly BATCH_SIZE = 10;
 
   constructor(world: World) {
-    super(world, { name: 'physx-collision', dependencies: { required: [], optional: [] }, autoCleanup: true });
+    super(world, { name: 'physx-collision', dependencies: { required: ['physics'], optional: ['terrain-validation'] }, autoCleanup: true });
   }
 
   async init(): Promise<void> {
     // Find required systems
-    this.terrainValidationSystem = this.world.getSystem('terrain-validation') as TerrainValidationSystem;
     this.physicsSystem = this.world.getSystem('physics') as Physics;
+    if (!this.physicsSystem) {
+      this.logger.error('Physics system not found despite being a required dependency');
+    }
+    
+    this.terrainValidationSystem = this.world.getSystem('terrain-validation') as TerrainValidationSystem;
+    if (!this.terrainValidationSystem) {
+      this.logger.warn('TerrainValidationSystem not found - some validation features will be limited');
+    }
     
     // Listen for entity events via event bus (typed payloads)
     this.subscribe(EventType.ENTITY_POSITION_CHANGED, (data: { entityId: string; position: { x: number; y: number; z: number } }) => {
@@ -78,6 +85,15 @@ export class PhysXCollisionSystem extends SystemBase {
   }
 
   start(): void {
+    // Verify required systems are available
+    if (!this.physicsSystem) {
+      this.physicsSystem = this.world.getSystem('physics') as Physics;
+      if (!this.physicsSystem) {
+        this.logger.error('CRITICAL: Physics system not found at startup - collision validation disabled');
+        return;
+      }
+    }
+    
     // Start periodic collision validation
     this.validationIntervalId = setInterval(() => {
       if (!this.isValidating) {
@@ -398,6 +414,7 @@ export class PhysXCollisionSystem extends SystemBase {
 
   // Helper methods
   private getTerrainHeight(x: number, z: number): number {
+    if (!this.terrainValidationSystem) return 0;
     return this.terrainValidationSystem.getTerrainHeight(x, z) || 0;
   }
 

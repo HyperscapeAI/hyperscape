@@ -7,10 +7,6 @@ import { CSM } from '../libs/csm/CSM'
 import type { BaseEnvironment, EnvironmentModel, LoadedModel, LoaderResult, SkyHandle, SkyInfo, SkyNode, World, WorldOptions } from '../types/index'
 
 // Strong type casting helpers - assume types are correct
-function _asNumber(value: unknown): number {
-  return value as number
-}
-
 function asString(value: unknown): string {
   return value as string
 }
@@ -103,9 +99,9 @@ export class ClientEnvironment extends System {
 
     this.world.settings?.on('change', this.onSettingsChange)
     this.world.prefs?.on('change', this.onPrefsChange)
-    // graphics may not be an event emitter; guard against missing 'on'
-    if (this.world.graphics && typeof (this.world.graphics as { on?: Function }).on === 'function') {
-      (this.world.graphics as { on: (event: string, fn: () => void) => void }).on('resize', this.onViewportResize)
+    // graphics system has event emitter methods
+    if (this.world.graphics) {
+      this.world.graphics.on('resize', this.onViewportResize)
     }
   }
 
@@ -123,9 +119,10 @@ export class ClientEnvironment extends System {
     if (glb && 'toNodes' in glb) {
       const nodesResult = (glb as LoadedModel).toNodes()
       const nodes = nodesResult as Map<string, NodeClass> | EnvironmentModel
-      // Check if it's already an EnvironmentModel-like object with activate/deactivate
-      if (nodes && typeof (nodes as EnvironmentModel).activate === 'function' && typeof (nodes as EnvironmentModel).deactivate === 'function') {
-        this.model = nodes as EnvironmentModel
+      // Check if it's an EnvironmentModel object (has activate/deactivate)
+      const environmentModel = nodes as EnvironmentModel
+      if (nodes && 'activate' in environmentModel && 'deactivate' in environmentModel) {
+        this.model = environmentModel
         this.model.activate({ world: this.world, label: 'base' })
       } else if (nodes && nodes instanceof Map) {
         // If it's a Map of nodes, create a wrapper
@@ -272,9 +269,7 @@ export class ClientEnvironment extends System {
   override update(_delta: number) {
     if (this.csm) {
       try {
-        if (typeof (this.csm as { update?: () => void }).update === 'function') {
-          ;(this.csm as { update: () => void }).update()
-        }
+        this.csm.update()
       } catch (error) {
         console.error('[ClientEnvironment] Error updating CSM:', error)
       }

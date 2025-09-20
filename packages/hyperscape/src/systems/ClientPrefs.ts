@@ -6,7 +6,7 @@ import { isTouch } from '../client/utils'
 import type { World } from '../types'
 
 // Type for client preferences
-interface ClientPrefsData {
+export interface ClientPrefsData {
   ui?: number
   actions?: boolean
   stats?: boolean
@@ -20,8 +20,8 @@ interface ClientPrefsData {
   v?: number
 }
 
-type PrefsKey = keyof ClientPrefsData
-type PrefsValue = ClientPrefsData[PrefsKey]
+export type PrefsKey = keyof ClientPrefsData
+export type PrefsValue = ClientPrefsData[PrefsKey]
 
 /**
  * Client Prefs System
@@ -43,8 +43,6 @@ export class ClientPrefs extends SystemBase {
   
   constructor(world: World) {
     super(world, { name: 'client-prefs', dependencies: { required: [], optional: [] }, autoCleanup: true })
-
-    const _isQuest = typeof navigator !== 'undefined' && navigator.userAgent ? /OculusBrowser/.test(navigator.userAgent) : false;
 
     let data: ClientPrefsData = {};
     try {

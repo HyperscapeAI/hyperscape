@@ -10,7 +10,7 @@
  */
 
 import { EventBus, EventSubscription, SystemEvent } from './EventBus';
-import { System, SystemDependencies } from './System';
+import { System } from './System';
 import type { AnyEvent } from '../types/events';
 import type { World } from '../types/index';
 import { SystemConfig } from '../types/core';
@@ -37,13 +37,6 @@ export abstract class SystemBase extends System {
     const worldExt = world as World & { $eventBus: EventBus };
     worldExt.$eventBus = worldExt.$eventBus || new EventBus();
     this.eventBus = worldExt.$eventBus;
-  }
-
-  /**
-   * Override this method to define system dependencies
-   */
-  getDependencies(): SystemDependencies {
-    return this.config.dependencies || {};
   }
 
   /**

@@ -150,6 +150,14 @@ export function createVRMFactory(glb: GLBData, setupMaterial?: (material: THREE.
   }
 
   function create(matrix: THREE.Matrix4, hooks: VRMHooks, node?: { ctx?: { entity?: unknown } }) {
+    console.log('[VRMFactory] Creating VRM instance')
+    console.log('[VRMFactory] Hooks provided:', hooks ? Object.keys(hooks) : 'none')
+    console.log('[VRMFactory] Hooks.scene:', hooks?.scene ? 'YES' : 'NO')
+    
+    // CRITICAL: Check if we can get scene from node context as fallback
+    const nodeWithCtx = node as unknown as { ctx?: { stage?: { scene?: THREE.Scene } } }
+    const fallbackScene = nodeWithCtx?.ctx?.stage?.scene
+    
     const vrm = cloneGLB(glb)
     const _tvrm = vrm.userData?.vrm
     const skinnedMeshes = getSkinnedMeshes(vrm.scene as THREE.Scene)
@@ -157,9 +165,22 @@ export function createVRMFactory(glb: GLBData, setupMaterial?: (material: THREE.
     const rootBone = skeleton.bones[0] // should always be 0
     rootBone.parent?.remove(rootBone)
     rootBone.updateMatrixWorld(true)
-    vrm.scene.matrix = matrix // synced!
-    vrm.scene.matrixWorld = matrix // synced!
-    hooks.scene.add(vrm.scene)
+    vrm.scene.matrix.copy(matrix) // synced!
+    vrm.scene.matrixWorld.copy(matrix) // synced!
+    // CRITICAL: Disable auto matrix updates since we manually control the transform
+    vrm.scene.matrixAutoUpdate = false
+    vrm.scene.matrixWorldAutoUpdate = false
+    
+    if (hooks?.scene) {
+      hooks.scene.add(vrm.scene)
+      console.log('[VRMFactory] Added VRM scene to world.stage.scene via hooks')
+    } else if (fallbackScene) {
+      console.warn('[VRMFactory] WARNING: No scene in hooks, using fallback from node.ctx.stage.scene')
+      fallbackScene.add(vrm.scene)
+      console.log('[VRMFactory] Added VRM scene to world.stage.scene via fallback')
+    } else {
+      console.error('[VRMFactory] ERROR: No scene in hooks AND no fallback scene available, VRM will not be visible!')
+    }
 
     const getEntity = () => node?.ctx?.entity
 
@@ -176,7 +197,9 @@ export function createVRMFactory(glb: GLBData, setupMaterial?: (material: THREE.
       material,
       getEntity,
     };
-    hooks.octree?.insert(sItem)
+    if (hooks?.octree) {
+      hooks.octree.insert(sItem)
+    }
 
     // debug capsule
     // const foo = new THREE.Mesh(
@@ -339,7 +362,11 @@ export function createVRMFactory(glb: GLBData, setupMaterial?: (material: THREE.
       getBoneTransform,
       move(_matrix: THREE.Matrix4) {
         matrix.copy(_matrix)
-        if (hooks.octree && hooks.octree.move) {
+        // CRITICAL: Also update the VRM scene's transform to follow the player
+        vrm.scene.matrix.copy(_matrix)
+        vrm.scene.matrixWorld.copy(_matrix)
+        vrm.scene.updateMatrixWorld(true) // Force update all children
+        if (hooks?.octree && hooks.octree.move) {
           hooks.octree.move(sItem)
         }
       },
@@ -347,9 +374,11 @@ export function createVRMFactory(glb: GLBData, setupMaterial?: (material: THREE.
         rateCheck = false
       },
       destroy() {
-        hooks.scene.remove(vrm.scene)
+        if (hooks?.scene) {
+          hooks.scene.remove(vrm.scene)
+        }
         // world.updater.remove(update)
-        if (hooks.octree && hooks.octree.remove) {
+        if (hooks?.octree && hooks.octree.remove) {
           hooks.octree.remove(sItem)
         }
       },

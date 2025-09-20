@@ -4,7 +4,7 @@ import { ControlPriorities } from '../extras/ControlPriorities'
 import { SystemBase } from './SystemBase'
 import { EventType } from '../types/events'
 
-interface ClientUIState {
+export interface ClientUIState {
   visible: boolean
   active: boolean
   app: Entity | null
@@ -15,7 +15,6 @@ interface ClientUIState {
 
 export class ClientUI extends SystemBase {
   state: ClientUIState
-  lastAppPane: string
   control: ControlBinding | null
   
   constructor(world: World) {
@@ -26,7 +25,6 @@ export class ClientUI extends SystemBase {
       app: null,
       pane: null,
     }
-    this.lastAppPane = 'app'
     this.control = null
   }
 

@@ -149,7 +149,7 @@ export function createTransform(
  */
 export function cleanupPxVec3(vec: PxVec3 | PhysX.PxVec3): void {
   const maybeAny = vec as unknown as { delete?: () => void };
-  if (typeof maybeAny.delete === 'function') {
+  if (maybeAny.delete) {
     maybeAny.delete();
   }
 }

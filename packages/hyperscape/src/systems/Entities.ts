@@ -1,8 +1,10 @@
 import { Entity } from '../entities/Entity';
 import { PlayerLocal } from '../entities/PlayerLocal';
 import { PlayerRemote } from '../entities/PlayerRemote';
+import { PlayerEntity } from '../entities/PlayerEntity';
 import type { ComponentDefinition, EntityConstructor, EntityData, Entities as IEntities, Player, World } from '../types/index';
 import { SystemBase } from './SystemBase';
+import { ServerNetwork } from './ServerNetwork';
 
 // ComponentDefinition interface moved to shared types
 
@@ -20,8 +22,9 @@ class GenericEntity extends Entity {
 // Entity type registry
 const EntityTypes: Record<string, EntityConstructor> = {
   entity: GenericEntity,
-  playerLocal: PlayerLocal,
-  playerRemote: PlayerRemote,
+  player: PlayerEntity as any,  // Base player entity for server (cast due to PlayerEntityData requirements)
+  playerLocal: PlayerLocal,  // Client-only: local player
+  playerRemote: PlayerRemote,  // Client-only: remote players
 };
 
 /**
@@ -100,21 +103,41 @@ export class Entities extends SystemBase implements IEntities {
   }
 
   add(data: EntityData, local?: boolean): Entity {
+    // Check if entity already exists to prevent duplicates
+    const existingEntity = this.items.get(data.id);
+    if (existingEntity) {
+      console.warn(`[Entities] Entity ${data.id} already exists, skipping duplicate creation`);
+      return existingEntity;
+    }
+
     let EntityClass: EntityConstructor;
     
-    // Entity creation debug logging removed
-    
     if (data.type === 'player') {
-      // Strong type assumption - world has network system when dealing with players
-      const isLocal = data.owner === this.world.network.id;
-      EntityClass = EntityTypes[isLocal ? 'playerLocal' : 'playerRemote'];
+      // CRITICAL: Server should NEVER use PlayerLocal or PlayerRemote - those are client-only!
+      // Check if we're on the server by looking for ServerNetwork system
+      const serverNetwork = this.world.getSystem<ServerNetwork>('network');
+      const isServerWorld = serverNetwork?.isServer === true;
+      
+      
+      if (isServerWorld) {
+        // On server, always use the base player entity type
+        EntityClass = EntityTypes['player'] || EntityTypes.entity;
+      } else {
+        // On client, determine if local or remote
+        const networkId = this.world.network?.id || (this.world.getSystem('network') as any)?.id;
+        const isLocal = data.owner === networkId;
+        EntityClass = EntityTypes[isLocal ? 'playerLocal' : 'playerRemote'];
+      }
     } else if (data.type in EntityTypes) {
       EntityClass = EntityTypes[data.type];
     } else {
       EntityClass = EntityTypes.entity;
     }
 
-    const entity = new EntityClass(this.world, data, local);
+    // Cast data to appropriate type for player entities
+    const entity = data.type === 'player' 
+      ? new EntityClass(this.world, data as any, local)
+      : new EntityClass(this.world, data, local);
     this.items.set(entity.id, entity);
 
     if (data.type === 'player') {
@@ -123,22 +146,25 @@ export class Entities extends SystemBase implements IEntities {
       // On the client, remote players emit enter events here.
       // On the server, enter events are delayed for players entering until after their snapshot is sent
       // so they can respond correctly to follow-through events.
-      if (this.world.network.isClient) {
-        if (data.owner !== this.world.network.id) {
+      const network = this.world.network || this.world.getSystem('network');
+      if (network?.isClient) {
+        const netId = network.id || (network as any)?.id;
+        if (data.owner !== netId) {
           this.emitTypedEvent('PLAYER_JOINED', { playerId: entity.id, player: entity as PlayerLocal });
         }
       }
     }
 
     // Strong type assumption - world has network system when dealing with owned entities
-    if (data.owner === this.world.network.id) {
+    const currentNetworkId = this.world.network?.id || (this.world.getSystem('network') as any)?.id;
+    if (data.owner === currentNetworkId) {
       this.player = entity as Player;
       this.emitTypedEvent('PLAYER_REGISTERED', { playerId: entity.id });
     }
 
     // Initialize the entity if it has an init method
-    if ('init' in entity && typeof entity.init === 'function') {
-      entity.init();
+    if (entity.init) {
+      (entity.init() as Promise<void>)?.catch(err => this.logger.error(`Entity ${entity.id} async init failed`, err));
     }
 
     return entity;
@@ -253,8 +279,6 @@ export class Entities extends SystemBase implements IEntities {
   }
   
   // Missing lifecycle methods
-  preTick(): void {}
-  preFixedUpdate(): void {}
   postFixedUpdate(): void {
     // Add postLateUpdate calls for entities
     const hotEntities = Array.from(this.hot);
@@ -262,9 +286,4 @@ export class Entities extends SystemBase implements IEntities {
       entity.postLateUpdate?.(0);
     }
   }
-  preUpdate(): void {}
-  postUpdate(): void {}
-  postLateUpdate(): void {}
-  commit(): void {}
-  postTick(): void {}
 } 

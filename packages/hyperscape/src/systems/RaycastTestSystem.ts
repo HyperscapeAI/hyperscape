@@ -2,6 +2,19 @@ import { System } from './System';
 import type { World } from '../World';
 import * as THREE from 'three';
 
+interface TestConfig {
+  isTest?: boolean
+}
+
+interface TestRunnerSystem extends System {
+  isTestRunning?: () => boolean
+}
+
+interface WorldWithConfig extends World {
+  config?: TestConfig
+  systems: (System | TestRunnerSystem)[]
+}
+
 interface RaycastTestResult {
   screenX: number;
   screenY: number;
@@ -25,9 +38,16 @@ export class RaycastTestSystem extends System {
 
   start(): void {
     // Only run in test environments
-    const isTestEnv = (typeof process !== 'undefined' && (process.env.NODE_ENV === 'test' || (process as any).env?.VITEST))
-      || ((this.world as unknown as { config?: { isTest?: boolean } }).config?.isTest === true)
-      || ((this.world.systems as unknown as { testRunner?: { isTestRunning?: () => boolean } }).testRunner?.isTestRunning?.() === true);
+    const isTestEnv =
+      (typeof process !== 'undefined' &&
+        ((process as { env: { NODE_ENV?: string; VITEST?: string } }).env
+          ?.NODE_ENV === 'test' ||
+          (process as { env: { NODE_ENV?: string; VITEST?: string } }).env
+            ?.VITEST)) ||
+      (this.world as WorldWithConfig).config?.isTest === true ||
+      ((this.world as WorldWithConfig).systems as {
+        testRunner?: TestRunnerSystem
+      }).testRunner?.isTestRunning?.() === true
     if (!isTestEnv) {
       console.log('[RaycastTest] Skipping raycast tests (not in test mode)');
       return;
@@ -39,33 +59,6 @@ export class RaycastTestSystem extends System {
     
     // Start tests after a longer delay to let everything initialize
     setTimeout(() => this.runTests(), 8000);
-  }
-
-  private createGroundPlane(): void {
-    const geometry = new THREE.PlaneGeometry(100, 100);
-    const material = new THREE.MeshBasicMaterial({ 
-      color: 0x00ff00, 
-      opacity: 0.3, 
-      transparent: true,
-      side: THREE.DoubleSide 
-    });
-    
-    // Ensure only one test ground exists to avoid z-fighting/jitter
-    if (this.world.stage?.scene?.getObjectByName('test-ground-plane')) {
-      const existing = this.world.stage.scene.getObjectByName('test-ground-plane')!
-      this.world.stage.scene.remove(existing)
-    }
-    this.groundPlane = new THREE.Mesh(geometry, material);
-    this.groundPlane.rotation.x = -Math.PI / 2;
-    this.groundPlane.position.y = 0;
-    this.groundPlane.name = 'test-ground-plane';
-    
-    if (this.world.stage?.scene) {
-      this.world.stage.scene.add(this.groundPlane);
-      console.log('[RaycastTest] Added ground plane at y=0');
-      
-      // We avoid adding a PhysX collider here to keep test side-effects minimal
-    }
   }
 
   private async runTests(): Promise<void> {
@@ -87,14 +80,15 @@ export class RaycastTestSystem extends System {
     // Log camera info
     console.log(`[RaycastTest] Camera position: (${camera.position.x.toFixed(2)}, ${camera.position.y.toFixed(2)}, ${camera.position.z.toFixed(2)})`);
     console.log(`[RaycastTest] Camera type: ${camera.type}`);
-    if ((camera as any).fov) {
-      console.log(`[RaycastTest] Camera FOV: ${(camera as any).fov}`);
+    const perspectiveCamera = camera as THREE.PerspectiveCamera
+    if (perspectiveCamera.fov) {
+      console.log(`[RaycastTest] Camera FOV: ${perspectiveCamera.fov}`);
     }
     
     // Update camera matrices to ensure proper projection
     camera.updateMatrixWorld(true);
-    if ((camera as any).updateProjectionMatrix) {
-      (camera as any).updateProjectionMatrix();
+    if (perspectiveCamera.updateProjectionMatrix) {
+      perspectiveCamera.updateProjectionMatrix();
     }
     
     // Define test points based on where camera is actually looking
@@ -282,26 +276,14 @@ export class RaycastTestSystem extends System {
     
     // Export results to window for external testing
     if (typeof window !== 'undefined') {
-      (window as any).__raycastTestResults = this.testResults;
+      ;(
+        window as Window &
+          typeof globalThis & { __raycastTestResults: RaycastTestResult[] }
+      ).__raycastTestResults = this.testResults
     }
   }
 
   private wait(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  stop(): void {
-    // Clean up markers
-    for (const marker of this.testMarkers) {
-      if (marker.parent) {
-        marker.parent.remove(marker);
-      }
-    }
-    this.testMarkers = [];
-    
-    // No need to remove ground plane since we're using the stage's ground plane
-    // if (this.groundPlane && this.groundPlane.parent) {
-    //   this.groundPlane.parent.remove(this.groundPlane);
-    // }
   }
 }

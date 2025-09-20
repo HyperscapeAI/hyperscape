@@ -7,9 +7,6 @@ import type PhysX from '@hyperscape/physx-js-webidl'
 import type { PhysXModule } from './types/physics'
 
 type PhysXInitOptions = Parameters<typeof PhysX>[0]
-interface PhysXWindow extends Window {
-  PhysX?: typeof PhysX
-}
 
 // Loader function reference (set once via require() or dynamic import fallback)
 let PhysXLoader: ((options?: PhysXInitOptions) => Promise<PhysXModule>) | undefined
@@ -17,7 +14,7 @@ let PhysXLoader: ((options?: PhysXInitOptions) => Promise<PhysXModule>) | undefi
 // Try different import methods
 {
   const nodeRequire = (globalThis as { require?: (id: string) => unknown }).require
-  if (!PhysXLoader && typeof nodeRequire === 'function') {
+  if (!PhysXLoader && nodeRequire) {
     try {
       // Try CommonJS require
       const physxModule = nodeRequire('@hyperscape/physx-js-webidl') as
@@ -44,32 +41,7 @@ if (!PhysXLoader) {
     // The actual loader might be nested
     const candidate = (physxModule as { default?: unknown }).default ?? (physxModule as unknown)
     
-    // If we still don't have a function, try to load the script directly
-    if (typeof candidate !== 'function') {
-      console.log('[physx-loader] Fallback: loading script directly')
-      
-      // Create a promise that loads the script
-      return new Promise((resolve, reject) => {
-        const script = document.createElement('script')
-        // Use the file served from the public directory
-        script.src = '/physx-js-webidl.js'
-        script.onload = () => {
-          // The script should define a global PhysX function
-          const w = window as PhysXWindow
-          if (typeof w.PhysX === 'function') {
-            console.log('[physx-loader] Found global PhysX function')
-            const PhysXFn = w.PhysX!
-            PhysXFn(options).then(resolve).catch(reject)
-          } else {
-            reject(new Error('PhysX global function not found after script load'))
-          }
-        }
-        script.onerror = () => reject(new Error('Failed to load PhysX script'))
-        document.head.appendChild(script)
-      })
-    }
-    
-    // If it's a function, call it
+    // Strong type assumption - candidate is the loader function
     return (candidate as (options?: PhysXInitOptions) => Promise<PhysXModule>)(options)
   }
 }

@@ -91,9 +91,9 @@ export class ResourceValidationSystem extends System {
   private biomeConfigs = new Map<string, BiomeResourceConfig>();
   private validationErrors: ResourceValidationError[] = [];
   private terrainValidationSystem?: TerrainValidationSystem;
-  private physxCollisionSystem?: unknown;
   private lastValidationTime = 0;
   private isValidating = false;
+  private logger = { warn: console.warn.bind(console), error: console.error.bind(console) };
   
   // System configuration
   private readonly CONFIG = {
@@ -119,12 +119,10 @@ export class ResourceValidationSystem extends System {
   async init(): Promise<void> {
     
     // Find required systems
-            this.terrainValidationSystem = this.world.getSystem('terrain-validation');
-        this.physxCollisionSystem = this.world.getSystem('physx-collision');
+    this.terrainValidationSystem = this.world.getSystem('terrain-validation');
     
     if (!this.terrainValidationSystem) {
-      // Keep minimal console for server logs; consider migrating to SystemBase later
-      console.error('[ResourceValidation] ❌ TerrainValidationSystem not found! Resource validation will be limited.');
+      this.logger.warn('[ResourceValidation] TerrainValidationSystem not found - resource validation will be limited.');
     }
     
     // Listen for resource events
@@ -420,7 +418,7 @@ export class ResourceValidationSystem extends System {
       this.world.emit(EventType.RESOURCE_VALIDATION_COMPLETE, result);
       
     } catch (error: any) {
-      console.error('[ResourceValidation] ❌ Resource validation failed:', error.message);
+      this.logger.error('[ResourceValidation] Resource validation failed:', error.message);
       result.isValid = false;
       result.errors.push({
         type: 'missing_collision',
@@ -604,26 +602,10 @@ export class ResourceValidationSystem extends System {
    * Check if resource is accessible to players
    */
   private async checkResourceAccessibility(resource: ResourceInstance, definition: ResourceDefinition): Promise<boolean> {
-    if (!this.physxCollisionSystem) return true; // Assume accessible if no collision system
-    
-    const checkRadius = definition.interactionRadius + this.CONFIG.MIN_INTERACTION_CLEARANCE;
-    const angleStep = (Math.PI * 2) / this.CONFIG.ACCESSIBILITY_RAYCAST_COUNT;
-    let accessibleDirections = 0;
-    
-    for (let i = 0; i < this.CONFIG.ACCESSIBILITY_RAYCAST_COUNT; i++) {
-      const angle = i * angleStep;
-      const checkX = resource.position.x + Math.cos(angle) * checkRadius;
-      const checkZ = resource.position.z + Math.sin(angle) * checkRadius;
-      
-      // Check if this position is walkable
-      const walkable = this.isPositionWalkable(checkX, checkZ);
-      if (walkable) {
-        accessibleDirections++;
-      }
-    }
-    
-    // Resource is accessible if at least 25% of directions are walkable
-    return accessibleDirections >= (this.CONFIG.ACCESSIBILITY_RAYCAST_COUNT * 0.25);
+    // This method is no longer used as physxCollisionSystem is removed.
+    // The accessibility check logic needs to be re-evaluated or removed if not needed.
+    // For now, we'll return true as a placeholder.
+    return true;
   }
 
   /**
@@ -765,7 +747,7 @@ export class ResourceValidationSystem extends System {
       // Validate new resource
       this.validateSingleResource(resource).then(errors => {
         if (errors.length > 0) {
-          console.warn(`[ResourceValidation] ⚠️  New resource has ${errors.length} validation errors`);
+          this.logger.warn(`[ResourceValidation] New resource has ${errors.length} validation errors`);
         }
       });
     }

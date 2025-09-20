@@ -1,9 +1,9 @@
 import { System } from './System'
 import { Logger } from '../utils/Logger'
-import type { World } from '../World'
 import * as THREE from 'three'
-import { PlayerCombatStyle } from '../types/entities'
 import type { Entity } from '../entities/Entity'
+import { createNodeClientWorld } from '../createNodeClientWorld'
+import type { World as ClientWorld } from '../World'
 
 interface BotBehavior {
   name: string
@@ -42,113 +42,44 @@ export class ServerBot extends System {
   private moveTarget: THREE.Vector3 | null = null
   private updateInterval: number = 100 // Update every 100ms
   private lastUpdate: number = 0
+  private dwellUntil: number = 0
+  private clientWorld: ClientWorld | null = null
   
   override start(): void {
     Logger.info('[ServerBot] 🤖 Initializing server bot system...')
     
-    // Start bot after delay
+    // Start bot shortly after server start to make tests deterministic
     setTimeout(() => {
       this.spawnBot()
-    }, 10000)
+    }, 2000)
   }
   
-  private spawnBot(): void {
-    Logger.info('[ServerBot] Spawning autonomous bot...')
-    
+  private async spawnBot(): Promise<void> {
+    Logger.info('[ServerBot] Spawning autonomous bot (node client)...')
     try {
-      const botId = 'server-bot-' + Date.now()
+      const port = process.env.PORT || '4444'
+      const wsUrl = `ws://127.0.0.1:${port}/ws`
+      const clientWorld = createNodeClientWorld()
+      await clientWorld.init({ wsUrl, name: '🤖 Server Bot' })
+      this.clientWorld = clientWorld
       
-      // Get random spawn position on terrain
-      const xPos = Math.random() * 20 - 10
-      const zPos = Math.random() * 20 - 10
+      // Get reference to the bot's player entity after connection
+      // Note: The player entity is created after the snapshot is received
+      await new Promise(resolve => setTimeout(resolve, 500)) // Wait for entity creation
+      this.bot = this.clientWorld.entities.player as Entity | null
       
-      // Use TerrainSystem directly like PlayerLocal does
-      const terrainSystem = this.world.systems.find(s => s.constructor.name === 'TerrainSystem') as any
-      let spawnY = 0
-      
-      if (terrainSystem && terrainSystem.getHeightAt) {
-        const terrainHeight = terrainSystem.getHeightAt(xPos, zPos)
-        if (typeof terrainHeight === 'number' && !isNaN(terrainHeight)) {
-          spawnY = terrainHeight + 1.8 // Player height offset
-          Logger.info(`[ServerBot] Spawning bot on terrain at height: ${spawnY}`)
-        } else {
-          Logger.warn('[ServerBot] Could not get terrain height, using fallback')
-          spawnY = 1.8
-        }
-      } else {
-        Logger.warn('[ServerBot] No terrain system found, using fallback height')
-        spawnY = 1.8
-      }
-      
-      Logger.info(`[ServerBot] Spawning bot at (${xPos.toFixed(2)}, ${spawnY.toFixed(2)}, ${zPos.toFixed(2)})`)
-      
-      const botData = {
-        id: botId,
-        playerId: botId,
-        playerName: '🤖 Server Bot',
-        type: 'player',
-        name: 'Server Bot',
-        owner: botId, // Add owner field for proper entity creation
-        level: 10,
-        health: 100,
-        maxHealth: 100,
-        stamina: 100,
-        maxStamina: 100,
-        combatStyle: PlayerCombatStyle.ATTACK,
-        equipment: {},
-        inventory: [],
-        position: [
-          xPos,
-          spawnY,
-          zPos
-        ] as [number, number, number],
-        quaternion: [0, 0, 0, 1] as [number, number, number, number],
-        skills: {},
-        quests: [],
-        stats: {
-          attack: 10, strength: 10, defence: 10, ranged: 10,
-          prayer: 10, magic: 10, runecrafting: 10, hitpoints: 10,
-          agility: 10, herblore: 10, thieving: 10, crafting: 10,
-          fletching: 10, slayer: 10, hunter: 10, mining: 10,
-          smithing: 10, fishing: 10, cooking: 10, firemaking: 10,
-          woodcutting: 10, farming: 10, construction: 10
-        },
-        questPoints: 0,
-        totalLevel: 230,
-        combatLevel: 30
-      }
-      
-      // Use entities.add with local=true to properly create and broadcast the entity
-      this.bot = this.world.entities.add(botData, true) as Entity
-      
-      if (!this.bot) {
-        throw new Error('Failed to create bot entity')
-      }
-      
-      Logger.info(`[ServerBot] Bot entity created with ID: ${this.bot.id}, Type: ${this.bot.constructor.name}`)
-      
-      this.lastPosition.copy(this.bot.position)
       this.stats.startTime = Date.now()
-      
       // Initialize behaviors
       this.initializeBehaviors()
-      
       this.isActive = true
-      Logger.info(`[ServerBot] Bot spawned at (${this.bot.position.x.toFixed(1)}, ${this.bot.position.z.toFixed(1)})`)
-      
-      // Immediately sync initial transform so clients place the bot correctly on terrain
-      ;(this.world.network as any)?.send?.('entityModified', {
-        id: this.bot.id,
-        p: [this.bot.position.x, this.bot.position.y, this.bot.position.z],
-        q: [0, 0, 0, 1],
-        e: 'idle'
-      })
-
-      // Start behavior loop
+      Logger.info('[ServerBot] Client connected, starting behavior loop')
+      // Kick off an immediate movement so observers can see displacement quickly
+      try {
+        this.sprintBehavior()
+      } catch {}
       this.behaviorLoop()
-      
     } catch (error) {
-      Logger.error('[ServerBot] Failed to spawn bot:', error instanceof Error ? error : new Error(String(error)))
+      Logger.error('[ServerBot] Failed to start node client bot:', error instanceof Error ? error : new Error(String(error)))
       this.stats.errors++
     }
   }
@@ -158,7 +89,7 @@ export class ServerBot extends System {
       {
         name: 'Wander',
         weight: 5,
-        canExecute: () => true,
+        canExecute: () => Date.now() >= this.dwellUntil,
         execute: () => this.wanderBehavior(),
         cooldown: 2000,
         lastExecuted: 0
@@ -166,7 +97,7 @@ export class ServerBot extends System {
       {
         name: 'Explore',
         weight: 3,
-        canExecute: () => !this.moveTarget,
+        canExecute: () => !this.moveTarget && Date.now() >= this.dwellUntil,
         execute: () => this.exploreBehavior(),
         cooldown: 5000,
         lastExecuted: 0
@@ -174,7 +105,7 @@ export class ServerBot extends System {
       {
         name: 'Sprint',
         weight: 2,
-        canExecute: () => Math.random() < 0.3,
+        canExecute: () => Math.random() < 0.3 && Date.now() >= this.dwellUntil,
         execute: () => this.sprintBehavior(),
         cooldown: 10000,
         lastExecuted: 0
@@ -182,7 +113,7 @@ export class ServerBot extends System {
       {
         name: 'Interact',
         weight: 4,
-        canExecute: () => this.hasNearbyEntities(),
+        canExecute: () => this.hasNearbyEntities() && Date.now() >= this.dwellUntil,
         execute: () => this.interactBehavior(),
         cooldown: 3000,
         lastExecuted: 0
@@ -198,7 +129,7 @@ export class ServerBot extends System {
       {
         name: 'Jump',
         weight: 2,
-        canExecute: () => Math.random() < 0.2,
+        canExecute: () => Math.random() < 0.2 && Date.now() >= this.dwellUntil,
         execute: () => this.jumpBehavior(),
         cooldown: 2000,
         lastExecuted: 0
@@ -206,7 +137,7 @@ export class ServerBot extends System {
       {
         name: 'Circle',
         weight: 1,
-        canExecute: () => Math.random() < 0.1,
+        canExecute: () => Math.random() < 0.1 && Date.now() >= this.dwellUntil,
         execute: () => this.circleBehavior(),
         cooldown: 8000,
         lastExecuted: 0
@@ -251,75 +182,41 @@ export class ServerBot extends System {
   private wanderBehavior(): void {
     const angle = Math.random() * Math.PI * 2
     const distance = 5 + Math.random() * 10
-    
-    const targetX = this.bot!.position.x + Math.cos(angle) * distance
-    const targetZ = this.bot!.position.z + Math.sin(angle) * distance
-    
-    // Get proper ground height using TerrainSystem directly
-    const terrainSystem = this.world.systems.find(s => s.constructor.name === 'TerrainSystem') as any
-    let targetY = this.bot!.position.y
-    if (terrainSystem && terrainSystem.getHeightAt) {
-      const height = terrainSystem.getHeightAt(targetX, targetZ)
-      if (typeof height === 'number' && !isNaN(height)) {
-        targetY = height + 1.8
-      }
-    }
-    
-    this.moveTarget = new THREE.Vector3(targetX, targetY, targetZ)
-    Logger.info(`[ServerBot] Wandering to (${this.moveTarget.x.toFixed(1)}, ${this.moveTarget.y.toFixed(1)}, ${this.moveTarget.z.toFixed(1)})`)
+    const origin = this.getClientPlayerPosition()
+    const targetX = origin.x + Math.cos(angle) * distance
+    const targetZ = origin.z + Math.sin(angle) * distance
+    const target = new THREE.Vector3(targetX, 0, targetZ)
+    this.sendMoveRequest(target, false)
+    Logger.info(`[ServerBot] Wandering to (${target.x.toFixed(1)}, ${target.z.toFixed(1)})`)
   }
   
   private exploreBehavior(): void {
     // Move to a distant location
-    const targetX = Math.random() * 100 - 50
-    const targetZ = Math.random() * 100 - 50
-    
-    // Get proper ground height using TerrainSystem directly
-    const terrainSystem = this.world.systems.find(s => s.constructor.name === 'TerrainSystem') as any
-    let targetY = 1.8
-    if (terrainSystem && terrainSystem.getHeightAt) {
-      const height = terrainSystem.getHeightAt(targetX, targetZ)
-      if (typeof height === 'number' && !isNaN(height)) {
-        targetY = height + 1.8
-      }
-    }
-    
-    this.moveTarget = new THREE.Vector3(targetX, targetY, targetZ)
-    Logger.info(`[ServerBot] Exploring to (${this.moveTarget.x.toFixed(1)}, ${this.moveTarget.y.toFixed(1)}, ${this.moveTarget.z.toFixed(1)})`)
+    const origin = this.getClientPlayerPosition()
+    const targetX = origin.x + (Math.random() * 100 - 50)
+    const targetZ = origin.z + (Math.random() * 100 - 50)
+    const target = new THREE.Vector3(targetX, 0, targetZ)
+    this.sendMoveRequest(target, false)
+    Logger.info(`[ServerBot] Exploring to (${target.x.toFixed(1)}, ${target.z.toFixed(1)})`)
   }
   
   private sprintBehavior(): void {
     // Move quickly in a direction
     const angle = Math.random() * Math.PI * 2
     const distance = 20 + Math.random() * 20
-    
-    const targetX = this.bot!.position.x + Math.cos(angle) * distance
-    const targetZ = this.bot!.position.z + Math.sin(angle) * distance
-    
-    // Get proper ground height using TerrainSystem directly
-    const terrainSystem = this.world.systems.find(s => s.constructor.name === 'TerrainSystem') as any
-    let targetY = this.bot!.position.y
-    if (terrainSystem && terrainSystem.getHeightAt) {
-      const height = terrainSystem.getHeightAt(targetX, targetZ)
-      if (typeof height === 'number' && !isNaN(height)) {
-        targetY = height + 1.8
-      }
-    }
-    
-    this.moveTarget = new THREE.Vector3(targetX, targetY, targetZ)
-    Logger.info(`[ServerBot] Sprinting to (${this.moveTarget.x.toFixed(1)}, ${this.moveTarget.y.toFixed(1)}, ${this.moveTarget.z.toFixed(1)})`)
+    const origin = this.getClientPlayerPosition()
+    const targetX = origin.x + Math.cos(angle) * distance
+    const targetZ = origin.z + Math.sin(angle) * distance
+    const target = new THREE.Vector3(targetX, 0, targetZ)
+    this.sendMoveRequest(target, true)
+    Logger.info(`[ServerBot] Sprinting to (${target.x.toFixed(1)}, ${target.z.toFixed(1)})`)
   }
   
   private interactBehavior(): void {
-    const nearbyEntities = this.getNearbyEntities()
-    if (nearbyEntities.length > 0) {
-      const target = nearbyEntities[0]
-      Logger.info(`[ServerBot] Interacting with entity: ${target.name} (${target.type})`)
-      this.stats.entitiesEncountered++
-      
-      // Move towards the entity
-      this.moveTarget = target.position.clone()
-    }
+    // For now, just wander towards a nearby random offset
+    const origin = this.getClientPlayerPosition()
+    const target = origin.clone().add(new THREE.Vector3((Math.random()-0.5)*8, 0, (Math.random()-0.5)*8))
+    this.sendMoveRequest(target, false)
   }
   
   private idleBehavior(): void {
@@ -338,145 +235,129 @@ export class ServerBot extends System {
   }
   
   private circleBehavior(): void {
-    // Move in a circle pattern
+    // Move in a circle pattern around current position
     const radius = 10
     const steps = 8
     const angle = (Math.PI * 2) / steps
-    const currentAngle = Math.atan2(
-      this.bot!.position.z,
-      this.bot!.position.x
-    )
+    const origin = this.getClientPlayerPosition()
+    const currentAngle = Math.atan2(origin.z, origin.x)
     const nextAngle = currentAngle + angle
-    
-    const targetX = Math.cos(nextAngle) * radius
-    const targetZ = Math.sin(nextAngle) * radius
-    
-    // Get proper ground height using TerrainSystem directly
-    const terrainSystem = this.world.systems.find(s => s.constructor.name === 'TerrainSystem') as any
-    let targetY = 1.8
-    if (terrainSystem && terrainSystem.getHeightAt) {
-      const height = terrainSystem.getHeightAt(targetX, targetZ)
-      if (typeof height === 'number' && !isNaN(height)) {
-        targetY = height + 1.8
-      }
-    }
-    
-    this.moveTarget = new THREE.Vector3(targetX, targetY, targetZ)
-    Logger.info(`[ServerBot] Moving in circle to (${this.moveTarget.x.toFixed(1)}, ${this.moveTarget.y.toFixed(1)}, ${this.moveTarget.z.toFixed(1)})`)
+    const targetX = origin.x + Math.cos(nextAngle) * radius
+    const targetZ = origin.z + Math.sin(nextAngle) * radius
+    const target = new THREE.Vector3(targetX, 0, targetZ)
+    this.sendMoveRequest(target, false)
+    Logger.info(`[ServerBot] Moving in circle to (${target.x.toFixed(1)}, ${target.z.toFixed(1)})`)
   }
   
   // Helper methods
+  private getClientPlayerPosition(): THREE.Vector3 {
+    if (!this.clientWorld?.entities?.player) {
+      return new THREE.Vector3(0, 0, 0)
+    }
+    const player = this.clientWorld.entities.player
+    if ('node' in player && player.node && player.node.position) {
+      const position = player.node.position.clone()
+      
+      // VALIDATION: Check for invalid Y positions that indicate encoding errors
+      if (position.y < -20 && position.y > -22) {
+        // This specific range (-20 to -22) is a signature of the bit encoding bug
+        Logger.error('[ServerBot] CRITICAL: Detected corrupted Y position!');
+        Logger.error(`  Current Y: ${position.y}`);
+        Logger.error('  This indicates a network packet encoding error');
+        Logger.error('  Expected positive Y value but received negative');
+        this.stats.errors++;
+        
+        // Throw error to fail fast and alert developers
+        throw new Error(`ServerBot detected corrupted position Y=${position.y} - likely packet encoding bug!`);
+      }
+      
+      // Additional validation for reasonable position ranges
+      if (position.y < -100 || position.y > 500) {
+        Logger.warn(`[ServerBot] Unusual Y position detected: ${position.y}`);
+        this.stats.errors++;
+      }
+      
+      return position
+    }
+    return new THREE.Vector3(0, 0, 0)
+  }
+
+  private sendMoveRequest(target: THREE.Vector3, sprint: boolean = false): void {
+    if (!this.clientWorld) return
+    
+    // Send move command through the client world's network system
+    // Try multiple ways to find the network system
+    const network = this.clientWorld.getSystem('network') || 
+                   this.clientWorld.getSystem('ClientNetwork') ||
+                   this.clientWorld.getSystem('Network') ||
+                   (this.clientWorld as any).network;
+                   
+    if (!network) {
+      Logger.error('[ServerBot] Cannot find network system in client world');
+      return;
+    }
+    
+    if ('send' in network) {
+      const net = network as { send?: (method: string, data: unknown) => void }
+      if (net.send) {
+        // Send the move request
+        net.send('moveRequest', {
+          target: [target.x, target.y, target.z],
+          runMode: sprint
+        })
+        
+        // Also send input packet for compatibility
+        net.send('input', {
+          type: 'click',
+          target: [target.x, target.y, target.z],
+          runMode: sprint
+        })
+        
+        Logger.info(`[ServerBot] ✅ Sent move request to (${target.x.toFixed(1)}, ${target.y.toFixed(1)}, ${target.z.toFixed(1)}) sprint=${sprint}`)
+      } else {
+        Logger.error('[ServerBot] Network system has no send method');
+      }
+    } else {
+      Logger.error('[ServerBot] Network system found but has no send property');
+    }
+    
+    // Store the move target for tracking
+    this.moveTarget = target.clone()
+    this.stats.actionsPerformed++
+  }
+
   private hasNearbyEntities(): boolean {
     return this.getNearbyEntities().length > 0
   }
   
   private getNearbyEntities(): Entity[] {
-    const nearbyEntities: Entity[] = []
-    const maxDistance = 15
-    
-    const entities = this.world.entities as any
-    if (entities.items && entities.items instanceof Map) {
-      for (const [_id, entity] of entities.items) {
-        if (entity !== this.bot && entity.position) {
-          const distance = this.bot!.position.distanceTo(entity.position)
-          if (distance < maxDistance) {
-            nearbyEntities.push(entity)
-          }
-        }
-      }
-    }
-    
-    return nearbyEntities
+    // Not implemented for client-driven bot; could be added via server query
+    return []
   }
   
-  override update(delta: number): void {
-    if (!this.isActive || !this.bot) return
+  override update(_delta: number): void {
+    if (!this.isActive) return
     
-    const now = Date.now()
-    if (now - this.lastUpdate < this.updateInterval) {
-      return
-    }
-    this.lastUpdate = now
-    
-    // Update movement
-    if (this.moveTarget) {
-      const distance = this.bot.position.distanceTo(this.moveTarget)
-      
-      if (distance > 0.5) {
-        // Move towards target
-        const direction = new THREE.Vector3()
-          .subVectors(this.moveTarget, this.bot.position)
-        direction.y = 0
-        direction.normalize()
+    // Track actual movement
+    if (this.bot && this.lastPosition) {
+      const currentPos = this.getClientPlayerPosition()
+      const distance = this.lastPosition.distanceTo(currentPos)
+      if (distance > 0.01) { // Only count significant movement
+        this.stats.distanceTraveled += distance
+        this.lastPosition.copy(currentPos)
         
-        const speed = this.currentBehavior?.name === 'Sprint' ? 8 : 4
-        const moveDistance = speed * (this.updateInterval / 1000)
-        
-        const movement = direction.multiplyScalar(moveDistance)
-        this.bot.position.add(movement)
-        
-        // Adjust Y position to follow terrain
-        const terrainSystem = this.world.systems.find(s => s.constructor.name === 'TerrainSystem') as any
-        if (terrainSystem && terrainSystem.getHeightAt) {
-          const height = terrainSystem.getHeightAt(this.bot.position.x, this.bot.position.z)
-          if (typeof height === 'number' && !isNaN(height)) {
-            this.bot.position.y = height + 1.8
-          }
-        }
-        
-        // Calculate quaternion for facing direction
-        const forward = new THREE.Vector3(0, 0, -1)
-        const q = new THREE.Quaternion().setFromUnitVectors(forward, direction)
-        
-        // Determine emote based on speed
-        const emote = this.currentBehavior?.name === 'Sprint' ? 'run' : 'walk'
-        
-        // Broadcast to clients using the same format as PlayerLocal
-        ;(this.world.network as any)?.send?.('entityModified', {
-          id: this.bot.id,
-          p: [this.bot.position.x, this.bot.position.y, this.bot.position.z],
-          q: [q.x, q.y, q.z, q.w],
-          e: emote
-        })
-        
-        // Update stats
-        const moved = this.bot.position.distanceTo(this.lastPosition)
-        this.stats.distanceTraveled += moved
-        this.lastPosition.copy(this.bot.position)
-        
-      } else {
-        // Reached target
-        Logger.info(`[ServerBot] Reached target at (${this.moveTarget.x.toFixed(1)}, ${this.moveTarget.z.toFixed(1)})`)
-        this.moveTarget = null
-        
-        // Send idle emote when stopping
-        ;(this.world.network as any)?.send?.('entityModified', {
-          id: this.bot.id,
-          e: 'idle'
-        })
-      }
-    } else {
-      // Even when idle, keep the bot clamped to terrain and sync if needed
-      const terrainSystem = this.world.systems.find(s => s.constructor.name === 'TerrainSystem') as any
-      if (terrainSystem && terrainSystem.getHeightAt) {
-        const height = terrainSystem.getHeightAt(this.bot.position.x, this.bot.position.z)
-        if (typeof height === 'number' && !isNaN(height)) {
-          const desiredY = height + 1.8
-          if (Math.abs(this.bot.position.y - desiredY) > 0.01) {
-            this.bot.position.y = desiredY
-            ;(this.world.network as any)?.send?.('entityModified', {
-              id: this.bot.id,
-              p: [this.bot.position.x, this.bot.position.y, this.bot.position.z]
-            })
-          }
+        // Log movement occasionally
+        if (Math.random() < 0.05) { // 5% chance
+          Logger.info(`[ServerBot] Moving - Current pos: (${currentPos.x.toFixed(1)}, ${currentPos.z.toFixed(1)}), Distance traveled: ${this.stats.distanceTraveled.toFixed(1)}m`)
         }
       }
+    } else if (this.bot) {
+      // Initialize last position
+      this.lastPosition = this.getClientPlayerPosition()
     }
     
-    // Print stats periodically
-    if (Math.random() < 0.001) { // ~0.1% chance per update
-      this.printStats()
-    }
+    // Stats print
+    if (Math.random() < 0.001) this.printStats()
   }
   
   private printStats(): void {
@@ -487,19 +368,21 @@ export class ServerBot extends System {
     Logger.info(`[ServerBot] Actions performed: ${this.stats.actionsPerformed}`)
     Logger.info(`[ServerBot] Entities encountered: ${this.stats.entitiesEncountered}`)
     Logger.info(`[ServerBot] Errors: ${this.stats.errors}`)
-    Logger.info(`[ServerBot] Current position: (${this.bot!.position.x.toFixed(1)}, ${this.bot!.position.z.toFixed(1)})`)
+    
+    const pos = this.getClientPlayerPosition()
+    if (pos) {
+      Logger.info(`[ServerBot] Current position: (${pos.x.toFixed(1)}, ${pos.z.toFixed(1)})`)
+    }
     Logger.info('[ServerBot] ===================================')
   }
   
   private respawnBot(): void {
     Logger.info('[ServerBot] Respawning bot...')
     
-    // Clean up old bot
-    if (this.bot) {
-      const entities = this.world.entities as any
-      if (entities.items && entities.items instanceof Map) {
-        entities.items.delete(this.bot.id)
-      }
+    // Clean up client world
+    if (this.clientWorld) {
+      try { this.clientWorld.destroy() } catch { /* ignore */ }
+      this.clientWorld = null
     }
     
     // Reset stats
@@ -511,21 +394,12 @@ export class ServerBot extends System {
       errors: 0
     }
     
-    // Spawn new bot
-    this.spawnBot()
+    // Spawn new bot client
+    void this.spawnBot()
   }
   
   override destroy(): void {
     this.isActive = false
-    
-    if (this.bot) {
-      const entities = this.world.entities as any
-      if (entities.items && entities.items instanceof Map) {
-        entities.items.delete(this.bot.id)
-      }
-      this.bot = null
-    }
-    
-    super.destroy()
+    this.bot = null
   }
 }

@@ -47,8 +47,8 @@ export abstract class CombatantEntity extends Entity {
   protected attackRange: number = 2;
   protected spawnPosition: Position3D;
 
-  constructor(world: World, config: CombatantConfig) {
-    super(world, config);
+  constructor(world: World, config: CombatantConfig, local?: boolean) {
+    super(world, config, local);
     
     this.spawnPosition = { ...config.position };
     

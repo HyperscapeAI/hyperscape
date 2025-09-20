@@ -9,6 +9,8 @@ import { Logger } from '../utils/Logger';
 import { EntityManager } from './EntityManager';
 import { SystemBase } from './SystemBase';
 import { WorldGenerationSystem } from './WorldGenerationSystem';
+import type { TerrainSystem } from './TerrainSystem';
+import * as THREE from 'three';
 
 export class PlayerSystem extends SystemBase {
   declare world: World;
@@ -38,6 +40,7 @@ export class PlayerSystem extends SystemBase {
     this.subscribe(EventType.PLAYER_JOINED, (data) => {
       this.onPlayerEnter(data);
     });
+    this.subscribe(EventType.PLAYER_SPAWN_REQUEST, (data) => this.onPlayerSpawnRequest(data as { playerId: string, position: Position3D }));
     this.subscribe(EventType.PLAYER_LEFT, (data) => {
       this.onPlayerLeave(data);
     });
@@ -72,9 +75,89 @@ export class PlayerSystem extends SystemBase {
     this.startAutoSave();
   }
 
-  start(): void {
-    // System is ready
-    Logger.system('PlayerSystem', 'System started');
+  private async onPlayerSpawnRequest(data: { playerId: string, position: Position3D }): Promise<void> {
+    const player = this.players.get(data.playerId);
+    if (!player) {
+      Logger.error('PlayerSystem', new Error(`Player ${data.playerId} not found for spawn request.`));
+      return;
+    }
+    
+    // --- NEW: Wait for Terrain Physics ---
+    const terrainSystem = this.world.getSystem<TerrainSystem>('terrain')
+    const finalPosition = new THREE.Vector3(data.position.x, data.position.y, data.position.z);
+    
+    console.log(`[PlayerSystem] Spawn request received for ${data.playerId} at:`, data.position);
+    
+    if (!terrainSystem) {
+      console.error('[PlayerSystem] CRITICAL: TerrainSystem not found!');
+      throw new Error('TerrainSystem not available during player spawn');
+    }
+    
+    if (terrainSystem) {
+      let attempts = 0;
+      const maxAttempts = 100; // Wait up to 5 seconds
+      while (attempts < maxAttempts) {
+        // We need a method isPhysicsReadyAt on TerrainSystem
+        // Assuming it exists for now. If not, this will need to be added.
+        if (terrainSystem.isPhysicsReadyAt(data.position.x, data.position.z)) {
+          console.log(`[PlayerSystem] Terrain physics is ready for player ${data.playerId}.`);
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+        attempts++;
+      }
+      if (attempts >= maxAttempts) {
+        this.logger.error(`Timed out waiting for terrain physics for player ${data.playerId}.`);
+      }
+      
+      const height = terrainSystem.getHeightAt(data.position.x, data.position.z);
+      console.log(`[PlayerSystem] Terrain height at (${data.position.x}, ${data.position.z}):`, height);
+      
+      if (typeof height === 'number' && isFinite(height)) {
+        const oldY = finalPosition.y;
+        // Spawn well above terrain to avoid clipping
+        finalPosition.y = height + 2.0;
+        console.log(`[PlayerSystem] Adjusted spawn height from Y=${oldY} to Y=${finalPosition.y} (terrain=${height})`);
+      } else {
+        console.error(`[PlayerSystem] Invalid terrain height: ${height} - using safe default Y=50`);
+        finalPosition.y = 50; // Safe height above most terrain
+      }
+    }
+    
+    console.log(`[PlayerSystem] Final spawn position for ${data.playerId}:`, { x: finalPosition.x, y: finalPosition.y, z: finalPosition.z });
+
+    // Server-authoritative: clamp to terrain height map explicitly
+    const terrainHeight = terrainSystem.getHeightAt(finalPosition.x, finalPosition.z)
+    const groundedY = Number.isFinite(terrainHeight) ? (terrainHeight as number) + 2.0 : finalPosition.y
+    player.position = { x: finalPosition.x, y: groundedY, z: finalPosition.z };
+    
+    // CRITICAL: Also update the entity's node position directly!
+    const entity = this.world.entities.get(data.playerId);
+    if (entity) {
+      entity.node.position.set(finalPosition.x, groundedY, finalPosition.z);
+      console.log(`[PlayerSystem] Directly set entity node position to Y=${finalPosition.y}`);
+      
+      // Force update data.position for serialization
+      if (entity.data && Array.isArray(entity.data.position)) {
+        entity.data.position[0] = finalPosition.x;
+        entity.data.position[1] = groundedY;
+        entity.data.position[2] = finalPosition.z;
+        console.log(`[PlayerSystem] Updated entity.data.position to:`, entity.data.position);
+      }
+    } else {
+      console.error(`[PlayerSystem] CRITICAL: Entity ${data.playerId} not found in entities system!`);
+    }
+
+    // Teleport the player to the final, grounded position
+    this.emitTypedEvent(EventType.PLAYER_TELEPORT_REQUEST, {
+      playerId: data.playerId,
+      position: player.position
+    });
+
+    // Announce that the spawn is complete, so PlayerSpawnSystem can proceed
+    this.emitTypedEvent(EventType.PLAYER_SPAWN_COMPLETE, {
+      playerId: data.playerId,
+    });
   }
 
   private onPlayerRegister(data: { playerId: string }): void {
@@ -111,6 +194,17 @@ export class PlayerSystem extends SystemBase {
       const playerName = playerLocal?.name || `Player_${data.playerId}`;
       playerData = PlayerMigration.createNewPlayer(data.playerId, data.playerId, playerName);
 
+      // Ground initial spawn to terrain height on server
+      const terrain = this.world.getSystem<TerrainSystem>('terrain');
+      if (terrain) {
+        const px = playerData.position.x;
+        const pz = playerData.position.z;
+        const h = terrain.getHeightAt(px, pz);
+        if (Number.isFinite(h)) {
+          playerData.position.y = h + 0.1;
+        }
+      }
+
       // Save new player to database
       if (this.databaseSystem) {
         this.databaseSystem.savePlayer(data.playerId, {
@@ -133,7 +227,8 @@ export class PlayerSystem extends SystemBase {
     // Add to our system
     this.players.set(data.playerId, playerData);
 
-    // Emit player ready event
+    // Emit player ready event, but DO NOT set position here anymore.
+    // Position will be set by onPlayerSpawnRequest.
     this.emitTypedEvent(EventType.PLAYER_UPDATED, {
       playerId: data.playerId,
       playerData: {
@@ -245,8 +340,15 @@ export class PlayerSystem extends SystemBase {
   private respawnPlayer(playerId: string): void {
     const player = this.players.get(playerId)!;
 
-    // Get spawn position - use a default spawn point if world generation system doesn't have the method
-    const spawnPosition = { x: 0, y: 0.1, z: 0 }; // Default ground-level spawn
+    // Get spawn position - default to origin then ground to terrain
+    const spawnPosition = { x: 0, y: 0.1, z: 0 };
+    const terrain = this.world.getSystem<TerrainSystem>('terrain');
+    if (terrain) {
+      const h = terrain.getHeightAt(spawnPosition.x, spawnPosition.z);
+      if (Number.isFinite(h)) {
+        spawnPosition.y = h + 0.1;
+      }
+    }
 
     // Reset player state
     player.alive = true;
@@ -266,6 +368,12 @@ export class PlayerSystem extends SystemBase {
     if (playerLocal) {
       playerLocal.position.set(spawnPosition.x, spawnPosition.y, spawnPosition.z);
     }
+
+    // Force client snap to server-grounded respawn
+    this.emitTypedEvent(EventType.PLAYER_TELEPORT_REQUEST, {
+      playerId,
+      position: spawnPosition
+    });
 
     // Emit respawn event
     this.emitTypedEvent(EventType.PLAYER_RESPAWNED, {
@@ -530,6 +638,13 @@ export class PlayerSystem extends SystemBase {
     const player = this.players.get(playerId);
     if (!player || !this.databaseSystem) return;
 
+    // NEVER save invalid Y positions to database
+    let safeY = player.position.y;
+    if (safeY < -5 || safeY > 200 || !Number.isFinite(safeY)) {
+      console.error(`[PlayerSystem] WARNING: Refusing to save invalid Y position to DB: ${safeY}, saving Y=10 instead`);
+      safeY = 10; // Safe default
+    }
+
     this.databaseSystem.savePlayer(playerId, {
       name: player.name,
       combatLevel: player.combat.combatLevel,
@@ -540,9 +655,9 @@ export class PlayerSystem extends SystemBase {
       rangedLevel: player.skills.ranged.level,
       health: player.health.current,
       maxHealth: player.health.max,
-              positionX: player.position.x,
-        positionY: player.position.y,
-        positionZ: player.position.z
+      positionX: player.position.x,
+      positionY: safeY,
+      positionZ: player.position.z
     });
   }
 

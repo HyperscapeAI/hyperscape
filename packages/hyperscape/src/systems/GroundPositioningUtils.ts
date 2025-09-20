@@ -133,25 +133,8 @@ export class GroundPositioningUtils {
     world: World,
     entities: Array<{ entity: Entity, x: number, z: number, heightOffset?: number }>
   ): void {
-    for (const { entity, x, z, heightOffset = 0.5 } of entities) {
-      this.positionEntityOnGround(world, entity, x, z, heightOffset)
-    }
-  }
-
-  /**
-   * Get debug information about ground at a position
-   */
-  static getGroundDebugInfo(world: World, worldX: number, worldZ: number): {
-    position: { x: number; z: number };
-    terrainHeight: number;
-    isWalkable: boolean;
-  } {
-    const terrainSystem = world.getSystem('terrain') as TerrainSystem
-    
-    return {
-      position: { x: worldX, z: worldZ },
-      terrainHeight: terrainSystem.getHeightAt(worldX, worldZ),
-      isWalkable: terrainSystem.isPositionWalkable(worldX, worldZ).walkable
+    for (const { entity, x, z, heightOffset } of entities) {
+      this.positionEntityOnGround(world, entity, x, z, heightOffset);
     }
   }
 }

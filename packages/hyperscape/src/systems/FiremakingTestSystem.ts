@@ -45,7 +45,6 @@ interface FiremakingTestData {
 
 export class FiremakingTestSystem extends VisualTestFramework {
   private readonly testData = new Map<string, FiremakingTestData>();
-  private readonly ATTEMPT_STAGGER_DELAY = 4000; // 4 seconds between attempts
 
   constructor(world: World) {
     super(world);
@@ -294,7 +293,7 @@ export class FiremakingTestSystem extends VisualTestFramework {
                 targetItemId: ITEM_IDS.LOGS,
                 targetSlot: logsSlot
             });
-        }, i * this.ATTEMPT_STAGGER_DELAY);
+        }, i * 4000); // 4 seconds between attempts
     }
   }
 

@@ -110,6 +110,7 @@ class PhysXManager extends EventEmitter {
       
       return info
     } catch (error) {
+      console.error('[PhysXManager] Load promise caught error:', error) // Added for debugging
       this.state = PhysXState.FAILED
       this.error = error as Error
       this.emit('failed', error)
@@ -315,11 +316,8 @@ class PhysXManager extends EventEmitter {
           const physxModule = await import('@hyperscape/physx-js-webidl')
           const PhysXLoader = physxModule.default || physxModule
           
-          if (typeof PhysXLoader !== 'function') {
-            throw new Error(`PhysX module is not a function, got: ${typeof PhysXLoader}`)
-          }
-          
-          PHYSX = await PhysXLoader(moduleOptions)
+          // Strong type assumption - PhysXLoader is a function that returns PhysXModule
+          PHYSX = await (PhysXLoader as (options: Record<string, unknown>) => Promise<PhysXModule>)(moduleOptions)
         } catch (e) {
           console.error('[PhysXManager] Failed to load PhysX module:', e)
           throw new Error(`Failed to load PhysX in Node.js environment: ${e}`)
@@ -352,6 +350,7 @@ class PhysXManager extends EventEmitter {
       const physics = physxWithConstants.CreatePhysics(version, foundation, tolerances)
       
       console.log('[PhysXManager] Created PxPhysics')
+
 
       return { version, allocator, errorCb, foundation, physics }
     } catch (error) {

@@ -3,7 +3,10 @@
  * Manages level requirements, colors, and starter equipment from JSON data
  */
 
-import equipmentDataRaw from './equipment-requirements.json';
+// Use "with" for Node 22+ loader compatibility per esbuild warning
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore - with type is not yet in TS types but supported by loader
+import equipmentDataRaw from './equipment-requirements.json' with { type: 'json' };
 import type { LevelRequirement, EquipmentDataJSON, StarterEquipmentItem } from '../types/core';
 
 // Type the imported JSON data properly

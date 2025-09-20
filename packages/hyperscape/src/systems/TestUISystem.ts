@@ -247,28 +247,19 @@ export class TestUISystem extends SystemBase {
   }
 
   private clearAllUI(): void {
-    for (const uiData of this.uiElements.values()) {
-      // Remove 3D UI elements
-      if (uiData.mesh) {
-        this.world.stage.scene.remove(uiData.mesh);
+    for (const [_id, uiElement] of this.uiElements.entries()) {
+      if (uiElement.mesh) {
+        if (uiElement.mesh.parent) {
+          uiElement.mesh.parent.remove(uiElement.mesh);
+        }
+        uiElement.mesh.geometry.dispose();
+        (uiElement.mesh.material as THREE.Material).dispose();
       }
-      
-      // Remove HTML elements
-      if (uiData.element && uiData.element.parentNode) {
-        uiData.element.parentNode.removeChild(uiData.element);
+      if (uiElement.element && uiElement.element.parentElement) {
+        uiElement.element.parentElement.removeChild(uiElement.element);
       }
     }
-    
     this.uiElements.clear();
-  }
-
-  // Public API
-  getUIElements(): Map<string, UIElement> {
-    return this.uiElements;
-  }
-
-  getUICount(): number {
-    return this.uiElements.size;
   }
 
   createRandomUI(): string | null {
@@ -280,6 +271,8 @@ export class TestUISystem extends SystemBase {
       // This is expected on server, no need to warn
       return null;
     }
+
+    if (this.uiElements.size >= 50) return null;
 
     const uiId = `random_ui_${this.uiCounter++}`;
     const messages = [

@@ -117,7 +117,6 @@ class PointerState {
         } catch (err) {
           console.error(err)
         }
-        // if (this.event._propagationStopped) break
       }
       this.activePath.delete(oldPath[j])
     }

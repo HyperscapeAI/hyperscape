@@ -192,7 +192,7 @@ export class Joint extends Node {
           this.joint.setLimitCone!(cone)
           this.joint.setSphericalJointFlag!(PHYSX.PxSphericalJointFlagEnum.eLIMIT_ENABLED, true)
         }
-        if (PHYSX.destroy && typeof PHYSX.destroy === 'function') {
+        if (PHYSX.destroy) {
           PHYSX.destroy(cone)
           if (spring) PHYSX.destroy(spring)
         }
@@ -239,7 +239,7 @@ export class Joint extends Node {
           this.joint.setLimit!(limit)
           this.joint.setRevoluteJointFlag!(PHYSX.PxRevoluteJointFlagEnum.eLIMIT_ENABLED, true)
         }
-        if (PHYSX.destroy && typeof PHYSX.destroy === 'function') {
+        if (PHYSX.destroy) {
           PHYSX.destroy(limit)
           if (spring) PHYSX.destroy(spring)
         }

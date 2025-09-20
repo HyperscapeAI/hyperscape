@@ -18,61 +18,36 @@ import { Events, Events as EventsSystem } from './systems/Events';
 import { LODs } from './systems/LODs';
 import { Particles } from './systems/Particles';
 import { Physics, Physics as PhysicsSystem } from './systems/Physics';
-import type { ServerNetwork } from './systems/ServerNetwork';
 import { Settings, Settings as SettingsSystem } from './systems/Settings';
 import { Stage, Stage as StageSystem } from './systems/Stage';
 import { System, SystemConstructor } from './systems/System';
 import { XR } from './systems/XR';
-import { ClientAudio, ClientControls, ClientEnvironment, ClientGraphics, ClientLoader, ClientMonitor, ClientNetwork, ClientPrefs, ClientStats, ClientUI, HotReloadable, Player, RaycastHit, ServerDB, ServerServer, WorldOptions } from './types';
+import {
+  ClientAudio,
+  ClientControls,
+  ClientEnvironment,
+  ClientGraphics,
+  ClientLoader,
+  ClientMonitor,
+  ClientPrefs,
+  ClientStats,
+  ClientUI,
+  HotReloadable,
+  Player,
+  RaycastHit,
+  ServerDB,
+  ServerServer,
+  WorldOptions,
+} from './types';
 
-export class MockNetwork extends System {
-  // Common network properties
-  ids = -1;
-  id: string | null = null;
-  isClient = true;
-  isServer = false;
-  queue: Array<[string, unknown]> = [];
-  maxUploadSize = 0;
-  
-  // Client-specific properties
-  ws: WebSocket | null = null;
-  apiUrl: string | null = null;
-  serverTimeOffset = 0;
-  
-  // Server-specific properties (for compatibility)
-  sockets = new Map();
-  socketIntervalId: NodeJS.Timeout | null = null;
-  saveTimerId: NodeJS.Timeout | null = null;
-  spawn = { position: [0, 0, 0] as [number, number, number], quaternion: [0, 0, 0, 1] as [number, number, number, number] };
-  handlers: { [method: string]: (socket: unknown, data: unknown) => void | Promise<void> } = {};
-  
-  constructor(world: World) {
-    super(world);
-  }
-
-  async init(_options: WorldOptions): Promise<void> {
-    // Mock network doesn't need initialization
-  }
-
-  send<T = unknown>(_name: string, _data?: T): void {
-    // Mock implementation - does nothing
-  }
-
-  async upload(_file: File): Promise<void> {
-    // Mock implementation - does nothing
-  }
-
-  enqueue(_method: string, _data: unknown): void {
-    // Mock implementation - does nothing  
-  }
-
-  flush(): void {
-    // Mock implementation - does nothing
-  }
-
-  preFixedUpdate(): void {
-    // Mock network flush (does nothing)
-  }
+// Define a common interface for network systems (both ClientNetwork and ServerNetwork)
+interface NetworkSystem extends System {
+  id?: string;
+  isServer?: boolean;
+  isClient?: boolean;
+  send: (type: string, data: unknown) => void;
+  upload?: (file: File) => Promise<unknown>;
+  onConnection?: (socket: unknown, query: unknown) => void;
 }
 
 export class World extends EventEmitter {
@@ -149,7 +124,7 @@ export class World extends EventEmitter {
     applyTheme?: (theme: unknown) => void;
   };
   loader?: ClientLoader;
-  network: ClientNetwork | ServerNetwork | MockNetwork;
+  network!: NetworkSystem; // Will be either ClientNetwork or ServerNetwork, set by create*World functions
   environment?: ClientEnvironment;
   graphics?: ClientGraphics & {
     renderer?: {
@@ -337,11 +312,11 @@ export class World extends EventEmitter {
 
   // Helper properties for common access patterns
   get isServer(): boolean {
-    return this.network.isServer ?? false;
+    return this.network?.isServer ?? false;
   }
 
   get isClient(): boolean {
-    return this.network.isClient ?? true;
+    return this.network?.isClient ?? true;
   }
 
   constructor() {
@@ -370,8 +345,8 @@ export class World extends EventEmitter {
     this.register('physics', PhysicsSystem);
     
     this.register('stage', StageSystem);
-
-    this.network = new MockNetwork(this);
+    
+    // Note: network system will be registered by createClientWorld or createServerWorld
   }
 
 
@@ -529,7 +504,7 @@ export class World extends EventEmitter {
 
   private fixedUpdate(delta: number): void {
     for (const item of Array.from(this.hot)) {
-      if (item.fixedUpdate && typeof item.fixedUpdate === 'function') {
+      if (item.fixedUpdate) {
         item.fixedUpdate(delta);
       }
     }
@@ -574,7 +549,7 @@ export class World extends EventEmitter {
 
   private lateUpdate(delta: number, _alpha: number): void {
     for (const item of Array.from(this.hot)) {
-      if (item.lateUpdate && typeof item.lateUpdate === 'function') {
+      if (item.lateUpdate) {
         item.lateUpdate(delta);
       }
     }
@@ -585,7 +560,7 @@ export class World extends EventEmitter {
 
   private postLateUpdate(delta: number): void {
     for (const item of Array.from(this.hot)) {
-      if (item.postLateUpdate && typeof item.postLateUpdate === 'function') {
+      if (item.postLateUpdate) {
         item.postLateUpdate(delta);
       }
     }
@@ -715,12 +690,11 @@ declare module './World' {}
 // Note: We avoid double-calling by not registering string events with the base EventEmitter
 // and by emitting string events only through the EventBus.
 // This preserves existing world.on/world.emit usage while migrating to the new pattern.
-// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
-(World.prototype as any).on = function on<T extends string | symbol>(
+World.prototype.on = function on<T extends string | symbol>(
   this: World,
   event: T,
   fn: (...args: unknown[]) => void,
-  _context?: unknown
+  _context?: unknown,
 ) {
   if (typeof event === 'string') {
     let mapForEvent = this.__busListenerMap.get(event);
@@ -739,11 +713,12 @@ declare module './World' {}
     mapForEvent.set(fn, sub);
     return this;
   }
-  return EventEmitter.prototype.on.call(this, event, fn, _context);
+  EventEmitter.prototype.on.call(this, event, fn, _context);
+  return this;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
-(World.prototype as any).off = function off<T extends string | symbol>(
+World.prototype.off = function off<T extends string | symbol>(
   this: World,
   event: T,
   fn?: (...args: unknown[]) => void,
@@ -774,24 +749,30 @@ declare module './World' {}
     }
     return this;
   }
-  return EventEmitter.prototype.off.call(this, event, fn, _context, _once);
+  EventEmitter.prototype.off.call(this, event, fn, _context, _once);
+  return this;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
-(World.prototype as any).emit = function emit<T extends string | symbol>(
+World.prototype.emit = function emit<T extends string | symbol>(
   this: World,
   event: T,
   ...args: unknown[]
 ) {
   if (typeof event === 'string') {
     const [data] = args;
-    this.$eventBus.emitEvent(event, (data as Record<string, unknown>) ?? {}, 'world');
+    this.$eventBus.emitEvent(
+      event,
+      (data as Record<string, unknown>) ?? {},
+      'world',
+    );
     return true;
   }
   return EventEmitter.prototype.emit.call(this, event, ...args);
 };
 
 // Provide a typed accessor to the event bus
+// eslint-disable-next-line no-redeclare
 export interface World {
   getEventBus(): EventBus;
 }

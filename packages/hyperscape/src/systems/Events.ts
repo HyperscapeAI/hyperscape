@@ -1,8 +1,24 @@
 import { System } from './System';
-import type { World, Events as IEvents } from '../types/index';
+import type { World } from '../types/index';
 import { EventBus, type EventSubscription } from './EventBus';
 
 type EventCallback = (data?: unknown, extra?: unknown) => void;
+
+export interface IEventsInterface extends System {
+  emit<T extends string | symbol>(event: T, ...args: unknown[]): boolean;
+  on<T extends string | symbol>(event: T, fn: (...args: unknown[]) => void, context?: unknown): this;
+  off<T extends string | symbol>(event: T, fn?: (...args: unknown[]) => void, context?: unknown, once?: boolean): this;
+
+  // Plugin-specific array-like methods
+  push?: (callback: (data: unknown) => void) => void;
+  indexOf?: (callback: (data: unknown) => void) => number;
+  splice?: (index: number, count: number) => void;
+  clear?: () => void;
+  get?: (eventName: string) => ((data: unknown) => void)[];
+  has?: (eventName: string) => boolean;
+  set?: (eventName: string, callback: (data: unknown) => void) => void;
+  delete?: (eventName: string) => void;
+}
 
 /**
  * Events System
@@ -11,19 +27,14 @@ type EventCallback = (data?: unknown, extra?: unknown) => void;
  * - Used to notify apps of world events like player enter/leave
  *
  */
-export class Events extends System implements IEvents {
-  private eventListeners: Map<string | symbol, Set<EventCallback>>;
+export class Events extends System implements IEventsInterface {
   private bus: EventBus;
-  private busListenerMap: Map<string, Map<EventCallback, EventSubscription>>;
+  private eventListeners: Map<string | symbol, Set<EventCallback>> = new Map();
+  private busListenerMap: Map<string | symbol, Map<EventCallback, EventSubscription>> = new Map();
 
   constructor(world: World) {
     super(world);
-    this.eventListeners = new Map();
-    // Use World's shared EventBus (initialized in World)
-    const worldWithBus = this.world as World & { $eventBus: EventBus };
-    worldWithBus.$eventBus = worldWithBus.$eventBus || new EventBus();
-    this.bus = worldWithBus.$eventBus;
-    this.busListenerMap = new Map();
+    this.bus = new EventBus();
   }
 
   emit<T extends string | symbol>(event: T, ...args: unknown[]): boolean {
@@ -112,6 +123,44 @@ export class Events extends System implements IEvents {
       }
     }
     return this;
+  }
+
+  // Plugin-specific array-like methods for compatibility
+  push(callback: (data: unknown) => void): void {
+    // This is a no-op for the Map-based implementation
+    console.warn('Events.push() called on Map-based Events system');
+  }
+
+  indexOf(callback: (data: unknown) => void): number {
+    console.warn('Events.indexOf() called on Map-based Events system');
+    return -1;
+  }
+
+  splice(index: number, count: number): void {
+    console.warn('Events.splice() called on Map-based Events system');
+  }
+
+  clear(): void {
+    this.eventListeners.clear();
+  }
+
+  get(eventName: string): ((data: unknown) => void)[] {
+    return Array.from(this.eventListeners.get(eventName) || []);
+  }
+
+  has(eventName: string): boolean {
+    return this.eventListeners.has(eventName);
+  }
+
+  set(eventName: string, callback: (data: unknown) => void): void {
+    if (!this.eventListeners.has(eventName)) {
+      this.eventListeners.set(eventName, new Set());
+    }
+    this.eventListeners.get(eventName)!.add(callback);
+  }
+
+  delete(eventName: string): void {
+    this.eventListeners.delete(eventName);
   }
 
   override destroy(): void {

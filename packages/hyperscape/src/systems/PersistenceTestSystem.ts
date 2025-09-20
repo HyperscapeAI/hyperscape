@@ -171,20 +171,6 @@ export class PersistenceTestSystem extends VisualTestFramework {
     }
   }
 
-  private createDefaultSkills(): Skills {
-    return {
-      attack: { level: 1, xp: 0 },
-      strength: { level: 1, xp: 0 },
-      defense: { level: 1, xp: 0 },
-      constitution: { level: 10, xp: 1154 },
-      ranged: { level: 1, xp: 0 },
-      woodcutting: { level: 1, xp: 0 },
-      fishing: { level: 1, xp: 0 },
-      firemaking: { level: 1, xp: 0 },
-      cooking: { level: 1, xp: 0 }
-    };
-  }
-
   private savePlayer(stationId: string): void {
     const testData = this.testData.get(stationId)!;
     testData.saveTime = Date.now();
@@ -268,7 +254,17 @@ export class PersistenceTestSystem extends VisualTestFramework {
 
     // Create test data structure
     const originalData = {
-      skills: (this.rpgSkillsSystem && this.rpgSkillsSystem.getSkills(player.id)) || this.createDefaultSkills(),
+      skills: (this.rpgSkillsSystem && this.rpgSkillsSystem.getSkills(player.id)) || {
+        attack: { level: 1, xp: 0 },
+        strength: { level: 1, xp: 0 },
+        defense: { level: 1, xp: 0 },
+        constitution: { level: 10, xp: 1154 },
+        ranged: { level: 1, xp: 0 },
+        woodcutting: { level: 1, xp: 0 },
+        fishing: { level: 1, xp: 0 },
+        firemaking: { level: 1, xp: 0 },
+        cooking: { level: 1, xp: 0 }
+      },
       inventory: player.inventory,
       equipment: [],
       bankStorage: [],
@@ -316,7 +312,17 @@ export class PersistenceTestSystem extends VisualTestFramework {
       // Wait for XP to be applied
       setTimeout(() => {
         const originalData = {
-          skills: (this.rpgSkillsSystem && this.rpgSkillsSystem.getSkills(player.id)) || this.createDefaultSkills(),
+          skills: (this.rpgSkillsSystem && this.rpgSkillsSystem.getSkills(player.id)) || {
+            attack: { level: 1, xp: 0 },
+            strength: { level: 1, xp: 0 },
+            defense: { level: 1, xp: 0 },
+            constitution: { level: 10, xp: 1154 },
+            ranged: { level: 1, xp: 0 },
+            woodcutting: { level: 1, xp: 0 },
+            fishing: { level: 1, xp: 0 },
+            firemaking: { level: 1, xp: 0 },
+            cooking: { level: 1, xp: 0 }
+          },
           inventory: player.inventory,
           equipment: [],
           bankStorage: [],
@@ -376,7 +382,17 @@ export class PersistenceTestSystem extends VisualTestFramework {
       player.inventory.coins = 350;
 
       const originalData = {
-        skills: (this.rpgSkillsSystem && this.rpgSkillsSystem.getSkills(player.id)) || this.createDefaultSkills(),
+        skills: (this.rpgSkillsSystem && this.rpgSkillsSystem.getSkills(player.id)) || {
+          attack: { level: 1, xp: 0 },
+          strength: { level: 1, xp: 0 },
+          defense: { level: 1, xp: 0 },
+          constitution: { level: 10, xp: 1154 },
+          ranged: { level: 1, xp: 0 },
+          woodcutting: { level: 1, xp: 0 },
+          fishing: { level: 1, xp: 0 },
+          firemaking: { level: 1, xp: 0 },
+          cooking: { level: 1, xp: 0 }
+        },
         inventory: player.inventory,
         equipment: [],
         bankStorage: [],
@@ -438,7 +454,17 @@ export class PersistenceTestSystem extends VisualTestFramework {
       // Wait for bank operations
       setTimeout(() => {
         const originalData = {
-          skills: (this.rpgSkillsSystem && this.rpgSkillsSystem.getSkills(player.id)) || this.createDefaultSkills(),
+          skills: (this.rpgSkillsSystem && this.rpgSkillsSystem.getSkills(player.id)) || {
+            attack: { level: 1, xp: 0 },
+            strength: { level: 1, xp: 0 },
+            defense: { level: 1, xp: 0 },
+            constitution: { level: 10, xp: 1154 },
+            ranged: { level: 1, xp: 0 },
+            woodcutting: { level: 1, xp: 0 },
+            fishing: { level: 1, xp: 0 },
+            firemaking: { level: 1, xp: 0 },
+            cooking: { level: 1, xp: 0 }
+          },
           inventory: player.inventory,
           equipment: [],
           bankStorage: [...bankItems],
@@ -503,7 +529,17 @@ export class PersistenceTestSystem extends VisualTestFramework {
       // Wait for equipment operations
       setTimeout(() => {
         const originalData = {
-          skills: (this.rpgSkillsSystem && this.rpgSkillsSystem.getSkills(player.id)) || this.createDefaultSkills(),
+          skills: (this.rpgSkillsSystem && this.rpgSkillsSystem.getSkills(player.id)) || {
+            attack: { level: 1, xp: 0 },
+            strength: { level: 1, xp: 0 },
+            defense: { level: 1, xp: 0 },
+            constitution: { level: 10, xp: 1154 },
+            ranged: { level: 1, xp: 0 },
+            woodcutting: { level: 1, xp: 0 },
+            fishing: { level: 1, xp: 0 },
+            firemaking: { level: 1, xp: 0 },
+            cooking: { level: 1, xp: 0 }
+          },
           inventory: player.inventory,
           equipment: [...equipmentItems],
           bankStorage: [],
@@ -585,7 +621,17 @@ export class PersistenceTestSystem extends VisualTestFramework {
       // Wait for XP to be applied
       setTimeout(() => {
         const originalData = {
-          skills: (this.rpgSkillsSystem && this.rpgSkillsSystem.getSkills(player.id)) || this.createDefaultSkills(),
+          skills: (this.rpgSkillsSystem && this.rpgSkillsSystem.getSkills(player.id)) || {
+            attack: { level: 1, xp: 0 },
+            strength: { level: 1, xp: 0 },
+            defense: { level: 1, xp: 0 },
+            constitution: { level: 10, xp: 1154 },
+            ranged: { level: 1, xp: 0 },
+            woodcutting: { level: 1, xp: 0 },
+            fishing: { level: 1, xp: 0 },
+            firemaking: { level: 1, xp: 0 },
+            cooking: { level: 1, xp: 0 }
+          },
           inventory: player.inventory,
           equipment: [],
           bankStorage: [],

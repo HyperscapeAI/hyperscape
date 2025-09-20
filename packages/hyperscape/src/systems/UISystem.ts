@@ -89,20 +89,32 @@ export class UISystem extends SystemBase {
       this.cleanupPlayerUI(data.playerId);
     });
     
-    this.subscribe(EventType.UI_REQUEST, (data) => {
-      // Create a UIRequestData object with default values
-      const requestData: UIRequestData = {
-        playerId: data.playerId,
-        requestType: 'update',  // Default request type
-        data: {},  // Empty data object
-        uiType: 'inventory'  // Default to inventory UI type
-      };
-      this.handleUIRequest(requestData);
+    this.subscribe(EventType.UI_REQUEST, (data) => this.handleUIRequest(data as UIRequestData));
+    // Listen for equipment changes to update UI
+    this.subscribe(EventType.PLAYER_EQUIPMENT_CHANGED, (data) => {
+      // Update UI when equipment changes
+      if (data.playerId) {
+        const uiState = this.playerUIStates.get(data.playerId);
+        if (uiState) {
+          // Update the equipment slot that changed
+          const slotName = data.slot;
+          const itemId = data.itemId;
+          // Get current equipment and update the slot
+          const equipment = uiState.equipment;
+          if (equipment && slotName) {
+            // Map slot to equipment property
+            const equipmentSlot = equipment[slotName as keyof Equipment];
+            if (equipmentSlot && itemId === null) {
+              // Clear the slot
+              equipment[slotName as keyof Equipment] = null;
+            } else if (itemId) {
+              // Set new item in slot - would need to fetch item data
+              // For now, just mark as changed
+            }
+          }
+        }
+      }
     });
-    
-  }
-
-  start(): void {
   }
 
   private convertPlayerEquipmentToEquipment(playerEquipment: PlayerEquipmentItems): Equipment {

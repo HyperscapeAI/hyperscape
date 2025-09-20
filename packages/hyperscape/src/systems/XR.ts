@@ -22,51 +22,56 @@ export class XR extends SystemBase {
   controllerModelFactory: XRControllerModelFactory
 
   constructor(world: World) {
-    super(world, { name: 'xr', dependencies: { required: [], optional: [] }, autoCleanup: true })
-    this.session = null
-    this.camera = null
-    this.controller1Model = null
-    this.controller2Model = null
-    this.supportsVR = false
-    this.supportsAR = false
-    this.controllerModelFactory = new XRControllerModelFactory()
+    super(world, { name: 'XR', dependencies: { required: [], optional: [] }, autoCleanup: true });
+    this.session = null;
+    this.camera = null;
+    this.controller1Model = null;
+    this.controller2Model = null;
+    this.supportsVR = false;
+    this.supportsAR = false;
+    this.controllerModelFactory = new XRControllerModelFactory();
   }
 
   override async init() {
-    // Check XR availability and handle permissions gracefully
-    if (!navigator.xr) {
-      console.log('[XR] WebXR not available in this browser');
-      this.supportsVR = false;
-      this.supportsAR = false;
-      return;
-    }
-    
-    try {
-      this.supportsVR = await navigator.xr.isSessionSupported('immersive-vr')
-    } catch (error) {
-      console.log('[XR] VR permissions not available, VR support disabled');
-      this.supportsVR = false;
-    }
-    
-    try {
-      this.supportsAR = await navigator.xr.isSessionSupported('immersive-ar')
-    } catch (error) {
-      console.log('[XR] AR permissions not available, AR support disabled');
-      this.supportsAR = false;
+    if (typeof navigator !== 'undefined' && navigator.xr) {
+      const xr = navigator.xr;
+      if (xr) {
+        try {
+          this.supportsVR = await xr.isSessionSupported('immersive-vr')
+        } catch (_error) {
+          console.log('[XR] VR permissions not available, VR support disabled');
+          this.supportsVR = false;
+        }
+
+        try {
+          this.supportsAR = await xr.isSessionSupported('immersive-ar')
+        } catch (_error) {
+          console.log('[XR] AR permissions not available, AR support disabled');
+          this.supportsAR = false;
+        }
+      } else {
+        this.supportsVR = false;
+        this.supportsAR = false;
+      }
     }
   }
 
   async enter() {
+    if (typeof navigator === 'undefined' || !navigator.xr) {
+      console.warn('WebXR not supported');
+      return;
+    }
     // Strong type assumption - XR is available when enter() is called
-    const session = await navigator.xr!.requestSession('immersive-vr', {
+    const xr = navigator.xr;
+    const session = await xr.requestSession('immersive-vr', {
       requiredFeatures: ['local-floor'],
     })
-    if (typeof session.updateTargetFrameRate === 'function') {
-      try {
+    try {
+      if (session && session.updateTargetFrameRate) {
         session.updateTargetFrameRate(72)
-      } catch (_err) {
-        // optional API; ignore failures
       }
+    } catch (_err) {
+      // optional API; ignore failures
     }
     // Get the local player and unmount avatar for XR
     const localPlayer = this.world.entities.getLocalPlayer()!
