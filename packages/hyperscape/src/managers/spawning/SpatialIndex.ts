@@ -1,5 +1,5 @@
  
-import type { Vector3D as Vector3 } from '../../types';
+import type { Position3D as Vector3 } from '../../types';
 import { calculateDistance } from '../../utils/EntityUtils';
 
 /**

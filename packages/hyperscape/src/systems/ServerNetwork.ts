@@ -512,7 +512,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
   };
 
   isAdmin(player: Entity | { data?: { roles?: string[] } }): boolean {
-    return hasRole(player.data?.roles, 'admin');
+    return hasRole(player.data?.roles as string[] | undefined, 'admin');
   }
 
   isBuilder(player: Entity | { data?: { roles?: string[] } }): boolean {
@@ -813,7 +813,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       if (process.env.ADMIN_CODE && process.env.ADMIN_CODE === code) {
         const id = player.data.id;
         const userId = player.data.userId;
-        const roles = player.data.roles || [];
+        const roles: string[] = Array.isArray(player.data.roles) ? player.data.roles : [];
         const granting = !hasRole(roles, 'admin');
         if (granting) {
           addRole(roles, 'admin');

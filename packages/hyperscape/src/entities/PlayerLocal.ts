@@ -295,7 +295,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
         health: this.health,
         roles: this.data.roles as string[] | undefined,
         owner: this.data.owner as string | undefined,
-        effect: this.data.effect
+        effect: this.data.effect,
       },
       avatar: this.avatar,
       setPosition: this.setPosition.bind(this)
@@ -406,6 +406,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
   private positionValidationInterval?: NodeJS.Timeout
   // Add pendingMoves array
   private pendingMoves: { seq: number; pos: THREE.Vector3 }[] = [];
+  private _tempVec3 = new THREE.Vector3();
   
   // Avatar retry mechanism
   private avatarRetryInterval: NodeJS.Timeout | null = null;
@@ -1821,7 +1822,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
     if (hasRotation && this.base) {
       // Apply yaw in quaternion space to base and keep node aligned
       // Use pre-allocated temporary vectors
-      v1.set(0, 1, 0)  // up vector
+      const v1 = this._tempVec3.set(0, 1, 0)  // up vector
       q1.setFromAxisAngle(v1, rotationY!)
       this.base.quaternion.copy(q1)
       this.node.quaternion.copy(this.base.quaternion)

@@ -541,13 +541,11 @@ export class MobAISystem extends SystemBase {
     const distance = Math.random() * aiState.patrolRadius * 0.8;
     
     if (!aiState.patrolTarget) {
-      aiState.patrolTarget = new THREE.Vector3()
+      aiState.patrolTarget = { x: 0, y: 0, z: 0 };
     }
-    aiState.patrolTarget.set(
-      aiState.homePosition.x + Math.cos(angle) * distance,
-      aiState.homePosition.y,
-      aiState.homePosition.z + Math.sin(angle) * distance,
-    );
+    aiState.patrolTarget.x = aiState.homePosition.x + Math.cos(angle) * distance;
+    aiState.patrolTarget.y = aiState.homePosition.y;
+    aiState.patrolTarget.z = aiState.homePosition.z + Math.sin(angle) * distance;
   }
 
   /**

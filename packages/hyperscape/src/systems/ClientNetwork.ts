@@ -6,6 +6,7 @@ import { storage } from '../storage'
 import type { ChatMessage, EntityData, SnapshotData, World, WorldOptions } from '../types'
 import { uuid } from '../utils'
 import { SystemBase } from './SystemBase'
+import { PlayerLocal } from '../entities/PlayerLocal'
 
 const _v3_1 = new THREE.Vector3()
 
@@ -255,12 +256,8 @@ export class ClientNetwork extends SystemBase {
       // Set initial serverPosition for local player immediately to avoid Y=0 flash
       for (const entityData of data.entities) {
         if (entityData && entityData.type === 'player' && entityData.owner === this.id) {
-          const local = this.world.entities.get(entityData.id) as {
-            updateServerPosition: (x: number, y: number, z: number) => void
-            position: { set: (x: number, y: number, z: number) => void }
-          }
-
-          if (local) {
+          const local = this.world.entities.get(entityData.id);
+          if (local instanceof PlayerLocal) {
             // Force the position immediately
             const pos = entityData.position as [number, number, number]
             local.position.set(pos[0], pos[1], pos[2])
@@ -346,24 +343,21 @@ export class ClientNetwork extends SystemBase {
       const q = (changes as { q?: number[] }).q
 
       // Update server position and velocity for local player
-      const playerLocal = entity as {
-        updateServerPosition: (x: number, y: number, z: number) => void
-        updateServerVelocity: (x: number, y: number, z: number) => void
-        base?: { quaternion: THREE.Quaternion }
-      }
-      if (p) {
-        playerLocal.updateServerPosition(p[0], p[1], p[2])
-        // Immediately reflect authoritative position on the local visual for responsiveness
-        if (entity.node && entity.node.position) {
-          entity.node.position.set(p[0], p[1], p[2])
+      if (entity instanceof PlayerLocal) {
+        if (p) {
+          entity.updateServerPosition(p[0], p[1], p[2])
+          // Immediately reflect authoritative position on the local visual for responsiveness
+          if (entity.node && entity.node.position) {
+            entity.node.position.set(p[0], p[1], p[2])
+          }
         }
-      }
-      // Also update velocity if provided
-      if (v) {
-        playerLocal.updateServerVelocity(v[0], v[1], v[2])
-      }
-      if (q && playerLocal.base) {
-        playerLocal.base.quaternion.set(q[0], q[1], q[2], q[3])
+        // Also update velocity if provided
+        if (v) {
+          entity.updateServerVelocity(v[0], v[1], v[2])
+        }
+        if (q && entity.base) {
+          entity.base.quaternion.set(q[0], q[1], q[2], q[3])
+        }
       }
       // Apply any non-transform fields (e.g., emote, name)
       const filtered = { ...changes } as Record<string, unknown>
@@ -406,16 +400,16 @@ export class ClientNetwork extends SystemBase {
   }
 
   onPlayerTeleport = (data: { playerId: string; position: [number, number, number] }) => {
-    const player = this.world.entities.player as { teleport: (pos: THREE.Vector3, rotY?: number) => void }
-    if (player) {
+    const player = this.world.entities.player
+    if (player instanceof PlayerLocal) {
       const pos = _v3_1.set(data.position[0], data.position[1], data.position[2])
       player.teleport(pos)
     }
   }
 
   onPlayerPush = (data: { force: [number, number, number] }) => {
-    const player = this.world.entities.player as { push: (force: THREE.Vector3) => void }
-    if (player) {
+    const player = this.world.entities.player
+    if (player instanceof PlayerLocal) {
       const force = _v3_1.set(data.force[0], data.force[1], data.force[2])
       player.push(force)
     }

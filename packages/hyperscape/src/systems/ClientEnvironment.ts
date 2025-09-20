@@ -326,7 +326,7 @@ export class ClientEnvironment extends System {
         // },
         maxCascades: 3,
         maxFar: 100,
-        lightDirection: _sunDirection.clone().normalize(),
+        lightDirection: _sunDirection.normalize(),
         fade: true,
         parent: scene,
         camera: camera,

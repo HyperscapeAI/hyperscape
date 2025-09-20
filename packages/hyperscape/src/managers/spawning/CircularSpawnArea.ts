@@ -1,5 +1,5 @@
  
-import type { Vector3D as Vector3, Position3D } from '../../types';
+import type { Position3D as Vector3, Position3D } from '../../types';
 import type { SpawnArea } from '../../types/components';
 import { calculateDistance2D } from '../../utils/EntityUtils';
 import THREE from '../../extras/three';

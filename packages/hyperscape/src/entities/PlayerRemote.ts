@@ -8,6 +8,7 @@ import THREE from '../extras/three'
 import { Entity } from './Entity'
 import { Avatar, Nametag, Group, Mesh, UI, UIView, UIText } from '../nodes'
 import { EventType } from '../types/events'
+import type { PlayerEffect } from '../types/physics'
 
 interface AvatarWithInstance {
   instance: {
@@ -83,7 +84,7 @@ export class PlayerRemote extends Entity implements HotReloadable {
     console.log(`[PlayerRemote] Initializing ${this.id} at position: (${this.position.x.toFixed(1)}, ${this.position.y.toFixed(1)}, ${this.position.z.toFixed(1)})`)
 
     this.body = createNode('rigidbody', { type: 'kinematic' }) as Mesh
-    this.body.active = this.data.effect?.anchorId ? false : true
+    this.body.active = (this.data.effect as PlayerEffect)?.anchorId ? false : true
     this.base.add(this.body)
     this.collider = createNode('collider', {
       type: 'geometry',
@@ -153,7 +154,7 @@ export class PlayerRemote extends Entity implements HotReloadable {
   }
 
   async applyAvatar() {
-    const avatarUrl = this.data.sessionAvatar || this.data.avatar || 'asset://avatar.vrm'
+    const avatarUrl = (this.data.sessionAvatar as string) || (this.data.avatar as string) || 'asset://avatar.vrm'
     if (this.avatarUrl === avatarUrl) return
     
     console.log('[PlayerRemote] Loading avatar:', avatarUrl)
@@ -282,8 +283,9 @@ export class PlayerRemote extends Entity implements HotReloadable {
   }
 
   getAnchorMatrix() {
-    if (this.data.effect?.anchorId) {
-      return this.world.anchors.get(this.data.effect.anchorId)
+    const effect = this.data.effect as PlayerEffect | undefined
+    if (effect?.anchorId) {
+      return this.world.anchors.get(effect.anchorId)
     }
     return null
   }

@@ -125,7 +125,7 @@ export class Entity implements IEntity {
         name: entityData.name || 'entity',
         type: this.mapStringToEntityType(entityData.type),
         position: { x: 0, y: 0, z: 0 },
-        rotation: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0, w: 1 },
         scale: { x: 1, y: 1, z: 1 },
         visible: true,
         interactable: false,

@@ -12,7 +12,8 @@
 
 import { Entity } from './Entity';
 import type { World } from '../World';
-import type { EntityConfig, EntityInteractionData, PlayerEntityProperties, Quaternion } from '../types/entities';
+import type { EntityConfig, EntityInteractionData, PlayerEntityProperties } from '../types/entities';
+import type { Quaternion } from '../types/base-types';
 import type { Position3D } from '../types/core';
 
 export interface CombatantConfig extends EntityConfig<PlayerEntityProperties> {
