@@ -23,6 +23,65 @@ const _mesh = new THREE.Mesh()
 
 const MIN_RADIUS = 0.2
 
+// Object pools to reduce garbage collection
+class Vector3Pool {
+  private pool: THREE.Vector3[] = []
+  private inUse = new Set<THREE.Vector3>()
+
+  acquire(x = 0, y = 0, z = 0): THREE.Vector3 {
+    let vec = this.pool.pop()
+    if (!vec) {
+      vec = new THREE.Vector3()
+    }
+    vec.set(x, y, z)
+    this.inUse.add(vec)
+    return vec
+  }
+
+  release(vec: THREE.Vector3): void {
+    if (this.inUse.has(vec)) {
+      this.inUse.delete(vec)
+      this.pool.push(vec)
+    }
+  }
+
+  releaseAll(): void {
+    this.inUse.forEach(vec => {
+      this.pool.push(vec)
+    })
+    this.inUse.clear()
+  }
+}
+
+class Box3Pool {
+  private pool: THREE.Box3[] = []
+  private inUse = new Set<THREE.Box3>()
+
+  acquire(min?: THREE.Vector3, max?: THREE.Vector3): THREE.Box3 {
+    let box = this.pool.pop()
+    if (!box) {
+      box = new THREE.Box3()
+    }
+    if (min && max) {
+      box.min.copy(min)
+      box.max.copy(max)
+    }
+    this.inUse.add(box)
+    return box
+  }
+
+  release(box: THREE.Box3): void {
+    if (this.inUse.has(box)) {
+      this.inUse.delete(box)
+      this.pool.push(box)
+    }
+  }
+}
+
+const vector3Pool = new Vector3Pool()
+// Box3 pool is not currently used but kept for future optimizations
+// const box3Pool = new Box3Pool()
+
 // https://anteru.net/blog/2008/loose-octrees/
 
 export interface LooseOctreeOptions {
@@ -35,10 +94,27 @@ export class LooseOctree {
   scene: THREE.Scene
   root: LooseOctreeNode
   helper: OctreeHelper | null
+  private nodePool: LooseOctreeNode[] = []
+  
   constructor({ scene, center, size }: LooseOctreeOptions) {
     this.scene = scene
-    this.root = new LooseOctreeNode(this, null, center, size)
+    this.root = this.createNode(null, center, size)
     this.helper = null
+  }
+
+  createNode(parent: LooseOctreeNode | null, center: THREE.Vector3, size: number): LooseOctreeNode {
+    let node = this.nodePool.pop()
+    if (node) {
+      node.reinit(this, parent, center, size)
+    } else {
+      node = new LooseOctreeNode(this, parent, center, size)
+    }
+    return node
+  }
+
+  releaseNode(node: LooseOctreeNode): void {
+    node.reset()
+    this.nodePool.push(node)
   }
 
   insert(item: OctreeItem) {
@@ -63,14 +139,38 @@ export class LooseOctree {
     }
     // update bounding sphere
     item.sphere!.copy(item.geometry.boundingSphere!).applyMatrix4(item.matrix)
+    
+    // Clamp sphere radius to minimum
+    if (item.sphere!.radius < MIN_RADIUS) item.sphere!.radius = MIN_RADIUS
+    
     // if it still fits inside its current node that's cool
     if (item._node?.canContain?.(item)) {
       return
     }
+    
+    // Optimization: try to find a suitable parent/child before full re-insert
+    let targetNode: LooseOctreeNode | null = null
+    let currentNode = item._node as LooseOctreeNode
+    
+    // Check parent nodes first
+    while (currentNode.parent && !currentNode.parent.canContain(item)) {
+      currentNode = currentNode.parent
+    }
+    if (currentNode.parent) {
+      targetNode = currentNode.parent
+    }
+    
     // if it doesn't fit, re-insert it into its new node
     const prevNode = item._node
     this.remove(item)
-    const added = this.insert(item)
+    
+    let added: boolean
+    if (targetNode) {
+      added = targetNode.insert(item)
+    } else {
+      added = this.insert(item)
+    }
+    
     if (!added) {
       console.error('octree item moved but was not re-added. did it move outside octree bounds?')
     }
@@ -91,33 +191,35 @@ export class LooseOctree {
 
     prevRoot = this.root
     size = prevRoot.size * 2
-    center = new THREE.Vector3(
+    center = vector3Pool.acquire(
       prevRoot.center.x + prevRoot.size,
       prevRoot.center.y + prevRoot.size,
       prevRoot.center.z + prevRoot.size
     )
-    const first = new LooseOctreeNode(this, null, center, size)
+    const first = this.createNode(null, center, size)
     first.subdivide()
     first.children[0].destroy()
     first.children[0] = prevRoot
     prevRoot.parent = first
     this.root = first
     this.root.count = prevRoot.count
+    vector3Pool.release(center)
 
     prevRoot = this.root
     size = prevRoot.size * 2
-    center = new THREE.Vector3(
+    center = vector3Pool.acquire(
       prevRoot.center.x - prevRoot.size,
       prevRoot.center.y - prevRoot.size,
       prevRoot.center.z - prevRoot.size
     )
-    const second = new LooseOctreeNode(this, null, center, size)
+    const second = this.createNode(null, center, size)
     second.subdivide()
     second.children[7].destroy()
     second.children[7] = prevRoot
     prevRoot.parent = second
     this.root = second
     this.root.count = prevRoot.count
+    vector3Pool.release(center)
   }
 
   raycast(raycaster: THREE.Raycaster, intersects: ExtendedIntersection[] = []) {
@@ -173,10 +275,11 @@ export class LooseOctreeNode {
   items: OctreeItem[]
   count: number
   _helperItem?: RenderHelperItem
+  
   constructor(octree: LooseOctree, parent: LooseOctreeNode | null, center: THREE.Vector3, size: number) {
     this.octree = octree
     this.parent = parent
-    this.center = center
+    this.center = center.clone() // Clone center to avoid external modifications
     this.size = size
     this.inner = new THREE.Box3(
       new THREE.Vector3(center.x - size, center.y - size, center.z - size),
@@ -190,6 +293,30 @@ export class LooseOctreeNode {
     this.count = 0
     this.children = []
     this.mountHelper()
+  }
+
+  reinit(octree: LooseOctree, parent: LooseOctreeNode | null, center: THREE.Vector3, size: number): void {
+    this.octree = octree
+    this.parent = parent
+    this.center.copy(center)
+    this.size = size
+    this.inner.min.set(center.x - size, center.y - size, center.z - size)
+    this.inner.max.set(center.x + size, center.y + size, center.z + size)
+    this.outer.min.set(center.x - size * 2, center.y - size * 2, center.z - size * 2)
+    this.outer.max.set(center.x + size * 2, center.y + size * 2, center.z + size * 2)
+    this.items = []
+    this.count = 0
+    this.children = []
+    this.mountHelper()
+  }
+
+  reset(): void {
+    this.unmountHelper()
+    this.items.length = 0
+    this.children.length = 0
+    this.count = 0
+    this.parent = null
+    this._helperItem = undefined
   }
 
   insert(item: OctreeItem) {
@@ -260,6 +387,7 @@ export class LooseOctreeNode {
     for (const child of this.children) {
       child.collapse()
       child.destroy()
+      this.octree.releaseNode(child)
     }
     this.children = []
   }
@@ -270,13 +398,14 @@ export class LooseOctreeNode {
     for (let x = 0; x < 2; x++) {
       for (let y = 0; y < 2; y++) {
         for (let z = 0; z < 2; z++) {
-          const center = new THREE.Vector3(
+          const center = vector3Pool.acquire(
             this.center.x + halfSize * (2 * x - 1),
             this.center.y + halfSize * (2 * y - 1),
             this.center.z + halfSize * (2 * z - 1)
           )
-          const child = new LooseOctreeNode(this.octree, this, center, halfSize)
+          const child = this.octree.createNode(this, center, halfSize)
           this.children.push(child)
+          vector3Pool.release(center)
         }
       }
     }
@@ -415,13 +544,12 @@ function createHelper(octree: LooseOctree) {
   if (edges.index) {
     geometry.setIndex(edges.index.clone())
   }
-  const iMatrix = new THREE.InstancedBufferAttribute(new Float32Array(1000000 * 16), 16)
+  // Start with small buffers that can grow as needed
+  const initialSize = 100
+  const iMatrix = new THREE.InstancedBufferAttribute(new Float32Array(initialSize * 16), 16)
   iMatrix.setUsage(THREE.DynamicDrawUsage)
   geometry.setAttribute('iMatrix', iMatrix)
-  const offset = new THREE.InstancedBufferAttribute(new Float32Array(100000 * 3), 3)
-  geometry.setAttribute('offset', offset)
-  const scale = new THREE.InstancedBufferAttribute(new Float32Array(100000 * 3), 3)
-  geometry.setAttribute('scale', scale)
+  // Remove unused offset and scale attributes
   geometry.instanceCount = 0
   const material = new THREE.LineBasicMaterial({
     color: 'red',
@@ -445,16 +573,34 @@ function createHelper(octree: LooseOctree) {
   const mesh = new THREE.LineSegments(geometry, material)
   mesh.frustumCulled = false
   const items: RenderHelperItem[] = []
+  let bufferSize = initialSize
+  
+  function growBuffer() {
+    const newSize = Math.min(bufferSize * 2, 10000) // Cap at 10k for safety
+    const newMatrix = new Float32Array(newSize * 16)
+    newMatrix.set(iMatrix.array)
+    iMatrix.array = newMatrix
+    iMatrix.needsUpdate = true
+    bufferSize = newSize
+  }
+  
   function insert(node: LooseOctreeNode) {
     const idx = mesh.geometry.instanceCount
+    
+    // Grow buffer if needed
+    if (idx >= bufferSize) {
+      growBuffer()
+    }
+    
     mesh.geometry.instanceCount++
     const position = _v1.copy(node.center)
     const quaternion = _q1.set(0, 0, 0, 1)
     const scale = _v2.setScalar(node.size * 2)
-    const matrix = new THREE.Matrix4().compose(position, quaternion, scale)
-    iMatrix.set(matrix.elements, idx * 16)
+    // Reuse the shared matrix instead of creating new ones
+    _m1.compose(position, quaternion, scale)
+    iMatrix.set(_m1.elements, idx * 16)
     iMatrix.needsUpdate = true
-    node._helperItem = { idx, matrix }
+    node._helperItem = { idx, matrix: _m1.clone() } // Only clone when storing
     items.push(node._helperItem)
   }
   function remove(node: LooseOctreeNode) {

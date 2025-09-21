@@ -33,13 +33,13 @@ export interface ChatSystem extends System {
   send(text: string): unknown
 }
 
-export interface ClientControlsSystem extends System {
+export interface ClientInputSystem extends System {
   setEnabled(enabled: boolean): void
   keyX?: { pressed: boolean; released: boolean; onPress?: () => void; onRelease?: () => void }
   setKey(key: string, value: boolean): void
 }
 
-export interface ClientUISystem extends System {
+export interface ClientInterfaceSystem extends System {
   registerCameraSystem(cameraSystem: unknown): void
   unregisterCameraSystem(cameraSystem: unknown): void
   toggleVisible(): void
@@ -194,8 +194,8 @@ export interface ItemRegistrySystem extends System {
 //     settings: Settings
 //     entities: EntitiesSystem
 //     network?: NetworkSystem
-//     controls?: ClientControlsSystem
-//     ui?: ClientUISystem
+//     controls?: ClientInputSystem
+//     ui?: ClientInterfaceSystem
 //     loader?: LoaderSystem
 //     actions?: ActionsSystem
 //     xr?: XRSystem

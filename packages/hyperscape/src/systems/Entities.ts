@@ -214,7 +214,9 @@ export class Entities extends SystemBase implements IEntities {
       try {
         entity.update?.(delta);
       } catch (error) {
-        this.logger.error(`Error updating entity ${entity.id || 'unknown'}: ${error instanceof Error ? error.message : String(error)}`);
+        // Strong type assumption - error is Error type
+        const err = error as Error;
+        this.logger.error(`Error updating entity ${entity.id || 'unknown'}: ${err.message || String(error)}`);
         throw error;
       }
     }

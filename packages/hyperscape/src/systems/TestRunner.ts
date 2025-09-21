@@ -347,8 +347,7 @@ export class TestRunner extends SystemBase {
     this.isRunning = false;
     this.testStartTime = 0;
     
-    Logger.system('TestRunner', 'Test runner destroyed and cleaned up');
-    
+        
     // Call parent cleanup
     super.destroy();
   }

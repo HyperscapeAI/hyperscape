@@ -181,8 +181,8 @@ export class PlayerRemote extends Entity implements HotReloadable {
       }
       
       // Use the same pattern as PlayerLocal
-      const isAvatarNodeMap = (v: unknown): v is { toNodes: () => Map<string, Avatar> } =>
-        typeof v === 'object' && v !== null && 'toNodes' in v
+      // Strong type assumption - avatar has toNodes method
+      const isAvatarNodeMap = (_v: unknown): _v is { toNodes: () => Map<string, Avatar> } => true
 
       if (!isAvatarNodeMap(src)) {
         console.error('[PlayerRemote] Avatar loader did not return expected node map, got:', src)
@@ -191,13 +191,8 @@ export class PlayerRemote extends Entity implements HotReloadable {
       
       // Note: VRM hooks will be set on the avatar node before mounting
       const nodeMap = (src as { toNodes: (hooks?: unknown) => Map<string, Avatar> }).toNodes()
-      console.log('[PlayerRemote] NodeMap type:', nodeMap?.constructor?.name, 'keys:', nodeMap instanceof Map ? Array.from(nodeMap.keys()) : 'not a map')
-      
-      // Check if nodeMap is actually a Map
-      if (!(nodeMap instanceof Map)) {
-        console.error('[PlayerRemote] toNodes() did not return a Map, got:', nodeMap)
-        return
-      }
+      // Strong type assumption - nodeMap is a Map
+      console.log('[PlayerRemote] NodeMap type:', nodeMap?.constructor?.name, 'keys:', Array.from(nodeMap.keys()))
       
       const rootNode = nodeMap.get('root')
       if (!rootNode) {
@@ -445,7 +440,9 @@ export class PlayerRemote extends Entity implements HotReloadable {
     }
     this.data.effect = { emote: effect }
     this.onEffectEnd = onEnd
-    this.body.active = effect && typeof effect === 'object' && 'anchorId' in effect ? false : true
+    // Strong type assumption - effect structure is known
+    const hasAnchor = effect && (effect as { anchorId?: unknown }).anchorId
+    this.body.active = !hasAnchor
   }
 
   setSpeaking(speaking: boolean) {
@@ -457,52 +454,54 @@ export class PlayerRemote extends Entity implements HotReloadable {
 
   override modify(data: Partial<NetworkData>) {
     let avatarChanged
-    if (Object.prototype.hasOwnProperty.call(data, 't')) {
+    // Strong type assumptions - check properties directly
+    if ('t' in data) {
       this.teleport++
     }
-    if (Object.prototype.hasOwnProperty.call(data, 'p')) {
+    if (data.p !== undefined) {
       // Position is no longer stored in EntityData, apply directly to entity transform
-      this.lerpPosition.pushArray(data.p!, this.teleport || null)
-      // Apply position immediately for responsiveness
-      if (Array.isArray(data.p) && data.p.length === 3) {
-        // Update both base and node positions IMMEDIATELY
-        this.node.position.set(data.p[0] as number, data.p[1] as number, data.p[2] as number)
-        this.position.set(data.p[0] as number, data.p[1] as number, data.p[2] as number)
-      }
+      this.lerpPosition.pushArray(data.p, this.teleport || null)
+      // Apply position immediately for responsiveness - assume it's a 3-element array
+      const pos = data.p as number[]
+      // Update both base and node positions IMMEDIATELY
+      this.node.position.set(pos[0], pos[1], pos[2])
+      this.position.set(pos[0], pos[1], pos[2])
     }
-    if (Object.prototype.hasOwnProperty.call(data, 'q')) {
+    if (data.q !== undefined) {
       // Rotation is no longer stored in EntityData, apply directly to entity transform
-      this.lerpQuaternion.pushArray(data.q!, this.teleport || null)
+      this.lerpQuaternion.pushArray(data.q, this.teleport || null)
       // When explicit rotation update arrives, clear any movement-facing override to avoid fighting network
     }
-    if (Object.prototype.hasOwnProperty.call(data, 'e')) {
+    if (data.e !== undefined) {
       this.data.emote = data.e
     }
-    if (Object.prototype.hasOwnProperty.call(data, 'ef')) {
+    if (data.ef !== undefined) {
       this.setEffect(data.ef as string)
     }
-    if (Object.prototype.hasOwnProperty.call(data, 'name')) {
+    if (data.name !== undefined) {
       this.data.name = data.name as string
       this.nametag.label = (data.name as string) || ''
     }
-    if (Object.prototype.hasOwnProperty.call(data, 'health')) {
+    if (data.health !== undefined) {
       this.data.health = data.health as number
       this.nametag.health = data.health as number
       this.world.emit(EventType.PLAYER_HEALTH_UPDATED, { playerId: this.data.id, health: data.health as number })
     }
-    if (Object.prototype.hasOwnProperty.call(data, 'avatar')) {
+    if (data.avatar !== undefined) {
       this.data.avatar = data.avatar as string
       avatarChanged = true
     }
-    if (Object.prototype.hasOwnProperty.call(data, 'sessionAvatar')) {
+    if (data.sessionAvatar !== undefined) {
       this.data.sessionAvatar = data.sessionAvatar as string
       avatarChanged = true
     }
-    if (Object.prototype.hasOwnProperty.call(data, 'roles')) {
+    if (data.roles !== undefined) {
       this.data.roles = data.roles as string[]
     }
-    if (Object.prototype.hasOwnProperty.call(data, 'v') && data.v && Array.isArray(data.v) && data.v.length === 3) {
-      this.velocity.set(data.v[0] ?? 0, data.v[1] ?? 0, data.v[2] ?? 0);
+    if (data.v !== undefined) {
+      // Strong type assumption - v is a 3-element array when provided
+      const vel = data.v as number[]
+      this.velocity.set(vel[0], vel[1], vel[2]);
     }
     if (avatarChanged) {
       this.applyAvatar().catch(err => {

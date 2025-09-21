@@ -297,7 +297,8 @@ class MultiplayerIntegrationTest {
         const player = world.entities?.player;
         if (player && player.position) {
           const currentPos = player.position;
-                    world.network.send('moveRequest', {
+          console.log('[Test] Sending direct moveRequest from:', currentPos);
+          world.network.send('moveRequest', {
             target: [currentPos.x, currentPos.y, currentPos.z - 20],
             runMode: false
           });
@@ -735,7 +736,8 @@ class MultiplayerIntegrationTest {
         const world = (window as any).world || testWindow.__HYPERSCAPE_WORLD__;
         if (world) {
           testWindow.world = world as TestWindow['world'];
-                    clearInterval(checkWorld);
+          console.log('[Test] World found and exposed for testing');
+          clearInterval(checkWorld);
         }
       }, 100);
     });
@@ -821,9 +823,8 @@ class MultiplayerIntegrationTest {
       return true;
     } catch (error) {
       console.error('❌ Test suite failed:', error);
-      if (error instanceof Error) {
-        console.error('Stack trace:', error.stack);
-      }
+      // Assume error is an Error and log stack if available
+      console.error('Stack trace:', (error as Error).stack);
       
       // Generate report even on failure to show partial results
       try {

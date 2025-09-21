@@ -152,8 +152,7 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
   }
 
   async init(): Promise<void> {
-    Logger.system('PrecisionPhysics', 'System initialized');
-    // Listen for precision test requests via typed events
+        // Listen for precision test requests via typed events
     this.subscribe(EventType.PHYSICS_PRECISION_RUN_ALL, () => this.runAllPrecisionTests());
     this.subscribe(EventType.PHYSICS_PRECISION_PROJECTILE, () => this.testProjectileMotion());
   }
@@ -176,8 +175,7 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
 
   private createGroundPlane(): void {
     const PHYSX = this.getPhysX();
-    Logger.system('PrecisionPhysics', 'Creating ground plane with PHYSX');
-    
+        
     // Create ground plane at y = 0
     const planeGeometry = new PHYSX.PxPlaneGeometry();
     const planeMaterial = this.world.physics.getMaterial(0.5, 0.5, 0.3)!; // Standard friction and restitution
@@ -217,8 +215,7 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
       triggeredHandles: new Set()
     });
     
-          Logger.system('PrecisionPhysics', 'Ground plane created successfully');
-    
+              
     // Skip visual ground plane creation - use existing Stage ground plane to avoid z-fighting
     // const groundVisualGeometry = new THREE.PlaneGeometry(100, 100);
     // const groundVisualMaterial = new THREE.MeshBasicMaterial({ 
@@ -293,8 +290,7 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
       if (actor.getActorFlags && PHYSX.PxActorFlagEnum) {
         const actorFlags = actor.getActorFlags();
         if (typeof actorFlags === 'number' && (actorFlags & PHYSX.PxActorFlagEnum.eDISABLE_GRAVITY)) {
-          Logger.system('PrecisionPhysics', 'Gravity was disabled, enabling...');
-          actor.setActorFlag(PHYSX.PxActorFlagEnum.eDISABLE_GRAVITY, false);
+                    actor.setActorFlag(PHYSX.PxActorFlagEnum.eDISABLE_GRAVITY, false);
         }
       }
       
@@ -371,8 +367,7 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
       // Force the actor to be active
       actor.setSleepThreshold(0); // Disable sleeping
       
-              Logger.system('PrecisionPhysics', 'Actor created and added to scene');
-      
+                    
       // Store the actor reference
       projectile.userData.actor = actor;
       projectile.userData.actorHandle = actorHandle;
@@ -412,8 +407,7 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
         }
       });
       
-              Logger.system('PrecisionPhysics', 'Projectile motion test created successfully');
-  }
+                }
 
   /**
    * Collision Response Test
@@ -781,10 +775,8 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
     
     // Log initial state
     const launchVelocity = projectile.userData.launchVelocity as THREE.Vector3;
-    Logger.system('PrecisionPhysics', `Launch velocity: (${launchVelocity.x}, ${launchVelocity.y}, ${launchVelocity.z})`);
-    const launchPosition = projectile.userData.launchPosition as THREE.Vector3;
-    Logger.system('PrecisionPhysics', `Launch position: (${launchPosition.x}, ${launchPosition.y}, ${launchPosition.z})`);
-    
+        const launchPosition = projectile.userData.launchPosition as THREE.Vector3;
+        
     // The physics simulation will handle the projectile motion automatically
     // since we set the initial velocity on the rigid body actor
     
@@ -793,8 +785,7 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
   }
 
   private validateProjectileMotionTest(): void {
-    Logger.system('PrecisionPhysics', 'Validating projectile motion test');
-    const test = this.precisionTests.get('projectile_motion');
+        const test = this.precisionTests.get('projectile_motion');
     if (!test) return;
     
     const projectile = test.projectile as THREE.Mesh;
@@ -806,21 +797,16 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
     if (physicsActor) {
       const pose = physicsActor.getGlobalPose();
       finalPosition = this._tempVec3_1.set(pose.p.x, pose.p.y, pose.p.z);
-      Logger.system('PrecisionPhysics', `Actor physics position: (${pose.p.x.toFixed(2)}, ${pose.p.y.toFixed(2)}, ${pose.p.z.toFixed(2)})`);
-    } else {
+          } else {
       finalPosition = projectile.position;
-      Logger.system('PrecisionPhysics', `Using mesh position: (${finalPosition.x.toFixed(2)}, ${finalPosition.y.toFixed(2)}, ${finalPosition.z.toFixed(2)})`);
-    }
+          }
     
     const expectedPosition = projectile.userData.expectedLandingPosition as THREE.Vector3;
     const tolerance = projectile.userData.tolerance as number;
     
-    Logger.system('PrecisionPhysics', `Expected position: (${expectedPosition.x.toFixed(2)}, ${expectedPosition.y.toFixed(2)}, ${expectedPosition.z.toFixed(2)})`);
-    const launchPos = projectile.userData.launchPosition as THREE.Vector3;
+        const launchPos = projectile.userData.launchPosition as THREE.Vector3;
     const launchVel = projectile.userData.launchVelocity as THREE.Vector3;
-    Logger.system('PrecisionPhysics', `Launch position was: (${launchPos.x}, ${launchPos.y}, ${launchPos.z})`);
-    Logger.system('PrecisionPhysics', `Launch velocity was: (${launchVel.x}, ${launchVel.y}, ${launchVel.z})`);
-    
+            
     const distance = finalPosition.distanceTo(expectedPosition);
     const passed = distance <= tolerance;
     
@@ -1127,8 +1113,7 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
         
         // Check if projectile hit the ground
         if (pose.p.y <= 0.15) { // radius of projectile
-          Logger.system('PrecisionPhysics', `Projectile hit ground at position: (${pose.p.x.toFixed(2)}, ${pose.p.y.toFixed(2)}, ${pose.p.z.toFixed(2)})`);
-          projectileTest.testCompleted = true;
+                    projectileTest.testCompleted = true;
           projectileTest.landingTime = (Date.now() - projectileTest.startTime) / 1000;
           
           // Run validation immediately

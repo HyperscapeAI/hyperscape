@@ -6,6 +6,7 @@
 import THREE from '../extras/three';
 import type { World, System } from '../types';
 import type { GroundPositionResult, GroundHeightResult } from '../types/ground-types';
+import  { TerrainSystem } from '../systems/TerrainSystem';
 
 const _tempVec3_1 = new THREE.Vector3();
 const _tempVec3_2 = new THREE.Vector3();
@@ -31,10 +32,7 @@ export function getGroundPosition(
   }
 
   // Method 1: Use terrain system if available
-  const terrainSystem = world.getSystem('terrain') as System & {
-    getHeightAtPosition?(x: number, z: number): number | null;
-    getHeightAt?(x: number, z: number): number | null;
-  };
+  const terrainSystem = world.getSystem<TerrainSystem>('terrain');
   if (terrainSystem) {
     let groundHeight: number | null = null;
     

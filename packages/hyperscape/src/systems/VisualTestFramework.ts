@@ -643,8 +643,7 @@ export abstract class VisualTestFramework extends SystemBase {
     
     // Also add to world.entities.players for combat system compatibility
     this.world.entities.players.set(player.id, player);
-    Logger.system('VisualTestFramework', `Player ${player.id} registered in world.entities.players`);
-
+    
     return player
   }
 

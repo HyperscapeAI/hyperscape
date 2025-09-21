@@ -108,8 +108,7 @@ export class CookingTestSystem extends VisualTestFramework {
         stats: { cooking: cookingLevel, health: 100, maxHealth: 100 }
       });
       
-      Logger.system('CookingTestSystem', `Created fake player: ${player.id}, fakePlayers size after create: ${this.fakePlayers.size}`);
-
+      
       const rawFish = getItem(ITEM_ID_TO_KEY[ITEM_IDS.RAW_FISH] || 'raw_fish');
       if (rawFish) {
         player.inventory = {
@@ -424,27 +423,18 @@ export class CookingTestSystem extends VisualTestFramework {
       return new Promise((resolve, reject) => {
           const tinderboxKey = ITEM_ID_TO_KEY[ITEM_IDS.TINDERBOX] || 'tinderbox';
           const logsKey = ITEM_ID_TO_KEY[ITEM_IDS.LOGS] || 'logs';
-          Logger.system('CookingTestSystem', `Looking for tinderbox with key: ${tinderboxKey}`);
-          Logger.system('CookingTestSystem', `Looking for logs with key: ${logsKey}`);
-          
+                              
           const tinderbox = getItem(tinderboxKey);
           const logs = getItem(logsKey);
           
-          Logger.system('CookingTestSystem', `Tinderbox found: ${tinderbox ? 'YES' : 'NO'}`);
-          Logger.system('CookingTestSystem', `Logs found: ${logs ? 'YES' : 'NO'}`);
-          
+                              
           let player = this.getPlayer(playerId);
-          Logger.system('CookingTestSystem', `Fake player found: ${player ? 'YES' : 'NO'}, playerId: ${playerId}`);
-          Logger.system('CookingTestSystem', `Fake players map size: ${this.fakePlayers.size}`);
-          Logger.system('CookingTestSystem', 'Fake players IDs', { ids: Array.from(this.fakePlayers.keys()) });
-          
+                                        
           // If fake player not found, wait and retry once
           if (!player) {
-              Logger.system('CookingTestSystem', 'Fake player not found, waiting 500ms and retrying...');
-              setTimeout(() => {
+                            setTimeout(() => {
                   player = this.getPlayer(playerId);
-                  Logger.system('CookingTestSystem', `Retry - Fake player found: ${player ? 'YES' : 'NO'}`);
-                  
+                                    
                   if (tinderbox && logs && player) {
               player.inventory.items.push({ id: 'inv_2', itemId: tinderbox.id, quantity: 1, slot: 1, metadata: null });
               player.inventory.items.push({ id: 'inv_3', itemId: logs.id, quantity: 1, slot: 2, metadata: null });

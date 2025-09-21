@@ -28,9 +28,9 @@ export function logError(
   severity: ErrorSeverity = ErrorSeverity.ERROR
 ): void {
   const prefix = `[${context.system}]${context.method ? ` ${context.method}` : ''}`;
-  // Assume error is Error if it has message property, otherwise treat as string
-  const errorMessage = typeof error === 'string' ? error : (error as Error).message;
-  const stack = typeof error === 'string' ? undefined : (error as Error).stack;
+  // Strong type assumption - if error is not a string, it's an Error object
+  const errorMessage = (error as Error).message || (error as string);
+  const stack = (error as Error).stack;
   
   const fullMessage = `${prefix} ${severity}: ${message} - ${errorMessage}`;
   

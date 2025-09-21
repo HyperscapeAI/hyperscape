@@ -172,8 +172,7 @@ export class EquipmentSystem extends SystemBase {
     
     const itemData = this.getItemData(data.itemId);
     if (!itemData) {
-      Logger.system('EquipmentSystem', ` Unknown item: ${data.itemId}`);
-      return;
+            return;
     }
     
     // Determine if this is equippable
@@ -201,20 +200,17 @@ export class EquipmentSystem extends SystemBase {
     const equipment = this.playerEquipment.get(data.playerId);
     
     if (!player || !equipment) {
-      Logger.system('EquipmentSystem', ` Player or equipment not found: ${data.playerId}`);
-      return;
+            return;
     }
     
     const itemData = this.getItemData(data.itemId);
     if (!itemData) {
-      Logger.system('EquipmentSystem', ` Item not found: ${data.itemId}`);
-      return;
+            return;
     }
     
     const equipSlot = this.getEquipmentSlot(itemData);
     if (!equipSlot) {
-      Logger.system('EquipmentSystem', ` Item not equippable: ${itemData.name}`);
-      this.sendMessage(data.playerId, `${itemData.name} cannot be equipped.`, 'warning');
+            this.sendMessage(data.playerId, `${itemData.name} cannot be equipped.`, 'warning');
       return;
     }
     
@@ -231,8 +227,7 @@ export class EquipmentSystem extends SystemBase {
     
     // Check if item is in inventory
     if (!this.playerHasItem(data.playerId, data.itemId)) {
-      Logger.system('EquipmentSystem', ` Player ${data.playerId} doesn't have item ${data.itemId}`);
-      return;
+            return;
     }
     
     // Perform the equipment
@@ -250,8 +245,7 @@ export class EquipmentSystem extends SystemBase {
     
     // Check for valid itemId before calling getItemData
     if (data.itemId === null || data.itemId === undefined) {
-      Logger.system('EquipmentSystem', ` equipItem called with invalid itemId for player ${data.playerId}`);
-      return;
+            return;
     }
     
     const itemData = this.getItemData(data.itemId);
@@ -361,8 +355,7 @@ export class EquipmentSystem extends SystemBase {
   private forceEquipItem(playerId: string, itemData: Item, slot: string): void {
     const equipment = this.playerEquipment.get(playerId);
     if (!equipment) {
-      Logger.system('EquipmentSystem', ` No equipment data for player ${playerId}, initializing...`);
-      this.initializePlayerEquipment({ id: playerId });
+            this.initializePlayerEquipment({ id: playerId });
       return;
     }
     
@@ -544,15 +537,13 @@ export class EquipmentSystem extends SystemBase {
       }
     }
     
-    Logger.system('EquipmentSystem', ` Player ${playerId} does not have item ${itemId}`);
-    return false;
+        return false;
   }
 
   private getItemData(itemId: string | number): Item | null {
     // Check for null/undefined itemId first
     if (itemId === null || itemId === undefined) {
-      Logger.system('EquipmentSystem', 'getItemData called with null/undefined itemId');
-      return null;
+            return null;
     }
     
     // Get item data through centralized DataManager
@@ -614,8 +605,7 @@ export class EquipmentSystem extends SystemBase {
       };
     }
     
-    Logger.system('EquipmentSystem', ` Item not found: ${itemId}`);
-    return null;
+        return null;
   }
 
   private inferItemTypeFromId(itemId: string): { type: string; weaponType?: string; armorSlot?: string } {
@@ -985,8 +975,7 @@ export class EquipmentSystem extends SystemBase {
     this.playerEquipment.clear();
     
     
-    Logger.system('EquipmentSystem', 'Equipment system destroyed and cleaned up');
-    
+        
     // Call parent cleanup
     super.destroy();
   }

@@ -424,8 +424,7 @@ export class ResourceGatheringTestSystem extends VisualTestFramework {
       }
 
       const currentPhase = phases[phase];
-              Logger.system('ResourceGatheringTestSystem', `[${stationId}] Starting phase: ${currentPhase}`);
-      
+                    
       // Simulate each phase
       testData.resourcesGathered++;
       testData.xpGained += 20;

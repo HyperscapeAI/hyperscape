@@ -76,12 +76,10 @@ export class PhysicsTestSystem extends SystemBase {
     const passed = Array.from(this.testResults.values()).filter(r => r).length;
     const total = this.testResults.size;
     
-    Logger.system('PhysicsTestSystem', `Physics tests completed: ${passed}/${total} passed`);
-    
+        
     // Report individual results
     for (const [testName, result] of this.testResults.entries()) {
-      Logger.system('PhysicsTestSystem', `${testName}: ${result ? 'PASSED' : 'FAILED'}`);
-    }
+          }
   }
 
   private async testBasicRaycasting(): Promise<void> {
@@ -100,8 +98,7 @@ export class PhysicsTestSystem extends SystemBase {
       // Create hit point visualization
       this.createTestCube('hit_point', hit.point, this.TEST_COLORS.HITPOINT);
       this.testResults.set('basic_raycast', true);
-      Logger.system('PhysicsTestSystem', 'Basic raycast hit detected at', { point: hit.point });
-    } else {
+          } else {
       this.testResults.set('basic_raycast', false);
     }
   }
@@ -132,8 +129,7 @@ export class PhysicsTestSystem extends SystemBase {
     
     this.testResults.set('ranged_range', rangedInRange);
     
-          Logger.system('PhysicsTestSystem', `Combat range test: melee=${meleeDistance.toFixed(2)}m (${meleeInRange}), ranged=${rangedDistance.toFixed(2)}m (${rangedInRange})`);
-  }
+            }
 
   private async testTerrainCollision(): Promise<void> {
     

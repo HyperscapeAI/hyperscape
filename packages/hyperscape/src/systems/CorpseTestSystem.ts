@@ -159,8 +159,7 @@ export class CorpseTestSystem extends SystemBase {
       
       // Give more time for corpse to be fully created and added to scene
       setTimeout(() => {
-        Logger.system('CorpseTestSystem', 'Starting corpse interaction test after delay');
-        this.testCorpseClick(testId);
+                this.testCorpseClick(testId);
       }, 4000);
       
       // Verify loot access
@@ -292,27 +291,23 @@ export class CorpseTestSystem extends SystemBase {
   }
 
   private async simulateMobDeath(testId: string, mobType: string, position: { x: number; y: number; z: number }): Promise<void> {
-    Logger.system('CorpseTestSystem', `simulateMobDeath called for test: ${testId}`);
-    
+        
     const timestamp = Date.now();
     const random = Math.floor(Math.random() * 10000);
     const mobId = `test_mob_${testId}_${timestamp}_${random}`;
     const corpseId = `corpse_${testId}_${timestamp}_${random}`;
     
-          Logger.system('CorpseTestSystem', `Creating corpse with ID: ${corpseId}`);
-    
+              
     const testData = this.testData.get(testId);
     if (testData) {
       testData.corpseId = corpseId;
-      Logger.system('CorpseTestSystem', `Set corpseId in test data: ${corpseId}`);
-    } else {
+          } else {
       Logger.systemError('CorpseTestSystem', `Test data not found for: ${testId}`);
     }
     
     // Create corpse visual first (gray cube to represent dead mob)
     const corpseVisual = this.createCorpseVisual(corpseId, position, mobType);
-    Logger.system('CorpseTestSystem', `Created corpse visual: ${corpseVisual ? 'success' : 'failed'}`);
-    
+        
     // Emit mob death event
     this.emitTypedEvent(EventType.MOB_DIED, {
       mobId,
@@ -363,13 +358,11 @@ export class CorpseTestSystem extends SystemBase {
     
     if (this.world.stage && this.world.stage.scene) {
       this.world.stage.scene.add(corpse);
-      Logger.system('CorpseTestSystem', `Corpse added to scene: ${corpseId}`);
-    } else {
+          } else {
       Logger.systemError('CorpseTestSystem', `Failed to add corpse to scene - scene not available`);
     }
     
-    Logger.system('CorpseTestSystem', `Corpse visual created at position: ${position.x}, ${position.y}, ${position.z}`);
-    return corpse;
+        return corpse;
   }
 
   private verifyCorpseSpawned(testId: string): void {
@@ -413,8 +406,7 @@ export class CorpseTestSystem extends SystemBase {
       return;
     }
     
-    Logger.system('CorpseTestSystem', `testCorpseClick for test: ${testId}, corpseId: ${testData.corpseId}`);
-    
+        
     // First verify the corpse exists before trying to click it
     const existingCorpse = this.findCorpseById(testData.corpseId);
     if (!existingCorpse) {
@@ -423,16 +415,14 @@ export class CorpseTestSystem extends SystemBase {
       return;
     }
     
-          Logger.system('CorpseTestSystem', 'Corpse exists, proceeding with click test');
-    
+              
     testData.phase = 'testing_interaction';
     
     // Initialize clicked to false to ensure clean test
     existingCorpse.userData.clicked = false;
     
     // Simulate player clicking on corpse
-          Logger.system('CorpseTestSystem', `Emitting CORPSE_CLICK event with corpseId: ${testData.corpseId}`);
-    this.emitTypedEvent(EventType.CORPSE_CLICK, {
+              this.emitTypedEvent(EventType.CORPSE_CLICK, {
       corpseId: testData.corpseId,
       playerId: 'test_player',
       position: testData.position
@@ -440,16 +430,13 @@ export class CorpseTestSystem extends SystemBase {
     
     // Wait for interaction response
     setTimeout(() => {
-      Logger.system('CorpseTestSystem', `Checking if corpse interaction worked for: ${testData.corpseId}`);
-      
+            
       // Check if interaction worked
       const corpse = this.findCorpseById(testData.corpseId);
       if (corpse) {
-        Logger.system('CorpseTestSystem', `Found corpse, userData.clicked: ${corpse.userData.clicked}`);
-        if (corpse.userData.clicked) {
+                if (corpse.userData.clicked) {
           testData.corpseInteractable = true;
-          Logger.system('CorpseTestSystem', 'Corpse interaction successful!');
-        } else {
+                  } else {
           Logger.systemError('CorpseTestSystem', 'Corpse found but not marked as clicked');
           this.recordError(testId, 'Corpse click interaction did not register');
         }
@@ -627,15 +614,13 @@ export class CorpseTestSystem extends SystemBase {
   }
 
   private handleCorpseInteraction(data: EventPayload<typeof EventType.CORPSE_CLICK>): void {
-    Logger.system('CorpseTestSystem', 'handleCorpseInteraction called with', { data });
-    
+        
     // Mark corpse as clicked for testing
     const corpseId = data.corpseId;
     const corpse = this.findCorpseById(corpseId);
     
     if (corpse) {
-      Logger.system('CorpseTestSystem', `Found corpse: ${corpseId}, marking as clicked`);
-      corpse.userData.clicked = true;
+            corpse.userData.clicked = true;
     } else {
       Logger.systemError('CorpseTestSystem', `Could not find corpse with ID: ${corpseId}`);
       
@@ -647,8 +632,7 @@ export class CorpseTestSystem extends SystemBase {
             corpses.push(obj.name);
           }
         });
-        Logger.system('CorpseTestSystem', 'Available corpses in scene', { corpses });
-      }
+              }
     }
   }
 
@@ -676,12 +660,10 @@ export class CorpseTestSystem extends SystemBase {
     
     const obj = this.world.stage.scene.getObjectByName(corpseId);
     if (!obj) {
-      Logger.system('CorpseTestSystem', `Corpse ${corpseId} not found in scene`);
-      return null;
+            return null;
     }
     
-    Logger.system('CorpseTestSystem', `Found corpse ${corpseId} in scene`);
-    return obj as THREE.Object3D;
+        return obj as THREE.Object3D;
   }
 
   private findAllCorpsesNear(position: { x: number; y: number; z: number }, radius: number): THREE.Object3D[] {

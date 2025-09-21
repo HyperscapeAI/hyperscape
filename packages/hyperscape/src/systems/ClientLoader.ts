@@ -395,7 +395,7 @@ export class ClientLoader extends SystemBase {
       promise = this.rgbeLoader.loadAsync(localUrl).then(texture => {
         this.results.set(key, texture)
         return texture
-      })
+      }).finally(() => { try { URL.revokeObjectURL(localUrl) } catch {} })
     }
     if (type === 'image') {
       promise = new Promise(resolve => {
@@ -403,7 +403,9 @@ export class ClientLoader extends SystemBase {
         img.onload = () => {
           this.results.set(key, img)
           resolve(img)
+          try { URL.revokeObjectURL(localUrl) } catch {}
         }
+        img.onerror = () => { try { URL.revokeObjectURL(localUrl) } catch {} }
         img.src = localUrl
       })
     }
@@ -417,7 +419,7 @@ export class ClientLoader extends SystemBase {
       promise = this.texLoader.loadAsync(localUrl).then(texture => {
         this.results.set(key, texture)
         return texture
-      })
+      }).finally(() => { try { URL.revokeObjectURL(localUrl) } catch {} })
     }
     if (type === 'model') {
       promise = this.gltfLoader.loadAsync(localUrl).then(gltf => {
@@ -443,7 +445,7 @@ export class ClientLoader extends SystemBase {
         }
         this.results.set(key, model)
         return model
-      })
+      }).finally(() => { try { URL.revokeObjectURL(localUrl) } catch {} })
     }
     if (type === 'emote') {
       promise = this.gltfLoader.loadAsync(localUrl).then(glb => {
@@ -461,7 +463,7 @@ export class ClientLoader extends SystemBase {
         }
         this.results.set(key, emote)
         return emote
-      })
+      }).finally(() => { try { URL.revokeObjectURL(localUrl) } catch {} })
     }
     if (type === 'avatar') {
        this.logger.info(`Loading avatar from: ${localUrl}`)
@@ -537,7 +539,7 @@ export class ClientLoader extends SystemBase {
         }
         this.results.set(key, avatar)
         return avatar
-      })
+      }).finally(() => { try { URL.revokeObjectURL(localUrl) } catch {} })
     }
     if (type === 'script') {
       // DISABLED: Script loading from external files

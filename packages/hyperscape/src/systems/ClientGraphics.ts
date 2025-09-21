@@ -261,7 +261,20 @@ export class ClientGraphics extends System {
 
   override destroy() {
     this.resizer.disconnect()
-    this.viewport.removeChild(this.renderer.domElement)
+    // Unsubscribe from prefs changes
+    this.world.prefs?.off('change', this.onPrefsChange)
+    // Remove XR session listener
+    this.world.off(EventType.XR_SESSION, this.onXRSession)
+    // Ensure animation loop is stopped
+    this.renderer.setAnimationLoop?.(null as unknown as (() => void))
+    // Dispose postprocessing composer and effects if available
+    try { (this.composer as unknown as { dispose?: () => void })?.dispose?.() } catch {}
+    try { (this.bloom as unknown as { dispose?: () => void })?.dispose?.() } catch {}
+    // Remove and dispose renderer
+    if (this.renderer?.domElement?.parentElement === this.viewport) {
+      this.viewport.removeChild(this.renderer.domElement)
+    }
+    // Do not dispose the shared renderer globally to avoid breaking other systems during hot reloads
   }
 }
 

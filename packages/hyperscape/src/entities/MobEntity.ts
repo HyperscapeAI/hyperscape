@@ -510,20 +510,21 @@ export class MobEntity extends Entity {
     if (!this.mesh) return;
 
     const healthBarFg = this.mesh.getObjectByName('healthBarFg');
-    if (healthBarFg instanceof THREE.Mesh) {
+    if (healthBarFg) {
+      // Strong type assumption - healthBarFg is a Mesh
+      const mesh = healthBarFg as THREE.Mesh;
       const healthPercent = this.config.currentHealth / this.config.maxHealth;
-      healthBarFg.scale.x = healthPercent;
+      mesh.scale.x = healthPercent;
       
       // Change color based on health
-      if (healthBarFg.material instanceof THREE.MeshBasicMaterial) {
-        const material = healthBarFg.material;
-        if (healthPercent > 0.6) {
-          material.color.setHex(0x00ff00); // Green
-        } else if (healthPercent > 0.3) {
-          material.color.setHex(0xffff00); // Yellow
-        } else {
-          material.color.setHex(0xff0000); // Red
-        }
+      // Strong type assumption - material is MeshBasicMaterial
+      const material = mesh.material as THREE.MeshBasicMaterial;
+      if (healthPercent > 0.6) {
+        material.color.setHex(0x00ff00); // Green
+      } else if (healthPercent > 0.3) {
+        material.color.setHex(0xffff00); // Yellow
+      } else {
+        material.color.setHex(0xff0000); // Red
       }
     }
 

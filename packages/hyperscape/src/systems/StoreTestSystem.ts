@@ -144,8 +144,7 @@ export class StoreTestSystem extends VisualTestFramework {
       (stage as { scene: { add: (mesh: THREE.Mesh) => void } }).scene.add(storeMesh);
     }
     
-    Logger.system('StoreTestSystem', `Created store visual for ${storeType} at`, position);
-  }
+      }
 
   private async runBasicPurchaseTest(stationId: string): Promise<void> {
     const station = this.testStations.get(stationId)!;

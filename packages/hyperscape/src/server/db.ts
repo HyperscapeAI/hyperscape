@@ -160,7 +160,8 @@ let rawDbInstance: RawDB | undefined
 export async function getDB(path: string): Promise<SystemDatabase> {
   if (!dbInstance) {
     try {
-            const raw = await openRawDatabase(path)
+      console.log('[DB] Initializing SQLite database at:', path)
+      const raw = await openRawDatabase(path)
       try { raw.pragma && raw.pragma('journal_mode', 'WAL') } catch {}
       try { raw.pragma && raw.pragma('synchronous', 'NORMAL') } catch {}
       try { raw.pragma && raw.pragma('foreign_keys', 'ON') } catch {}
@@ -172,7 +173,8 @@ export async function getDB(path: string): Promise<SystemDatabase> {
     } catch (error) {
       console.error('[DB] Error initializing database:', error instanceof Error ? error.message : String(error))
       console.error('[DB] Full error:', error)
-            dbInstance = createMockSystemDatabase()
+      console.log('[DB] Falling back to mock database for development')
+      dbInstance = createMockSystemDatabase()
     }
   }
   return dbInstance!
@@ -180,6 +182,19 @@ export async function getDB(path: string): Promise<SystemDatabase> {
 
 export function getRawDB(): RawDB | undefined {
   return rawDbInstance
+}
+
+export function closeDB(): void {
+  if (rawDbInstance) {
+    try {
+      rawDbInstance.close()
+      console.log('[DB] Database connection closed')
+    } catch (error) {
+      console.error('[DB] Error closing database:', error)
+    }
+    rawDbInstance = undefined
+    dbInstance = undefined
+  }
 }
 
 async function migrateRaw(raw: RawDB, systemDb: SystemDatabase): Promise<void> {
@@ -231,7 +246,8 @@ async function migrateRaw(raw: RawDB, systemDb: SystemDatabase): Promise<void> {
             } catch {}
           }
         } else {
-                  }
+          console.log('[DB] Migration #5: entities table does not exist, skipping scale field update')
+        }
       } catch {}
     },
     async db => {
@@ -253,7 +269,8 @@ async function migrateRaw(raw: RawDB, systemDb: SystemDatabase): Promise<void> {
   
   // Plugin migrations after core
   await runPluginMigrationsRaw(raw, systemDb)
-  }
+  console.log('[DB] All migrations completed')
+}
 
 async function runPluginMigrationsRaw(raw: RawDB, systemDb: SystemDatabase): Promise<void> {
   for (const [pluginName, migrations] of Object.entries(pluginMigrations)) {

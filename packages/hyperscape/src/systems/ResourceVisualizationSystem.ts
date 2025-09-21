@@ -157,10 +157,6 @@ export class ResourceVisualizationSystem extends SystemBase {
       position: spawnPoint.position,
       mesh
     });
-    
-    Logger.system('ResourceVisualizationSystem', 
-      `Created ${spawnPoint.type} mesh at (${spawnPoint.position.x.toFixed(1)}, ${spawnPoint.position.y?.toFixed(1) || '0'}, ${spawnPoint.position.z.toFixed(1)})`
-    );
   }
 
   private createTreeMeshInternal(treeType: string, position: Position3D): THREE.Mesh {
@@ -249,10 +245,6 @@ export class ResourceVisualizationSystem extends SystemBase {
       position: data.position,
       mesh
     });
-    
-    Logger.system('ResourceVisualizationSystem', 
-      `Created test tree ${data.id} at (${data.position.x}, ${data.position.y || 0}, ${data.position.z})`
-    );
   }
 
   private createRockMesh(position: Position3D): THREE.Mesh {

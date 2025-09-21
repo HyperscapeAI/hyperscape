@@ -9,6 +9,7 @@ import { SystemBase } from './SystemBase'
 import { PlayerLocal } from '../entities/PlayerLocal'
 
 const _v3_1 = new THREE.Vector3()
+const _quat_1 = new THREE.Quaternion()
 
 // SnapshotData interface moved to shared types
 
@@ -299,7 +300,6 @@ export class ClientNetwork extends SystemBase {
   }
 
   onEntityAdded = (data: EntityData) => {
-    console.log(`[ClientNetwork] onEntityAdded received:`, data)
     // Add entity if method exists
     const newEntity = this.world.entities.add(data)
     if (newEntity) {
@@ -341,31 +341,16 @@ export class ClientNetwork extends SystemBase {
       const p = (changes as { p?: number[]; v?: number[] }).p
       const v = (changes as { v?: number[] }).v
       const q = (changes as { q?: number[] }).q
+      const e = (changes as { e?: string }).e  // emote/animation state
 
-      // Update server position and velocity for local player
-      if (entity instanceof PlayerLocal) {
-        if (p) {
-          entity.updateServerPosition(p[0], p[1], p[2])
-          // Don't immediately snap visual position - let PlayerLocal handle interpolation
-          // This prevents jerky movement from network updates
-        }
-        // Also update velocity if provided
-        if (v) {
-          entity.updateServerVelocity(v[0], v[1], v[2])
-        }
-        if (q && entity.base) {
-          // Apply rotation smoothly
-          entity.base.quaternion.slerp(new THREE.Quaternion(q[0], q[1], q[2], q[3]), 0.3)
-        }
-      }
-      // Apply any non-transform fields (e.g., emote, name)
-      const filtered = { ...changes } as Record<string, unknown>
-      delete (filtered as { p?: unknown }).p
-      delete (filtered as { v?: unknown }).v
-      delete (filtered as { q?: unknown }).q
-      if (Object.keys(filtered).length) {
-        entity.modify(filtered);
-      }
+      // For click-to-move, we need to apply ALL changes including emote
+      // The server sends position, velocity, rotation, and animation state together
+      
+      // Simply apply ALL changes through modify() - it handles everything
+      // No need for separate updateServerPosition/Velocity calls which cause judder
+      entity.modify(changes);
+      
+      // Log for debugging
     } else {
       // Remote entities or non-transform updates on local
       entity.modify(changes)
@@ -421,11 +406,11 @@ export class ClientNetwork extends SystemBase {
     }
   }
 
-  // Handle delta-compressed updates routed through the network
-  // Packets table maps 'deltaUpdate' -> method 'onDeltaUpdate'
-  onDeltaUpdate = (packet: unknown) => {
-    // Re-emit as a world event so the DeltaCompressionSystem can handle
-    this.world.emit('deltaUpdate', packet)
+  // Handle compressed updates routed through the network
+  // Packets table maps 'compressedUpdate' -> method 'onCompressedUpdate'
+  onCompressedUpdate = (packet: unknown) => {
+    // Re-emit as a world event so the EntityInterpolationSystem can handle
+    this.world.emit('compressedUpdate', packet)
   }
 
   onPong = (time: number) => {

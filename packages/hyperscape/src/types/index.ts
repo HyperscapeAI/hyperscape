@@ -72,6 +72,8 @@ export * from './entities';
 export * from './events';
 export * from './identifiers';
 export * from './systems';
+export * from './networking';
+export * from './nodes';
 
 export type Player = PlayerEntity
 
@@ -86,8 +88,7 @@ export type { SkillName } from './test';
 
 // Re-export system-specific types
 export type {
-  ClientControlsSystem,
-  ClientUISystem, ItemRegistrySystem
+  ClientInterfaceSystem, ItemRegistrySystem
 } from './system-interfaces';
 
 // Re-export data types (specific exports to avoid conflicts)
@@ -344,16 +345,15 @@ export type ExtendedChatMessage = ChatMessage;
 export { Chat } from '../systems/Chat';
 export { ClientActions } from '../systems/ClientActions';
 export { ClientAudio } from '../systems/ClientAudio';
-export { ClientControls } from '../systems/ClientControls';
+export { ClientInput } from '../systems/ClientInput'; // Merged Controls, InputSystem, Pointer
 export { ClientEnvironment } from '../systems/ClientEnvironment';
 export { ClientGraphics } from '../systems/ClientGraphics';
 export { ClientLiveKit } from '../systems/ClientLiveKit';
 export { ClientLoader } from '../systems/ClientLoader';
 export { ClientNetwork } from '../systems/ClientNetwork';
-export { ClientPrefs } from '../systems/ClientPrefs';
-export { ClientStats } from '../systems/ClientStats';
-export { ClientUI } from '../systems/ClientUI';
-export { Server as ServerServer } from '../systems/Server';
+export { ClientInterface } from '../systems/ClientInterface'; // Merged UI, Prefs, Stats, Target
+export { ClientRuntime } from '../systems/ClientRuntime'; // Merged Client + Diagnostics
+export { ServerRuntime } from '../systems/ServerRuntime'; // Merged Server + Monitor
 // ServerNetwork is server-only and should not be exported for client use
 // Use type-only import if needed: import type { ServerNetwork } from '../systems/ServerNetwork';
 export { Settings } from '../systems/Settings';

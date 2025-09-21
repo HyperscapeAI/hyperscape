@@ -29,6 +29,7 @@ const names = [
   'playerState',
   'serverStateUpdate',
   'deltaUpdate',
+  'compressedUpdate',
 ]
 
 const byName: Record<string, PacketInfo> = {}

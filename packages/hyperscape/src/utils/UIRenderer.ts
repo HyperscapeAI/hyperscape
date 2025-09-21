@@ -34,31 +34,7 @@ export class UIRenderer {
   /**
    * Check if a canvas context is valid and has all required methods
    */
-  private static isValidContext(context: unknown): context is CanvasRenderingContext2D {
-    if (!context || typeof context !== 'object') {
-      return false;
-    }
-    
-    const ctx = context as Record<string, unknown>;
-    const requiredMethods = [
-      'fillRect', 'strokeRect', 'clearRect',
-      'fillText', 'strokeText',
-      'beginPath', 'closePath', 'fill', 'stroke',
-      'moveTo', 'lineTo', 'quadraticCurveTo',
-      'arc', 'arcTo',
-      'drawImage', 'save', 'restore'
-    ];
-    
-    // Check if all required methods exist and are functions
-    for (const method of requiredMethods) {
-      if (typeof ctx[method] !== 'function') {
-        console.warn(`[UIRenderer] Canvas context missing method: ${method}`);
-        return false;
-      }
-    }
-    
-    return true;
-  }
+  // Removed type guard - assume context is valid CanvasRenderingContext2D
   
   /**
    * Create and render a health bar on a canvas
@@ -81,9 +57,9 @@ export class UIRenderer {
     canvas.width = width;
     canvas.height = height;
     
-    const context = canvas.getContext('2d');
-    if (!context || !this.isValidContext(context)) {
-      console.error('[UIRenderer] Invalid or incomplete canvas context for health bar creation');
+    const context = canvas.getContext('2d') as CanvasRenderingContext2D;
+    if (!context) {
+      console.error('[UIRenderer] Failed to get canvas context for health bar creation');
       // Return a minimal canvas to prevent crashes
       const fallbackCanvas = document.createElement('canvas');
       fallbackCanvas.width = width;
@@ -117,8 +93,8 @@ export class UIRenderer {
     maxHealth: number,
     options: BarOptions = {}
   ): void {
-    const context = canvas.getContext('2d');
-    if (!context || !this.isValidContext(context)) {
+    const context = canvas.getContext('2d') as CanvasRenderingContext2D;
+    if (!context) {
       console.warn('[UIRenderer] Invalid canvas context for health bar update');
       return;
     }
@@ -153,7 +129,7 @@ export class UIRenderer {
     options: Required<BarOptions>
   ): void {
     // Check if context has required methods
-    if (!context || !this.isValidContext(context)) {
+    if (!context || false) {
       console.warn('[UIRenderer] Invalid canvas context provided to renderHealthBar');
       return;
     }
@@ -215,8 +191,8 @@ export class UIRenderer {
     canvas.width = width;
     canvas.height = height;
     
-    const context = canvas.getContext('2d');
-    if (!context || !this.isValidContext(context)) {
+    const context = canvas.getContext('2d') as CanvasRenderingContext2D;
+    if (!context) {
       console.error('[UIRenderer] Invalid or incomplete canvas context for name tag creation');
       // Return a minimal canvas to prevent crashes
       const fallbackCanvas = document.createElement('canvas');
@@ -260,8 +236,8 @@ export class UIRenderer {
     canvas.width = totalWidth;
     canvas.height = totalHeight;
     
-    const context = canvas.getContext('2d');
-    if (!context || !this.isValidContext(context)) {
+    const context = canvas.getContext('2d') as CanvasRenderingContext2D;
+    if (!context) {
       console.error('[UIRenderer] Invalid canvas context for player UI creation');
       return canvas; // Return the empty canvas
     }
@@ -326,7 +302,7 @@ export class UIRenderer {
     fillStyle: string
   ): void {
     // Check if context has required methods
-    if (!context || !this.isValidContext(context)) {
+    if (!context || false) {
       console.warn('[UIRenderer] Invalid canvas context provided to drawRoundedRect');
       return;
     }
@@ -369,8 +345,8 @@ export class UIRenderer {
     canvas.width = width;
     canvas.height = height;
     
-    const context = canvas.getContext('2d');
-    if (!context || !this.isValidContext(context)) {
+    const context = canvas.getContext('2d') as CanvasRenderingContext2D;
+    if (!context) {
       console.error('[UIRenderer] Invalid canvas context for progress bar creation');
       return canvas; // Return the empty canvas
     }

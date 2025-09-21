@@ -138,6 +138,12 @@ export class TerrainSystem extends System {
    * Queue a tile for generation if not already queued or present
    */
   private enqueueTileForGeneration(tileX: number, tileZ: number, _generateContent = true): void {
+    // Validate coordinates before queuing
+    if (!isFinite(tileX) || !isFinite(tileZ)) {
+      console.warn(`[TerrainSystem.enqueueTileForGeneration] Invalid tile coordinates: tileX=${tileX}, tileZ=${tileZ}`)
+      return
+    }
+    
     const key = `${tileX}_${tileZ}`
     if (this.terrainTiles.has(key) || this.pendingTileSet.has(key)) return
     this.pendingTileSet.add(key)
@@ -158,6 +164,13 @@ export class TerrainSystem extends System {
       const key = this.pendingTileKeys.shift()!
       this.pendingTileSet.delete(key)
       const [x, z] = key.split('_').map(Number)
+      
+      // Validate parsed coordinates
+      if (!isFinite(x) || !isFinite(z)) {
+        console.warn(`[TerrainSystem.processTileGenerationQueue] Invalid key format: ${key} -> x=${x}, z=${z}`)
+        continue
+      }
+      
       this.generateTile(x, z)
       generated++
     }
@@ -172,14 +185,19 @@ export class TerrainSystem extends System {
     const tile = this.terrainTiles.get(key)
     if (!tile || tile.collision) return
 
-        const geometry = tile.mesh.geometry
-        const transformedGeometry = geometry.clone()
-        transformedGeometry.translate(tile.x * this.CONFIG.TILE_SIZE, 0, tile.z * this.CONFIG.TILE_SIZE)
+    const geometry = tile.mesh.geometry
+    const transformedGeometry = geometry.clone()
+    transformedGeometry.translate(tile.x * this.CONFIG.TILE_SIZE, 0, tile.z * this.CONFIG.TILE_SIZE)
 
-        const meshHandle = geometryToPxMesh(this.world, transformedGeometry, false)
-        if (meshHandle) {
-          tile.collision = meshHandle
-        }
+    try {
+      const meshHandle = geometryToPxMesh(this.world, transformedGeometry, false)
+      if (meshHandle) {
+        tile.collision = meshHandle
+      }
+    } finally {
+      // Avoid leaked cloned geometry
+      transformedGeometry.dispose()
+    }
   }
 
   private initializeBiomeCenters(): void {
@@ -1647,6 +1665,8 @@ export class TerrainSystem extends System {
     // Remove from maps
     this.terrainTiles.delete(tile.key)
     this.activeChunks.delete(tile.key)
+    // Remove cached bounding box if present
+    this.terrainBoundingBoxes.delete(tile.key)
     try {
       this.world.emit('terrain:tile:unloaded', { tileId: `${tile.x},${tile.z}` })
     } catch (_e) {}
@@ -2356,6 +2376,12 @@ export class TerrainSystem extends System {
       const x = playerPos.x
       const z = playerPos.z
 
+      // Skip if position contains NaN values
+      if (!isFinite(x) || !isFinite(z)) {
+        console.warn(`[TerrainSystem] Player ${playerId} has invalid position: x=${x}, z=${z}`)
+        continue
+      }
+
       // Calculate tile position
       const tileX = Math.floor(x / this.CONFIG.TILE_SIZE)
       const tileZ = Math.floor(z / this.CONFIG.TILE_SIZE)
@@ -2435,6 +2461,13 @@ export class TerrainSystem extends System {
     for (const tileKey of neededTiles) {
       if (!this.terrainTiles.has(tileKey)) {
         const [x, z] = tileKey.split('_').map(Number)
+        
+        // Validate parsed coordinates
+        if (!isFinite(x) || !isFinite(z)) {
+          console.warn(`[TerrainSystem] Invalid tile key during queue: ${tileKey}`)
+          continue
+        }
+        
         let generateContent = true
 
         if (playerCenters.length > 0) {

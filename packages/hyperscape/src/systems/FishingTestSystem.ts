@@ -58,8 +58,7 @@ export class FishingTestSystem extends VisualTestFramework {
         const testStations = Array.from(this.testData.entries());
         for (const [stationId, testData] of testStations) {
           if (testData.player.id === data.playerId) {
-            Logger.system('FishingTestSystem', `Received fishing message for ${stationId}: ${data.message}`);
-          }
+                      }
         }
       }
     });
@@ -660,8 +659,7 @@ export class FishingTestSystem extends VisualTestFramework {
     const testData = this.testData.get(stationId);
     if (!testData) return;
 
-    Logger.system('FishingTestSystem', `Testing fishing failure: ${failureType} for ${stationId}`);
-
+    
     // Check if resource system is available
     if (!this.resourceSystem) {
       Logger.systemError('FishingTestSystem', 'Resource system not available, passing test by default');
@@ -689,8 +687,7 @@ export class FishingTestSystem extends VisualTestFramework {
     // Listen for failure messages
     const messageSub = this.subscribe(EventType.UI_MESSAGE, (data: { playerId: string; message: string; type: 'info' | 'success' | 'error' | 'warning' }) => {
       if (data.playerId === testData.player.id) {
-        Logger.system('FishingTestSystem', `Received message for failure test: ${data.message}`);
-        
+                
         // Check for expected failure messages (more lenient matching)
         const messageLower = data.message.toLowerCase();
         if ((failureType === 'no_rod' && (messageLower.includes('fishing rod') || messageLower.includes('equip') || messageLower.includes('need'))) ||

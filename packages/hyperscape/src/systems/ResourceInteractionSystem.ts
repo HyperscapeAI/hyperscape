@@ -90,8 +90,7 @@ export class ResourceInteractionSystem extends SystemBase {
         isAvailable: true,
         requiredTool: 'hatchet'
       });
-      Logger.system('ResourceInteractionSystem', `Registered test tree: ${data.id} at position`, { ...data.position });
-    });
+          });
 
     // Listen for resource depletion
     this.subscribe(EventType.RESOURCE_DEPLETED, (data: { resourceId: string }) => {
@@ -138,10 +137,13 @@ export class ResourceInteractionSystem extends SystemBase {
     
     if (this.canvas) {
       // Add event handlers with capture phase for higher priority
-      // This ensures we handle events before camera controls
-      this.canvas.addEventListener('contextmenu', this.onContextMenu.bind(this), true);
-      this.canvas.addEventListener('mousedown', this.onMouseDown.bind(this), true);
-      this.canvas.addEventListener('click', this.onLeftClick.bind(this), true);
+      // IMPORTANT: bind once so we can remove listeners later without leaks
+      this.onContextMenu = this.onContextMenu.bind(this)
+      this.onMouseDown = this.onMouseDown.bind(this)
+      this.onLeftClick = this.onLeftClick.bind(this)
+      this.canvas.addEventListener('contextmenu', this.onContextMenu, true)
+      this.canvas.addEventListener('mousedown', this.onMouseDown, true)
+      this.canvas.addEventListener('click', this.onLeftClick, true)
     }
   }
 
@@ -177,9 +179,11 @@ export class ResourceInteractionSystem extends SystemBase {
     const resource = this.getResourceAtPosition(event.clientX, event.clientY);
     
     if (resource) {
+      // Only prevent default and stop propagation if we're actually clicking on a resource
+      // This allows click-to-move to work when not clicking on resources
       event.preventDefault();
       event.stopPropagation();
-      event.stopImmediatePropagation();
+      // Don't use stopImmediatePropagation - let other handlers in the same phase run
       
       // Get local player
       const localPlayer = this.getLocalPlayer();
@@ -349,8 +353,7 @@ export class ResourceInteractionSystem extends SystemBase {
     const localPlayer = this.world.getPlayer();
     if (!localPlayer) return;
     
-    Logger.system('ResourceInteractionSystem', `Starting to chop tree: ${resource.id}`);
-    
+        
     // Calculate position near tree (1.5 units away)
     const playerPos = localPlayer.position;
     const treePos = resource.position;
@@ -413,8 +416,7 @@ export class ResourceInteractionSystem extends SystemBase {
           playerPosition: currentPlayer.position
         });
         
-        Logger.system('ResourceInteractionSystem', 'Player reached tree, starting gathering animation');
-      }
+              }
       
       // Timeout after 10 seconds
       if (Date.now() - this.activeGathering.startTime > 10000) {
@@ -431,8 +433,7 @@ export class ResourceInteractionSystem extends SystemBase {
     const localPlayer = this.world.getPlayer();
     if (!localPlayer) return;
     
-    Logger.system('ResourceInteractionSystem', 'Starting gathering animation (jump emote)');
-    
+        
     // Play jump animation every second (since we don't have a chop animation)
     let animationCount = 0;
     const maxAnimations = 3; // 3 jumps for gathering
@@ -459,15 +460,13 @@ export class ResourceInteractionSystem extends SystemBase {
       
       animationCount++;
       
-      Logger.system('ResourceInteractionSystem', `Chopping animation ${animationCount}/${maxAnimations}`);
-    }, 1000);
+          }, 1000);
   }
 
   private stopGatheringAnimation(): void {
     if (this.activeGathering?.animationInterval) {
       clearInterval(this.activeGathering.animationInterval);
-      Logger.system('ResourceInteractionSystem', 'Stopped gathering animation');
-    }
+          }
     this.activeGathering = null;
   }
 
@@ -476,8 +475,7 @@ export class ResourceInteractionSystem extends SystemBase {
     const localPlayer = this.world.getPlayer();
     if (!localPlayer) return;
     
-    Logger.system('ResourceInteractionSystem', `Starting to mine: ${_resource.id}`);
-    
+        
     // For now, just emit a message - implement similar to chopping
     this.emitTypedEvent(EventType.UI_MESSAGE, {
       playerId: localPlayer.id,
@@ -491,8 +489,7 @@ export class ResourceInteractionSystem extends SystemBase {
     const localPlayer = this.world.getPlayer();
     if (!localPlayer) return;
     
-    Logger.system('ResourceInteractionSystem', `Starting to fish: ${_resource.id}`);
-    
+        
     // For now, just emit a message - implement similar to chopping
     this.emitTypedEvent(EventType.UI_MESSAGE, {
       playerId: localPlayer.id,
@@ -540,7 +537,6 @@ export class ResourceInteractionSystem extends SystemBase {
 
   private registerResource(resource: ResourceInteractable): void {
     this.resources.set(resource.id, resource);
-    Logger.system('ResourceInteractionSystem', `Registered resource: ${resource.id} of type ${resource.type}`);
   }
 
   update(_deltaTime: number): void {
@@ -549,9 +545,10 @@ export class ResourceInteractionSystem extends SystemBase {
 
   destroy(): void {
     if (this.canvas) {
-      this.canvas.removeEventListener('contextmenu', this.onContextMenu.bind(this));
-      this.canvas.removeEventListener('mousedown', this.onMouseDown.bind(this));
-      this.canvas.removeEventListener('click', this.onLeftClick.bind(this));
+      // Remove using the same bound references to prevent listener leaks
+      this.canvas.removeEventListener('contextmenu', this.onContextMenu as EventListener);
+      this.canvas.removeEventListener('mousedown', this.onMouseDown as EventListener);
+      this.canvas.removeEventListener('click', this.onLeftClick as EventListener);
     }
     
     if (this.activeGathering?.animationInterval) {

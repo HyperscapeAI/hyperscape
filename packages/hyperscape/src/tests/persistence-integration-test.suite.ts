@@ -87,7 +87,7 @@ export class PersistenceIntegrationTestSuite {
 
       await this.cleanupTestEnvironment()
     } catch (error) {
-      this.addResult('Test Suite Setup', false, error instanceof Error ? error.message : 'Unknown error')
+      this.addResult('Test Suite Setup', false, (error as Error).message)
     }
 
     this.printDetailedResults()
@@ -113,7 +113,7 @@ export class PersistenceIntegrationTestSuite {
 
       this.addResult('Test Environment Setup', true)
     } catch (error) {
-      this.addResult('Test Environment Setup', false, error instanceof Error ? error.message : 'Unknown error')
+      this.addResult('Test Environment Setup', false, (error as Error).message)
       throw error
     }
   }
@@ -195,7 +195,7 @@ export class PersistenceIntegrationTestSuite {
       this.addResult(
         'Player Identity Persistence',
         false,
-        error instanceof Error ? error.message : 'Unknown error',
+        (error as Error).message,
         {},
         duration
       )
@@ -293,7 +293,7 @@ export class PersistenceIntegrationTestSuite {
       this.addResult(
         'Client Disconnect/Reconnect Flow',
         false,
-        error instanceof Error ? error.message : 'Unknown error',
+        (error as Error).message,
         {},
         duration
       )
@@ -457,7 +457,7 @@ export class PersistenceIntegrationTestSuite {
       this.addResult(
         'Gameplay State Persistence',
         false,
-        error instanceof Error ? error.message : 'Unknown error',
+        (error as Error).message,
         {},
         duration
       )
@@ -578,7 +578,7 @@ export class PersistenceIntegrationTestSuite {
       this.addResult(
         'Multi-Session Player Data',
         false,
-        error instanceof Error ? error.message : 'Unknown error',
+        (error as Error).message,
         {},
         duration
       )
@@ -680,7 +680,7 @@ export class PersistenceIntegrationTestSuite {
       this.addResult(
         'Chunk Persistence Flow',
         false,
-        error instanceof Error ? error.message : 'Unknown error',
+        (error as Error).message,
         {},
         duration
       )
@@ -777,7 +777,7 @@ export class PersistenceIntegrationTestSuite {
       this.addResult(
         'Database Integrity',
         false,
-        error instanceof Error ? error.message : 'Unknown error',
+        (error as Error).message,
         {},
         duration
       )
@@ -871,7 +871,7 @@ export class PersistenceIntegrationTestSuite {
       this.addResult(
         'Performance Under Load',
         false,
-        error instanceof Error ? error.message : 'Unknown error',
+        (error as Error).message,
         {},
         duration
       )
@@ -934,7 +934,7 @@ export class PersistenceIntegrationTestSuite {
       )
     } catch (error) {
       const duration = Date.now() - startTime
-      this.addResult('Error Recovery', false, error instanceof Error ? error.message : 'Unknown error', {}, duration)
+      this.addResult('Error Recovery', false, (error as Error).message, {}, duration)
     }
   }
 
@@ -976,7 +976,7 @@ export class PersistenceIntegrationTestSuite {
 
       this.addResult('Test Environment Cleanup', true)
     } catch (error) {
-      this.addResult('Test Environment Cleanup', false, error instanceof Error ? error.message : 'Unknown error')
+      this.addResult('Test Environment Cleanup', false, (error as Error).message)
     }
   }
 

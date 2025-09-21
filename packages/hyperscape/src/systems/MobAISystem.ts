@@ -73,8 +73,7 @@ export class MobAISystem extends SystemBase {
       const mobEntity = this.world.entities.get(mobId) as MobEntity;
       
       if (!mobEntity) {
-        Logger.system('MobAISystem', `Mob entity not available for ${mobId} after timeout, retrying...`);
-        // Try one more time after another delay
+                // Try one more time after another delay
         setTimeout(() => {
           const retryEntity = this.world.entities.get(mobId) as MobEntity;
           if (retryEntity) {
@@ -132,8 +131,7 @@ export class MobAISystem extends SystemBase {
     this.mobStates.set(mobId, aiState);
     this.combatTargets.set(mobId, []);
     
-    Logger.system('MobAISystem', `Registered mob ${mobId} with AI state`);
-  }
+      }
 
   /**
    * Handle mob taking damage

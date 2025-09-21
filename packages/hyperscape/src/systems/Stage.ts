@@ -22,15 +22,18 @@ export type { MaterialOptions, MaterialWrapper, InsertOptions, StageHandle } fro
 
 // Type guards for material properties
 function hasColorProperty(material: THREE.Material): material is MaterialWithColor {
-  return 'color' in material && material.color instanceof THREE.Color;
+  // Strong type assumption - check if material has color property
+  return (material as MaterialWithColor).color !== undefined;
 }
 
 function hasEmissiveProperty(material: THREE.Material): material is MaterialWithEmissive {
-  return 'emissiveIntensity' in material && typeof (material as MaterialWithEmissive).emissiveIntensity === 'number';
+  // Strong type assumption - check if material has emissiveIntensity
+  return (material as MaterialWithEmissive).emissiveIntensity !== undefined;
 }
 
 function hasFogProperty(material: THREE.Material): material is MaterialWithFog {
-  return 'fog' in material;
+  // Strong type assumption - check if material has fog property
+  return (material as MaterialWithFog).fog !== undefined;
 }
 
 export class Stage extends SystemBase {
@@ -374,7 +377,8 @@ export class Stage extends SystemBase {
       // If it's a Node with a mesh property, add the mesh instead
       if ('mesh' in object) {
         const objectWithMesh = object as { mesh: THREE.Object3D };
-        if (objectWithMesh.mesh instanceof THREE.Object3D) {
+        // Strong type assumption - mesh is THREE.Object3D
+        if (objectWithMesh.mesh) {
           this.scene.add(objectWithMesh.mesh);
           return;
         }
@@ -385,11 +389,12 @@ export class Stage extends SystemBase {
       return;
     }
     
-    // Check if it's actually a THREE.Object3D
-    if (object instanceof THREE.Object3D) {
-      this.scene.add(object);
+    // Strong type assumption - object is THREE.Object3D
+    const obj3d = object as THREE.Object3D;
+    if (obj3d) {
+      this.scene.add(obj3d);
     } else {
-      console.warn('[Stage] Object is not an instance of THREE.Object3D:', object);
+      console.warn('[Stage] Object is null or undefined:', object);
     }
   }
 
@@ -399,7 +404,8 @@ export class Stage extends SystemBase {
       // If it's a Node with a mesh property, remove the mesh instead
       if ('mesh' in object) {
         const objectWithMesh = object as { mesh: THREE.Object3D };
-        if (objectWithMesh.mesh instanceof THREE.Object3D) {
+        // Strong type assumption - mesh is THREE.Object3D
+        if (objectWithMesh.mesh) {
           this.scene.remove(objectWithMesh.mesh);
           return;
         }
@@ -409,11 +415,12 @@ export class Stage extends SystemBase {
       return;
     }
     
-    // Check if it's actually a THREE.Object3D
-    if (object instanceof THREE.Object3D) {
-      this.scene.remove(object);
+    // Strong type assumption - object is THREE.Object3D
+    const obj3d = object as THREE.Object3D;
+    if (obj3d) {
+      this.scene.remove(obj3d);
     } else {
-      console.warn('[Stage] Object is not an instance of THREE.Object3D:', object);
+      console.warn('[Stage] Object is null or undefined:', object);
     }
   }
 

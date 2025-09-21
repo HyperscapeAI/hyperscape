@@ -124,8 +124,7 @@ export class SkillsTestSystem extends VisualTestFramework {
       }
     ];
 
-    Logger.system('SkillsTestSystem', `Creating ${testConfigs.length} test stations`);
-
+    
     testConfigs.forEach(config => {
       this.createTestStation(config);
       this.testData.set(config.id, {
@@ -148,11 +147,9 @@ export class SkillsTestSystem extends VisualTestFramework {
         skillsToTest: [],
         testActions: []
       });
-      Logger.system('SkillsTestSystem', `Created test station '${config.id}' with test data`);
-    });
+          });
     
-    Logger.system('SkillsTestSystem', `All test stations created. Test data available for: [${Array.from(this.testData.keys()).join(', ')}]`);
-  }
+      }
 
   private getDefaultSkills(): Skills {
     return {

@@ -166,17 +166,14 @@ export class PlayerSystem extends SystemBase {
     if (!data?.playerId) {
       console.error('[PlayerSystem] ERROR: playerId is undefined in registration data!', data);
     }
-    Logger.system('PlayerSystem', `Player registered: ${data?.playerId}`);
-  }
+      }
 
   async onPlayerEnter(data: PlayerEnterEvent): Promise<void> {
     try {
-      Logger.system('PlayerSystem', `Player entering: ${data.playerId}`);
-
+      
       // Check if player already exists in our system
       if (this.players.has(data.playerId)) {
-        Logger.system('PlayerSystem', 'Player already exists in system');
-        return;
+                return;
       }
 
     // Load player data from database
@@ -244,8 +241,7 @@ export class PlayerSystem extends SystemBase {
     // Update UI
     this.emitPlayerUpdate(data.playerId);
     
-    Logger.system('PlayerSystem', `Player data loaded for ${data.playerId}`, { hasPlayer: !!playerData });
-    } catch (error) {
+        } catch (error) {
       Logger.systemError('PlayerSystem', `Error handling player enter for ${data.playerId}`, 
         error instanceof Error ? error : new Error('Unknown error')
       );
@@ -253,10 +249,8 @@ export class PlayerSystem extends SystemBase {
   }
 
   async onPlayerLeave(data: PlayerLeaveEvent): Promise<void> {
-    try {
       // Only log player leaves if debugging
-      // Logger.system('PlayerSystem', `Player leaving: ${data.playerId}`);
-
+      // 
       // Save player data before removal
       if (this.databaseSystem && this.players.has(data.playerId)) {
         await this.savePlayerToDatabase(data.playerId);
@@ -272,20 +266,12 @@ export class PlayerSystem extends SystemBase {
       clearTimeout(timer);
       this.respawnTimers.delete(data.playerId);
     }
-
-    // Logger.system('PlayerSystem', 'Player cleanup completed');
-    } catch (error) {
-      Logger.systemError('PlayerSystem', `Error handling player leave for ${data.playerId}`, 
-        error instanceof Error ? error : new Error('Unknown error')
-      );
-    }
   }
 
   async updateHealth(data: HealthUpdateEvent): Promise<void> {
     const player = this.players.get(data.entityId);
     if (!player) {
-      Logger.system('PlayerSystem', `Player not found for health update: ${data.entityId}`);
-      return;
+            return;
     }
 
     player.health.current = Math.max(0, Math.min(data.currentHealth, data.maxHealth));
@@ -385,8 +371,7 @@ export class PlayerSystem extends SystemBase {
 
     this.emitPlayerUpdate(playerId);
     
-    Logger.system('PlayerSystem', `Player respawned: ${playerId}`, { spawnPosition });
-  }
+      }
 
   private updateCombatLevel(data: PlayerLevelUpEvent): void {
     const player = this.players.get(data.playerId)!;
@@ -495,8 +480,7 @@ export class PlayerSystem extends SystemBase {
       // In test scenarios, players might not be registered through normal flow
       // Only warn if this seems like a real player ID (not a test ID)
       if (!playerId.startsWith('test-')) {
-        Logger.system('PlayerSystem', `Cannot update position for unknown player: ${playerId}`);
-      }
+              }
       return;
     }
 

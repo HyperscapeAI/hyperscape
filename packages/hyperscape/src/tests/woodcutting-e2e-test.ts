@@ -49,8 +49,7 @@ class WoodcuttingE2ETest {
       return window.world && window.world.initialized;
     }, { timeout: 30000 });
     
-    Logger.system('WoodcuttingE2ETest', 'Game world loaded successfully');
-  }
+      }
   
   async testContextMenuOnTree(): Promise<TestResult> {
     if (!this.page) {
@@ -94,8 +93,7 @@ class WoodcuttingE2ETest {
         return { passed: false, message: 'Could not find tree in world' };
       }
       
-      Logger.system('WoodcuttingE2ETest', `Found tree at screen position: ${treePosition.x}, ${treePosition.y}`);
-      
+            
       // Right-click on the tree
       await this.page.mouse.click(treePosition.x, treePosition.y, { button: 'right' });
       

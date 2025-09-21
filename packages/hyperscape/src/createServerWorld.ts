@@ -1,55 +1,65 @@
 import { World } from './World'
 
-import { Server } from './systems/Server'
+import { ServerRuntime } from './systems/ServerRuntime'
 import { ServerEnvironment } from './systems/ServerEnvironment'
 import { ServerLiveKit } from './systems/ServerLiveKit'
 import { ServerLoader } from './systems/ServerLoader'
-import { ServerMonitor } from './systems/ServerMonitor'
 import { ServerNetwork } from './systems/ServerNetwork'
 
 // Import unified terrain system
 import { TerrainSystem } from './systems/TerrainSystem'
 
-// Import multiplayer movement systems
-import { DeltaCompressionSystem } from './systems/DeltaCompressionSystem'
+// Import multiplayer movement systems  
+import { EntityInterpolationSystem } from './systems/EntityInterpolationSystem'
 
 // Import RPG systems loader
 import { registerSystems } from './systems/SystemLoader'
 // Test systems removed - consolidated into MovementValidationSystem
 import { ServerBot } from './systems/ServerBot'
-import { ServerPositionValidator } from './systems/ServerPositionValidator'
 
 export async function createServerWorld() {
-    const world = new World()
+  console.log('[Server World] Creating server world...');
+  const world = new World()
   
   // Register core server systems
-    world.register('server', Server);
+  console.log('[Server World] Registering core server systems...');
+  world.register('server', ServerRuntime);
   world.register('livekit', ServerLiveKit);
   world.register('network', ServerNetwork);
   world.register('loader', ServerLoader);
   world.register('environment', ServerEnvironment);
-  world.register('monitor', ServerMonitor);
+  world.register('monitor', ServerRuntime); // Monitor is now part of ServerRuntime
   
   // Register core terrain system
   world.register('terrain', TerrainSystem);
   
-  // Register position validation system (must come after terrain)
-  world.register('position-validator', ServerPositionValidator);
+  // Position validation is now integrated into ServerNetwork
   
-  // Register unified movement systems
-  world.register('delta-compression', DeltaCompressionSystem);
+  // NO interpolation system - server is authoritative for movement
   
   // Do not register client systems on server; server exposes only RPG systems via SystemLoader when enabled
   
-    
+  console.log('[Server World] Core systems registered');
+  
   // Register RPG game systems
   try {
-        await registerSystems(world);
-        
-    // Register server test systems
-    // Test systems consolidated into MovementValidationSystem (registered in SystemLoader)
-    world.register('server-bot', ServerBot);
-      } catch (error) {
+    console.log('[Server World] Registering RPG game systems...');
+    await registerSystems(world);
+    console.log('[Server World] RPG game systems registered successfully');
+    
+    // Register server bot only when explicitly enabled
+    const maxBots = parseInt((process.env.MAX_BOT_COUNT || '0') as string, 10)
+    const disableBots = (process.env.DISABLE_BOTS || '').toLowerCase() === 'true'
+    const enableBots = !disableBots && maxBots > 0
+    if (enableBots) {
+      // Test systems consolidated into MovementValidationSystem (registered in SystemLoader)
+      world.register('server-bot', ServerBot)
+      console.log('[Server World] Server bot registered')
+    } else {
+      console.log('[Server World] Server bot disabled (MAX_BOT_COUNT=0 or DISABLE_BOTS=true)')
+    }
+    console.log('[Server World] All test systems registered');
+  } catch (error) {
     console.error('[Server World] Failed to register RPG game systems:', error);
     if (error instanceof Error) {
       console.error('[Server World] Error stack:', error.stack);
@@ -57,6 +67,7 @@ export async function createServerWorld() {
     throw error; // Re-throw to prevent server from starting with incomplete systems
   }
   
-    
+  console.log('[Server World] Server world created successfully');
+  
   return world;
 }

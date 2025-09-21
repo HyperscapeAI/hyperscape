@@ -424,16 +424,14 @@ export class ItemActionTestSystem extends SystemBase {
       // Use the entities system's add method to create a proper Entity instance
       const entitiesSystem = this.world.entities as Entities;
       entitiesSystem.add(playerData, true);
-      Logger.system('ItemActionTestSystem', `Successfully registered fake player ${playerId} with world entities`);
-    }
+          }
     
     // Initialize inventory for the player
     this.emitTypedEvent(EventType.INVENTORY_INITIALIZED, {
       playerId: playerId
     });
     
-    Logger.system('ItemActionTestSystem', `Created test player ${playerId} at position`, { position });
-  }
+      }
 
   private async createTestItem(testId: string, itemId: string, position: { x: number; y: number; z: number }, color: number): Promise<void> {
     
@@ -991,23 +989,19 @@ export class ItemActionTestSystem extends SystemBase {
 
   private handleItemExamineEvent(data: unknown): void {
     // Log item examine event for testing
-    Logger.system('ItemActionTestSystem', `Item examine event: ${JSON.stringify(data)}`);
-  }
+      }
 
   private handleItemEquipEvent(data: unknown): void {
     // Log item equip event for testing
-    Logger.system('ItemActionTestSystem', `Item equip event: ${JSON.stringify(data)}`);
-  }
+      }
 
   private handleItemDropEvent(data: unknown): void {
     // Log item drop event for testing
-    Logger.system('ItemActionTestSystem', `Item drop event: ${JSON.stringify(data)}`);
-  }
+      }
 
   private handleItemConsumeEvent(data: unknown): void {
     // Log item consume event for testing
-    Logger.system('ItemActionTestSystem', `Item consume event: ${JSON.stringify(data)}`);
-  }
+      }
 
   destroy(): void {
     this.testData.clear();

@@ -15,12 +15,19 @@ import {
   InputButtons
 } from '../types/networking';
 import { MovementPhysics } from '../config/movement';
+import { TerrainSystem } from '../systems/TerrainSystem';
+import { World } from '../World';
 
 const _v3_1 = new THREE.Vector3()
 const _v3_2 = new THREE.Vector3()
 const _v3_3 = new THREE.Vector3()
+const _v3_4 = new THREE.Vector3() // For position copy
+const _v3_5 = new THREE.Vector3() // For velocity copy
+const _v3_6 = new THREE.Vector3() // For acceleration copy
+const _v3_7 = new THREE.Vector3() // For ground normal copy
 const _v2_1 = new THREE.Vector2()
 const _q_1 = new THREE.Quaternion()
+const _q_2 = new THREE.Quaternion() // For rotation copy
 
 /**
  * Core movement physics simulator
@@ -35,16 +42,17 @@ export class MovementSimulator {
     state: PlayerStateSnapshot,
     input: InputCommand,
     config: IMovementConfig,
-    world?: { getSystem?: (name: string) => unknown }
+    world?: World
   ): PlayerStateSnapshot {
-    // Clone state to avoid mutations
+    // Create new state - we must return new vectors since they're stored
+    // But we'll minimize allocations during calculations
     const newState: PlayerStateSnapshot = {
       ...state,
-      position: state.position.clone(),
-      velocity: state.velocity.clone(),
-      acceleration: state.acceleration.clone(),
-      rotation: state.rotation.clone(),
-      groundNormal: state.groundNormal?.clone()
+      position: new THREE.Vector3().copy(state.position),
+      velocity: new THREE.Vector3().copy(state.velocity),
+      acceleration: new THREE.Vector3().copy(state.acceleration),
+      rotation: new THREE.Quaternion().copy(state.rotation),
+      groundNormal: state.groundNormal ? new THREE.Vector3().copy(state.groundNormal) : undefined
     };
     
     const dt = input.deltaTime;
@@ -327,15 +335,13 @@ export class MovementSimulator {
   /**
    * Check if position is on ground
    */
-  private static checkGround(position: THREE.Vector3, config: IMovementConfig, world?: { getSystem?: (name: string) => unknown }): boolean {
+  private static checkGround(position: THREE.Vector3, config: IMovementConfig, world?: World): boolean {
     // Get terrain height if available
     let groundHeight = 0;
     
     if (world) {
-      const terrain = world.getSystem ? world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number } | null : null;
-      if (terrain && terrain.getHeightAt) {
-        groundHeight = terrain.getHeightAt(position.x, position.z);
-      }
+      const terrain = world.getSystem<TerrainSystem>('terrain') as TerrainSystem;
+      groundHeight = terrain.getHeightAt(position.x, position.z);
     }
     
     return position.y <= groundHeight + config.stepHeight;
@@ -348,16 +354,14 @@ export class MovementSimulator {
     position: THREE.Vector3,
     velocity: THREE.Vector3,
     config: IMovementConfig,
-    world?: { getSystem?: (name: string) => unknown }
+    world?: World
   ): { grounded: boolean; normal?: THREE.Vector3 } {
     // Get terrain height if available
     let groundHeight = 0;
     
     if (world) {
-      const terrain = world.getSystem ? world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number } | null : null;
-      if (terrain && terrain.getHeightAt) {
-        groundHeight = terrain.getHeightAt(position.x, position.z);
-      }
+      const terrain = world.getSystem<TerrainSystem>('terrain') as TerrainSystem;
+      groundHeight = terrain.getHeightAt(position.x, position.z);
     }
     
     const isGrounded = position.y <= groundHeight + config.stepHeight;

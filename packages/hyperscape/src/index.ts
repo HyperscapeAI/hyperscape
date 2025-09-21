@@ -55,19 +55,18 @@ export { Entities } from './systems/Entities';
 export { Physics } from './systems/Physics';
 export { Particles } from './systems/Particles';
 export { LODs } from './systems/LODs';
-export { ClientUI } from './systems/ClientUI';
+export { ClientInterface } from './systems/ClientInterface'; // Merged UI, Prefs, Stats, Target
 export { ClientLoader } from './systems/ClientLoader';
 // ServerNetwork removed from main exports - import directly from ./systems/ServerNetwork when needed on server side
 export { ClientEnvironment } from './systems/ClientEnvironment';
 export { ClientNetwork } from './systems/ClientNetwork';
 export { ClientGraphics } from './systems/ClientGraphics';
-export { ClientPrefs } from './systems/ClientPrefs';
+export { ClientRuntime } from './systems/ClientRuntime'; // Merged Client + Diagnostics
 export { ClientAudio } from './systems/ClientAudio';
 export { ClientLiveKit } from './systems/ClientLiveKit';
-export { ClientStats } from './systems/ClientStats';
-export { Server } from './systems/Server';
+export { ClientInput } from './systems/ClientInput'; // Merged Controls, InputSystem, Pointer
+export { ServerRuntime } from './systems/ServerRuntime'; // Merged Server + Monitor
 export { ClientActions } from './systems/ClientActions';
-export { ClientControls } from './systems/ClientControls';
 export { XR } from './systems/XR';
 export { EventBus } from './systems/EventBus';
 export { System as SystemClass } from './systems/System';
@@ -250,6 +249,8 @@ export type {
   PxJointAngularLimitPair,
   PxRigidBodyFlag,
   PhysXMoveFlags,
+  AudioData,
+  ImageData,
 } from './types/nodes';
 
 export type { ActorHandle, PxControllerCollisionFlags, PxRigidBodyFlagEnum } from './types/physics';
@@ -275,9 +276,8 @@ export type { SystemLogger } from './utils/Logger';
 export type { NetworkSystem } from './types/system-interfaces';
 export type { IEventsInterface } from './systems/Events';
 
-// Export Client UI/Prefs types
-export type { ClientUIState } from './systems/ClientUI';
-export type { PrefsKey, PrefsValue, ClientPrefsData } from './systems/ClientPrefs';
+// Export Client Interface types
+export type { ClientUIState, PrefsKey, PrefsValue, ClientPrefsData } from './systems/ClientInterface';
 export type { ChatListener } from './systems/Chat';
 export type { UIProxy } from './types/nodes';
 
@@ -288,6 +288,8 @@ export { default as Panel } from './libs/stats-gl/panel';
 export type { ClientActionHandler } from './systems/ClientActions';
 
 // Export alternate HotReloadable and RaycastHit for nodes/UI references
+// Export HotReloadable from physics as well (needed by PlayerLocal)
+export type { HotReloadable as HotReloadable_2 } from './types/physics';
 
 // Export environment and stage types
 export type { BaseEnvironment, EnvironmentModel, SkyHandle, SkyInfo, SkyNode } from './types/index';
@@ -334,6 +336,16 @@ export type {
 
 // Export settings data
 export type { SettingsData } from './types/index';
+
+// Export SystemDatabase and TypedKnexDatabase to fix API Extractor warnings
+export type { 
+  SystemDatabase, 
+  TypedKnexDatabase,
+  ConfigRow,
+  UserRow,
+  EntityRow,
+  DatabaseRow
+} from './types/database-types';
 
 // Export entity types
 export type { PlayerEntity, CharacterController, CharacterControllerOptions, NetworkPacket } from './types/index';

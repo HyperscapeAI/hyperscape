@@ -24,19 +24,18 @@ import { System, SystemConstructor } from './systems/System';
 import { XR } from './systems/XR';
 import {
   ClientAudio,
-  ClientControls,
+  ClientInput,
   ClientEnvironment,
   ClientGraphics,
   ClientLoader,
   ClientMonitor,
-  ClientPrefs,
-  ClientStats,
-  ClientUI,
+  ClientInterface,
+  ClientRuntime,
+  ServerRuntime,
   HotReloadable,
   Player,
   RaycastHit,
   ServerDB,
-  ServerServer,
   WorldOptions,
 } from './types';
 
@@ -116,7 +115,7 @@ export class World extends EventEmitter {
   lods?: LODs;
   
   // Optional client systems
-  ui?: ClientUI & {
+  ui?: ClientInterface & {
     active?: boolean;
     appendChild?: (element: HTMLElement) => void;
     removeChild?: (element: HTMLElement) => void;
@@ -133,8 +132,8 @@ export class World extends EventEmitter {
       setSize?: (width: number, height: number) => void;
     };
   };
-  controls?: ClientControls;
-  prefs?: ClientPrefs;
+  controls?: ClientInput;
+  prefs?: ClientInterface;
   audio?: ClientAudio;
   monitor?: ClientMonitor & {
     getStats?: () => Promise<{ currentCPU: number; currentMemory: number; maxMemory: number }>;
@@ -144,11 +143,11 @@ export class World extends EventEmitter {
     on?: (event: string, callback: (data: unknown) => void) => void;
     setScreenShareTarget?: (targetId: string) => void;
   };
-  stats?: ClientStats;
+  stats?: ClientInterface;
   
   // Optional server systems
   db?: ServerDB;
-  server?: ServerServer;
+  server?: ServerRuntime;
   storage?: unknown; // Type not fully defined in interface
   
   // Client systems that might be dynamically added  

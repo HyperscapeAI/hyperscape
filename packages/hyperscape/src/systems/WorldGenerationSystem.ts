@@ -76,8 +76,7 @@ export class WorldGenerationSystem extends SystemBase {
    */
   private onPlayerEnter(data: { playerId: string }): void {
     // Player entered - could trigger additional world generation
-    Logger.system('WorldGenerationSystem', `Player ${data.playerId} entered the world`);
-    // Could trigger generation of content around the player's spawn area
+        // Could trigger generation of content around the player's spawn area
   }
 
   /**
@@ -85,8 +84,7 @@ export class WorldGenerationSystem extends SystemBase {
    */
   private onPlayerLeave(data: { playerId: string }): void {
     // Player left - could clean up player-specific world content
-    // Logger.system('WorldGenerationSystem', `Player ${data.playerId} left the world`);
-    // Could clean up or save player-specific world state
+    //     // Could clean up or save player-specific world state
   }
 
   private generateContentForTile(tileData: { tileX: number, tileZ: number }, areas: WorldArea[]): void {
@@ -165,8 +163,7 @@ export class WorldGenerationSystem extends SystemBase {
       this.generateTown(townConfig);
     }
     
-    Logger.system('WorldGenerationSystem', `Generated ${townConfigs.length} towns from externalized data`);
-  }
+      }
 
   private generateTown(config: Town): void {
     this.towns.set(config.id, config);
@@ -290,8 +287,7 @@ export class WorldGenerationSystem extends SystemBase {
     this.towns.clear();
     this.worldStructures.clear();
     
-    Logger.system('WorldGenerationSystem', 'World generation system destroyed and cleaned up');
-    
+        
     super.destroy();
   }
 } 

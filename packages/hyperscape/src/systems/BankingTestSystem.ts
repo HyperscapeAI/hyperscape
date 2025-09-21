@@ -44,8 +44,7 @@ export class BankingTestSystem extends VisualTestFramework {
   async init(): Promise<void> {
     await super.init();
     
-    Logger.system('BankingTestSystem', 'Initializing banking test system...');
-    
+        
     this.bankingSystem = this.world.getSystem('rpg-banking') as BankingSystem;
     this.inventorySystem = this.world.getSystem('rpg-inventory') as InventorySystem;
 
@@ -53,24 +52,20 @@ export class BankingTestSystem extends VisualTestFramework {
       Logger.systemError('BankingTestSystem', 'Banking system not found');
       return;
     } else {
-      Logger.system('BankingTestSystem', 'Banking system found successfully');
-    }
+          }
 
     if (!this.inventorySystem) {
       Logger.systemError('BankingTestSystem', 'Inventory system not found');
       return;
     } else {
-      Logger.system('BankingTestSystem', 'Inventory system found successfully');
-    }
+          }
 
     // Create test stations
     this.createTestStations();
-          Logger.system('BankingTestSystem', 'Test stations created');
-    
+              
     // Set up event listeners for banking tests
     this.setupEventListeners();
-          Logger.system('BankingTestSystem', 'Event listeners set up');
-  }
+            }
 
   private setupEventListeners(): void {
     // Listen for inventory updates
@@ -192,8 +187,7 @@ export class BankingTestSystem extends VisualTestFramework {
 
   private async runBasicDepositTest(stationId: string): Promise<void> {
     try {
-      Logger.system('BankingTestSystem', 'Starting basic deposit test...');
-      const station = this.testStations.get(stationId);
+            const station = this.testStations.get(stationId);
       if (!station) {
         Logger.systemError('BankingTestSystem', `Test station not found: ${stationId}`);
         return;
@@ -419,8 +413,7 @@ export class BankingTestSystem extends VisualTestFramework {
 
   private async runBankIndependenceTest(stationId: string): Promise<void> {
     try {
-      Logger.system('BankingTestSystem', 'Starting bank independence test setup...');
-      const station = this.testStations.get(stationId);
+            const station = this.testStations.get(stationId);
       if (!station) return;
 
       // Create two fake players for different banks
@@ -504,8 +497,7 @@ export class BankingTestSystem extends VisualTestFramework {
         bulkTested: false
       });
 
-      Logger.system('BankingTestSystem', 'Starting bank independence test...');
-      
+            
       // Test sequence:
       // 1. Player 1 deposits at Bank 1
       // 2. Player 2 deposits at Bank 2  
@@ -594,8 +586,7 @@ export class BankingTestSystem extends VisualTestFramework {
       return;
     }
 
-    Logger.system('BankingTestSystem', `Starting deposit sequence for player: ${testData.player.id}`);
-
+    
     // Move player to bank
     this.movePlayer(testData.player.id, {
       x: testData.bankLocation.x - 1,
@@ -605,8 +596,7 @@ export class BankingTestSystem extends VisualTestFramework {
 
     // Open bank and deposit items
     setTimeout(() => {
-      Logger.system('BankingTestSystem', `Opening bank for player: ${testData.player.id}`);
-      // First open the bank
+            // First open the bank
       this.emitTypedEvent(EventType.BANK_OPEN, {
         playerId: testData.player.id,
         bankId: 'bank_town_0',
@@ -615,10 +605,8 @@ export class BankingTestSystem extends VisualTestFramework {
 
       // Then deposit items after bank is open
       setTimeout(() => {
-        Logger.system('BankingTestSystem', `Attempting to deposit ${testData.testItems.length} items`);
-        for (const testItem of testData.testItems) {
-          Logger.system('BankingTestSystem', `Emitting deposit event for: ${testItem.itemId}, quantity: ${testItem.quantity}`);
-          this.emitTypedEvent(EventType.BANK_DEPOSIT, {
+                for (const testItem of testData.testItems) {
+                    this.emitTypedEvent(EventType.BANK_DEPOSIT, {
             playerId: testData.player.id,
             bankId: 'bank_town_0',
             itemId: testItem.itemId,
@@ -628,12 +616,10 @@ export class BankingTestSystem extends VisualTestFramework {
 
         // Monitor for deposit success
         const depositSub = this.subscribe(EventType.BANK_DEPOSIT_SUCCESS, (data: { playerId: string; itemId: string; quantity: number }) => {
-          Logger.system('BankingTestSystem', 'Deposit success event received');
-          if (data.playerId === testData.player.id) {
+                    if (data.playerId === testData.player.id) {
             testData.depositedItems++;
             testData.bankBalance[data.itemId] = (testData.bankBalance[data.itemId] || 0) + data.quantity;
-            Logger.system('BankingTestSystem', `Deposit successful! Total deposits: ${testData.depositedItems}/${testData.testItems.length}`);
-            if (testData.depositedItems >= testData.testItems.length) {
+                        if (testData.depositedItems >= testData.testItems.length) {
               depositSub.unsubscribe();
               this.completeDepositTest(stationId);
             }
@@ -729,8 +715,7 @@ export class BankingTestSystem extends VisualTestFramework {
     const testData = this.testData.get(stationId);
     if (!testData) return;
 
-          Logger.system('BankingTestSystem', 'Starting bulk banking test...');
-
+          
     // Move player to bank
     this.movePlayer(testData.player.id, {
       x: testData.bankLocation.x - 1,
@@ -746,8 +731,7 @@ export class BankingTestSystem extends VisualTestFramework {
     // Listen for bank interface open (the actual event emitted by banking system)
     const bankOpenSub = this.subscribe(EventType.BANK_OPEN, (data: { playerId: string; bankId: string }) => {
       if (data.playerId === testData.player.id) {
-        Logger.system('BankingTestSystem', 'Bank opened successfully');
-        bankOpened = true;
+                bankOpened = true;
         bankOpenSub.unsubscribe();
         // Now start deposits
         performDeposits();
@@ -756,8 +740,7 @@ export class BankingTestSystem extends VisualTestFramework {
 
     // Open the bank first (required by BankingSystem)
     setTimeout(() => {
-      Logger.system('BankingTestSystem', 'Opening bank for bulk test...');
-      this.emitTypedEvent(EventType.BANK_OPEN, {
+            this.emitTypedEvent(EventType.BANK_OPEN, {
         playerId: testData.player.id,
                    bankId: 'bank_town_0',
         playerPosition: { 
@@ -770,16 +753,14 @@ export class BankingTestSystem extends VisualTestFramework {
       // Fallback if bank doesn't open
       setTimeout(() => {
         if (!bankOpened) {
-          Logger.system('BankingTestSystem', 'Bank open timeout, proceeding anyway...');
-          bankOpenSub.unsubscribe();
+                    bankOpenSub.unsubscribe();
           performDeposits();
         }
       }, 3000);
     }, 2000);
 
     const performDeposits = () => {
-      Logger.system('BankingTestSystem', 'Starting bulk deposits...');
-      let depositsCompleted = 0;
+            let depositsCompleted = 0;
       const totalItems = testData.testItems.length;
       
       // Listen for deposit success events
@@ -787,8 +768,7 @@ export class BankingTestSystem extends VisualTestFramework {
         if (data.playerId === testData.player.id) {
           depositsCompleted++;
           testData.depositedItems++;
-          Logger.system('BankingTestSystem', `Deposit ${depositsCompleted}/${totalItems} completed: ${data.itemId}`);
-          if (depositsCompleted >= totalItems) {
+                    if (depositsCompleted >= totalItems) {
             depositSub.unsubscribe();
             performWithdrawals();
           }
@@ -798,8 +778,7 @@ export class BankingTestSystem extends VisualTestFramework {
       // Listen for deposit failure events
       const depositFailSub = this.subscribe(EventType.BANK_DEPOSIT_FAIL, (data: { playerId: string; reason: string }) => {
         if (data.playerId === testData.player.id) {
-          Logger.system('BankingTestSystem', `Deposit failed: ${data.reason}`);
-        }
+                  }
       });
       
       // subscriptions already set above
@@ -808,8 +787,7 @@ export class BankingTestSystem extends VisualTestFramework {
       testData.testItems.forEach((testItem, index) => {
         setTimeout(() => {
           depositsAttempted++;
-          Logger.system('BankingTestSystem', `Attempting deposit ${depositsAttempted}/${totalItems}: ${testItem.itemId}`);
-          this.emitTypedEvent(EventType.BANK_DEPOSIT, {
+                    this.emitTypedEvent(EventType.BANK_DEPOSIT, {
             playerId: testData.player.id,
             bankId: 'bank_town_0', 
             itemId: testItem.itemId,
@@ -823,23 +801,20 @@ export class BankingTestSystem extends VisualTestFramework {
         depositSub.unsubscribe();
         depositFailSub.unsubscribe();
         if (depositsCompleted < totalItems) {
-          Logger.system('BankingTestSystem', `Deposit phase incomplete: ${depositsCompleted}/${totalItems}`);
-        }
+                  }
         performWithdrawals();
       }, 8000);
     };
 
     const performWithdrawals = () => {
-      Logger.system('BankingTestSystem', 'Starting bulk withdrawals...');
-      let withdrawsCompleted = 0;
+            let withdrawsCompleted = 0;
       const totalItems = testData.testItems.length;
       
       const withdrawHandler = (data: { playerId: string; itemId: string; quantity: number; bankId?: string }) => {
         if (data.playerId === testData.player.id) {
           withdrawsCompleted++;
           testData.withdrawnItems++;
-          Logger.system('BankingTestSystem', `Withdraw ${withdrawsCompleted}/${totalItems} completed: ${data.itemId}`);
-          
+                    
           if (withdrawsCompleted >= totalItems) {
             withdrawSub.unsubscribe();
             this.completeBulkTest(stationId);
@@ -854,8 +829,7 @@ export class BankingTestSystem extends VisualTestFramework {
       // Listen for withdraw failure events
       const withdrawFailSub = this.subscribe(EventType.BANK_WITHDRAW_FAIL, (data: { playerId: string; reason: string }) => {
         if (data.playerId === testData.player.id) {
-          Logger.system('BankingTestSystem', `Withdraw failed: ${data.reason}`);
-        }
+                  }
       });
       
       // subscriptions already set above
@@ -864,8 +838,7 @@ export class BankingTestSystem extends VisualTestFramework {
       testData.testItems.forEach((testItem, index) => {
         setTimeout(() => {
           withdrawsAttempted++;
-          Logger.system('BankingTestSystem', `Attempting withdraw ${withdrawsAttempted}/${totalItems}: ${testItem.itemId}`);
-          this.emitTypedEvent(EventType.BANK_WITHDRAW, {
+                    this.emitTypedEvent(EventType.BANK_WITHDRAW, {
             playerId: testData.player.id,
             bankId: 'bank_town_0',
             itemId: testItem.itemId,
@@ -878,8 +851,7 @@ export class BankingTestSystem extends VisualTestFramework {
       setTimeout(() => {
         try { this.world.off(EventType.BANK_WITHDRAW_SUCCESS, withdrawHandler); } catch {}
         try { withdrawFailSub.unsubscribe(); } catch {}
-        Logger.system('BankingTestSystem', `Bulk test complete - deposits: ${testData.depositedItems}, withdrawals: ${testData.withdrawnItems}`);
-        this.completeBulkTest(stationId);
+                this.completeBulkTest(stationId);
       }, 8000);
     };
   }
@@ -897,8 +869,7 @@ export class BankingTestSystem extends VisualTestFramework {
 
     // Phase 1: Both players deposit at their respective banks
     const depositPhase = () => {
-      Logger.system('BankingTestSystem', 'Independence test phase 1: Deposits');
-
+      
       // Move players to their banks
       this.movePlayer(player1.id, {
         x: bank1Location.x - 1,
@@ -916,8 +887,7 @@ export class BankingTestSystem extends VisualTestFramework {
       const depositSub = this.subscribe(EventType.BANK_DEPOSIT_SUCCESS, (data: { playerId: string; bankId: string }) => {
         if (data.playerId === player1.id || data.playerId === player2.id) {
           depositsCompleted++;
-          Logger.system('BankingTestSystem', `Player deposit completed: ${data.playerId} at ${data.bankId}`);
-          if (depositsCompleted >= 2) {
+                    if (depositsCompleted >= 2) {
             depositSub.unsubscribe();
             setTimeout(crossWithdrawPhase, 2000);
           }
@@ -961,8 +931,7 @@ export class BankingTestSystem extends VisualTestFramework {
 
     // Phase 2: Try cross-withdrawals (should fail)
     const crossWithdrawPhase = () => {
-      Logger.system('BankingTestSystem', 'Independence test phase 2: Cross-withdrawals');
-      
+            
       // Move players to opposite banks
       this.movePlayer(player1.id, {
         x: bank2Location.x - 1,
@@ -979,8 +948,7 @@ export class BankingTestSystem extends VisualTestFramework {
       // Listen for withdrawal failures
       const withdrawFailSub = this.subscribe(EventType.BANK_WITHDRAW_FAIL, (data: { playerId: string; reason: string }) => {
         withdrawalAttempts++;
-        Logger.system('BankingTestSystem', `Expected withdrawal failure: ${data.playerId} - ${data.reason}`);
-        if (withdrawalAttempts >= 2) {
+                if (withdrawalAttempts >= 2) {
           withdrawFailSub.unsubscribe();
           setTimeout(ownWithdrawPhase, 2000);
         }
@@ -1022,8 +990,7 @@ export class BankingTestSystem extends VisualTestFramework {
 
     // Phase 3: Withdraw from own banks (should succeed)
     const ownWithdrawPhase = () => {
-      Logger.system('BankingTestSystem', 'Independence test phase 3: Own withdrawals');
-      
+            
       // Move players back to their own banks
       this.movePlayer(player1.id, {
         x: bank1Location.x - 1,
@@ -1041,8 +1008,7 @@ export class BankingTestSystem extends VisualTestFramework {
       const withdrawSuccessSub = this.subscribe(EventType.BANK_WITHDRAW_SUCCESS, (data: { playerId: string; bankId: string }) => {
         if (data.playerId === player1.id || data.playerId === player2.id) {
           successfulWithdrawals++;
-          Logger.system('BankingTestSystem', `Successful withdrawal: ${data.playerId} from ${data.bankId}`);
-          if (successfulWithdrawals >= 2) {
+                    if (successfulWithdrawals >= 2) {
             withdrawSuccessSub.unsubscribe();
             this.completeIndependenceTest(stationId, true);
           }

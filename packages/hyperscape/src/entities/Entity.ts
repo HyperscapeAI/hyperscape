@@ -168,10 +168,7 @@ export class Entity implements IEntity {
     if (Array.isArray(entityData.position) && entityData.position.length === 3) {
       const [px, py, pz] = entityData.position as [number, number, number]
 
-      // Log player positions for debugging
-      if (entityData.type === 'player') {
-        console.log(`[Entity] Player ${entityData.id} constructor received position:`, { px, py, pz })
-      }
+      // Player position logging removed to prevent memory leak
 
       if (Number.isFinite(px) && Number.isFinite(py) && Number.isFinite(pz)) {
         this.node.position.set(px, py, pz)
@@ -244,7 +241,8 @@ export class Entity implements IEntity {
   }
 
   get rotation(): Quaternion {
-    return this.node.quaternion.clone()
+    // Return reference instead of cloning - callers should clone if needed
+    return this.node.quaternion
   }
 
   set rotation(value: Quaternion) {

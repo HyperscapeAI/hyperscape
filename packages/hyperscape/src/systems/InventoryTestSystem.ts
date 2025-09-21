@@ -124,8 +124,7 @@ export class InventoryTestSystem extends VisualTestFramework {
 
   private async runBasicPickupTest(stationId: string): Promise<void> {
     try {
-      Logger.system('InventoryTestSystem', `Starting Basic Pickup Test`);
-      
+            
       const station = this.testStations.get(stationId);
       if (!station) {
         Logger.systemError('InventoryTestSystem', `Station not found for ${stationId}`);
@@ -140,8 +139,7 @@ export class InventoryTestSystem extends VisualTestFramework {
       }
 
       // Create fake player with empty inventory
-      Logger.system('InventoryTestSystem', `Creating fake player for pickup test`);
-      const player = this.createPlayer({
+            const player = this.createPlayer({
         id: `pickup_player_${Date.now()}`,
         name: 'Pickup Test Player',
         position: { x: station.position.x - 2, y: station.position.y, z: station.position.z },
@@ -157,8 +155,7 @@ export class InventoryTestSystem extends VisualTestFramework {
       });
 
       // Initialize player in inventory system
-      Logger.system('InventoryTestSystem', `Initializing player in inventory system`);
-      this.emitTypedEvent(EventType.PLAYER_INIT, { id: player.id });
+            this.emitTypedEvent(EventType.PLAYER_INIT, { id: player.id });
       
       // Clear inventory (the system starts with bronze starter gear, so we'll need to handle that)
       player.inventory = { items: [], capacity: 28, coins: 0 };
@@ -168,8 +165,7 @@ export class InventoryTestSystem extends VisualTestFramework {
       const droppedItems: Array<{ itemId: string; position: { x: number; y: number; z: number }; quantity: number }> = [];
 
       // Spawn test items around the station
-      Logger.system('InventoryTestSystem', `Spawning test items`);
-      for (let i = 0; i < testItems.length; i++) {
+            for (let i = 0; i < testItems.length; i++) {
         const itemId = testItems[i];
         const item = getItem(itemId);
         
@@ -204,8 +200,7 @@ export class InventoryTestSystem extends VisualTestFramework {
       }
 
       // Store test data
-      Logger.system('InventoryTestSystem', `Storing test data for ${stationId}`);
-      this.testData.set(stationId, {
+            this.testData.set(stationId, {
         player,
         testItems,
         droppedItems,
@@ -643,23 +638,19 @@ export class InventoryTestSystem extends VisualTestFramework {
       return;
     }
 
-    Logger.system('InventoryTestSystem', `Starting pickup sequence for ${stationId} with ${testData.droppedItems.length} items`);
-    let itemIndex = 0;
+        let itemIndex = 0;
 
     const pickupNextItem = async () => {
       if (itemIndex >= testData.droppedItems.length) {
-        Logger.system('InventoryTestSystem', `All items picked up, starting drop sequence`);
-        // All items picked up, start drop test
+                // All items picked up, start drop test
         setTimeout(() => this.startDropSequence(stationId), 2000);
         return;
       }
 
       const item = testData.droppedItems[itemIndex];
-      Logger.system('InventoryTestSystem', `Picking up item ${itemIndex + 1}/${testData.droppedItems.length}: ${item.itemId}`);
-
+      
       // Move player to item position
-              Logger.system('InventoryTestSystem', 'Moving player to item position', { position: item.position });
-      this.movePlayer(testData.player.id, {
+                    this.movePlayer(testData.player.id, {
         x: item.position.x,
         y: item.position.y,
         z: item.position.z
@@ -667,8 +658,7 @@ export class InventoryTestSystem extends VisualTestFramework {
 
       // Simulate pickup after movement
       setTimeout(async () => {
-        Logger.system('InventoryTestSystem', `Simulating pickup of ${item.quantity}x ${item.itemId}`);
-        
+                
         // Use event-based communication with inventory system
         this.emitTypedEvent(EventType.INVENTORY_ITEM_ADDED, {
           playerId: testData.player.id,
@@ -683,14 +673,12 @@ export class InventoryTestSystem extends VisualTestFramework {
         
         // Assume success for test purposes since events are async
         testData.itemsPickedUp++;
-        Logger.system('InventoryTestSystem', `Items picked up so far: ${testData.itemsPickedUp}`);
-        
+                
         // Update fake player inventory to track state
         const existingItem = testData.player.inventory.items.find(slot => slot.itemId === item.itemId);
         if (existingItem && getItem(item.itemId)?.stackable) {
           existingItem.quantity += item.quantity;
-          Logger.system('InventoryTestSystem', `Stacked ${item.itemId}, new quantity: ${existingItem.quantity}`);
-        } else if (testData.player.inventory.items.length < 28) {
+                  } else if (testData.player.inventory.items.length < 28) {
           const itemData = getItem(item.itemId);
           if (itemData) {
             testData.player.inventory.items.push({ 
@@ -700,8 +688,7 @@ export class InventoryTestSystem extends VisualTestFramework {
               slot: testData.player.inventory.items.length,
               metadata: null
             });
-            Logger.system('InventoryTestSystem', `Added new item ${item.itemId} to inventory`);
-          }
+                      }
         } else {
           Logger.systemWarn('InventoryTestSystem', `Inventory full, cannot pick up ${item.itemId}`);
         }
@@ -717,8 +704,7 @@ export class InventoryTestSystem extends VisualTestFramework {
     };
 
     // Start pickup sequence
-    Logger.system('InventoryTestSystem', `Starting pickup in 1 second`);
-    setTimeout(pickupNextItem, 1000);
+        setTimeout(pickupNextItem, 1000);
   }
 
   private startDropSequence(stationId: string): void {
@@ -728,14 +714,11 @@ export class InventoryTestSystem extends VisualTestFramework {
       return;
     }
 
-    Logger.system('InventoryTestSystem', `Starting drop sequence for ${stationId}`);
-    Logger.system('InventoryTestSystem', `Player inventory has ${testData.player.inventory.items.length} items`);
-
+        
     // Drop first item in inventory
     if (testData.player.inventory.items.length > 0) {
       const itemToDrop = testData.player.inventory.items[0];
-      Logger.system('InventoryTestSystem', `Dropping ${itemToDrop.quantity}x ${itemToDrop.itemId}`);
-      
+            
       const dropPosition = {
         x: testData.player.position.x + 2,
         y: testData.player.position.y,
@@ -746,8 +729,7 @@ export class InventoryTestSystem extends VisualTestFramework {
       setTimeout(async () => {
         // Use event-based communication with inventory system
         const dropQuantity = Math.min(itemToDrop.quantity, 5);
-        Logger.system('InventoryTestSystem', `Emitting inventory:remove for ${dropQuantity}x ${itemToDrop.itemId}`);
-        
+                
         this.emitTypedEvent(EventType.INVENTORY_ITEM_REMOVED, {
           playerId: testData.player.id,
           itemId: itemToDrop.itemId,
@@ -756,8 +738,7 @@ export class InventoryTestSystem extends VisualTestFramework {
         
         // Assume success for test purposes since events are async
         testData.itemsDropped++;
-        Logger.system('InventoryTestSystem', `Items dropped: ${testData.itemsDropped}`);
-        
+                
         // Create visual dropped item
         this.emitTypedEvent(EventType.TEST_ITEM_CREATE, {
           id: `dropped_item_${Date.now()}`,
@@ -768,8 +749,7 @@ export class InventoryTestSystem extends VisualTestFramework {
         });
 
         // Complete test after drop
-        Logger.system('InventoryTestSystem', `Completing test in 2 seconds`);
-        setTimeout(() => this.completeTestByType(stationId, testData.testType), 2000);
+                setTimeout(() => this.completeTestByType(stationId, testData.testType), 2000);
       }, 1000);
     } else {
       // No items to drop, complete test
@@ -823,8 +803,7 @@ export class InventoryTestSystem extends VisualTestFramework {
     const testData = this.testData.get(stationId);
     if (!testData) return;
 
-    Logger.system('InventoryTestSystem', 'Starting item movement test...');
-
+    
     // Store the item that should be moved
     const itemToMove = testData.player.inventory.items.find(item => item.slot === 0);
     if (!itemToMove) {
@@ -832,8 +811,7 @@ export class InventoryTestSystem extends VisualTestFramework {
       return;
     }
 
-    Logger.system('InventoryTestSystem', `Moving ${itemToMove.itemId} from slot 0 to slot 10`);
-
+    
     // Listen for inventory update to verify move
     const moveHandler = (data: { playerId: string; items: InventoryItem[] }) => {
       if (data.playerId === testData.player.id) {
@@ -845,8 +823,7 @@ export class InventoryTestSystem extends VisualTestFramework {
         const slot0Empty = !data.items.find(item => item.slot === 0);
         
         if (movedItem && slot0Empty) {
-          Logger.system('InventoryTestSystem', 'Item successfully moved to slot 10');
-          testData.player.inventory.items = data.items;
+                    testData.player.inventory.items = data.items;
           moveSub.unsubscribe();
           this.completeMovementTest(stationId);
         }
@@ -877,21 +854,18 @@ export class InventoryTestSystem extends VisualTestFramework {
     const testData = this.testData.get(stationId);
     if (!testData) return;
 
-    Logger.system('InventoryTestSystem', 'Starting item use sequence');
-    
+        
     // Listen for ITEM_USED event to track successful usage
     const itemUsedSub = this.subscribe(EventType.ITEM_USED, (data: { playerId: string; itemId: string; slot?: number }) => {
       if (data.playerId === testData.player.id) {
-        Logger.system('InventoryTestSystem', 'Item used event received', { data });
-        testData.itemsUsed++;
+                testData.itemsUsed++;
       }
     });
     
     // Listen for health update to track healing
     const healthUpdateSub = this.subscribe(EventType.PLAYER_HEALTH_UPDATED, (data: { playerId: string; health: number; maxHealth: number }) => {
       if (data.playerId === testData.player.id) {
-        Logger.system('InventoryTestSystem', 'Health updated', { health: data.health });
-        (testData.player.health as PlayerHealth) = { current: data.health, max: data.maxHealth };
+                (testData.player.health as PlayerHealth) = { current: data.health, max: data.maxHealth };
       }
     });
 
@@ -901,8 +875,7 @@ export class InventoryTestSystem extends VisualTestFramework {
         const consumable = testData.player.inventory.items[0];
         const oldHealth = testData.player.health;
         
-        Logger.system('InventoryTestSystem', `Using item: ${consumable.itemId} from slot ${consumable.slot}, current health: ${oldHealth}`);
-        
+                
         // Use the inventory:use event to trigger actual item consumption
         this.emitTypedEvent(EventType.INVENTORY_USE, {
           playerId: testData.player.id,
@@ -913,8 +886,7 @@ export class InventoryTestSystem extends VisualTestFramework {
         // Simulate item use if inventory system isn't responding
         setTimeout(() => {
           if (testData.itemsUsed === 0) {
-            Logger.system('InventoryTestSystem', 'Simulating item use for test');
-            // Simulate cooked shrimps healing (heals 3 HP)
+                        // Simulate cooked shrimps healing (heals 3 HP)
             const healAmount = consumable.itemId === 'cooked_shrimps' ? 3 : 4;
             testData.itemsUsed = 1;
             const oldHealthCurrent = testData.player.health.current;

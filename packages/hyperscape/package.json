@@ -29,7 +29,8 @@
     "real-time"
   ],
   "scripts": {
-    "dev": "bun scripts/dev.mjs",
+    "dev": "bun scripts/dev-final.mjs",
+    "dev:legacy": "bun scripts/dev.mjs",
     "dev:old": "bun scripts/build.mjs --dev",
     "build": "bun scripts/build.mjs",
     "build:client": "vite build",

@@ -2,10 +2,8 @@ import { EventType } from '../types/events'
 import type { World } from '../World'
 import THREE from '../extras/three'
 import { uuid } from '../utils'
-import type { ClientLoader } from './ClientLoader'
-import type { Stage } from './Stage'
 import { SystemBase } from './SystemBase'
-import type { ParticleEmitter, ParticleMessageData, EmitterNode } from '../types/particles'
+import type { ParticleEmitter, ParticleMessageData, EmitterNode, ParticleMessage } from '../types/particles'
 
 const v1 = new THREE.Vector3()
 
@@ -36,11 +34,6 @@ const billboardModeInts: Record<string, number> = {
   direction: 2,
 }
 
-// Extend window interface properly
-interface _WindowWithParticles extends Window {
-  PARTICLES_PATH?: string
-}
-
 export class Particles extends SystemBase {
   worker: Worker
   uOrientationFull: { value: THREE.Quaternion }
@@ -61,11 +54,11 @@ export class Particles extends SystemBase {
     this.worker.onerror = this.onError
 
     // Set the initial quaternion value after world is initialized
-    this.uOrientationFull.value = (this.world.rig as THREE.Object3D).quaternion
+    this.uOrientationFull.value = this.world.rig.quaternion
   }
 
   start() {
-    this.subscribe(EventType.XR_SESSION, (session: unknown) => this.onXRSession(session))
+    this.subscribe(EventType.XR_SESSION, (session: XRSession | null) => this.onXRSession(session))
   }
 
   register(node: EmitterNode) {
@@ -73,7 +66,7 @@ export class Particles extends SystemBase {
   }
 
   update(delta: number) {
-    const quaternion = (this.world.rig as THREE.Object3D).quaternion
+    const quaternion = this.world.rig.quaternion
 
     e1.setFromQuaternion(quaternion)
     e1.x = 0
@@ -97,11 +90,11 @@ export class Particles extends SystemBase {
     throw new Error(`[ParticleSystem] ${err.message}`)
   }
 
-  onXRSession = (session: unknown) => {
-    if (session && this.world.xr) {
-      this.uOrientationFull.value = (this.world.xr as { camera: THREE.Camera }).camera.quaternion
+  onXRSession = (session: XRSession | null) => {
+    if (session && this.world.xr?.camera) {
+      this.uOrientationFull.value = this.world.xr.camera.quaternion
     } else {
-      this.uOrientationFull.value = (this.world.rig as THREE.Object3D).quaternion
+      this.uOrientationFull.value = this.world.rig.quaternion
     }
   }
 }
@@ -164,14 +157,15 @@ function createEmitter(world: World, system: Particles, node: EmitterNode): Part
     uBillboard: { value: billboardModeInts[node._billboard] || 0 },
     uOrientation: node._billboard === 'full' ? system.uOrientationFull : system.uOrientationY,
   }
-  const loader = world.loader as ClientLoader
-  if (loader) {
-    loader.load('texture', node._image).then(result => {
-      const texture = result as THREE.Texture
-      texture.colorSpace = THREE.SRGBColorSpace
-      uniforms.uTexture.value = texture
-      // texture.image = t.image
-      // texture.needsUpdate = true
+  if (world.loader) {
+    world.loader.load('texture', node._image).then(result => {
+      if (result && typeof result === 'object' && 'isTexture' in result) {
+        const texture = result as THREE.Texture
+        texture.colorSpace = THREE.SRGBColorSpace
+        uniforms.uTexture.value = texture
+        // texture.image = t.image
+        // texture.needsUpdate = true
+      }
     })
   }
 
@@ -195,21 +189,22 @@ function createEmitter(world: World, system: Particles, node: EmitterNode): Part
   mesh.frustumCulled = false
   mesh.matrixAutoUpdate = false
   mesh.matrixWorldAutoUpdate = false
-  const stage = world.stage as Stage
-  stage.scene.add(mesh)
+  if (world.stage.scene) {
+    world.stage.scene.add(mesh)
+  }
 
   const matrixWorld = node.matrixWorld
 
   let pending = false
   let skippedDelta = 0
 
-  function send(msg: { [key: string]: unknown }, transfers?: Transferable[]) {
-    msg.emitterId = id
+  function send(msg: Partial<ParticleMessageData>, transfers?: Transferable[]) {
+    const message: ParticleMessageData = { ...msg, emitterId: id }
     if (system.worker) {
       if (transfers) {
-        system.worker.postMessage(msg, transfers)
+        system.worker.postMessage(message, transfers)
       } else {
-        system.worker.postMessage(msg)
+        system.worker.postMessage(message)
       }
     }
   }
@@ -218,22 +213,33 @@ function createEmitter(world: World, system: Particles, node: EmitterNode): Part
     send({ op: 'emitting', value })
   }
 
-  function onMessage(msg: { data: { [key: string]: unknown } }) {
+  function onMessage(msg: ParticleMessage) {
     const data = msg.data
     if (data.op === 'update') {
       const n = data.n as number
 
-      // Store current arrays in next before replacing
-      // BufferAttribute.array is already a typed array, not an ArrayBuffer
-      next.aPosition = (aPosition.array as Float32Array).slice()
-      next.aRotation = (aRotation.array as Float32Array).slice()
-      next.aDirection = (aDirection.array as Float32Array).slice()
-      next.aSize = (aSize.array as Float32Array).slice()
-      next.aColor = (aColor.array as Float32Array).slice()
-      next.aAlpha = (aAlpha.array as Float32Array).slice()
-      next.aEmissive = (aEmissive.array as Float32Array).slice()
-      next.aUV = (aUV.array as Float32Array).slice()
-
+      // Swap arrays instead of copying - avoid allocations
+      // Store the current arrays temporarily
+      const tempPosition = aPosition.array as Float32Array<ArrayBuffer>
+      const tempRotation = aRotation.array as Float32Array<ArrayBuffer>
+      const tempDirection = aDirection.array as Float32Array<ArrayBuffer>
+      const tempSize = aSize.array as Float32Array<ArrayBuffer>
+      const tempColor = aColor.array as Float32Array<ArrayBuffer>
+      const tempAlpha = aAlpha.array as Float32Array<ArrayBuffer>
+      const tempEmissive = aEmissive.array as Float32Array<ArrayBuffer>
+      const tempUV = aUV.array as Float32Array<ArrayBuffer>
+      
+      // Store old arrays for reuse next frame
+      next.aPosition = tempPosition
+      next.aRotation = tempRotation
+      next.aDirection = tempDirection
+      next.aSize = tempSize
+      next.aColor = tempColor
+      next.aAlpha = tempAlpha
+      next.aEmissive = tempEmissive
+      next.aUV = tempUV
+      
+      // Update arrays with new data
       aPosition.array = data.aPosition as Float32Array
       aPosition.addUpdateRange(0, n * 3)
       aPosition.needsUpdate = true
@@ -324,9 +330,8 @@ function createEmitter(world: World, system: Particles, node: EmitterNode): Part
     if (system.worker) {
       system.worker.postMessage({ op: 'destroy', emitterId: id })
     }
-    const stage = world.stage as Stage
-    if (stage.scene) {
-      stage.scene.remove(mesh)
+    if (world.stage.scene) {
+      world.stage.scene.remove(mesh)
     }
     if (Array.isArray(mesh.material)) {
       mesh.material.forEach(mat => mat.dispose())

@@ -192,8 +192,7 @@ export class NPCSpawnManager {
       }
     }
     
-    Logger.system('NPCSpawnManager', `Loaded ${this.spawnPoints.size} NPC spawn points from externalized data`);
-    // Mirror log to console for test expectations
+        // Mirror log to console for test expectations
     console.log(`[NPCSpawnManager] Loaded ${this.spawnPoints.size} NPC spawn points from externalized data`);
   }
 

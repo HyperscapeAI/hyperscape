@@ -1,23 +1,16 @@
 import { World } from './World'
 
-import { Client } from './systems/Client'
 import { ClientActions } from './systems/ClientActions'
 import { ClientAudio } from './systems/ClientAudio'
 import { ClientCameraSystem } from './systems/ClientCameraSystem'
-import { ClientControls } from './systems/ClientControls'
 import { ClientEnvironment } from './systems/ClientEnvironment'
 import { ClientGraphics } from './systems/ClientGraphics'
 import { ClientLiveKit } from './systems/ClientLiveKit'
 import { ClientLoader } from './systems/ClientLoader'
 import { ClientNetwork } from './systems/ClientNetwork'
-import { ClientPointer } from './systems/ClientPointer'
-import { ClientPrefs } from './systems/ClientPrefs'
-import { ClientStats } from './systems/ClientStats'
-import { ClientTarget } from './systems/ClientTarget'
-import { ClientUI } from './systems/ClientUI'
+import { ClientRuntime } from './systems/ClientRuntime'
+import { ClientInterface } from './systems/ClientInterface'
 import { Stage } from './systems/Stage'
-// Commented out systems can be uncommented when implemented
-// import { LODs } from './systems/LODs'
 // import { Nametags } from './systems/Nametags'
 // import { Particles } from './systems/Particles'
 // import { Wind } from './systems/Wind'
@@ -34,15 +27,13 @@ import { Physics } from './systems/Physics'
 // Import RPG systems loader
 import { registerSystems } from './systems/SystemLoader'
 // ClientMovementFix removed - integrated into core movement systems
-import { ClientDiagnostics } from './systems/ClientDiagnostics'
-// Import client input system for keyboard movement
-import { ClientInputSystem } from './systems/ClientInputSystem'
+// No ClientDiagnostics system - basic console logging is sufficient
+// No client input system - using InteractionSystem for click-to-move only
 // Expose spawning utilities for browser tests
 import { CircularSpawnArea } from './managers/spawning/CircularSpawnArea'
 
 // Multiplayer movement systems
 import { EntityInterpolationSystem } from './systems/EntityInterpolationSystem'
-import { DeltaCompressionSystem } from './systems/DeltaCompressionSystem'
 
 import type { StageSystem } from './types/system-interfaces'
 import { LODs } from './systems/LODs'
@@ -69,21 +60,16 @@ export function createClientWorld() {
   }
   
   // Register core client systems
-  world.register('client', Client);
+  world.register('client-runtime', ClientRuntime);
   world.register('stage', Stage);
   world.register('livekit', ClientLiveKit);
-  world.register('pointer', ClientPointer);
-  world.register('prefs', ClientPrefs);
-  world.register('controls', ClientControls);
   world.register('network', ClientNetwork);
   world.register('loader', ClientLoader);
   world.register('graphics', ClientGraphics);
   world.register('environment', ClientEnvironment);
   world.register('audio', ClientAudio);
-  world.register('stats', ClientStats);
   world.register('actions', ClientActions);
-  world.register('target', ClientTarget);
-  world.register('ui', ClientUI);
+  world.register('client-interface', ClientInterface);
   // Core physics (creates environment ground plane and layer masks)
   world.register('physics', Physics);
   
@@ -97,12 +83,9 @@ export function createClientWorld() {
   // Register heightmap-based pathfinding (only activates with terrain)
   world.register('heightmap-pathfinding', HeightmapPathfinding);
   
-  // Register client input system for keyboard/mouse movement
-  world.register('client-input', ClientInputSystem);
+  // No client input system - using InteractionSystem for click-to-move only
   
-  // Register unified multiplayer movement systems
-  world.register('entity-interpolation', EntityInterpolationSystem);
-  world.register('delta-compression', DeltaCompressionSystem);
+  // NO interpolation system - server is authoritative for movement
   
   // Register comprehensive movement test system only when explicitly enabled
   const shouldEnableMovementTest =
@@ -136,17 +119,17 @@ export function createClientWorld() {
   // Create a promise that resolves when RPG systems are loaded
   const systemsLoadedPromise = (async () => {
     try {
-            await registerSystems(world);
-            
-      // Register client helper systems
-      world.register('client-diagnostics', ClientDiagnostics);
+      console.log('[Client World] Registering RPG game systems...');
+      await registerSystems(world);
+      console.log('[Client World] RPG game systems registered successfully');
       
-      // Temporarily disable raycast test system to prevent canvas/ground plane conflicts
-      // if (typeof window !== 'undefined' && (window as any).__ENABLE_RAYCAST_TEST__) {
-      //   world.register('raycast-test', RaycastTestSystem);
-      //         // }
+  // No client diagnostics - basic console logging is sufficient
+
+  // NO interpolation system - server is authoritative for movement
+  // Client just applies server positions directly
       
-            // Expose selected constructors for browser-based tests (static import ensures availability)
+      console.log('[Client World] Client helper systems registered');
+      // Expose selected constructors for browser-based tests (static import ensures availability)
       const anyWin = window as unknown as { Hyperscape?: Record<string, unknown> };
       anyWin.Hyperscape = anyWin.Hyperscape || {};
       anyWin.Hyperscape.CircularSpawnArea = CircularSpawnArea;

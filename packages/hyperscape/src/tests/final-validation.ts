@@ -57,8 +57,8 @@ class FinalValidation {
       } else {
         this.addResult('Compilation', 'TypeScript', 'pass', 'Clean compilation');
       }
-    } catch (error: unknown) {
-      this.addResult('Compilation', 'TypeScript', 'fail', (error as Error).message);
+      } catch (error) {
+        this.addResult('Compilation', 'TypeScript', 'fail', (error as Error).message);
     }
     
     // Check for any usage
@@ -105,7 +105,7 @@ class FinalValidation {
           cwd: process.cwd()
         });
         this.addResult('Tests', 'Movement Tests', 'pass', 'Core movement tests passing');
-    } catch (_error: unknown) {
+      } catch (_error) {
       this.addResult('Tests', 'Movement Tests', 'fail', 'Test failures detected');
     }
     }
@@ -152,7 +152,7 @@ class FinalValidation {
           this.addResult('Systems', `${system} (server)`, 'fail', 'Not registered');
         }
       }
-    } catch (error: unknown) {
+    } catch (error) {
       this.addResult('Systems', 'Registration Check', 'fail', (error as Error).message);
     }
   }
@@ -178,7 +178,7 @@ class FinalValidation {
         this.addResult('Integration', 'PlayerLocal', 'fail', 'No movement integration');
       }
     } catch (error) {
-      this.addResult('Integration', 'PlayerLocal', 'fail', error instanceof Error ? error.message : 'Unknown error');
+      this.addResult('Integration', 'PlayerLocal', 'fail', (error as Error).message);
     }
     
     // Check packet types
@@ -203,7 +203,7 @@ class FinalValidation {
         this.addResult('Integration', 'Packet Types', 'warning', `Missing: ${missingPackets.join(', ')}`);
       }
     } catch (error) {
-      this.addResult('Integration', 'Packet Types', 'fail', error instanceof Error ? error.message : 'Unknown error');
+      this.addResult('Integration', 'Packet Types', 'fail', (error as Error).message);
     }
   }
   
@@ -232,7 +232,7 @@ class FinalValidation {
         this.addResult('Performance', 'Client Tick Rate', 'warning', 'Not 60Hz');
       }
     } catch (error) {
-      this.addResult('Performance', 'Tick Rates', 'fail', error instanceof Error ? error.message : 'Unknown error');
+      this.addResult('Performance', 'Tick Rates', 'fail', (error as Error).message);
     }
     
     // Check for monitoring
@@ -251,7 +251,8 @@ class FinalValidation {
     console.log('\n🌐 Validating Networking...');
     
     // Check for delta compression
-    const deltaCompressionExists = await this.fileExists('src/systems/DeltaCompressionSystem.ts');
+    // DeltaCompressionSystem is now consolidated into EntityInterpolationSystem
+    const deltaCompressionExists = false; // System is integrated into EntityInterpolationSystem
     if (deltaCompressionExists) {
       this.addResult('Networking', 'Delta Compression', 'pass', 'Implemented');
     } else {

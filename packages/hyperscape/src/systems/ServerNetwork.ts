@@ -70,25 +70,28 @@ export class ServerNetwork extends System implements NetworkWithSocket {
   db!: SystemDatabase; // Database instance (Knex) - initialized in init()
   spawn: SpawnData;
   maxUploadSize: number;
+  
+  // Position validation
+  private lastValidationTime = 0;
+  private validationInterval = 100; // Start aggressive, then slow to 1000ms
+  private systemUptime = 0;
 
   // Handler method registry - using NetworkHandler type for flexibility
   private handlers: Record<string, NetworkHandler> = {};
-  // Server-authoritative movement with physics simulation
-  private moveTargets: Map<string, { 
-    target: THREE.Vector3; 
-    velocity: THREE.Vector3; // Current velocity
-    maxSpeed: number; // Max movement speed
-    currentRotation?: THREE.Quaternion; // Track current rotation for smooth turning
-    lastBroadcast?: number; // Track last broadcast time to throttle updates
+  // Simple movement state - no complex physics simulation
+  private moveTargets: Map<string, {
+    target: THREE.Vector3;
+    maxSpeed: number;
+    lastUpdate: number;
   }> = new Map();
-  private _tempVec3_1 = new THREE.Vector3();
-  private _tempVec3_2 = new THREE.Vector3();
-  private _tempVec3_3 = new THREE.Vector3();
-  private _tempVec3_4 = new THREE.Vector3();
+
+  // Pre-allocated vectors for calculations (no garbage)
+  private _tempVec3 = new THREE.Vector3();
+  private _tempVec3Fwd = new THREE.Vector3(0, 0, -1);
   private _tempQuat = new THREE.Quaternion();
 
-  // Add lastQuaternion per entity
-  private lastStates = new Map(); // Add quaternion to lastState
+  // Track last state per entity (used for future delta compression)
+  private lastStates = new Map<string, { q: [number, number, number, number] }>();
   // In broadcast, for q:
   // const last = this.lastStates.get(entity.id) || {q: [0,0,0,1]};
   // const qDelta = quatSubtract(currentQuaternion, last.q);
@@ -181,234 +184,142 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     // Environment model loading is handled by ServerEnvironment.start()
   }
 
+  override destroy(): void {
+    try { clearInterval(this.socketIntervalId) } catch {}
+    if (this.saveTimerId) {
+      try { clearTimeout(this.saveTimerId) } catch {}
+      this.saveTimerId = null
+    }
+    try { this.world.settings.off('change', this.saveSettings) } catch {}
+    // Optionally close sockets to free resources during tests/hot-reloads
+    try {
+      for (const [_id, socket] of this.sockets) {
+        try { (socket as unknown as { close?: () => void }).close?.() } catch {}
+      }
+      this.sockets.clear()
+    } catch {}
+  }
+
   override preFixedUpdate(): void {
     this.flush();
   }
 
   override update(dt: number): void {
-    // Advance server-authoritative player movement with physics simulation
-    if (this.moveTargets.size === 0) return;
+    // Track uptime for validation interval adjustment
+    this.systemUptime += dt;
+    if (this.systemUptime > 10 && this.validationInterval < 1000) {
+      this.validationInterval = 1000; // Slow down after 10 seconds
+    }
     
-    // Process all move targets
+    // Validate player positions periodically
+    this.lastValidationTime += dt * 1000;
+    if (this.lastValidationTime >= this.validationInterval) {
+      this.validatePlayerPositions();
+      this.lastValidationTime = 0;
+    }
     
-    // Tune movement so clients observe noticeable displacement within a few network ticks
-    const ACCELERATION = 120.0; // Units per second squared (fast ramp-up to max speed)
-    const DRAG = 2.0; // Deceleration factor (gentle drag to avoid sluggish starts)
-    const BRAKE_DISTANCE = 2.0; // Start braking this far from target
-    const ARRIVAL_THRESHOLD = 0.2; // Consider arrived within this distance
-    
+    // Simple server-authoritative movement - no complex physics
+    const now = Date.now();
     const toDelete: string[] = [];
+
     this.moveTargets.forEach((info, playerId) => {
       const entity = this.world.entities.get(playerId);
-      if (!entity) {
-        // Only log if debugging network issues
-        // console.warn(`[ServerNetwork] No entity found for player ${playerId}, removing from move targets`);
+      if (!entity || !entity.position) {
         toDelete.push(playerId);
+        // Ensure associated state entries are also cleaned up
+        this.lastStates.delete(playerId);
         return;
       }
-      
-      
-      // Get current position - handle both entity.position and entity.node.position
-      let current;
-      if (entity.position) {
-        current = entity.position;
-      } else if (entity.node && entity.node.position) {
-        current = entity.node.position;
-      } else {
-        console.error(`[ServerNetwork] Entity ${playerId} has no position property!`);
-        toDelete.push(playerId);
-        return;
-      }
+
+      const current = entity.position;
       const target = info.target;
-      
-      // Calculate direction to target (XZ plane only)
       const dx = target.x - current.x;
       const dz = target.z - current.z;
-      const distXZ = Math.sqrt(dx * dx + dz * dz);
-      
+      const dist = Math.sqrt(dx * dx + dz * dz);
+
       // Check if arrived
-      if (distXZ < ARRIVAL_THRESHOLD) {
-        // Stop and snap to target
-        info.velocity.set(0, 0, 0);
-        
-        // Get final terrain height
-        const terrain = this.world.getSystem('terrain') as TerrainSystem | null;
+      if (dist < 0.3) {
+        // Arrived at target
+        // Clamp final Y to terrain
         let finalY = target.y;
-        if (terrain) {
-          const th = terrain.getHeightAt(target.x, target.z);
-          if (Number.isFinite(th)) {
-            finalY = (th as number) + 0.1;
-          }
+        const terrainFinal = this.world.getSystem<TerrainSystem>('terrain') as TerrainSystem | null;
+        if (terrainFinal) {
+          const th = terrainFinal.getHeightAt(target.x, target.z);
+          if (Number.isFinite(th)) finalY = (th as number) + 0.1;
         }
-        
         entity.position.set(target.x, finalY, target.z);
-        if (entity.data) {
-          entity.data.position = [target.x, finalY, target.z];
-          // Store velocity in data for network sync
-          if (!entity.data.velocity) {
-            entity.data.velocity = [0, 0, 0];
-          } else {
-            entity.data.velocity = [0, 0, 0];
-          }
-        }
-        
+        entity.data.position = [target.x, finalY, target.z];
+        entity.data.velocity = [0, 0, 0];
         toDelete.push(playerId);
-        // Broadcast final state
-        this.send('entityModified', { 
-          id: playerId, 
-          changes: { 
+
+        // Broadcast final idle state
+        this.send('entityModified', {
+          id: playerId,
+          changes: {
             p: [target.x, finalY, target.z],
-            v: [0, 0, 0], // Velocity
-            e: 'idle' 
-          } 
+            v: [0, 0, 0],
+            e: 'idle'
+          }
         });
         return;
       }
-      
-      // Calculate desired velocity
-      const direction = this._tempVec3_1.set(dx / distXZ, 0, dz / distXZ);
-      const desiredVelocity = this._tempVec3_2.copy(direction).multiplyScalar(info.maxSpeed);
-      
-      // Apply acceleration toward desired velocity
-      const velocityDiff = this._tempVec3_3.subVectors(desiredVelocity, info.velocity);
-      const acceleration = this._tempVec3_4.copy(velocityDiff).normalize().multiplyScalar(ACCELERATION * dt);
-      info.velocity.add(acceleration);
-      
-      // Apply braking when close to target
-      if (distXZ < BRAKE_DISTANCE) {
-        const brakeFactor = distXZ / BRAKE_DISTANCE;
-        info.velocity.multiplyScalar(brakeFactor);
-      }
-      
-      // Apply drag
-      info.velocity.multiplyScalar(1 - DRAG * dt);
-      
-      // Limit to max speed
-      const speed = info.velocity.length();
-      if (speed > info.maxSpeed) {
-        info.velocity.normalize().multiplyScalar(info.maxSpeed);
-      }
-      
-      // Update position
-      const nx = current.x + info.velocity.x * dt;
-      const nz = current.z + info.velocity.z * dt;
-      
-      // Movement calculation completed
-      
-      // Clamp to terrain with proper offset
-      const terrain = this.world.getSystem('terrain') as TerrainSystem | null;
-      let ny = current.y;
-      
-      // ALWAYS ensure minimum height first
-      if (ny < 0) {
-        console.error(`[ServerNetwork] WARNING: Player ${playerId} has fallen to Y=${ny.toFixed(2)}! Emergency correction to Y=10`);
-        ny = 10; // Emergency height
-      }
-      
+
+      // Simple linear interpolation toward target
+      const speed = info.maxSpeed;
+      const moveDistance = Math.min(dist, speed * dt);
+
+      // Calculate direction and new position
+      const normalizedDx = dx / dist;
+      const normalizedDz = dz / dist;
+      const nx = current.x + normalizedDx * moveDistance;
+      const nz = current.z + normalizedDz * moveDistance;
+
+      // Clamp Y to terrain height (slightly above)
+      let ny = target.y;
+      const terrain = this.world.getSystem<TerrainSystem>('terrain') as TerrainSystem | null;
       if (terrain) {
         const th = terrain.getHeightAt(nx, nz);
-        if (Number.isFinite(th) && th > -100 && th < 1000) {
-          // Keep player slightly above terrain (10cm) to prevent clipping
-          ny = (th as number) + 0.1;
-        } else {
-          // Invalid terrain height - use safe default
-          console.warn(`[ServerNetwork] Invalid terrain height at (${nx.toFixed(1)}, ${nz.toFixed(1)}): ${th}, using safe height Y=10`);
-          ny = 10; // Safe default height
-        }
-      } else {
-        // No terrain system - use safe default
-        console.warn('[ServerNetwork] No terrain system available for movement clamping, using Y=10');
-        ny = 10;
-      }
-      
-      // Apply position update - handle both entity.position and entity.node.position
-      if (entity.position && entity.position.set) {
-        entity.position.set(nx, ny, nz);
-        // Commented out verbose position logging
-        // console.log(`[ServerNetwork] Updated entity ${playerId} position to (${nx.toFixed(1)}, ${ny.toFixed(1)}, ${nz.toFixed(1)})`);
-      } else if (entity.node && entity.node.position && entity.node.position.set) {
-        entity.node.position.set(nx, ny, nz);
-        // console.log(`[ServerNetwork] Updated entity ${playerId} node.position to (${nx.toFixed(1)}, ${ny.toFixed(1)}, ${nz.toFixed(1)})`);
-      } else {
-        console.error(`[ServerNetwork] Cannot set position for entity ${playerId} - no position property!`);
+        if (Number.isFinite(th)) ny = (th as number) + 0.1;
       }
 
-      // Update entity data for serialization
-      if (entity.data) {
-        entity.data.position = [nx, ny, nz];
-        // Store velocity in data for network sync
-        if (!entity.data.velocity) {
-          entity.data.velocity = [info.velocity.x, info.velocity.y, info.velocity.z];
-        } else {
-          entity.data.velocity = [info.velocity.x, info.velocity.y, info.velocity.z];
-        }
+      // Update position
+      entity.position.set(nx, ny, nz);
+      entity.data.position = [nx, ny, nz];
+
+      // Calculate velocity for animation
+      const velocity = normalizedDx * speed;
+      const velZ = normalizedDz * speed;
+      entity.data.velocity = [velocity, 0, velZ];
+
+      // Simple rotation toward movement direction
+      if (entity.node) {
+        // Use two separate temp vectors to avoid overwriting
+        const dir = this._tempVec3.set(normalizedDx, 0, normalizedDz);
+        this._tempVec3Fwd.set(0, 0, -1);
+        this._tempQuat.setFromUnitVectors(this._tempVec3Fwd, dir);
+        entity.node.quaternion.copy(this._tempQuat);
+        entity.data.quaternion = [this._tempQuat.x, this._tempQuat.y, this._tempQuat.z, this._tempQuat.w];
       }
-      
-      // Smooth rotation: compute target rotation and interpolate
-      let qArr: [number, number, number, number] | undefined;
-      const moveDir = this._tempVec3_1.set(dx, 0, dz);
-      if (moveDir.lengthSq() > 1e-6) {
-        moveDir.normalize();
-        const forward = this._tempVec3_2.set(0, 0, -1);
-        const targetRotation = this._tempQuat.setFromUnitVectors(forward, moveDir);
-        
-        // Initialize current rotation if not set
-        if (!info.currentRotation) {
-          // Try to get from entity's current rotation
-          if (entity.node && entity.node.quaternion) {
-            info.currentRotation = entity.node.quaternion.clone();
-          } else {
-            info.currentRotation = new THREE.Quaternion();
-          }
-        }
-        
-        // Smoothly interpolate rotation with wider turn radius
-        // Using 0.02 for server-side rotation (slower = wider turns)
-        const rotationSpeed = 0.02;
-        info.currentRotation.slerp(targetRotation, rotationSpeed);
-        
-        // Update entity's quaternion
-        if (entity.node) {
-          entity.node.quaternion.copy(info.currentRotation);
-        }
-        
-        // Also update entity.data.quaternion for serialization
-        if (entity.data) {
-          entity.data.quaternion = [info.currentRotation.x, info.currentRotation.y, info.currentRotation.z, info.currentRotation.w];
-        }
-        
-        qArr = [info.currentRotation.x, info.currentRotation.y, info.currentRotation.z, info.currentRotation.w];
-      }
-      
-      
-      // Throttle broadcasts to reduce network traffic
-      const now = Date.now();
-      // In update, change BROADCAST_INTERVAL to 33 for moving entities
-      const BROADCAST_INTERVAL = info.velocity.length() > 0 ? 33 : 50;
-      const shouldBroadcast = !info.lastBroadcast || (now - info.lastBroadcast) >= BROADCAST_INTERVAL;
-      
-      if (shouldBroadcast) {
-        info.lastBroadcast = now;
-        
-        // Determine animation state based on speed
-        const speed = info.velocity.length();
-        const emote = speed > 4 ? 'run' : speed > 0.1 ? 'walk' : 'idle';
-        
-        const payload = {
+
+      // Broadcast update at ~30fps
+      if (!info.lastUpdate || (now - info.lastUpdate) >= 33) {
+        info.lastUpdate = now;
+
+        const speed = Math.sqrt(velocity * velocity + velZ * velZ);
+        const emote = speed > 4 ? 'run' : 'walk';
+
+        this.send('entityModified', {
           id: playerId,
           changes: {
             p: [nx, ny, nz],
-            q: qArr || [0,0,0,1], // Always include
-            s: entity.scale ? [entity.scale.x, entity.scale.y, entity.scale.z] : undefined,
-            v: [info.velocity.x, info.velocity.y, info.velocity.z], // Include velocity
-            e: emote,
-          },
-        };
-        
-        // Send to all clients (including originator for server authority)
-        this.send('entityModified', payload);
+            q: entity.data.quaternion,
+            v: [velocity, 0, velZ],
+            e: emote
+          }
+        });
       }
     });
+
     toDelete.forEach(id => this.moveTargets.delete(id));
   }
 
@@ -684,7 +595,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       }
       
       // Ground spawn position to terrain height
-      const terrainSystem = this.world.getSystem('terrain') as TerrainSystem | null;
+      const terrainSystem = this.world.getSystem<TerrainSystem>('terrain') as TerrainSystem | null;
       
       // Check if terrain system is ready using its isReady() method
       if (terrainSystem && terrainSystem.isReady && terrainSystem.isReady()) {
@@ -881,7 +792,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       }
       // Apply on server entity
       // Clamp Y to terrain height on all server-side position sets via command
-      const terrain = this.world.getSystem('terrain') as TerrainSystem | null
+      const terrain = this.world.getSystem<TerrainSystem>('terrain') as TerrainSystem | null
       if (!terrain) {
         throw new Error('[ServerNetwork] Terrain system not available for chat move')
       }
@@ -959,57 +870,49 @@ export class ServerNetwork extends System implements NetworkWithSocket {
   }
 
   private onMoveRequest(socket: Socket, data: unknown): void {
-    // Only accept move requests for the authenticated player's own entity
     const playerEntity = socket.player;
-    if (!playerEntity) {
-      console.warn('[ServerNetwork] No player entity for socket', socket.id);
+    if (!playerEntity) return;
+
+    const payload = data as { target?: number[] | null; runMode?: boolean; cancel?: boolean };
+
+    // Handle cancellation
+    if (payload?.cancel || payload?.target === null) {
+      this.moveTargets.delete(playerEntity.id);
+      const curr = playerEntity.position;
+      this.send('entityModified', {
+        id: playerEntity.id,
+        changes: {
+          p: [curr.x, curr.y, curr.z],
+          v: [0, 0, 0],
+          e: 'idle'
+        }
+      });
       return;
     }
-    const payload = data as { target?: number[] | [number, number, number]; runMode?: boolean };
-    const t = Array.isArray(payload?.target) && payload.target.length === 3 ? payload.target as [number, number, number] : null;
-    if (!t || !t.every(v => Number.isFinite(v))) {
-      console.warn('[ServerNetwork] Invalid move target:', payload?.target);
-      return;
-    }
-    const maxSpeed = payload?.runMode ? 8 : 4; // units per second (faster to ensure visible replication)
-    const target = this._tempVec3_1.set(t[0], t[1], t[2]);
-    
-    // Anchor Y to terrain height with proper offset
-    const terrain = this.world.getSystem('terrain') as TerrainSystem | null;
-    if (terrain) {
-      const h = terrain.getHeightAt(target.x, target.z);
-      if (Number.isFinite(h)) {
-        // Use small offset to keep player close to terrain (better for slopes)
-        target.y = (h as number) + 0.1;
-      } else {
-        // As a failsafe, use a safe default height
-        target.y = 50;
-        console.warn(`[ServerNetwork] Using default height for move target at (${target.x.toFixed(1)}, ${target.z.toFixed(1)})`);
-      }
-    }
-    
-    console.log(`[ServerNetwork] Setting move target for player ${playerEntity.id}: (${target.x.toFixed(1)}, ${target.y.toFixed(1)}, ${target.z.toFixed(1)}), maxSpeed=${maxSpeed}`);
-    
-    // Get or create movement info
-    const existingInfo = this.moveTargets.get(playerEntity.id);
-    const velocity = existingInfo?.velocity || this._tempVec3_2.set(0, 0, 0);
-    const currentRotation = existingInfo?.currentRotation || 
-      (playerEntity.node?.quaternion ? playerEntity.node.quaternion.clone() : undefined);
-    
-    this.moveTargets.set(playerEntity.id, { 
-      target, 
-      velocity,
-      maxSpeed, 
-      currentRotation 
+
+    const t = payload?.target as [number, number, number] | null;
+    if (!t) return;
+
+    // Simple target creation - no complex terrain anchoring
+    const target = new THREE.Vector3(t[0], t[1], t[2]);
+    const maxSpeed = payload?.runMode ? 8 : 4;
+
+    // Replace existing target completely (allows direction changes)
+    this.moveTargets.set(playerEntity.id, {
+      target,
+      maxSpeed,
+      lastUpdate: 0
     });
-    // Immediately send a prime update so clients align to authoritative position and animation
-    const curr = (playerEntity as Entity).position
-    this.send('entityModified', { 
-      id: playerEntity.id, 
-      changes: { 
-        p: [curr.x, curr.y, curr.z], 
-        e: payload?.runMode ? 'run' : 'walk' 
-      } 
+
+    // Send immediate update to start movement
+    const curr = playerEntity.position;
+    this.send('entityModified', {
+      id: playerEntity.id,
+      changes: {
+        p: [curr.x, curr.y, curr.z],
+        v: [0, 0, 0],
+        e: payload?.runMode ? 'run' : 'walk'
+      }
     });
   }
 
@@ -1044,4 +947,51 @@ export class ServerNetwork extends System implements NetworkWithSocket {
   onSpawnModified(socket: Socket, data: SpawnData): void {
     // Handle spawn modification
       }
+  
+  /**
+   * Validate all player positions against terrain
+   * Integrated from ServerPositionValidator for efficiency
+   */
+  private validatePlayerPositions(): void {
+    const terrain = this.world.getSystem<TerrainSystem>('terrain') as TerrainSystem | null;
+    if (!terrain) return;
+    
+    // Iterate through all connected players via their sockets
+    for (const socket of this.sockets.values()) {
+      if (!socket.player) continue;
+      
+      const player = socket.player;
+      const currentY = player.position.y;
+      const terrainHeight = terrain.getHeightAt(player.position.x, player.position.z);
+      
+      // Only correct if significantly wrong
+      if (!Number.isFinite(currentY) || currentY < -5 || currentY > 200) {
+        // Emergency correction
+        const correctedY = Number.isFinite(terrainHeight) ? terrainHeight + 0.1 : 10;
+        player.position.y = correctedY;
+        if (player.data) {
+          player.data.position = [player.position.x, correctedY, player.position.z];
+        }
+        this.send('entityModified', {
+          id: player.id,
+          changes: { p: [player.position.x, correctedY, player.position.z] }
+        });
+      } else if (Number.isFinite(terrainHeight)) {
+        // Check if player drifted too far from terrain
+        const expectedY = terrainHeight + 0.1;
+        const errorMargin = Math.abs(currentY - expectedY);
+        
+        if (errorMargin > 10) {
+          player.position.y = expectedY;
+          if (player.data) {
+            player.data.position = [player.position.x, expectedY, player.position.z];
+          }
+          this.send('entityModified', {
+            id: player.id,
+            changes: { p: [player.position.x, expectedY, player.position.z] }
+          });
+        }
+      }
+    }
+  }
 }

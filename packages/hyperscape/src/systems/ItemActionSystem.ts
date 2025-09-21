@@ -469,8 +469,7 @@ export class ItemActionSystem extends SystemBase {
     this.contextMenus.clear();
     this.itemActions.clear();
     
-    Logger.system('ItemActionSystem', 'Item action system destroyed and cleaned up');
-    
+        
     // Call parent cleanup
     super.destroy();
   }

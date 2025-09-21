@@ -41,6 +41,7 @@ logs/
 tmp/
 temp/
 .tmp/
+.dev-server.pid
 
 # OS files
 Thumbs.db

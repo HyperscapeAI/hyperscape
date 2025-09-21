@@ -110,7 +110,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('Test Setup', 'Test environment initialization', false, 
-        error instanceof Error ? error.message : 'Unknown error', 'CRITICAL');
+        (error as Error).message, 'CRITICAL');
     }
     
     this.printComprehensiveResults();
@@ -218,7 +218,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('Player Systems', 'GDD 3.1: Starting Conditions', false, 
-        error instanceof Error ? error.message : 'Unknown error', 'CRITICAL');
+        (error as Error).message, 'CRITICAL');
     }
   }
 
@@ -255,7 +255,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('Player Systems', 'GDD 3.2: Core Stats', false,
-        error instanceof Error ? error.message : 'Unknown error', 'CRITICAL');
+        (error as Error).message, 'CRITICAL');
     }
   }
 
@@ -282,7 +282,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('Player Systems', 'GDD 3.3: Movement System', false,
-        error instanceof Error ? error.message : 'Unknown error', 'HIGH');
+        (error as Error).message, 'HIGH');
     }
   }
 
@@ -317,7 +317,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('Player Systems', 'GDD 3.4: Death Mechanics', false,
-        error instanceof Error ? error.message : 'Unknown error', 'HIGH');
+        (error as Error).message, 'HIGH');
     }
   }
 
@@ -342,7 +342,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('Player Systems', 'GDD 3.5: Level Progression', false,
-        error instanceof Error ? error.message : 'Unknown error', 'HIGH');
+        (error as Error).message, 'HIGH');
     }
   }
 
@@ -381,7 +381,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('Combat System', 'GDD 4.1: Combat Mechanics', false,
-        error instanceof Error ? error.message : 'Unknown error', 'CRITICAL');
+        (error as Error).message, 'CRITICAL');
     }
   }
 
@@ -417,7 +417,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('Combat System', 'GDD 4.2: Ranged Combat', false,
-        error instanceof Error ? error.message : 'Unknown error', 'HIGH');
+        (error as Error).message, 'HIGH');
     }
   }
 
@@ -441,7 +441,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('Combat System', 'GDD 4.3: Damage Calculation', false,
-        error instanceof Error ? error.message : 'Unknown error', 'HIGH');
+        (error as Error).message, 'HIGH');
     }
   }
 
@@ -503,7 +503,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('Skills System', 'GDD 5.1: Available Skills (MVP)', false,
-        error instanceof Error ? error.message : 'Unknown error', 'HIGH');
+        (error as Error).message, 'HIGH');
     }
   }
 
@@ -524,7 +524,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('Skills System', 'GDD 5.2: Resource Gathering', false,
-        error instanceof Error ? error.message : 'Unknown error', 'MEDIUM');
+        (error as Error).message, 'MEDIUM');
     }
   }
 
@@ -544,7 +544,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('Skills System', 'GDD 5.3: Processing Skills', false,
-        error instanceof Error ? error.message : 'Unknown error', 'MEDIUM');
+        (error as Error).message, 'MEDIUM');
     }
   }
 
@@ -580,7 +580,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('Items and Equipment', 'GDD 6.1: Weapon Types', false,
-        error instanceof Error ? error.message : 'Unknown error', 'HIGH');
+        (error as Error).message, 'HIGH');
     }
   }
 
@@ -600,7 +600,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('Items and Equipment', 'GDD 6.2: Armor Types', false,
-        error instanceof Error ? error.message : 'Unknown error', 'HIGH');
+        (error as Error).message, 'HIGH');
     }
   }
 
@@ -638,7 +638,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('Items and Equipment', 'GDD 6.3: Equipment Slots', false,
-        error instanceof Error ? error.message : 'Unknown error', 'HIGH');
+        (error as Error).message, 'HIGH');
     }
   }
 
@@ -692,7 +692,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('World Design', 'GDD 7: World Design System', false,
-        error instanceof Error ? error.message : 'Unknown error', 'HIGH');
+        (error as Error).message, 'HIGH');
     }
   }
 
@@ -739,7 +739,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('NPCs and Mobs', 'GDD 8.1: Mob Spawning', false,
-        error instanceof Error ? error.message : 'Unknown error', 'CRITICAL');
+        (error as Error).message, 'CRITICAL');
     }
   }
 
@@ -757,7 +757,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('NPCs and Mobs', 'GDD 8.2: Mob AI Behavior', false,
-        error instanceof Error ? error.message : 'Unknown error', 'HIGH');
+        (error as Error).message, 'HIGH');
     }
   }
 
@@ -775,7 +775,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('NPCs and Mobs', 'GDD 8.3: Loot System', false,
-        error instanceof Error ? error.message : 'Unknown error', 'HIGH');
+        (error as Error).message, 'HIGH');
     }
   }
 
@@ -803,7 +803,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('Economy and Trading', 'GDD 9: Economy System', false,
-        error instanceof Error ? error.message : 'Unknown error', 'MEDIUM');
+        (error as Error).message, 'MEDIUM');
     }
   }
 
@@ -827,7 +827,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('User Interface', 'GDD 10: UI System', false,
-        error instanceof Error ? error.message : 'Unknown error', 'HIGH');
+        (error as Error).message, 'HIGH');
     }
   }
 
@@ -890,7 +890,7 @@ export class GDDComplianceTestSuite {
       
     } catch (error) {
       this.addResult('Multiplayer Architecture', 'GDD 11: Multiplayer Architecture', false,
-        error instanceof Error ? error.message : 'Unknown error', 'CRITICAL');
+        (error as Error).message, 'CRITICAL');
     }
   }
 

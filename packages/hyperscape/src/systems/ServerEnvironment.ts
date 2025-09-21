@@ -64,4 +64,12 @@ export class ServerEnvironment extends System {
       this.updateModel()
     }
   }
+
+  override destroy(): void {
+    this.world.settings?.off('change', this.onSettingsChange)
+    if (this.model) {
+      try { this.model.deactivate() } catch {}
+      this.model = null
+    }
+  }
 }

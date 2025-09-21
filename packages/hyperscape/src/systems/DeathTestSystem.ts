@@ -433,8 +433,7 @@ export class DeathTestSystem extends VisualTestFramework {
       setTimeout(() => {
         const currentTestData = this.testData.get(stationId);
         if (currentTestData && currentTestData.headstoneLocation) {
-          Logger.system('DeathTestSystem', 'Moving player back to headstone for retrieval');
-          
+                    
           // Move player back to headstone
           this.movePlayer(currentTestData.player.id, {
             x: currentTestData.headstoneLocation.x - 1,
@@ -862,8 +861,7 @@ export class DeathTestSystem extends VisualTestFramework {
 
   private handlePlayerDeath(data: { playerId: string; deathLocation: { x: number; y: number; z: number }; cause?: string; killerId?: string | null }): void {
     // Handle player death event for testing
-    Logger.system('DeathTestSystem', `Player death detected: ${data.playerId} at position ${JSON.stringify(data.deathLocation)}`);
-    
+        
     // Find the test station for this player
     for (const [stationId, testData] of Array.from(this.testData.entries())) {
       if (testData.player.id === data.playerId) {
@@ -872,16 +870,14 @@ export class DeathTestSystem extends VisualTestFramework {
         testData.deathCause = data.cause || 'unknown';
         testData.deathProcessed = true;
         
-        Logger.system('DeathTestSystem', `Death processed for station ${stationId}`);
-        break;
+                break;
       }
     }
   }
 
   private handlePlayerRespawn(data: { playerId: string; respawnLocation: { x: number; y: number; z: number } }): void {
     // Handle player respawn event for testing
-    Logger.system('DeathTestSystem', `Player respawn detected: ${data.playerId} at position ${JSON.stringify(data.respawnLocation)}`);
-    
+        
     // Find the test station for this player
     for (const [stationId, testData] of Array.from(this.testData.entries())) {
       if (testData.player.id === data.playerId) {
@@ -893,16 +889,14 @@ export class DeathTestSystem extends VisualTestFramework {
         const isNearTown = Math.abs(data.respawnLocation.x) < 50 && Math.abs(data.respawnLocation.z) < 50;
         testData.respawnedAtTown = isNearTown;
         
-        Logger.system('DeathTestSystem', `Respawn processed for station ${stationId}`);
-        break;
+                break;
       }
     }
   }
 
   private handleItemsDropped(data: { itemId: string; playerId: string; position: { x: number; y: number; z: number } }): void {
     // Handle single item dropped on death event for testing
-    Logger.system('DeathTestSystem', `Item dropped detected: ${data.itemId} for player ${data.playerId}`);
-    
+        
     // Find the test station for this player
     for (const [stationId, testData] of Array.from(this.testData.entries())) {
       if (testData.player.id === data.playerId) {
@@ -913,16 +907,14 @@ export class DeathTestSystem extends VisualTestFramework {
         testData.headstoneCreated = testData.itemsDropped.length > 0;
         testData.headstoneLocation = testData.itemsDropped.length > 0 ? { ...data.position } : null;
         
-        Logger.system('DeathTestSystem', `Item drop processed for station ${stationId}: total ${testData.itemsDropped.length} items`);
-        break;
+                break;
       }
     }
   }
 
   private handleItemsRetrieved(data: { entityId: string; playerId: string; items: Array<{ id: string; itemId: string; quantity: number; slot: number }>; totalItems: number }): void {
     // Handle items retrieved from death location event for testing
-    Logger.system('DeathTestSystem', `Items retrieved detected: ${data.items.length} items for player ${data.playerId}`);
-    
+        
     // Find the test station for this player
     for (const [stationId, testData] of Array.from(this.testData.entries())) {
       if (testData.player.id === data.playerId) {
@@ -936,8 +928,7 @@ export class DeathTestSystem extends VisualTestFramework {
         // Check if all items were retrieved
         const allItemsRetrieved = testData.itemsDropped.length === testData.itemsRetrieved.length;
         if (allItemsRetrieved) {
-          Logger.system('DeathTestSystem', `All items successfully retrieved for station ${stationId}`);
-        }
+                  }
         
         break;
       }
@@ -956,15 +947,13 @@ export class DeathTestSystem extends VisualTestFramework {
     const testData = this.testData.get(stationId);
     if (!testData) return false;
 
-    Logger.system('DeathTestSystem', `Attempting item retrieval for station ${stationId}`);
-    
+        
     // Simulate player retrieving items from headstone
     if (testData.headstoneCreated && testData.headstoneLocation) {
       const distance = calculateDistance(testData.player.position, testData.headstoneLocation);
       if (distance <= 2) { // Within interaction range
         testData.itemsRetrieved = [...testData.itemsDropped];
-        Logger.system('DeathTestSystem', `Items retrieved successfully for station ${stationId}`);
-        return true;
+                return true;
       }
     }
     
@@ -972,20 +961,17 @@ export class DeathTestSystem extends VisualTestFramework {
   }
 
   private scheduleHeadstonePersistenceChecks(stationId: string): void {
-    Logger.system('DeathTestSystem', `Scheduling headstone persistence checks for station ${stationId}`);
-    
+        
     // Schedule checks for headstone persistence
     setTimeout(() => {
       const testData = this.testData.get(stationId);
       if (testData && testData.headstoneCreated) {
-        Logger.system('DeathTestSystem', `Headstone persisted after 30 seconds for station ${stationId}`);
-      }
+              }
     }, 30000);
   }
 
   private completeMultipleDeathsTest(stationId: string, success: boolean, error?: string): void {
-    Logger.system('DeathTestSystem', `Multiple deaths test ${success ? 'PASSED' : 'FAILED'} for station ${stationId}${error ? ': ' + error : ''}`);
-    this.updateStationStatus(stationId, success ? 'passed' : 'failed', error);
+        this.updateStationStatus(stationId, success ? 'passed' : 'failed', error);
   }
 
   protected updateStationStatus(stationId: string, status: 'idle' | 'running' | 'passed' | 'failed', error?: string): void {
@@ -995,8 +981,7 @@ export class DeathTestSystem extends VisualTestFramework {
       if (error) {
         station.currentError = error;
       }
-      Logger.system('DeathTestSystem', `Updated station ${stationId} status to ${status}${error ? ': ' + error : ''}`);
-    }
+          }
   }
 
 }

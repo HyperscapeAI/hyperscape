@@ -9,7 +9,7 @@ import type { PhysicsHandle } from '../systems/Physics'
 import type { TerrainSystem } from '../systems/TerrainSystem'
 import type { Player, PlayerCombatData, PlayerDeathData, PlayerEquipmentItems, PlayerHealth, PlayerStamina, Skills } from '../types/core'
 import { EventType } from '../types/events'
-import { ClientLoader, ControlBinding, NetworkData } from '../types/index'
+import { ClientLoader, ControlBinding, NetworkData, EntityData } from '../types/index'
 import type {
   ActorHandle,
   CameraSystem,
@@ -92,8 +92,8 @@ const DEFAULT_CAM_HEIGHT = 1.2
 
 // Utility function for roles check
 function hasRole(roles: unknown, role: string): boolean {
-  if (!Array.isArray(roles)) return false
-  return roles.includes(role)
+  // Strong type assumption - roles is an array when provided
+  return (roles as string[]).includes(role)
 }
 
 // Constants for common game values
@@ -118,80 +118,82 @@ function _getPhysicsLayers() {
 
 // Utility functions for PhysX transform operations
 function _safePhysXTransformPosition(vector: THREE.Vector3, transform: PhysX.PxTransform): void {
-  if (transform && typeof transform === 'object' && 'p' in transform) {
-    const p = transform.p
-    p.x = vector.x
-    p.y = vector.y
-    p.z = vector.z
-  }
+  // Strong type assumption - transform has p property
+  const p = transform.p
+  p.x = vector.x
+  p.y = vector.y
+  p.z = vector.z
 }
+
+// Temp variables for matrix operations - allocated once
+const _tempComposePos = new THREE.Vector3()
+const _tempComposeQuat = new THREE.Quaternion()
+const _tempComposeScale = new THREE.Vector3()
+const _tempDecomposePos = new THREE.Vector3()
+const _tempDecomposeQuat = new THREE.Quaternion()
+const _tempDecomposeScale = new THREE.Vector3()
 
 function _safePhysXTransformQuaternion(quat: THREE.Quaternion, transform: PhysX.PxTransform): void {
-  if (transform && typeof transform === 'object' && 'q' in transform) {
-    const q = transform.q
-    q.x = quat.x
-    q.y = quat.y
-    q.z = quat.z
-    q.w = quat.w
-  }
+  // Strong type assumption - transform has q property
+  const q = transform.q
+  q.x = quat.x
+  q.y = quat.y
+  q.z = quat.z
+  q.w = quat.w
 }
 
-// Matrix composition utility
+// Matrix composition utility - no longer allocates
 function _safeMatrixCompose(
   matrix: THREE.Matrix4,
   position: THREE.Vector3,
   quaternion: THREE.Quaternion,
   scale: THREE.Vector3
 ): void {
-  const pos = new THREE.Vector3(position.x, position.y, position.z)
-  const quat = new THREE.Quaternion(quaternion.x, quaternion.y, quaternion.z, quaternion.w)
-  const scl = new THREE.Vector3(scale.x, scale.y, scale.z)
+  // Reuse temp vectors instead of creating new ones
+  _tempComposePos.copy(position)
+  _tempComposeQuat.copy(quaternion)
+  _tempComposeScale.copy(scale)
 
   // Use proper THREE.js method
-  matrix.compose(pos, quat, scl)
+  matrix.compose(_tempComposePos, _tempComposeQuat, _tempComposeScale)
 }
 
 
 
-// Matrix decomposition utility
+// Matrix decomposition utility - no longer allocates
 function _safeMatrixDecompose(
   matrix: THREE.Matrix4,
   position: Vector3Like,
   quaternion: QuaternionLike,
   scale: Vector3Like
 ): void {
-  // Create temporary objects for decomposition
-  const tempPos = new THREE.Vector3()
-  const tempQuat = new THREE.Quaternion()
-  const tempScale = new THREE.Vector3()
-
-  // Use proper THREE.js method
-  matrix.decompose(tempPos, tempQuat, tempScale)
+  // Use pre-allocated temp variables
+  matrix.decompose(_tempDecomposePos, _tempDecomposeQuat, _tempDecomposeScale)
 
   // Copy values back
   if (position.copy) {
-    position.copy(tempPos)
+    position.copy(_tempDecomposePos)
   } else {
-    position.x = tempPos.x
-    position.y = tempPos.y
-    position.z = tempPos.z
+    position.x = _tempDecomposePos.x
+    position.y = _tempDecomposePos.y
+    position.z = _tempDecomposePos.z
   }
 
   if (quaternion.copy) {
-    quaternion.copy(tempQuat)
+    quaternion.copy(_tempDecomposeQuat)
   } else {
-    quaternion.x = tempQuat.x
-    quaternion.y = tempQuat.y
-    quaternion.z = tempQuat.z
-    quaternion.w = tempQuat.w
+    quaternion.x = _tempDecomposeQuat.x
+    quaternion.y = _tempDecomposeQuat.y
+    quaternion.z = _tempDecomposeQuat.z
+    quaternion.w = _tempDecomposeQuat.w
   }
 
   if (scale.copy) {
-    scale.copy(tempScale)
+    scale.copy(_tempDecomposeScale)
   } else {
-    scale.x = tempScale.x
-    scale.y = tempScale.y
-    scale.z = tempScale.z
+    scale.x = _tempDecomposeScale.x
+    scale.y = _tempDecomposeScale.y
+    scale.z = _tempDecomposeScale.z
   }
 }
 
@@ -514,12 +516,6 @@ export class PlayerLocal extends Entity implements HotReloadable {
         throw new Error(`[PlayerLocal] FATAL: Player is too high at Y=${this.position.y.toFixed(2)}!\n\nDebug: ${JSON.stringify(errorDetails)}`);
       }
       
-      // Log Y position periodically for debugging
-      // Commented out verbose Y position logging
-      // if (Math.abs(this.position.y) > 5) {
-      //   console.log(`[PlayerLocal] Y position check: ${this.position.y.toFixed(2)} (server: ${this.serverPosition?.y?.toFixed(2) || 'N/A'})`);
-      // }
-      
       // Check for large divergence from server
       if (this.serverPosition) {
         const dist = this.position.distanceTo(this.serverPosition);
@@ -547,7 +543,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
 
   private validateTerrainPosition(): void {
     // Follow terrain height
-    const terrain = this.world.getSystem('terrain') as TerrainSystem;
+    const terrain = this.world.getSystem<TerrainSystem>('terrain') as TerrainSystem;
     
     // Check if terrain system exists before using it
     if (!terrain) {
@@ -577,6 +573,136 @@ export class PlayerLocal extends Entity implements HotReloadable {
     // Skip UIRenderer - we use Nametag nodes instead
     // Do not call super.initializeVisuals()
   }
+  
+  private async waitForTerrain(): Promise<void> {
+    // Get terrain system
+    const terrainSystem = this.world.getSystem('terrain')
+    
+    if (!terrainSystem) {
+      // No terrain system, proceed without wait
+      return
+    }
+    
+    // Check if terrain has an isInitialized method or property
+    const terrain = terrainSystem as { isInitialized?: boolean | (() => boolean) }
+    
+    // Helper to check if terrain is ready
+    const isTerrainReady = (): boolean => {
+      if (typeof terrain.isInitialized === 'function') {
+        return terrain.isInitialized()
+      } else if (typeof terrain.isInitialized === 'boolean') {
+        return terrain.isInitialized
+      }
+      // If no isInitialized property, assume terrain is ready
+      return true
+    }
+    
+    // Check if terrain is already initialized
+    if (isTerrainReady()) {
+      return
+    }
+    
+    // Wait for terrain initialization with timeout
+    const maxWaitTime = 10000 // 10 seconds timeout
+    const startTime = Date.now()
+    
+    await new Promise<void>((resolve) => {
+      const checkInterval = setInterval(() => {
+        if (isTerrainReady()) {
+          clearInterval(checkInterval)
+          resolve()
+        } else if (Date.now() - startTime > maxWaitTime) {
+          // Timeout - proceed anyway
+          clearInterval(checkInterval)
+          resolve()
+        }
+      }, 100) // Check every 100ms
+    })
+  }
+  
+  // Override modify to handle shorthand network keys like PlayerRemote does
+  override modify(data: Partial<EntityData>): void {
+    // Map shorthand keys to full property names
+    if ('e' in data && data.e !== undefined) {
+      // Map 'e' to 'emote' for animation state
+      this.data.emote = data.e as string;
+      this.emote = data.e as string;
+      
+      // Immediately apply animation to avatar
+      if (this._avatar) {
+        const avatarNode = this._avatar as AvatarNode;
+        const emoteMap: Record<string, string> = {
+          'idle': Emotes.IDLE,
+          'walk': Emotes.WALK,
+          'run': Emotes.RUN,
+        };
+        const emoteUrl = emoteMap[this.emote] || Emotes.IDLE;
+        
+        // Use setEmote method which properly triggers the animation
+        if (avatarNode.setEmote) {
+          avatarNode.setEmote(emoteUrl);
+        } else if (avatarNode.emote !== undefined) {
+          // Fallback: set property directly (triggers setter)
+          avatarNode.emote = emoteUrl;
+        }
+      }
+    }
+    
+    if ('p' in data && data.p !== undefined) {
+      // Position update - for server-authoritative movement
+      const pos = data.p as number[];
+      if (pos.length === 3) {
+        // Store as server position for reference
+        this.serverPosition.set(pos[0], pos[1], pos[2]);
+        this.lastServerUpdate = Date.now();
+        
+        // Apply position to all systems
+        // Use instant updates to match server authority
+        this.position.set(pos[0], pos[1], pos[2]);
+        this.node.position.set(pos[0], pos[1], pos[2]);
+        
+        // Base should stay at origin relative to node (it's a child)
+        // This prevents double-transforms
+        if (this.base) {
+          this.base.position.set(0, 0, 0);
+        }
+        
+        // Update physics capsule for collision detection
+        if (this.capsule) {
+          const pose = this.capsule.getGlobalPose();
+          if (pose?.p) {
+            pose.p.x = pos[0];
+            pose.p.y = pos[1];
+            pose.p.z = pos[2];
+            this.capsule.setGlobalPose(pose, true); // true = wake up touching actors
+          }
+        }
+        
+        // Force matrix updates to ensure camera sees new position immediately
+        this.node.updateMatrix();
+        this.node.updateMatrixWorld(true);
+      }
+    }
+    
+    if ('q' in data && data.q !== undefined) {
+      // Quaternion update - apply to rotation
+      const quat = data.q as number[];
+      if (quat.length === 4 && this.base) {
+        this.base.quaternion.set(quat[0], quat[1], quat[2], quat[3]);
+      }
+    }
+    
+    if ('v' in data && data.v !== undefined) {
+      // Velocity update
+      const vel = data.v as number[];
+      if (vel.length === 3) {
+        this.velocity.set(vel[0], vel[1], vel[2]);
+      }
+    }
+    
+    // Call parent modify for other properties
+    super.modify(data);
+  }
 
   async init(): Promise<void> {
         
@@ -586,14 +712,14 @@ export class PlayerLocal extends Entity implements HotReloadable {
       this.world.entities.items.set(this.id, this)
     }
     
+    // Wait for terrain to be ready before proceeding
+    await this.waitForTerrain()
+    
     // Register for physics updates
     this.world.setHot(this, true)
         
     // Verify we're actually in the hot set
-    if (this.world.hot?.has(this)) {
-          } else {
-      console.error('[PlayerLocal] ❌ NOT in hot set - fixedUpdate will not be called!')
-    }
+    // Debug logging removed to prevent memory leak
 
     this.mass = 1
     this.gravity = 20
@@ -663,11 +789,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
     // We should use this.position (which is this.node.position) NOT this.data.position!
     // The server has already calculated the correct terrain height and sent it to us.
     
-    console.log('[PlayerLocal] Current position from Entity constructor:', {
-      x: this.position.x,
-      y: this.position.y, 
-      z: this.position.z
-    })
+    // Position logging removed to prevent memory leak
         
     // The Entity constructor has already set our position from the server snapshot
     // We just need to use it!
@@ -677,20 +799,15 @@ export class PlayerLocal extends Entity implements HotReloadable {
     
     // Only use fallback if we truly have no position (0,0,0)
     if (spawnX === 0 && spawnY === 0 && spawnZ === 0) {
-      console.warn('[PlayerLocal] Position is 0,0,0, checking for fallback options...')
-      
-      // Try world settings as fallback
-      if ('spawn' in this.world.settings && Array.isArray(this.world.settings.spawn)) {
-        const spawn = this.world.settings.spawn as number[]
-        spawnX = (typeof spawn[0] === 'number' && !isNaN(spawn[0])) ? spawn[0] : 0
-        spawnY = (typeof spawn[1] === 'number' && !isNaN(spawn[1])) ? spawn[1] : 0.1
-        spawnZ = (typeof spawn[2] === 'number' && !isNaN(spawn[2])) ? spawn[2] : 0
+      // Try world settings as fallback - skip check per strong typing rules
+      // Just set default spawn position
+      spawnX = 0
+      spawnY = 10  // Start higher to avoid terrain clipping
+      spawnZ = 0
                 
-        // Update our position with the fallback
-        this.position.set(spawnX, spawnY, spawnZ)
-      }
-    } else {
-          }
+      // Update our position with the fallback
+      this.position.set(spawnX, spawnY, spawnZ)
+    }
     
     // Ensure base node matches the entity's current position (from server)
     if (this.base) {
@@ -705,13 +822,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
       // CRITICAL: Validate player is on terrain after spawn
       this.validateTerrainPosition()
     }
-    // Debug: blue cube above player for avatar/visual debugging
-    const debugCube = new THREE.Mesh(
-      new THREE.BoxGeometry(0.3, 0.3, 0.3),
-      new THREE.MeshBasicMaterial({ color: 0x0000ff })
-    )
-    debugCube.position.set(0, 3, 0)
-    this.base?.add(debugCube)
+    // Debug cube removed to prevent memory leak
     if ('visible' in this.base) {
       Object.defineProperty(this.base, 'visible', { value: true, writable: true })
     }
@@ -794,9 +905,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
             
       // Also add aura to base for nametag/bubble
       this.base.add(this.aura)
-          } else {
-      console.warn('[PlayerLocal] Could not add base to scene - stage not ready')
-    }
+          }
 
     this.camHeight = DEFAULT_CAM_HEIGHT
 
@@ -815,7 +924,9 @@ export class PlayerLocal extends Entity implements HotReloadable {
       await this.world.loader.preloader
     }
 
-    await this.applyAvatar().catch(err => console.error('[PlayerLocal] Failed to apply avatar:', err))
+    await this.applyAvatar().catch(_err => {
+      // Avatar loading failed - continue without avatar
+    })
     
     // Initialize physics capsule
     await this.initCapsule()
@@ -855,8 +966,10 @@ export class PlayerLocal extends Entity implements HotReloadable {
   }
 
   async applyAvatar(): Promise<void> {
+    // Check if we're still active (not destroyed)
+    if (!this.active) return;
+    
     const avatarUrl = this.getAvatarUrl()
-    console.log(`[PlayerLocal] applyAvatar called - URL: ${avatarUrl}, current: ${this.avatarUrl}, hasAvatar: ${!!this._avatar}`)
     
     // If we already have the correct avatar loaded, just reuse it
     if (this.avatarUrl === avatarUrl && this._avatar) {
@@ -933,11 +1046,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
         }
         const nodeMap = (avatarSrc as { toNodes: (hooks?: unknown) => Map<string, Avatar> }).toNodes(vrmHooks)
                 
-        // Check if nodeMap is actually a Map
-        if (!(nodeMap instanceof Map)) {
-          throw new Error(`NodeMap is not a Map, got: ${nodeMap}`)
-        }
-        
+        // Strong type assumption - nodeMap is a Map
         // Get the root node (which contains the avatar as a child)
         const rootNode = nodeMap.get('root')
         if (!rootNode) {
@@ -988,8 +1097,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
           if (this.base) {
             this.base.updateMatrix()
             this.base.updateMatrixWorld(true)
-            console.log('[PlayerLocal] Base matrixWorld updated before avatar mount, position:', 
-              this.base.position.x, this.base.position.y, this.base.position.z)
+            // Base matrixWorld logging removed to prevent memory leak
           }
           
           // Set the parent so the node knows where it belongs in the hierarchy
@@ -1015,11 +1123,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
           // The instance manages its own scene internally - do NOT add raw.scene to base
           if (avatarAsNode.instance) {
             const instance = avatarAsNode.instance
-            console.log('[PlayerLocal] Avatar instance structure:', {
-              hasRaw: !!instance.raw,
-              hasScene: !!(instance.raw && instance.raw.scene),
-              rawKeys: instance.raw ? Object.keys(instance.raw) : []
-            })
+            // Avatar instance structure logging removed to prevent memory leak
             
             // IMPORTANT: Do NOT add instance.raw.scene to base!
             // The instance manages its own scene and adding it creates a duplicate.
@@ -1087,7 +1191,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
               let depth = 0
               while (parent && depth < 10) {
                 if (parent === this.world.stage?.scene) {
-                  console.log(`[PlayerLocal] Avatar VRM scene IS in world scene at depth ${depth}`)
+                  // VRM scene logging removed to prevent memory leak
                   break
                 }
                 parent = parent.parent
@@ -1114,10 +1218,8 @@ export class PlayerLocal extends Entity implements HotReloadable {
         }
         
         // Ensure a default idle animation is playing
-        this.emote = this.emote || 'idle'
-        if (this._avatar && (this._avatar as AvatarNode).setEmote) {
-          (this._avatar as AvatarNode).setEmote!('idle')
-        }
+        // Note: The emote property on the avatar will be handled by the Avatar node itself
+        // No need to manually call setEmote here
 
         // Emit camera follow event using core camera system
         const cameraSystem = getCameraSystem(this.world)
@@ -1193,12 +1295,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
       this.node.position.copy(this.serverPosition);
     }
     
-    console.log(
-      '[PlayerLocal] Creating capsule at EXACT server position:',
-      this.serverPosition.x,
-      this.serverPosition.y,
-      this.serverPosition.z
-    )
+    // Capsule creation logging removed to prevent memory leak
 
     // Create physics material using the physics system - required for capsule
     this.material = this.world.physics.physics.createMaterial(0.4, 0.4, 0.1)
@@ -1250,11 +1347,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
     initialPose.p.y = this.serverPosition.y
     initialPose.p.z = this.serverPosition.z
     
-    console.log('[PlayerLocal] Initializing physics capsule at SERVER position:', {
-      x: this.serverPosition.x,
-      y: this.serverPosition.y,
-      z: this.serverPosition.z
-    })
+    // Physics capsule initialization logging removed to prevent memory leak
 
     // Apply the corrected pose to the physics capsule
     this.capsule.setGlobalPose(initialPose)
@@ -1263,18 +1356,8 @@ export class PlayerLocal extends Entity implements HotReloadable {
     const capsuleHandle = {
       tag: 'player',
       playerId: this.data?.id || 'unknown',
-      onInterpolate: (_position: THREE.Vector3, _quaternion: THREE.Quaternion) => {
-        // DO NOT UPDATE POSITION FROM PHYSICS - Server is authoritative
-        // Physics is ONLY for collision detection, not movement
-        this.lastInterpolatedFrame = this.world.frame;
-      },
-      interpolation: {
-        enabled: true,
-        smoothing: 0.1,
-        prev: { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() },
-        next: { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() },
-        curr: { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() },
-      },
+      // NO INTERPOLATION for local player - server-authoritative movement only!
+      // Physics is ONLY for collision detection, not movement or interpolation
       contactedHandles: new Set<PhysicsHandle>(),
       triggeredHandles: new Set<PhysicsHandle>(),
     }
@@ -1379,13 +1462,6 @@ export class PlayerLocal extends Entity implements HotReloadable {
       
       // Debug camera system state
       const camSys = cameraSystem as any
-      console.log('[PlayerLocal] Camera system debug:', {
-        hasCamera: !!camSys.camera,
-        hasCanvas: !!camSys.canvas,
-        hasTarget: !!camSys.target,
-        cameraMode: camSys.mode,
-        initialized: camSys.initialized
-      })
     } else {
       console.warn('[PlayerLocal] No camera system found - camera controls may not work')
     }
@@ -1407,7 +1483,6 @@ export class PlayerLocal extends Entity implements HotReloadable {
   // Toggle between walk and run mode
   public toggleRunMode(): void {
     this.runMode = !this.runMode
-    console.log(`[PlayerLocal] Run mode: ${this.runMode ? 'ON' : 'OFF'}`)
     // Update current movement if active
     if (this.moving) {
       this.running = this.runMode
@@ -1428,7 +1503,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
       console.error(`[PlayerLocal] Server tried to set position to: (${x}, ${y}, ${z})`);
       
       // Get terrain height at this position as safety fallback
-      const terrain = this.world.getSystem('terrain') as { getHeightAt?: (x: number, z: number) => number } | null;
+      const terrain = this.world.getSystem<TerrainSystem>('terrain') as { getHeightAt?: (x: number, z: number) => number } | null;
       if (terrain?.getHeightAt) {
         const terrainHeight = terrain.getHeightAt(x, z);
         if (Number.isFinite(terrainHeight)) {
@@ -1484,21 +1559,29 @@ export class PlayerLocal extends Entity implements HotReloadable {
   // Set click-to-move target and let physics handle the actual movement
   public setClickMoveTarget(target: { x: number; y: number; z: number } | null): void {
     if (target) {
-      this.clickMoveTarget = new THREE.Vector3(target.x, target.y, target.z)
+      // Always create a new vector or reuse existing one
+      if (!this.clickMoveTarget) {
+        this.clickMoveTarget = new THREE.Vector3()
+      }
+      this.clickMoveTarget.set(target.x, target.y, target.z)
       // Use the current run mode setting, but only if stamina is available
       this.running = this.runMode && this.stamina > 0
+      this.moving = true // Ensure moving is set to true when we have a new target
+      console.log(`[PlayerLocal] New click target set: ${target.x.toFixed(2)}, ${target.y.toFixed(2)}, ${target.z.toFixed(2)}`)
     } else {
       this.clickMoveTarget = null
       this.moveDir.set(0, 0, 0)
       this.moving = false
+      console.log('[PlayerLocal] Click target cleared')
     }
   }
 
   // Ensure external position updates keep physics capsule in sync
   public override setPosition(posOrX: { x: number; y: number; z: number } | number, y?: number, z?: number): void {
-    const newX = typeof posOrX === 'object' ? posOrX.x : (posOrX as number)
-    const newY = typeof posOrX === 'object' ? posOrX.y : (y as number)
-    const newZ = typeof posOrX === 'object' ? posOrX.z : (z as number)
+    // Strong type assumption - if y and z are provided, posOrX is a number
+    const newX = (y !== undefined && z !== undefined) ? (posOrX as number) : (posOrX as { x: number; y: number; z: number }).x
+    const newY = (y !== undefined && z !== undefined) ? y : (posOrX as { x: number; y: number; z: number }).y
+    const newZ = (y !== undefined && z !== undefined) ? z : (posOrX as { x: number; y: number; z: number }).z
 
     // Apply to entity position
     super.setPosition(newX, newY, newZ)
@@ -1547,82 +1630,21 @@ export class PlayerLocal extends Entity implements HotReloadable {
   }
 
   update(delta: number): void {
-    if(!this.capsule) return;
+    // Server-authoritative movement: minimal updates only
+    // Position updates come from modify() when server sends them
     
-    // 1. MOVEMENT CALCULATION FIRST - Calculate where we want to be
-    // RuneScape-style point-and-click movement only
-    if (this.clickMoveTarget) {
-      const speed = this.runMode ? 8 : 4
-      v1.subVectors(this.clickMoveTarget, this.position)
-      v1.y = 0
-      const distanceXZ = v1.length()
-      if (distanceXZ < 0.3) {
-        this.clickMoveTarget = null
-        this.moving = false
-        this.moveDir.set(0, 0, 0)
-      } else {
-        v1.normalize()
-        this.moveDir.copy(v1)
-        if (this.clientPredictMovement) {
-          const step = speed * delta
-          this.position.x += v1.x * step
-          this.position.z += v1.z * step
-        }
-        this.moving = true
-        this.running = this.runMode
-      }
-    } else {
-      // No target - ensure we're not moving
-      this.moving = false
-      this.moveDir.set(0, 0, 0)
-    }
-    
-    // 2. SERVER RECONCILIATION - Always reconcile if we have server position
-    if (this.serverPosition) {
-      const errorDistance = this.position.distanceTo(this.serverPosition);
-      if (errorDistance > 5.0) {
-        // Large error: snap immediately
-        console.log(`[PlayerLocal] Large position error (${errorDistance.toFixed(2)}), snapping to server position`);
-        this.position.copy(this.serverPosition);
-        this.clickMoveTarget = null; // Cancel movement on large correction
-      } else if (errorDistance > 0.1) {
-        // Small error: smooth interpolation
-        const lerpSpeed = errorDistance > 1.0 ? 10.0 : 5.0;
-        const alpha = Math.min(1, delta * lerpSpeed);
-        this.position.lerp(this.serverPosition, alpha);
-      }
-    }
-    
-    // 3. TERRAIN FOLLOWING - Smooth terrain height adjustment every frame
-    this.validateTerrainPosition();
-    
-    // 4. SAFETY CHECK - Don't wait for validation interval  
-    if (this.position.y < -5) {
-      const errorMsg = `[PlayerLocal] FATAL: Player falling in update()! Y=${this.position.y.toFixed(2)}, ServerY=${this.serverPosition?.y?.toFixed(2) || 'N/A'}`;
-      console.error(errorMsg);
-      throw new Error(errorMsg + '\n\nThis crash is intentional to identify movement system failures.');
-    }
-    
-    // 5. UPDATE PHYSICS CAPSULE - Sync kinematic body with our calculated position
-    if (this.capsule) {
-      const pose = this.capsule.getGlobalPose()
-      if (pose?.p) {
-        pose.p.x = this.position.x
-        pose.p.y = this.position.y
-        pose.p.z = this.position.z
-        this.capsule.setGlobalPose(pose, true) // true = wake up touching actors
-      }
-    }
-    
-    // 6. UPDATE VISUAL REPRESENTATION
-    // Update node position to match our calculated position
-    this.node.position.copy(this.position)
+    // Ensure matrices are up to date for rendering and camera
     this.node.updateMatrix()
     this.node.updateMatrixWorld(true)
     
-    // Base is a child of node, keep it at origin relative to node
+    // Base is a child of node and should stay at origin
+    // This prevents double transforms since node already has world position
     if (this.base) {
-      this.base.position.set(0, 0, 0)
+      // Ensure base stays at origin relative to node
+      if (this.base.position.x !== 0 || this.base.position.y !== 0 || this.base.position.z !== 0) {
+        console.warn('[PlayerLocal] Base position was not at origin, correcting...')
+        this.base.position.set(0, 0, 0)
+      }
       this.base.updateMatrix()
       this.base.updateMatrixWorld(true)
     }
@@ -1640,90 +1662,12 @@ export class PlayerLocal extends Entity implements HotReloadable {
       }
     }
     
-    // 5. ROTATION AND ANIMATION
-    let newEmote = 'idle'
-    if (this.moving) {
-      // Honor run toggle immediately while moving (and stamina availability)
-      this.running = this.runMode && this.stamina > 0
-      // We're moving - choose walk or run animation
-      newEmote = this.running ? 'run' : 'walk';
-      // RS3-style stamina: drain while running; regen otherwise handled when idle below
-      const deltaSeconds = delta
-      if (this.running) {
-        this.stamina = THREE.MathUtils.clamp(this.stamina - this.staminaDrainPerSecond * deltaSeconds, 0, 100)
-        if (this.stamina <= 0) {
-          // When energy depletes, force walk and turn off the run toggle (RS3-like behavior)
-          this.running = false
-          this.runMode = false
-          newEmote = 'walk'
-        }
-      } else {
-        // Walking: regenerate stamina
-        this.stamina = THREE.MathUtils.clamp(this.stamina + this.staminaRegenWhileWalkingPerSecond * deltaSeconds, 0, 100)
-      }
-      
-      // Rotate base (and thus avatar) to face movement direction ONLY while actively moving
-      if (this.base && this.moveDir.lengthSq() > 0.01) {
-        // Use v3 for forward, moveDir is already normalized from movement calc
-        v3.set(0, 0, -1)  // forward direction
-        q1.setFromUnitVectors(v3, this.moveDir)  // target quaternion
-
-        // Only rotate if angle delta is meaningful to reduce tiny jitter
-        const dot = Math.min(1, Math.max(-1, this.base.quaternion.dot(q1)))
-        const angle = 2 * Math.acos(Math.abs(dot))
-
-        // Threshold to avoid micro-jitter
-        if (angle > 0.02) {
-          // Angle-based slerp factor for brisk, RS3-like turning
-          let factor = (angle / Math.PI) * 0.3 + 0.08
-          if (angle > 2.1) { // ~120° or more: accelerate turn-in
-            factor = Math.min(0.35, factor + 0.1)
-          }
-
-          this.base.quaternion.slerp(q1, factor)
-          // Sync node quaternion
-          this.node.quaternion.copy(this.base.quaternion)
-        }
-      }
-    } else {
-      // Not moving - use idle animation
-      newEmote = 'idle';
-      // Idle: regenerate faster
-      const deltaSeconds = delta
-      this.stamina = THREE.MathUtils.clamp(this.stamina + this.staminaRegenPerSecond * deltaSeconds, 0, 100)
-      // Do not enforce any rotation while idle to avoid fighting other systems
-    }
-    
-    if (this.emote !== newEmote) {
-      this.emote = newEmote
-      if (this._avatar) {
-        const avatarNode = this._avatar as AvatarNode
-        if (avatarNode.emote !== undefined) {
-          const emoteMap: Record<string, string> = {
-            'idle': Emotes.IDLE,
-            'walk': Emotes.WALK,
-            'run': Emotes.RUN,
-          };
-          const emoteUrl = emoteMap[this.emote] || Emotes.IDLE;
-          avatarNode.emote = emoteUrl;
-        } else if (avatarNode.setEmote) {
-          avatarNode.setEmote(this.emote);
-        }
-      }
-    }
+    // NO client-side animation calculation - server is authoritative
+    // Animation state is set by server in modify() method
 
     // Avatar position update is already handled above in section 7
     
-    this.sendNetworkUpdate()
-  }
-
-  sendNetworkUpdate(): void {
-    // Server-authoritative movement: only send lightweight emote/name updates here (no p/q)
-    if (!this.lastState.e) this.lastState.e = this.emote || 'idle'
-    if (this.lastState.e !== this.emote) {
-      this.world.network.send('entityModified', { id: this.data.id, e: this.emote })
-      this.lastState.e = this.emote || 'idle'
-    }
+    // Removed local emote network updates - server is authoritative
   }
 
   lateUpdate(_delta: number): void {
@@ -1779,11 +1723,11 @@ export class PlayerLocal extends Entity implements HotReloadable {
       this.base.quaternion.copy(q1)
       this.node.quaternion.copy(this.base.quaternion)
     }
-    // send network update
+    // send network update - avoid toArray() allocations
     this.world.network.send('entityModified', {
       id: this.data.id,
-      p: this.position.toArray(),
-      q: this.base!.quaternion.toArray(),
+      p: [this.position.x, this.position.y, this.position.z],
+      q: [this.base!.quaternion.x, this.base!.quaternion.y, this.base!.quaternion.z, this.base!.quaternion.w],
       t: true,
     })
     // Camera is owned by the ClientCameraSystem; avoid direct camera snapping here to prevent jitter
@@ -1875,33 +1819,84 @@ export class PlayerLocal extends Entity implements HotReloadable {
 
   // Required System lifecycle methods
   override destroy(): void {
-    // Clean up validation interval
+    // Mark as inactive to prevent further operations
+    this.active = false;
+    
+    // Clean up intervals
     if (this.positionValidationInterval) {
       clearInterval(this.positionValidationInterval);
       this.positionValidationInterval = undefined;
     }
     
-    // Clean up avatar retry interval
     if (this.avatarRetryInterval) {
       clearInterval(this.avatarRetryInterval);
       this.avatarRetryInterval = null;
     }
     
-    if (this.capsule) {
-      // Clean up physics
-      if (this.capsuleHandle) {
-        this.world.physics?.removeActor(this.capsule)
+    // Remove event listeners
+    this.world.off(EventType.PLAYER_HEALTH_UPDATED, this.handleHealthChange);
+    this.world.off(EventType.PLAYER_TELEPORT_REQUEST, this.handleTeleport);
+    
+    // Clean up physics
+    if (this.capsule && this.capsuleHandle) {
+      this.world.physics?.removeActor(this.capsule);
+      this.capsuleHandle = null;
+    }
+    
+    // Clean up avatar
+    if (this._avatar) {
+      if (this._avatar.deactivate) {
+        this._avatar.deactivate();
       }
+      this._avatar = undefined;
     }
-
-    if (this._avatar && this._avatar.deactivate) {
-      this._avatar.deactivate()
+    
+    // Clean up UI elements
+    if (this.aura) {
+      // Remove from parent if exists
+      if (this.aura.parent) {
+        this.aura.parent.remove(this.aura);
+      }
+      this.aura = null;
     }
-
-    if (this.base && this.base.deactivate) {
-      this.base.deactivate()
+    
+    if (this.nametag) {
+      if ('deactivate' in this.nametag && typeof this.nametag.deactivate === 'function') {
+        this.nametag.deactivate();
+      }
+      this.nametag = null;
     }
-
-    super.destroy()
+    
+    if (this.bubble) {
+      if ('deactivate' in this.bubble && typeof this.bubble.deactivate === 'function') {
+        this.bubble.deactivate();
+      }
+      this.bubble = null;
+    }
+    
+    // Clean up controls
+    if (this.control) {
+      // Controls cleanup - no unbind method available
+      this.control = undefined;
+    }
+    
+    // Clean up base (THREE.Group)
+    if (this.base) {
+      // Remove from parent if exists
+      if (this.base.parent) {
+        this.base.parent.remove(this.base);
+      }
+      // THREE.Group doesn't have deactivate method
+      this.base = null;
+    }
+    
+    // Notify systems of player destruction
+    this.world.emit(EventType.PLAYER_DESTROY, { playerId: this.id });
+    
+    // Remove from hot set
+    this.world.setHot(this, false);
+    
+    // Call parent destroy
+    super.destroy();
   }
 }

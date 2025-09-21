@@ -221,9 +221,10 @@ export class CombatSystem extends SystemBase {
     let attackerData: { stats?: CombatStats; config?: { attackPower?: number } } = {};
     let targetData: { stats?: CombatStats; config?: { defense?: number } } = {};
     
-    // Handle MobEntity
-    if (attacker instanceof MobEntity) {
-      const mobData = attacker.getMobData();
+    // Strong type assumption - check if attacker has getMobData method (MobEntity)
+    const attackerMob = attacker as MobEntity;
+    if (attackerMob.getMobData) {
+      const mobData = attackerMob.getMobData();
       attackerData = {
         config: { attackPower: mobData.attackPower }
       };
@@ -235,8 +236,10 @@ export class CombatSystem extends SystemBase {
       }
     }
     
-    if (target instanceof MobEntity) {
-      const mobData = target.getMobData();
+    // Strong type assumption - check if target has getMobData method (MobEntity)
+    const targetMob = target as MobEntity;
+    if (targetMob.getMobData) {
+      const mobData = targetMob.getMobData();
       targetData = {
         config: { defense: mobData.defense }
       };
@@ -257,9 +260,10 @@ export class CombatSystem extends SystemBase {
     let attackerData: { stats?: CombatStats; config?: { attackPower?: number } } = {};
     let targetData: { stats?: CombatStats; config?: { defense?: number } } = {};
     
-    // Handle MobEntity
-    if (attacker instanceof MobEntity) {
-      const mobData = attacker.getMobData();
+    // Strong type assumption - check if attacker has getMobData method (MobEntity)
+    const attackerMob = attacker as MobEntity;
+    if (attackerMob.getMobData) {
+      const mobData = attackerMob.getMobData();
       attackerData = {
         config: { attackPower: mobData.attackPower }
       };
@@ -271,8 +275,10 @@ export class CombatSystem extends SystemBase {
       }
     }
     
-    if (target instanceof MobEntity) {
-      const mobData = target.getMobData();
+    // Strong type assumption - check if target has getMobData method (MobEntity)
+    const targetMob = target as MobEntity;
+    if (targetMob.getMobData) {
+      const mobData = targetMob.getMobData();
       targetData = {
         config: { defense: mobData.defense }
       };

@@ -44,7 +44,7 @@ export class HeightmapPathfinding extends SystemBase {
   
   async init(): Promise<void> {
     // Get terrain system if available
-    this.terrainSystem = this.world.getSystem('terrain') as TerrainSystem | null;
+    this.terrainSystem = this.world.getSystem<TerrainSystem>('terrain') as TerrainSystem | null;
     
     if (!this.terrainSystem) {
       this.logger.info('No terrain system found - will use flat plane navigation');

@@ -68,8 +68,7 @@ export class CombatTestSystem extends VisualTestFramework {
       
       for (const [_stationId, testData] of this.testData) {
         if (testData.player.id === attackerId) {
-          Logger.system('CombatTestSystem', ` Combat miss registered for ${attackerId}`);
-          testData.missCount++;
+                    testData.missCount++;
         }
       }
     });
@@ -125,10 +124,8 @@ export class CombatTestSystem extends VisualTestFramework {
 
   private async runMeleeCombatTest(stationId: string): Promise<void> {
     try {
-      Logger.system('CombatTestSystem', ` Starting runMeleeCombatTest for ${stationId}`);
-      const stationPosition = this.validateStationPosition(stationId);
-      Logger.system('CombatTestSystem', 'Received stationPosition', { stationPosition });
-      
+            const stationPosition = this.validateStationPosition(stationId);
+            
       if (!stationPosition) {
         Logger.systemError('CombatTestSystem', ` No station position returned for ${stationId}`);
         return;
@@ -141,8 +138,7 @@ export class CombatTestSystem extends VisualTestFramework {
         return;
       }
       
-      Logger.system('CombatTestSystem', `Station position validation passed for ${stationId}`, { stationPosition });
-
+      
       // Create fake player with bronze sword (positioned close enough for melee range)
       const player = this.createPlayer({
         id: `melee_player_${Date.now()}`,
@@ -235,8 +231,7 @@ export class CombatTestSystem extends VisualTestFramework {
       const entityManager = this.world.getSystem('rpg-entity-manager');
       if (entityManager && 'getEntity' in entityManager) {
         const playerEntity = (entityManager as { getEntity(id: string): unknown }).getEntity(player.id);
-        Logger.system('CombatTestSystem', ` Player ${player.id} registered with entity manager`, { registered: !!playerEntity });
-      }
+              }
       
       // Wait for mob to be fully registered in world entities
       let mobRegistered = false;
@@ -250,12 +245,10 @@ export class CombatTestSystem extends VisualTestFramework {
         const mobEntity = this.world.entities.get(mobId);
         if (mobEntity) {
           mobRegistered = true;
-          Logger.system('CombatTestSystem', ` Mob ${mobId} is now registered in world.entities`);
-        } else {
+                  } else {
           waitAttempts++;
           if (waitAttempts % 5 === 0) {
-            Logger.system('CombatTestSystem', ` Waiting for mob ${mobId} to be registered... (attempt ${waitAttempts})`);
-          }
+                      }
         }
       }
       
@@ -273,8 +266,7 @@ export class CombatTestSystem extends VisualTestFramework {
           this.failTest(stationId, 'Failed to start combat');
           return;
         }
-        Logger.system('CombatTestSystem', ` Combat started successfully for ${stationId}`);
-        
+                
         // Start triggering melee attacks
         const attackInterval = setInterval(() => {
           const testData = this.testData.get(stationId);
@@ -307,10 +299,8 @@ export class CombatTestSystem extends VisualTestFramework {
 
   private async runRangedCombatTest(stationId: string): Promise<void> {
     try {
-      Logger.system('CombatTestSystem', ` Starting runRangedCombatTest for ${stationId}`);
-      const stationPosition = this.validateStationPosition(stationId);
-      Logger.system('CombatTestSystem', 'Received stationPosition', { stationPosition });
-      
+            const stationPosition = this.validateStationPosition(stationId);
+            
       if (!stationPosition) {
         Logger.systemError('CombatTestSystem', ` No station position returned for ${stationId}`);
         return;
@@ -323,8 +313,7 @@ export class CombatTestSystem extends VisualTestFramework {
         return;
       }
       
-      Logger.system('CombatTestSystem', `Station position validation passed for ${stationId}`, { stationPosition });
-
+      
       // Create fake player with wood bow and arrows (positioned within ranged range)
       const player = this.createPlayer({
         id: `ranged_player_${Date.now()}`,
@@ -420,8 +409,7 @@ export class CombatTestSystem extends VisualTestFramework {
       const entityManager = this.world.getSystem('rpg-entity-manager');
       if (entityManager && 'getEntity' in entityManager) {
         const playerEntity = (entityManager as { getEntity(id: string): unknown }).getEntity(player.id);
-        Logger.system('CombatTestSystem', ` Ranged player ${player.id} registered with entity manager`, { registered: !!playerEntity });
-      }
+              }
       
       // Wait for mob to be fully registered in world entities
       let mobRegistered = false;
@@ -435,12 +423,10 @@ export class CombatTestSystem extends VisualTestFramework {
         const mobEntity = this.world.entities.get(mobId);
         if (mobEntity) {
           mobRegistered = true;
-          Logger.system('CombatTestSystem', ` Mob ${mobId} is now registered in world.entities`);
-        } else {
+                  } else {
           waitAttempts++;
           if (waitAttempts % 5 === 0) {
-            Logger.system('CombatTestSystem', ` Waiting for mob ${mobId} to be registered... (attempt ${waitAttempts})`);
-          }
+                      }
         }
       }
       
@@ -459,8 +445,7 @@ export class CombatTestSystem extends VisualTestFramework {
           this.failTest(stationId, 'Failed to start ranged combat');
           return;
         }
-        Logger.system('CombatTestSystem', ` Ranged combat started successfully for ${stationId}`);
-        
+                
         // Start triggering ranged attacks
         const attackInterval = setInterval(() => {
           const testData = this.testData.get(stationId);
@@ -604,8 +589,7 @@ export class CombatTestSystem extends VisualTestFramework {
       const entityManager = this.world.getSystem('rpg-entity-manager');
       if (entityManager && 'getEntity' in entityManager) {
         const playerEntity = (entityManager as { getEntity(id: string): unknown }).getEntity(player.id);
-        Logger.system('CombatTestSystem', ` Mixed player ${player.id} registered with entity manager`, { registered: !!playerEntity });
-      }
+              }
       
       // Wait for mob to be fully registered in world entities
       let mobRegistered = false;
@@ -619,12 +603,10 @@ export class CombatTestSystem extends VisualTestFramework {
         const mobEntity = this.world.entities.get(mobId);
         if (mobEntity) {
           mobRegistered = true;
-          Logger.system('CombatTestSystem', ` Mob ${mobId} is now registered in world.entities`);
-        } else {
+                  } else {
           waitAttempts++;
           if (waitAttempts % 5 === 0) {
-            Logger.system('CombatTestSystem', ` Waiting for mob ${mobId} to be registered... (attempt ${waitAttempts})`);
-          }
+                      }
         }
       }
       
@@ -640,8 +622,7 @@ export class CombatTestSystem extends VisualTestFramework {
           this.failTest(stationId, 'Failed to start mixed combat');
           return;
         }
-        Logger.system('CombatTestSystem', ` Mixed combat started successfully for ${stationId}`);
-        
+                
         // Start triggering attacks (starts with melee)
         const attackInterval = setInterval(() => {
           const testData = this.testData.get(stationId);
@@ -833,8 +814,7 @@ export class CombatTestSystem extends VisualTestFramework {
     // Log current combat progress
     const totalAttempts = testData.hitCount + testData.missCount;
     if (totalAttempts > 0 && totalAttempts % 5 === 0) {
-      Logger.system('CombatTestSystem', ` Combat progress for ${stationId}: ${testData.hitCount} hits, ${testData.missCount} misses, ${testData.damageDealt} damage dealt`);
-    }
+          }
   }
 
   protected cleanupTest(stationId: string): void {

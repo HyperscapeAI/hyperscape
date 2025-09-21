@@ -53,7 +53,7 @@ export class PersistenceTestSuite {
       await this.cleanupTestEnvironment();
       
     } catch (error) {
-      this.addResult('Test Suite Setup', false, error instanceof Error ? error.message : 'Unknown error');
+      this.addResult('Test Suite Setup', false, (error as Error).message);
     }
     
     // Print results
@@ -86,7 +86,7 @@ export class PersistenceTestSuite {
       
       this.addResult('Test Environment Setup', true);
     } catch (error) {
-      this.addResult('Test Environment Setup', false, error instanceof Error ? error.message : 'Unknown error');
+      this.addResult('Test Environment Setup', false, (error as Error).message);
       throw error;
     }
   }
@@ -133,7 +133,7 @@ export class PersistenceTestSuite {
       });
       
     } catch (error) {
-      this.addResult('Player Token Manager', false, error instanceof Error ? error.message : 'Unknown error');
+      this.addResult('Player Token Manager', false, (error as Error).message);
     }
   }
 
@@ -223,7 +223,7 @@ export class PersistenceTestSuite {
       });
       
     } catch (error) {
-      this.addResult('Database Operations', false, error instanceof Error ? error.message : 'Unknown error');
+      this.addResult('Database Operations', false, (error as Error).message);
     }
   }
 
@@ -275,7 +275,7 @@ export class PersistenceTestSuite {
       });
       
     } catch (error) {
-      this.addResult('Player Persistence', false, error instanceof Error ? error.message : 'Unknown error');
+      this.addResult('Player Persistence', false, (error as Error).message);
     }
   }
 
@@ -307,7 +307,7 @@ export class PersistenceTestSuite {
       });
       
     } catch (error) {
-      this.addResult('Chunk Persistence', false, error instanceof Error ? error.message : 'Unknown error');
+      this.addResult('Chunk Persistence', false, (error as Error).message);
     }
   }
 
@@ -355,7 +355,7 @@ export class PersistenceTestSuite {
       });
       
     } catch (error) {
-      this.addResult('Session Management', false, error instanceof Error ? error.message : 'Unknown error');
+      this.addResult('Session Management', false, (error as Error).message);
     }
   }
 
@@ -374,7 +374,7 @@ export class PersistenceTestSuite {
       this.addResult('Periodic Saves', true);
       
     } catch (error) {
-      this.addResult('Periodic Saves', false, error instanceof Error ? error.message : 'Unknown error');
+      this.addResult('Periodic Saves', false, (error as Error).message);
     }
   }
 
@@ -457,7 +457,7 @@ export class PersistenceTestSuite {
       });
       
     } catch (error) {
-      this.addResult('Chunk Reset System', false, error instanceof Error ? error.message : 'Unknown error');
+      this.addResult('Chunk Reset System', false, (error as Error).message);
     }
   }
 
@@ -487,7 +487,7 @@ export class PersistenceTestSuite {
       this.addResult('Error Handling', true);
       
     } catch (error) {
-      this.addResult('Error Handling', false, error instanceof Error ? error.message : 'Unknown error');
+      this.addResult('Error Handling', false, (error as Error).message);
     }
   }
 
@@ -521,7 +521,7 @@ export class PersistenceTestSuite {
       
       this.addResult('Test Environment Cleanup', true);
     } catch (error) {
-      this.addResult('Test Environment Cleanup', false, error instanceof Error ? error.message : 'Unknown error');
+      this.addResult('Test Environment Cleanup', false, (error as Error).message);
     }
   }
 

@@ -35,7 +35,7 @@ export class GroundPositioningUtils {
    */
   static getGroundHeightAt(world: World, worldX: number, worldZ: number): number {
     // Use terrain system directly
-    const terrainSystem = world.getSystem('terrain') as TerrainSystem
+    const terrainSystem = world.getSystem<TerrainSystem>('terrain') as TerrainSystem
     return terrainSystem.getHeightAt(worldX, worldZ)
   }
 
@@ -43,7 +43,7 @@ export class GroundPositioningUtils {
    * Check if a position is on walkable ground
    */
   static isPositionWalkable(world: World, worldX: number, worldZ: number): boolean {
-    const terrainSystem = world.getSystem('terrain') as TerrainSystem
+    const terrainSystem = world.getSystem<TerrainSystem>('terrain') as TerrainSystem
     return terrainSystem.isPositionWalkable(worldX, worldZ).walkable
   }
 

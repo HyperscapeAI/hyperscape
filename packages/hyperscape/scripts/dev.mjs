@@ -2,19 +2,43 @@
 import 'dotenv/config'
 import fs from 'fs-extra'
 import path from 'path'
-import { spawn } from 'child_process'
+import { spawn, exec } from 'child_process'
 import * as esbuild from 'esbuild'
 import { fileURLToPath } from 'url'
 import { createServer as createViteServer } from 'vite'
 import chokidar from 'chokidar'
+import { promisify } from 'util'
+
+const execAsync = promisify(exec)
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.join(dirname, '../')
 const buildDir = path.join(rootDir, 'build')
+const pidFile = path.join(rootDir, '.dev-server.pid')
 
 // Ensure build directories exist
 await fs.ensureDir(buildDir)
 await fs.ensureDir(path.join(buildDir, 'public'))
+
+// Clean up any previous PID file and kill orphaned process
+async function cleanupPreviousServer() {
+  try {
+    if (await fs.pathExists(pidFile)) {
+      const pid = parseInt(await fs.readFile(pidFile, 'utf8'))
+      if (!isNaN(pid)) {
+        try {
+          process.kill(pid, 'SIGKILL')
+          console.log(`Killed orphaned server process ${pid}`)
+        } catch (e) {
+          // Process doesn't exist anymore
+        }
+      }
+      await fs.remove(pidFile)
+    }
+  } catch (e) {
+    // Ignore errors
+  }
+}
 
 // Colors for console output
 const colors = {
@@ -31,6 +55,57 @@ const colors = {
 
 function log(prefix, message, color = colors.cyan) {
   console.log(`${color}[${prefix}]${colors.reset} ${message}`)
+}
+
+/**
+ * Kill any process using the specified port
+ */
+async function killProcessOnPort(port) {
+  try {
+    if (process.platform === 'win32') {
+      // Windows: Find and kill process using the port
+      try {
+        const { stdout } = await execAsync(`netstat -ano | findstr :${port}`)
+        const lines = stdout.trim().split('\n')
+        const pids = new Set()
+        for (const line of lines) {
+          const parts = line.trim().split(/\s+/)
+          const pid = parts[parts.length - 1]
+          if (pid && pid !== '0') {
+            pids.add(pid)
+          }
+        }
+        for (const pid of pids) {
+          try {
+            await execAsync(`taskkill /PID ${pid} /F`)
+            log('Cleanup', `Killed process ${pid} using port ${port}`, colors.yellow)
+          } catch (e) {
+            // Process might already be dead
+          }
+        }
+      } catch (e) {
+        // No process found on port
+      }
+    } else {
+      // Unix/Mac: Use lsof to find and kill process
+      try {
+        const { stdout } = await execAsync(`lsof -ti :${port}`)
+        const pids = stdout.trim().split('\n').filter(pid => pid)
+        for (const pid of pids) {
+          try {
+            process.kill(parseInt(pid), 'SIGKILL')
+            log('Cleanup', `Killed process ${pid} using port ${port}`, colors.yellow)
+          } catch (e) {
+            // Process might already be dead
+          }
+        }
+      } catch (e) {
+        // No process found on port or lsof not available
+      }
+    }
+  } catch (error) {
+    // Ignore errors - port might be free
+  }
 }
 
 /**
@@ -243,9 +318,10 @@ async function buildAndRestartServer() {
     if (serverProcess) {
       log('Server', 'Stopping previous server...', colors.dim)
       try {
-        // For non-Windows, kill the entire process group
+        // Send SIGTERM to allow graceful shutdown
         if (process.platform !== 'win32' && serverProcess.pid) {
           try {
+            // Kill the entire process group
             process.kill(-serverProcess.pid, 'SIGTERM')
           } catch (e) {
             // Fallback to killing just the process
@@ -255,11 +331,12 @@ async function buildAndRestartServer() {
           serverProcess.kill('SIGTERM')
         }
         
-        // Wait for process to exit with timeout
+        // Wait for process to exit with a longer timeout for graceful shutdown
         await new Promise((resolve) => {
           const timeout = setTimeout(() => {
             if (serverProcess && !serverProcess.killed) {
-              // Force kill if still running
+              log('Server', 'Server did not shut down gracefully, force killing...', colors.yellow)
+              // Force kill if still running after 5 seconds
               try {
                 if (process.platform !== 'win32' && serverProcess.pid) {
                   process.kill(-serverProcess.pid, 'SIGKILL')
@@ -271,18 +348,22 @@ async function buildAndRestartServer() {
               }
             }
             resolve()
-          }, 500)
+          }, 5000) // Give it 5 seconds to shut down gracefully
           
-          serverProcess.once('exit', () => {
+          serverProcess.once('exit', (code, signal) => {
+            log('Server', `Previous server stopped (code: ${code}, signal: ${signal})`, colors.dim)
             clearTimeout(timeout)
             resolve()
           })
         })
       } catch (e) {
-        // Process might already be dead
+        log('Server', `Error stopping previous server: ${e.message}`, colors.dim)
       }
       serverProcess = null
     }
+    
+    // Kill any orphaned process on port 4444 before starting
+    await killProcessOnPort(4444)
     
     // Start new server process
     log('Server', 'Starting server on port 4444...', colors.blue)
@@ -297,6 +378,12 @@ async function buildAndRestartServer() {
       detached: process.platform !== 'win32'
     })
     
+    // Save the PID for cleanup in case of unexpected exit
+    if (serverProcess.pid) {
+      await fs.writeFile(pidFile, serverProcess.pid.toString())
+      log('Server', `Server PID: ${serverProcess.pid}`, colors.dim)
+    }
+    
     serverProcess.on('error', (err) => {
       log('Server', `Process error: ${err.message}`, colors.red)
     })
@@ -305,6 +392,8 @@ async function buildAndRestartServer() {
       if (signal !== 'SIGTERM') {
         log('Server', `Process exited with code ${code}`, colors.yellow)
       }
+      // Clean up PID file when server exits
+      fs.remove(pidFile).catch(() => {})
     })
     
   } catch (error) {
@@ -402,6 +491,12 @@ ${colors.reset}`)
   
   log('Dev', 'Starting development environment...', colors.bright)
   
+  // Clean up any orphaned processes from previous runs
+  log('Cleanup', 'Checking for orphaned processes...', colors.dim)
+  await cleanupPreviousServer()
+  await killProcessOnPort(4444)
+  await killProcessOnPort(parseInt(process.env.VITE_PORT || '3333'))
+  
   // Copy PhysX assets first
   await copyPhysXAssets()
   
@@ -436,9 +531,12 @@ ${colors.reset}`)
     try {
       // Kill server process and its children
       if (serverProcess) {
-        // For non-Windows, kill the entire process group
+        log('Server', 'Sending shutdown signal...', colors.dim)
+        
+        // Send SIGTERM to allow graceful shutdown
         if (process.platform !== 'win32' && serverProcess.pid) {
           try {
+            // Kill the entire process group
             process.kill(-serverProcess.pid, 'SIGTERM')
           } catch (e) {
             // Fallback to killing just the process
@@ -448,57 +546,77 @@ ${colors.reset}`)
           serverProcess.kill('SIGTERM')
         }
         
-        // Give it 2 seconds to clean up gracefully
+        // Give it 5 seconds to clean up gracefully (to allow database closure, etc)
         await new Promise((resolve) => {
           const timeout = setTimeout(() => {
             if (serverProcess && !serverProcess.killed) {
-              log('Server', 'Force killing server process...', colors.yellow)
-              serverProcess.kill('SIGKILL')
+              log('Server', 'Server did not shut down gracefully, force killing...', colors.yellow)
+              try {
+                if (process.platform !== 'win32' && serverProcess.pid) {
+                  process.kill(-serverProcess.pid, 'SIGKILL')
+                } else {
+                  serverProcess.kill('SIGKILL')
+                }
+              } catch (e) {
+                // Process might already be dead
+              }
             }
             resolve()
-          }, 2000)
+          }, 5000) // Give server 5 seconds to shut down gracefully
           
-          serverProcess.once('exit', () => {
+          serverProcess.once('exit', (code, signal) => {
+            log('Server', `Server stopped (code: ${code}, signal: ${signal})`, colors.green)
             clearTimeout(timeout)
             resolve()
           })
         })
+        
+        serverProcess = null
+        
+        // Clean up PID file
+        await fs.remove(pidFile).catch(() => {})
       }
       
       // Dispose of esbuild contexts
       if (serverContext) {
         try {
+          log('Build', 'Disposing server build context...', colors.dim)
           await serverContext.dispose()
         } catch (e) {
           // Context might already be disposed
         }
+        serverContext = null
       }
       if (frameworkContext) {
         try {
+          log('Build', 'Disposing framework build context...', colors.dim)
           await frameworkContext.dispose()
         } catch (e) {
           // Context might already be disposed
         }
+        frameworkContext = null
       }
       
       // Close Vite server
       if (viteServer) {
+        log('Client', 'Closing Vite server...', colors.dim)
         await viteServer.close()
       }
       
       // Close file watcher
       if (watcher) {
+        log('Watcher', 'Closing file watcher...', colors.dim)
         await watcher.close()
       }
       
-      console.log(colors.green + 'Goodbye!' + colors.reset)
+      console.log(colors.green + '✅ Shutdown complete. Goodbye!' + colors.reset)
     } catch (error) {
       console.error(colors.red + 'Error during cleanup:' + colors.reset, error)
     } finally {
-      // Force exit after a timeout to ensure we don't hang
+      // Force exit after a short timeout to ensure we don't hang
       setTimeout(() => {
         process.exit(0)
-      }, 100).unref()
+      }, 500).unref()
     }
   }
   
@@ -506,15 +624,41 @@ ${colors.reset}`)
   globalCleanup = cleanup
   
   // Handle various termination signals
-  process.on('SIGINT', () => cleanup('SIGINT'))
-  process.on('SIGTERM', () => cleanup('SIGTERM'))
-  process.on('SIGUSR1', () => cleanup('SIGUSR1'))
-  process.on('SIGUSR2', () => cleanup('SIGUSR2'))
+  // Ensure we catch signals even when running under turbo
+  const signals = ['SIGINT', 'SIGTERM', 'SIGUSR1', 'SIGUSR2']
+  signals.forEach(signal => {
+    process.on(signal, async () => {
+      console.log(`\n[Dev] Caught ${signal} signal`)
+      await cleanup(signal)
+    })
+  })
   
-  // Handle uncaught exceptions during runtime
+  // Also handle process exit to ensure cleanup
   process.on('exit', (code) => {
     if (!isCleaningUp) {
       console.log(colors.dim + `Process exiting with code ${code}` + colors.reset)
+      
+      // Emergency cleanup if we're exiting without proper cleanup
+      if (serverProcess && !serverProcess.killed) {
+        try {
+          console.log(colors.yellow + 'Emergency cleanup: killing server process' + colors.reset)
+          if (process.platform !== 'win32' && serverProcess.pid) {
+            process.kill(-serverProcess.pid, 'SIGKILL')
+          } else {
+            serverProcess.kill('SIGKILL')
+          }
+        } catch (e) {
+          // Process might already be dead
+        }
+      }
+    }
+  })
+  
+  // Handle beforeExit for additional cleanup opportunity
+  process.on('beforeExit', async (code) => {
+    if (!isCleaningUp && serverProcess) {
+      console.log(colors.yellow + `Process about to exit with code ${code}, forcing cleanup...` + colors.reset)
+      await cleanup('beforeExit')
     }
   })
 }

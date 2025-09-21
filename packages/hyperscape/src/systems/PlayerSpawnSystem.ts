@@ -16,6 +16,7 @@ import { getRandomSpawnPoint } from '../data/world-areas';
 import type { PlayerSpawnData } from '../types/core';
 import { PlayerSpawnSystemInfo as SystemInfo } from '../types/system-types';
 import { SystemBase } from './SystemBase';
+import { TerrainSystem } from './TerrainSystem';
 
 export class PlayerSpawnSystem extends SystemBase {
   private spawnedPlayers = new Map<string, PlayerSpawnData>();
@@ -149,12 +150,8 @@ export class PlayerSpawnSystem extends SystemBase {
       return;
     }
 
-    // 1. Wait for terrain to be ready before spawning
-    interface TerrainSystem {
-      isReady(): boolean;
-      getHeightAt(x: number, z: number): number;
-    }
-    const terrain = this.world.getSystem('terrain') as TerrainSystem | undefined;
+
+    const terrain = this.world.getSystem<TerrainSystem>('terrain');
     if (terrain) {
       let attempts = 0;
       while (!terrain.isReady() && attempts < 100) {

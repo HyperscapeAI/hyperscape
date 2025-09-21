@@ -22,7 +22,7 @@ import type { Settings } from '../types'
 import type { NodeWebSocket } from '../types/network-types'
 import type { SQLiteDatabase, SQLiteStatement, SQLiteParam } from '../types/database'
 import { hashFile } from '../utils-server'
-import { getDB, getRawDB } from './db'
+import { getDB, getRawDB, closeDB } from './db'
 import type { RawDB } from './db'
 import { Storage } from './Storage'
 
@@ -549,9 +549,10 @@ async function startServer() {
       if (hasSocketsNetwork) {
         const serverNetwork = world.network as unknown as ServerNetworkWithSockets
         for (const socket of serverNetwork.sockets.values()) {
+          const pos = socket.player.node.position.current
           status.connectedUsers.push({
             id: socket.player.data.userId,
-            position: socket.player.node.position.current.toArray(),
+            position: pos.toArray(),
             name: socket.player.data.name,
           })
         }
@@ -702,17 +703,68 @@ async function startServer() {
     process.exit(1)
   }
 
-  // Graceful shutdown
-  process.on('SIGINT', async () => {
-    await fastify.close()
-    world.destroy()
-    process.exit(0)
+  // Track if we're shutting down
+  let isShuttingDown = false
+  
+  // Graceful shutdown handler
+  const gracefulShutdown = async (signal: string) => {
+    if (isShuttingDown) {
+      console.log('[Server] Already shutting down...')
+      return
+    }
+    isShuttingDown = true
+    
+    console.log(`\n[Server] Received ${signal}, shutting down gracefully...`)
+    
+    try {
+      // Stop the world ticker first to prevent new operations
+      if (world && typeof world.destroy === 'function') {
+        world.destroy()
+      }
+      
+      // Close Fastify server
+      console.log('[Server] Closing HTTP server...')
+      await fastify.close()
+      console.log('[Server] HTTP server closed')
+      
+      // Destroy world (closes network connections, stops systems)
+      console.log('[Server] Destroying world...')
+      world.destroy()
+      console.log('[Server] World destroyed')
+      
+      // Close database connection
+      console.log('[Server] Closing database...')
+      await closeDB()
+      console.log('[Server] Database closed')
+      
+      console.log('[Server] Shutdown complete')
+      
+      // Force exit after a short delay to ensure everything is cleaned up
+      setTimeout(() => {
+        process.exit(0)
+      }, 100)
+    } catch (error) {
+      console.error('[Server] Error during shutdown:', error)
+      // Force exit on error
+      setTimeout(() => {
+        process.exit(1)
+      }, 100)
+    }
+  }
+  
+  // Register shutdown handlers
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'))
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
+  
+  // Handle uncaught errors
+  process.on('uncaughtException', (error) => {
+    console.error('[Server] Uncaught exception:', error)
+    gracefulShutdown('uncaughtException')
   })
-
-  process.on('SIGTERM', async () => {
-    await fastify.close()
-    world.destroy()
-    process.exit(0)
+  
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('[Server] Unhandled rejection at:', promise, 'reason:', reason)
+    gracefulShutdown('unhandledRejection')
   })
 }
 

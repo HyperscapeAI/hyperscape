@@ -330,7 +330,7 @@ function createEmitter(config: EmitterConfig): ParticleEmitter {
       }
     } else {
       distanceMoved = 0
-      lastWorldPos = currWorldPos.clone()
+      lastWorldPos = new THREE.Vector3().copy(currWorldPos)
     }
 
     // const center = v2.setFromMatrixPosition(matrixWorld) // center in same space as particles

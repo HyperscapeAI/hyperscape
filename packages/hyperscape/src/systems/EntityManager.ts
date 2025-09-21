@@ -84,8 +84,7 @@ export class EntityManager extends SystemBase {
       name: data.mobType
     }));
     this.subscribe(EventType.MOB_ATTACKED, (data) => this.handleMobAttacked({ entityId: data.mobId, damage: data.damage, attackerId: data.attackerId }));
-    Logger.system('EntityManager', '✅ Event listeners registered, ready to handle mob spawns');
-    this.subscribe(EventType.COMBAT_MOB_ATTACK, (data) => this.handleMobAttack({ mobId: data.mobId, targetId: data.targetId, damage: 0 }));
+        this.subscribe(EventType.COMBAT_MOB_ATTACK, (data) => this.handleMobAttack({ mobId: data.mobId, targetId: data.targetId, damage: 0 }));
     // RESOURCE_GATHERED has different structure in EventMap
     // Map the string resourceType to the enum value
     this.subscribe(EventType.RESOURCE_GATHERED, (data) => {
@@ -182,10 +181,8 @@ export class EntityManager extends SystemBase {
     this.entitiesNeedingUpdate.add(config.id);
     
     // Register with world entities system so other systems can find it
-    Logger.system('EntityManager', `Adding entity ${config.id} to world.entities`);
-    this.world.entities.set(config.id, entity);
-    Logger.system('EntityManager', `Entity ${config.id} added to world.entities`);
-    
+        this.world.entities.set(config.id, entity);
+        
     // Mark for network sync
     if (this.world.isServer) {
       this.networkDirtyEntities.add(config.id);
@@ -256,8 +253,7 @@ export class EntityManager extends SystemBase {
   private async handleInteractionRequest(data: { entityId: string; playerId: string; interactionType: string }): Promise<void> {
     const entity = this.entities.get(data.entityId);
     if (!entity) {
-      Logger.system('EntityManager', ` Entity not found: ${data.entityId}`);
-      return;
+            return;
     }
     await entity.handleInteraction({
       ...data,
@@ -269,8 +265,7 @@ export class EntityManager extends SystemBase {
   private handleMoveRequest(data: { entityId: string; position: { x: number; y: number; z: number } }): void {
     const entity = this.entities.get(data.entityId);
     if (!entity) {
-      Logger.system('EntityManager', ` Entity not found: ${data.entityId}`);
-      return;
+            return;
     }
     // Do not override local player physics-driven movement. Let PlayerLocal handle motion.
     const isLocalPlayer = entity.isPlayer && this.world.entities.player && entity.id === this.world.entities.player.id;
@@ -283,8 +278,7 @@ export class EntityManager extends SystemBase {
   private handlePropertyRequest(data: { entityId: string; propertyName: string; value: unknown }): void {
     const entity = this.entities.get(data.entityId);
     if (!entity) {
-      Logger.system('EntityManager', ` Entity not found: ${data.entityId}`);
-      return;
+            return;
     }
     entity.setProperty(data.propertyName, data.value);
   }
@@ -331,8 +325,7 @@ export class EntityManager extends SystemBase {
   private handleItemPickup(data: { entityId: string; playerId: string }): void {
     const entity = this.entities.get(data.entityId);
     if (!entity) {
-      Logger.system('EntityManager', ` Cannot pickup entity ${data.entityId} - not found`);
-      return;
+            return;
     }
     
     // Get properties before destroying
@@ -349,8 +342,7 @@ export class EntityManager extends SystemBase {
   }
 
   private async handleMobSpawn(data: MobSpawnData): Promise<void> {
-    Logger.system('EntityManager', 'Handling mob spawn request', { data });
-    
+        
     // Validate required data
     let position = data.position;
     if (!position) {
@@ -422,10 +414,7 @@ export class EntityManager extends SystemBase {
     };
     
     const entity = await this.spawnEntity(config);
-    Logger.system('EntityManager', `✅ Mob entity spawned: ${entity?.id} (${mobType})`);
-    Logger.system('EntityManager', `Entity exists in world.entities: ${this.world.entities.has(config.id)}`);
-    Logger.system('EntityManager', 'Entity spawned successfully');
-    
+                
     // Emit MOB_SPAWNED event to notify other systems (like AggroSystem)
     // that a mob has been successfully spawned
     if (entity) {
@@ -440,23 +429,18 @@ export class EntityManager extends SystemBase {
   private handleMobAttacked(data: { entityId: string; damage: number; attackerId: string }): void {
     const mob = this.entities.get(data.entityId);
     if (!mob) {
-      Logger.system('EntityManager', ` Cannot handle mob attacked - entity ${data.entityId} not found`);
-      return;
+            return;
     }
     
     const healthData = mob.getProperty('health');
-    const currentHealth = typeof healthData === 'object' && healthData && 'current' in healthData 
-      ? (healthData as { current: number }).current 
-      : (typeof healthData === 'number' ? healthData : 0);
+    // Strong type assumption - health is either a number or { current, max }
+    const currentHealth = (healthData as { current: number }).current || (healthData as number) || 0;
     
-    if (typeof currentHealth !== 'number' || isNaN(currentHealth)) {
-      Logger.systemError('EntityManager', `Invalid health value for mob ${data.entityId}: ${JSON.stringify(healthData)}`);
-      return;
-    }
     const newHealth = Math.max(0, currentHealth - data.damage);
     
-    // Update health data structure
-    if (typeof healthData === 'object' && healthData && 'current' in healthData) {
+    // Strong type assumption - maintain structure if it's an object, otherwise use number
+    const isHealthObject = healthData && (healthData as { current?: number }).current !== undefined;
+    if (isHealthObject) {
       mob.setProperty('health', { ...healthData as { current: number; max: number }, current: newHealth });
     } else {
       mob.setProperty('health', newHealth);
@@ -476,8 +460,7 @@ export class EntityManager extends SystemBase {
   private handleMobAttack(data: { mobId: string; targetId: string; damage: number }): void {
     const mob = this.entities.get(data.mobId);
     if (!mob) {
-      Logger.system('EntityManager', ` Cannot handle mob attack - entity ${data.mobId} not found`);
-      return;
+            return;
     }
     
     const damage = mob.getProperty('attackPower');
@@ -842,8 +825,7 @@ export class EntityManager extends SystemBase {
   private async handleResourceHarvest(_data: { entityId: string, playerId: string, amount: number }): Promise<void> {
     // Resource harvest logic would go here
     // For now, just log it
-    Logger.system('EntityManager', 'Resource harvest event received');
-  }
+      }
 
   private handleNPCSpawn(data: { 
     customId: string,
@@ -857,13 +839,11 @@ export class EntityManager extends SystemBase {
     bankTeller: boolean
   }): void {
     // NPC spawn logic
-    Logger.system('EntityManager', `NPC spawn event received for ${data.name}`);
-  }
+      }
 
   private handleNPCDialogue(_data: { entityId: string, playerId: string, dialogueId: string }): void {
     // NPC dialogue logic
-    Logger.system('EntityManager', 'NPC dialogue event received');
-  }
+      }
 
   /**
    * Cleanup when system is destroyed
@@ -885,8 +865,7 @@ export class EntityManager extends SystemBase {
     // Reset entity ID counter
     this.nextEntityId = 1;
     
-    Logger.system('EntityManager', 'Entity manager destroyed and cleaned up');
-    
+        
     // Call parent cleanup
     super.destroy();
   }

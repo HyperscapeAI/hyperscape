@@ -268,6 +268,45 @@ export class ClientEnvironment extends System {
     }
   }
 
+  override destroy(): void {
+    // Remove listeners
+    this.world.settings?.off('change', this.onSettingsChange)
+    this.world.prefs?.off('change', this.onPrefsChange)
+    if (this.world.graphics) {
+      this.world.graphics.off('resize', this.onViewportResize)
+    }
+
+    // Dispose sky mesh and textures
+    if (this.sky) {
+      const material = this.sky.material as THREE.Material & { map?: THREE.Texture | null }
+      if (material && 'map' in material && material.map) {
+        material.map.dispose()
+        material.map = null
+      }
+      if (Array.isArray(this.sky.material)) {
+        this.sky.material.forEach(m => m.dispose())
+      } else {
+        ;(this.sky.material as THREE.Material).dispose()
+      }
+      this.sky.geometry.dispose()
+      if (this.sky.parent) this.sky.parent.remove(this.sky)
+      this.sky = null
+    }
+
+    // Dispose environment map
+    if (this.world.stage?.scene?.environment && this.world.stage.scene.environment instanceof THREE.Texture) {
+      this.world.stage.scene.environment.dispose()
+      this.world.stage.scene.environment = null
+    }
+
+    // Dispose CSM lights and shadow maps
+    if (this.csm && typeof (this.csm as { dispose?: () => void }).dispose === 'function') {
+      ;(this.csm as unknown as { dispose: () => void }).dispose()
+    }
+    this.skys = []
+    this.model = null
+  }
+
   override update(_delta: number) {
     if (this.csm) {
       try {
