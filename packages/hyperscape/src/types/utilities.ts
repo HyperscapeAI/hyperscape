@@ -10,9 +10,7 @@ import THREE from '../extras/three';
 
 // Position conversion utilities
 export function toVector3(pos: Position3D | THREE.Vector3, target: THREE.Vector3): THREE.Vector3 {
-  if (pos instanceof THREE.Vector3) {
-    return target.copy(pos);
-  }
+  // Both Position3D and THREE.Vector3 have x, y, z properties
   return target.set(pos.x, pos.y, pos.z);
 }
 

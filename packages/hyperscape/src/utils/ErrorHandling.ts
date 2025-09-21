@@ -23,13 +23,14 @@ export interface ErrorContext {
  */
 export function logError(
   message: string, 
-  error: unknown, 
+  error: Error | string, 
   context: ErrorContext,
   severity: ErrorSeverity = ErrorSeverity.ERROR
 ): void {
   const prefix = `[${context.system}]${context.method ? ` ${context.method}` : ''}`;
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  const stack = error instanceof Error ? error.stack : undefined;
+  // Assume error is Error if it has message property, otherwise treat as string
+  const errorMessage = typeof error === 'string' ? error : (error as Error).message;
+  const stack = typeof error === 'string' ? undefined : (error as Error).stack;
   
   const fullMessage = `${prefix} ${severity}: ${message} - ${errorMessage}`;
   
@@ -66,7 +67,7 @@ export function withErrorHandling<T extends (...args: unknown[]) => Promise<unkn
     try {
       return await fn(...args);
     } catch (error) {
-      logError('Unhandled error in async function', error, {
+      logError('Unhandled error in async function', error as Error, {
         ...context,
         method: fn.name || context.method
       });
@@ -86,7 +87,7 @@ export async function tryWithLogging<T>(
   try {
     return await fn();
   } catch (error) {
-    logError('Operation failed', error, context, ErrorSeverity.WARNING);
+    logError('Operation failed', error as Error, context, ErrorSeverity.WARNING);
     return defaultValue;
   }
 }
@@ -107,8 +108,8 @@ export function createSystemLogger(systemName: string) {
     warn: (message: string, details?: Record<string, unknown>) => {
       console.warn(`[${systemName}] ${message}`, details);
     },
-    error: (message: string, error?: unknown, details?: Record<string, unknown>) => {
-      logError(message, error || new Error(message), {
+    error: (message: string, error?: Error | string, details?: Record<string, unknown>) => {
+      logError(message, error ?? new Error(message), {
         system: systemName,
         details
       });

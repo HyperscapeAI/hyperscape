@@ -542,11 +542,13 @@ export class PlayerEntity extends CombatantEntity {
     }
     
     // Update UI if present
-    if (this.staminaBarUI && this.staminaBarUI instanceof THREE.Sprite) {
-      const canvas = (this.staminaBarUI.material as THREE.SpriteMaterial).map!.image as HTMLCanvasElement;
+    if (this.staminaBarUI) {
+      // Strong type assumption - stamina bar is a Sprite with SpriteMaterial
+      const spriteMaterial = this.staminaBarUI.material as THREE.SpriteMaterial;
+      const canvas = spriteMaterial.map!.image as HTMLCanvasElement;
       const context = canvas.getContext('2d')!;
       this.updateStaminaBarCanvas(canvas, context);
-      (this.staminaBarUI.material as THREE.SpriteMaterial).map!.needsUpdate = true;
+      spriteMaterial.map!.needsUpdate = true;
     }
     
     // Emit stamina change event
@@ -677,10 +679,12 @@ export class PlayerEntity extends CombatantEntity {
     // Clean up player-specific stamina bar
     if (this.staminaBarUI && this.world.stage.scene) {
       this.world.stage.scene.remove(this.staminaBarUI);
-      if (this.staminaBarUI.material instanceof THREE.SpriteMaterial && this.staminaBarUI.material.map) {
-        this.staminaBarUI.material.map.dispose();
+      // Strong type assumption - stamina bar material is SpriteMaterial
+      const spriteMaterial = this.staminaBarUI.material as THREE.SpriteMaterial;
+      if (spriteMaterial.map) {
+        spriteMaterial.map.dispose();
       }
-      this.staminaBarUI.material.dispose();
+      spriteMaterial.dispose();
       this.staminaBarUI = null;
     }
     

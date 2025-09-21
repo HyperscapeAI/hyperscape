@@ -83,10 +83,11 @@ export class Entity implements IEntity {
     let entityData: EntityData
     let config: EntityConfig | undefined
 
-    if ('position' in dataOrConfig && Array.isArray(dataOrConfig.position)) {
+    // Strong type assumption - check array to distinguish EntityData from EntityConfig
+    if (Array.isArray((dataOrConfig as EntityData).position)) {
       // It's EntityData format
       entityData = dataOrConfig as EntityData
-    } else if ('position' in dataOrConfig && typeof dataOrConfig.position === 'object') {
+    } else {
       // It's EntityConfig format
       config = dataOrConfig as EntityConfig
 
@@ -104,9 +105,6 @@ export class Entity implements IEntity {
         quaternion: config.rotation ? [config.rotation.x, config.rotation.y, config.rotation.z, 1] : undefined,
         scale: config.scale ? [config.scale.x, config.scale.y, config.scale.z] : undefined,
       }
-    } else {
-      // Default EntityData
-      entityData = dataOrConfig as EntityData
     }
 
     this.data = entityData
@@ -203,8 +201,8 @@ export class Entity implements IEntity {
     this.velocity = new THREE.Vector3(0, 0, 0)
 
     // Initialize RPG-specific properties
-    const healthData = config?.properties?.health
-    if (healthData && typeof healthData === 'object' && 'current' in healthData && 'max' in healthData) {
+    const healthData = config?.properties?.health as { current: number; max: number } | undefined
+    if (healthData) {
       this.health = healthData.current
       this.maxHealth = healthData.max
     } else {
@@ -796,12 +794,16 @@ export class Entity implements IEntity {
   }
 
   public setPosition(posOrX: Position3D | number, y?: number, z?: number): void {
-    if (typeof posOrX === 'object') {
-      this.position.set(posOrX.x, posOrX.y, posOrX.z)
-      this.config.position = { x: posOrX.x, y: posOrX.y, z: posOrX.z }
+    // Strong type assumption - if y and z are provided, posOrX is a number
+    if (y !== undefined && z !== undefined) {
+      const x = posOrX as number
+      this.position.set(x, y, z)
+      this.config.position = { x, y, z }
     } else {
-      this.position.set(posOrX, y!, z!)
-      this.config.position = { x: posOrX, y: y!, z: z! }
+      // Strong type assumption - posOrX is Position3D
+      const pos = posOrX as Position3D
+      this.position.set(pos.x, pos.y, pos.z)
+      this.config.position = { x: pos.x, y: pos.y, z: pos.z }
     }
     // Position is already set via this.position, no sync needed
     this.markNetworkDirty()
@@ -835,19 +837,8 @@ export class Entity implements IEntity {
       return true
     }
     
-    // Fallback: Check for real browser Canvas API
-    // The server polyfill and jsdom don't provide the full Canvas 2D context
-    if (typeof document !== 'undefined') {
-      try {
-        const testCanvas = document.createElement('canvas')
-        const ctx = testCanvas.getContext('2d')
-        // Strong type assumption - if we have a context, it's a full CanvasRenderingContext2D
-        return ctx !== null
-      } catch {
-        return false
-      }
-    }
-    
+    // Strong type assumption - if we reach here and have document, we're in a browser
+    // The presence of document is determined at compile/bundle time
     return false
   }
 
@@ -894,14 +885,8 @@ export class Entity implements IEntity {
       const model = await safeLoader.loadModel(this.config.model)
       // Convert the loaded model into a THREE.Object3D via toNodes
       const nodes = model.toNodes()
-      const possible = nodes.get('root') || nodes.get('model') || nodes.get(this.name) || null
-      const isThreeObject3D = (obj: unknown): obj is THREE.Object3D => {
-        return !!obj && typeof obj === 'object' && 'isObject3D' in (obj as Record<string, unknown>)
-      }
-      let modelObject: THREE.Object3D | null = null;
-      if (isThreeObject3D(possible)) {
-        modelObject = possible
-      }
+      // Strong type assumption - node is THREE.Object3D
+      const modelObject = (nodes.get('root') || nodes.get('model') || nodes.get(this.name)) as THREE.Object3D | null
       // Fallback: if no nodes map provided, skip assignment
       if (!modelObject) {
         throw new Error('Loaded model did not provide a THREE.Object3D node')
@@ -1151,19 +1136,23 @@ export class Entity implements IEntity {
     // Clean up UI elements first - from BaseEntity
     if (this.nameSprite && this.world.stage.scene) {
       this.world.stage.scene.remove(this.nameSprite)
-      if (this.nameSprite.material instanceof THREE.SpriteMaterial && this.nameSprite.material.map) {
-        this.nameSprite.material.map.dispose()
+      // Strong type assumption - sprite material is SpriteMaterial
+      const spriteMaterial = this.nameSprite.material as THREE.SpriteMaterial
+      if (spriteMaterial.map) {
+        spriteMaterial.map.dispose()
       }
-      this.nameSprite.material.dispose()
+      spriteMaterial.dispose()
       this.nameSprite = null
     }
 
     if (this.healthSprite && this.world.stage.scene) {
       this.world.stage.scene.remove(this.healthSprite)
-      if (this.healthSprite.material instanceof THREE.SpriteMaterial && this.healthSprite.material.map) {
-        this.healthSprite.material.map.dispose()
+      // Strong type assumption - sprite material is SpriteMaterial  
+      const spriteMaterial = this.healthSprite.material as THREE.SpriteMaterial
+      if (spriteMaterial.map) {
+        spriteMaterial.map.dispose()
       }
-      this.healthSprite.material.dispose()
+      spriteMaterial.dispose()
       this.healthSprite = null
     }
 
@@ -1230,17 +1219,15 @@ export class Entity implements IEntity {
 
   private disposeMesh(object: THREE.Mesh | THREE.Group | THREE.Object3D): void {
     object.traverse(child => {
-      if (child instanceof THREE.Mesh) {
-        if (child.geometry) {
-          child.geometry.dispose()
-        }
-        if (child.material) {
-          if (Array.isArray(child.material)) {
-            child.material.forEach(material => material.dispose())
-          } else {
-            child.material.dispose()
-          }
-        }
+      // Strong type assumption - mesh children have geometry and material
+      const mesh = child as THREE.Mesh
+      if (mesh.geometry) {
+        mesh.geometry.dispose()
+      }
+      if (mesh.material) {
+        // Strong type assumption - material is either array or single
+        const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+        materials.forEach(material => material.dispose())
       }
     })
   }

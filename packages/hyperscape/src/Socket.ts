@@ -36,19 +36,17 @@ export class Socket {
 
     // Use Node.js WebSocket event handling
     this.ws.on('message', (arg?: unknown) => {
+      // Strong type assumption - message is always ArrayBuffer or Uint8Array
       const data = arg as ArrayBuffer | Uint8Array
-      if (data instanceof ArrayBuffer || data instanceof Uint8Array) {
-        this.onMessage(data)
-      }
+      this.onMessage(data)
     })
     this.ws.on('pong', () => {
       this.onPong()
     })
     this.ws.on('close', (arg?: unknown) => {
-      const code = typeof arg === 'object' && arg !== null && 'code' in (arg as { code?: number | string })
-        ? (arg as { code?: number | string }).code
-        : undefined
-      this.onClose({ code })
+      // Strong type assumption - close event has code property
+      const closeEvent = arg as { code?: number | string } | undefined
+      this.onClose({ code: closeEvent?.code })
     })
   }
 

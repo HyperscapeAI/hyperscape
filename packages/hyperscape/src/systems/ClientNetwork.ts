@@ -346,17 +346,16 @@ export class ClientNetwork extends SystemBase {
       if (entity instanceof PlayerLocal) {
         if (p) {
           entity.updateServerPosition(p[0], p[1], p[2])
-          // Immediately reflect authoritative position on the local visual for responsiveness
-          if (entity.node && entity.node.position) {
-            entity.node.position.set(p[0], p[1], p[2])
-          }
+          // Don't immediately snap visual position - let PlayerLocal handle interpolation
+          // This prevents jerky movement from network updates
         }
         // Also update velocity if provided
         if (v) {
           entity.updateServerVelocity(v[0], v[1], v[2])
         }
         if (q && entity.base) {
-          entity.base.quaternion.set(q[0], q[1], q[2], q[3])
+          // Apply rotation smoothly
+          entity.base.quaternion.slerp(new THREE.Quaternion(q[0], q[1], q[2], q[3]), 0.3)
         }
       }
       // Apply any non-transform fields (e.g., emote, name)

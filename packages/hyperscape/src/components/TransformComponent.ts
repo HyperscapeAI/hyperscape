@@ -17,16 +17,12 @@ export class TransformComponent extends Component {
     const position = data.position || { x: 0, y: 0, z: 0 };
     const rotation = data.rotation || { x: 0, y: 0, z: 0, w: 1 };
     const scale = data.scale || { x: 1, y: 1, z: 1 };
+    
+    // Create THREE objects from provided data - both types have the required properties
     super('transform', entity, {
-      position: position instanceof THREE.Vector3 
-        ? position 
-        : new THREE.Vector3(position.x, position.y, position.z),
-      rotation: rotation instanceof THREE.Quaternion
-        ? rotation
-        : new THREE.Quaternion(rotation.x, rotation.y, rotation.z, rotation.w),
-      scale: scale instanceof THREE.Vector3
-        ? scale
-        : new THREE.Vector3(scale.x, scale.y, scale.z),
+      position: new THREE.Vector3(position.x ?? 0, position.y ?? 0, position.z ?? 0),
+      rotation: new THREE.Quaternion(rotation.x ?? 0, rotation.y ?? 0, rotation.z ?? 0, (rotation as { w?: number }).w ?? 1),
+      scale: new THREE.Vector3(scale.x ?? 1, scale.y ?? 1, scale.z ?? 1),
     });
   }
   
@@ -36,11 +32,8 @@ export class TransformComponent extends Component {
   
   set position(value: THREE.Vector3 | { x: number; y: number; z: number }) {
     const currentPosition = this.get<THREE.Vector3>('position');
-    if (value instanceof THREE.Vector3) {
-      currentPosition.copy(value);
-    } else {
-      currentPosition.set(value.x, value.y, value.z);
-    }
+    // Both types have x, y, z properties - use them directly
+    currentPosition.set(value.x, value.y, value.z);
     this.syncToNode();
   }
   
@@ -50,11 +43,8 @@ export class TransformComponent extends Component {
   
   set rotation(value: THREE.Quaternion | { x: number; y: number; z: number; w: number }) {
     const currentRotation = this.get<THREE.Quaternion>('rotation');
-    if (value instanceof THREE.Quaternion) {
-      currentRotation.copy(value);
-    } else {
-      currentRotation.set(value.x, value.y, value.z, value.w);
-    }
+    // Both types have x, y, z, w properties - use them directly
+    currentRotation.set(value.x, value.y, value.z, value.w);
     this.syncToNode();
   }
   
@@ -64,11 +54,8 @@ export class TransformComponent extends Component {
   
   set scale(value: THREE.Vector3 | { x: number; y: number; z: number }) {
     const currentScale = this.get<THREE.Vector3>('scale');
-    if (value instanceof THREE.Vector3) {
-      currentScale.copy(value);
-    } else {
-      currentScale.set(value.x, value.y, value.z);
-    }
+    // Both types have x, y, z properties - use them directly
+    currentScale.set(value.x, value.y, value.z);
     this.syncToNode();
   }
   

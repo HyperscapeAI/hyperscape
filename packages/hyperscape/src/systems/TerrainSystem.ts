@@ -118,7 +118,6 @@ export class TerrainSystem extends System {
     // Check for explicit seed in world config or environment
     const worldConfig = (this.world as { config?: { terrainSeed?: number } }).config
     if (worldConfig?.terrainSeed !== undefined) {
-      console.log(`[TerrainSystem] Using explicit terrain seed from config: ${worldConfig.terrainSeed}`)
       return worldConfig.terrainSeed
     }
 
@@ -126,14 +125,12 @@ export class TerrainSystem extends System {
     if (typeof process !== 'undefined' && process.env?.TERRAIN_SEED) {
       const envSeed = parseInt(process.env.TERRAIN_SEED, 10)
       if (!isNaN(envSeed)) {
-        console.log(`[TerrainSystem] Using environment terrain seed: ${envSeed}`)
         return envSeed
       }
     }
 
     // Always use fixed seed of 0 for deterministic terrain on both client and server
     const FIXED_SEED = 0
-    console.log(`[TerrainSystem] Using fixed deterministic seed: ${FIXED_SEED}`)
     return FIXED_SEED
   }
 
@@ -175,8 +172,6 @@ export class TerrainSystem extends System {
     const tile = this.terrainTiles.get(key)
     if (!tile || tile.collision) return
 
-    if (this.world.physics!.isInitialized()) {
-      try {
         const geometry = tile.mesh.geometry
         const transformedGeometry = geometry.clone()
         transformedGeometry.translate(tile.x * this.CONFIG.TILE_SIZE, 0, tile.z * this.CONFIG.TILE_SIZE)
@@ -184,16 +179,7 @@ export class TerrainSystem extends System {
         const meshHandle = geometryToPxMesh(this.world, transformedGeometry, false)
         if (meshHandle) {
           tile.collision = meshHandle
-          console.log(
-            `[TerrainSystem] Created physics collision for tile ${key} at (${tile.x * this.CONFIG.TILE_SIZE}, ${tile.z * this.CONFIG.TILE_SIZE})`
-          )
         }
-      } catch (error) {
-        console.warn(`[TerrainSystem] ⚠️ Failed to generate collision for tile ${key}:`, error)
-      }
-    } else {
-      console.warn(`[TerrainSystem] Physics not initialized, skipping collision for tile ${key}`)
-    }
   }
 
   private initializeBiomeCenters(): void {
@@ -228,8 +214,6 @@ export class TerrainSystem extends System {
         influence,
       })
     }
-
-    console.log(`[TerrainSystem] Initialized ${this.biomeCenters.length} biome centers with seed ${baseSeed}`)
   }
 
   // World Configuration - Your Specifications
@@ -516,7 +500,6 @@ export class TerrainSystem extends System {
   }
 
   async start(): Promise<void> {
-    
     // Initialize noise generator if not already initialized (failsafe)
     if (!this.noise) {
             this.noise = new NoiseGenerator(this.computeSeedFromWorldId())
@@ -527,14 +510,12 @@ export class TerrainSystem extends System {
     const isServer = this.world.network?.isServer || false
     const isClient = this.world.network?.isClient || false
 
-    console.log(`[TerrainSystem] Environment: ${isServer ? 'Server' : isClient ? 'Client' : 'Unknown'}`)
-
     if (isClient) {
       this.setupClientTerrain()
     } else if (isServer) {
       this.setupServerTerrain()
     } else {
-      console.warn('[TerrainSystem] Environment not detected - terrain setup deferred')
+      throw new Error('[TerrainSystem] Environment not detected - terrain setup deferred')
     }
 
     // Load initial tiles
@@ -642,19 +623,6 @@ export class TerrainSystem extends System {
     }
 
     const endTime = performance.now()
-    console.log(`[TerrainSystem] Generated ${tilesGenerated} tiles in ${(endTime - startTime).toFixed(2)}ms`)
-    console.log(
-      `[TerrainSystem] Height range: ${minHeight.toFixed(2)}m to ${maxHeight.toFixed(2)}m (variation: ${(maxHeight - minHeight).toFixed(2)}m)`
-    )
-
-    // Warn if terrain is too flat
-    if (maxHeight - minHeight < 20) {
-      console.warn(
-        '[TerrainSystem] ⚠️ Terrain appears too flat! Height variation is only ' +
-          (maxHeight - minHeight).toFixed(2) +
-          'm'
-      )
-    }
 
     // Mark initial tiles as ready
     this._initialTilesReady = true
@@ -732,11 +700,6 @@ export class TerrainSystem extends System {
     // Create on both client and server for click-to-move raycasting
       const physics = this.world.physics
       const PHYSX = getPhysX()
-      
-      if (!PHYSX) {
-        console.warn('[TerrainSystem] PhysX not available, skipping terrain collision')
-        return tile
-      }
 
       // Create a simple plane at the average height of the terrain
       // This is sufficient for click-to-move raycasting
@@ -766,7 +729,7 @@ export class TerrainSystem extends System {
         y: boxThickness / 2, // Half thickness of the collision box
         z: this.CONFIG.TILE_SIZE / 2 // Half depth
       }
-      const boxGeometry = new PHYSX.PxBoxGeometry(halfExtents.x, halfExtents.y, halfExtents.z)
+      const boxGeometry = new PHYSX!.PxBoxGeometry(halfExtents.x, halfExtents.y, halfExtents.z)
 
       // Create material and shape
       const physicsMaterial = physics.physics.createMaterial(0.5, 0.5, 0.1)
@@ -779,24 +742,22 @@ export class TerrainSystem extends System {
         // word0 = what group this shape belongs to (terrain.group)
         // word1 = what groups can query/hit this shape (0xFFFFFFFF allows all)
         // This allows raycasts with any layer mask to hit terrain
-        const filterData = new PHYSX.PxFilterData(terrainLayer.group, 0xFFFFFFFF, 0, 0)
+        const filterData = new PHYSX!.PxFilterData(terrainLayer.group, 0xFFFFFFFF, 0, 0)
         shape.setQueryFilterData(filterData)
         
         // For simulation, use the terrain's actual collision mask
-        const simFilterData = new PHYSX.PxFilterData(terrainLayer.group, terrainLayer.mask, 0, 0)
+        const simFilterData = new PHYSX!.PxFilterData(terrainLayer.group, terrainLayer.mask, 0, 0)
         shape.setSimulationFilterData(simFilterData)
-        
-        console.log(`[TerrainSystem] Set terrain collision - group: 0x${terrainLayer.group.toString(16)}, query mask: 0xFFFFFFFF, sim mask: 0x${terrainLayer.mask.toString(16)}`)
       }
 
       // Create actor at tile position with average height
-      const transform = new PHYSX.PxTransform(
-        new PHYSX.PxVec3(
+      const transform = new PHYSX!.PxTransform(
+        new PHYSX!.PxVec3(
           mesh.position.x + this.CONFIG.TILE_SIZE / 2, // Center of tile
           avgY, // Average terrain height
           mesh.position.z + this.CONFIG.TILE_SIZE / 2 // Center of tile
         ),
-        new PHYSX.PxQuat(0, 0, 0, 1)
+        new PHYSX!.PxQuat(0, 0, 0, 1)
       )
       const actor = physics.physics.createRigidStatic(transform)
       actor.attachShape(shape)
@@ -807,10 +768,6 @@ export class TerrainSystem extends System {
         triggeredHandles: new Set<PhysicsHandle>(),
       }
       tile.collider = physics.addActor(actor, handle)
-
-      console.log(
-        `[TerrainSystem] Created collision box for tile ${tile.key} at height ${avgY.toFixed(2)} (range: ${minY.toFixed(2)}-${maxY.toFixed(2)})`
-      )
 
     // Add to scene if client-side
     if (this.terrainContainer) {
@@ -863,14 +820,10 @@ export class TerrainSystem extends System {
     }
 
     // Emit typed event for other systems (resources, AI nav, etc.)
-    try {
       const originX = tile.x * this.CONFIG.TILE_SIZE
       const originZ = tile.z * this.CONFIG.TILE_SIZE
       const resourcesPayload = tile.resources.map(r => {
-        const pos =
-          r.position instanceof THREE.Vector3
-            ? { x: originX + r.position.x, y: r.position.y, z: originZ + r.position.z }
-            : { x: originX + r.position.x, y: r.position.y, z: originZ + r.position.z }
+        const pos = { x: originX + r.position.x, y: r.position.y, z: originZ + r.position.z }
         return { id: r.id, type: r.type, position: pos }
       })
       const genericBiome = this.mapBiomeToGeneric(tile.biome as string)
@@ -885,13 +838,9 @@ export class TerrainSystem extends System {
 
       // Also emit resource spawn points for ResourceSystem
       if (tile.resources.length > 0) {
-        console.log(`[TerrainSystem] Registering ${tile.resources.length} resources for tile ${tile.key}`)
         this.world.emit(EventType.RESOURCE_SPAWN_POINTS_REGISTERED, {
           spawnPoints: tile.resources.map(r => {
-            const worldPos =
-              r.position instanceof THREE.Vector3
-                ? { x: originX + r.position.x, y: r.position.y, z: originZ + r.position.z }
-                : { x: originX + r.position.x, y: r.position.y, z: originZ + r.position.z }
+            const worldPos = { x: originX + r.position.x, y: r.position.y, z: originZ + r.position.z }
             return {
               id: r.id,
               type: r.type,
@@ -901,9 +850,6 @@ export class TerrainSystem extends System {
           }),
         })
       }
-    } catch (_err) {
-      console.error('[TerrainSystem] Error emitting events:', _err)
-    }
 
     // Store tile
     this.terrainTiles.set(key, tile)
@@ -1319,14 +1265,6 @@ export class TerrainSystem extends System {
   private generateTileResources(tile: TerrainTile): void {
     const biomeData = this.BIOMES[tile.biome]
 
-    // Safety check for biomeData
-    if (!biomeData) {
-      console.error(
-        `[TerrainSystem] Biome '${tile.biome}' not found in BIOMES for resource generation. Skipping resources.`
-      )
-      return
-    }
-
     this.generateTreesForTile(tile, biomeData)
     this.generateOtherResourcesForTile(tile, biomeData)
     // Roads are now generated using noise patterns instead of segments
@@ -1558,13 +1496,6 @@ export class TerrainSystem extends System {
     const chunksToSave = Array.from(this.terrainTiles.values()).filter(tile => tile.needsSave)
 
     for (const tile of chunksToSave) {
-      try {
-        // Validate tile data before saving
-        if (tile.x === undefined || tile.z === undefined) {
-          console.warn(`[TerrainSystem] Skipping save for chunk with invalid coordinates: ${tile.key}`)
-          continue
-        }
-
         const chunkData: WorldChunk = {
           chunkX: tile.x,
           chunkZ: tile.z,
@@ -1579,9 +1510,6 @@ export class TerrainSystem extends System {
           this.databaseSystem.saveWorldChunk(chunkData)
         }
         tile.needsSave = false
-      } catch (error) {
-        console.error(`[UnifiedTerrain] Failed to save chunk ${tile.key}:`, error)
-      }
     }
 
     if (chunksToSave.length > 0) {
@@ -1619,15 +1547,6 @@ export class TerrainSystem extends System {
         // Validate position values
         const x = player.node.position.x
         const z = player.node.position.z
-
-        if (!isFinite(x) || !isFinite(z)) {
-          console.warn('[TerrainSystem] Invalid player position detected:', {
-            x,
-            z,
-            playerId: (player as { id?: string }).id,
-          })
-          continue
-        }
 
         const tileX = Math.floor(x / this.CONFIG.TILE_SIZE)
         const tileZ = Math.floor(z / this.CONFIG.TILE_SIZE)
@@ -1744,12 +1663,6 @@ export class TerrainSystem extends System {
     const tileZ = Math.floor(worldZ / this.CONFIG.TILE_SIZE)
     const biome = this.getBiomeAt(tileX, tileZ)
     const biomeData = this.BIOMES[biome]
-
-    // Safety check for biomeData
-    if (!biomeData) {
-      console.error(`[TerrainSystem] Biome '${biome}' not found in BIOMES for walkability check. Assuming walkable.`)
-      return { walkable: true }
-    }
 
     // Get height at position
     const height = this.getHeightAt(worldX, worldZ)
@@ -2056,12 +1969,6 @@ export class TerrainSystem extends System {
     const biome = this.getBiomeAt(tileX, tileZ)
     const biomeData = this.BIOMES[biome]
 
-    // Safety check for biomeData
-    if (!biomeData) {
-      console.error(`[TerrainSystem] Biome '${biome}' not found in BIOMES for mob spawning. No spawns generated.`)
-      return []
-    }
-
     // Don't spawn mobs in safe zones
     if (biomeData.difficulty === 0 || biomeData.mobTypes.length === 0) {
       return []
@@ -2214,12 +2121,6 @@ export class TerrainSystem extends System {
 
     for (const [key, tile] of this.terrainTiles.entries()) {
       const biomeData = this.BIOMES[tile.biome]
-
-      // Safety check for biomeData
-      if (!biomeData) {
-        console.warn(`[TerrainSystem] Biome '${tile.biome}' not found in BIOMES for spawn data. Skipping tile ${key}.`)
-        continue
-      }
 
       if (biomeData.difficulty > 0 && biomeData.mobTypes.length > 0) {
         const spawnPositions = this.getMobSpawnPositionsForTile(tile.x, tile.z, 5)
@@ -2455,15 +2356,6 @@ export class TerrainSystem extends System {
       const x = playerPos.x
       const z = playerPos.z
 
-      if (!isFinite(x) || !isFinite(z)) {
-        console.warn('[TerrainSystem] Invalid player position in updatePlayerBasedTerrain:', {
-          x,
-          z,
-          playerId,
-        })
-        continue
-      }
-
       // Calculate tile position
       const tileX = Math.floor(x / this.CONFIG.TILE_SIZE)
       const tileZ = Math.floor(z / this.CONFIG.TILE_SIZE)
@@ -2614,7 +2506,6 @@ export class TerrainSystem extends System {
     const startTime = Date.now()
     let _serializedChunks = 0
 
-    try {
       // Serialize all active chunks
       for (const [key, tile] of this.terrainTiles) {
         const serializationData = {
@@ -2626,16 +2517,18 @@ export class TerrainSystem extends System {
           resourceStates: tile.resources.map(r => ({
             id: r.id,
             type: r.type,
-            position:
-              r.position instanceof THREE.Vector3
-                ? (r.position.toArray() as [number, number, number])
-                : [r.position.x, r.position.y, r.position.z],
+            position: [r.position.x, r.position.y, r.position.z] as [number, number, number],
           })),
-          roadData: tile.roads.map(r => ({
-            start: r.start instanceof THREE.Vector2 ? (r.start.toArray() as [number, number]) : [r.start.x, r.start.z],
-            end: r.end instanceof THREE.Vector2 ? (r.end.toArray() as [number, number]) : [r.end.x, r.end.z],
-            width: r.width,
-          })),
+          roadData: tile.roads.map(r => {
+            // Roads use {x, z} format based on generateRoadsForTile implementation
+            const startZ = (r.start as { x: number; z: number }).z
+            const endZ = (r.end as { x: number; z: number }).z
+            return {
+              start: [r.start.x, startZ] as [number, number],
+              end: [r.end.x, endZ] as [number, number],
+              width: r.width,
+            }
+          }),
           playerCount: this.chunkPlayerCounts.get(key) || 0,
           lastActiveTime: tile.lastActiveTime,
           isSimulated: this.simulatedChunks.has(key),
@@ -2658,15 +2551,6 @@ export class TerrainSystem extends System {
         }
         this.pendingSerializationData.set(key, typedSerializationData)
 
-        // If database system is available, save immediately
-        if (this.databaseSystem) {
-          try {
-            // Validate tile data before saving
-            if (tile.x === undefined || tile.z === undefined) {
-              console.warn(`[TerrainSystem] Skipping serialization for chunk with invalid coordinates: ${key}`)
-              continue
-            }
-
             const chunkData: WorldChunk = {
               chunkX: tile.x,
               chunkZ: tile.z,
@@ -2679,19 +2563,12 @@ export class TerrainSystem extends System {
 
             this.databaseSystem.saveWorldChunk(chunkData)
             _serializedChunks++
-          } catch (error) {
-            console.error(`[TerrainSystem] ❌ Failed to serialize chunk ${key}:`, error)
-          }
-        }
       }
 
       // Increment world state version
       this.worldStateVersion++
 
       const _elapsed = Date.now() - startTime
-    } catch (error) {
-      console.error('[TerrainSystem] ❌ Serialization failed:', error)
-    }
   }
 
   /**

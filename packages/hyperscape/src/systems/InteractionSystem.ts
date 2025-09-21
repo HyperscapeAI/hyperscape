@@ -140,7 +140,8 @@ export class InteractionSystem extends SystemBase {
   }
 
   start(): void {
-        // Try to initialize when system starts
+    console.log('[InteractionSystem] Starting...')
+    // Try to initialize when system starts
     this.tryInitialize()
 
     // Listen for resource mesh creation to auto-register them
@@ -270,7 +271,8 @@ export class InteractionSystem extends SystemBase {
 
     if (!scene || !camera || !canvas) {
       // Retry later instead of throwing to avoid breaking the system startup
-            setTimeout(() => this.tryInitialize(), 100)
+      console.log('[InteractionSystem] Not ready yet, will retry in 100ms')
+      setTimeout(() => this.tryInitialize(), 100)
       return
     }
 
@@ -487,7 +489,8 @@ export class InteractionSystem extends SystemBase {
    * Handle mouse click for interactions
    */
   private onClick(_event: MouseEvent): void {
-        // Prevent bubbling to document/UI that might also react to click
+    console.log('[InteractionSystem] onClick triggered')
+    // Prevent bubbling to document/UI that might also react to click
     _event.preventDefault()
     _event.stopPropagation()
 
@@ -530,7 +533,7 @@ export class InteractionSystem extends SystemBase {
    * Handle right click for action menu
    */
   private onRightClick(event: MouseEvent): void {
-    event.preventDefault();
+    // Don't prevent default immediately - let camera system handle if dragging
     
     // If user dragged with RMB (orbit), do not open menu
     if (this.isDragging) {
@@ -545,6 +548,9 @@ export class InteractionSystem extends SystemBase {
 
     const actions = target && this.hasInteractionActions(target) ? target.actions : undefined
     if (target && actions && actions.length > 0) {
+      // Only prevent default if we're actually showing a menu
+      event.preventDefault();
+      event.stopPropagation();
       this.showActionMenu(target, event.clientX, event.clientY)
     } else {
       this.closeActionMenu()
@@ -555,7 +561,7 @@ export class InteractionSystem extends SystemBase {
    * Handle mouse down events
    */
   private onMouseDown(_event: MouseEvent): void {
-    // Can be used for drag detection or other mouse down specific logic
+    // Track mouse down for drag detection
     this.isDragging = false;
     this.mouseDownButton = _event.button;
     this.mouseDownClientPos = { x: _event.clientX, y: _event.clientY };
@@ -871,14 +877,17 @@ export class InteractionSystem extends SystemBase {
     
     // If terrain didn't hit, try all movement masks
     if (!physxHit) {
-            physxHit = this.world.raycast(origin, direction, RAYCAST_DISTANCE, movementMask)
+      console.log('[Raycast Debug] Terrain raycast missed, trying combined mask')
+      physxHit = this.world.raycast(origin, direction, RAYCAST_DISTANCE, movementMask)
     }
     
     // Debug: try with all layers if still no hit
     if (!physxHit) {
-            physxHit = this.world.raycast(origin, direction, RAYCAST_DISTANCE, 0xFFFFFFFF)
+      console.log('[Raycast Debug] Combined mask missed, trying 0xFFFFFFFF')
+      physxHit = this.world.raycast(origin, direction, RAYCAST_DISTANCE, 0xFFFFFFFF)
       if (physxHit) {
-              }
+        console.log('[Raycast Debug] Hit with 0xFFFFFFFF at:', physxHit.point)
+      }
     }
 
     this.logger.info(`[Raycast Debug] PhysX raycast result (movementMask): ${physxHit ? 'hit' : 'null'}`)
@@ -1071,8 +1080,9 @@ export class InteractionSystem extends SystemBase {
     start: THREE.Vector3 | { x: number; y: number; z: number },
     end: THREE.Vector3 | { x: number; y: number; z: number }
   ): boolean {
-    const startVec = start instanceof THREE.Vector3 ? start : _v3_2.set(start.x, start.y, start.z)
-    const endVec = end instanceof THREE.Vector3 ? end : _v3_3.set(end.x, end.y, end.z)
+    // Both types have x, y, z properties - use them directly
+    const startVec = _v3_2.set(start.x, start.y, start.z)
+    const endVec = _v3_3.set(end.x, end.y, end.z)
 
     const distance = startVec.distanceTo(endVec)
 
@@ -1157,11 +1167,8 @@ export class InteractionSystem extends SystemBase {
 
     const targetIndicator = new THREE.Mesh(targetGeometry, targetMaterial)
     targetIndicator.name = 'movement_target'
-    if (position instanceof THREE.Vector3) {
-      targetIndicator.position.copy(position)
-    } else {
-      targetIndicator.position.set(position.x, position.y, position.z)
-    }
+    // Both THREE.Vector3 and { x, y, z } have these properties
+    targetIndicator.position.set(position.x, position.y, position.z)
     targetIndicator.position.y += 0.01 // Slightly above ground
     targetIndicator.rotation.x = -Math.PI / 2 // Lie flat on ground
 
@@ -1199,11 +1206,8 @@ export class InteractionSystem extends SystemBase {
     const debugCube = new THREE.Mesh(cubeGeometry, cubeMaterial)
     debugCube.name = 'debug_cube'
 
-    if (position instanceof THREE.Vector3) {
-      debugCube.position.copy(position)
-    } else {
-      debugCube.position.set(position.x, position.y, position.z)
-    }
+    // Both THREE.Vector3 and { x, y, z } have these properties
+    debugCube.position.set(position.x, position.y, position.z)
 
     // Raise cube slightly so it's visible
     debugCube.position.y += 0.15

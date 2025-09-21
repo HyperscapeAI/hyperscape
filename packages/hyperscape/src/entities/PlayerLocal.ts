@@ -117,22 +117,22 @@ function _getPhysicsLayers() {
 }
 
 // Utility functions for PhysX transform operations
-function _safePhysXTransform(vector: THREE.Vector3 | THREE.Quaternion, transform: PhysX.PxTransform): void {
-  if (vector instanceof THREE.Vector3) {
-    if (transform && typeof transform === 'object' && 'p' in transform) {
-      const p = transform.p
-      p.x = vector.x
-      p.y = vector.y
-      p.z = vector.z
-    }
-  } else if (vector instanceof THREE.Quaternion) {
-    if (transform && typeof transform === 'object' && 'q' in transform) {
-      const q = transform.q
-      q.x = vector.x
-      q.y = vector.y
-      q.z = vector.z
-      q.w = vector.w
-    }
+function _safePhysXTransformPosition(vector: THREE.Vector3, transform: PhysX.PxTransform): void {
+  if (transform && typeof transform === 'object' && 'p' in transform) {
+    const p = transform.p
+    p.x = vector.x
+    p.y = vector.y
+    p.z = vector.z
+  }
+}
+
+function _safePhysXTransformQuaternion(quat: THREE.Quaternion, transform: PhysX.PxTransform): void {
+  if (transform && typeof transform === 'object' && 'q' in transform) {
+    const q = transform.q
+    q.x = quat.x
+    q.y = quat.y
+    q.z = quat.z
+    q.w = quat.w
   }
 }
 

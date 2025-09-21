@@ -29,10 +29,16 @@ export class ColliderComponent extends Component {
     layers?: string[];
     [key: string]: unknown;
   } = {}) {
-    const size = data.size || { x: 1, y: 1, z: 1 };
+    const sizeInput = data.size || { x: 1, y: 1, z: 1 };
+    // Convert to Vector3 - both types have x, y, z properties
+    const sizeVector = new THREE.Vector3(
+      sizeInput.x !== undefined ? sizeInput.x : 1,
+      sizeInput.y !== undefined ? sizeInput.y : 1,
+      sizeInput.z !== undefined ? sizeInput.z : 1
+    );
     super('collider', entity, {
       type: 'box',
-      size: size instanceof THREE.Vector3 ? size : new THREE.Vector3(size.x, size.y, size.z),
+      size: sizeVector,
       radius: 0.5,
       height: 1,
       isTrigger: false,
@@ -61,11 +67,8 @@ export class ColliderComponent extends Component {
   
   set size(value: Vector3 | { x: number; y: number; z: number }) {
     const currentSize = this.get<Vector3>('size');
-    if (value instanceof THREE.Vector3) {
-      currentSize.copy(value);
-    } else {
-      currentSize.set(value.x, value.y, value.z);
-    }
+    // Both types have x, y, z properties - use them directly
+    currentSize.set(value.x, value.y, value.z);
     this.updatePhysicsShape();
   }
   

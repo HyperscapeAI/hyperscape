@@ -48,9 +48,9 @@ export class ClientCameraSystem extends SystemBase {
   
   // Control settings
   private readonly settings = {
-      // RS3-like zoom bounds
+      // RS3-like zoom bounds - increased max for better overview
       minDistance: 2.5,
-      maxDistance: 15.0,
+      maxDistance: 50.0,  // Increased from 15.0 for better zoom out
       // RS3-like pitch limits: ~10° to ~80°
       minPolarAngle: Math.PI * 0.18,
       maxPolarAngle: Math.PI * 0.45,
@@ -64,7 +64,7 @@ export class ClientCameraSystem extends SystemBase {
       cameraLerpFactor: 0.15,
       invertY: false,
       // Discrete zoom step per wheel notch (world units)
-      zoomStep: 0.8
+      zoomStep: 1.2  // Increased from 0.8 for faster zoom
   };
   
   // Mouse state
@@ -119,7 +119,8 @@ export class ClientCameraSystem extends SystemBase {
     
     // Remove camera from rig if it's attached
     if (this.camera.parent === this.world.rig) {
-            
+      console.log('[ClientCameraSystem] Detaching camera from world.rig to make it independent');
+      
       // Get world position and rotation before removing from parent
       const worldPos = _v3_1
       const worldQuat = _q_1
@@ -138,7 +139,8 @@ export class ClientCameraSystem extends SystemBase {
       this.camera.position.copy(worldPos);
       this.camera.quaternion.copy(worldQuat);
       
-          } else if (this.camera.parent && this.camera.parent !== this.world.stage.scene) {
+      console.log('[ClientCameraSystem] Camera is now independent from rig transforms');
+    } else if (this.camera.parent && this.camera.parent !== this.world.stage.scene) {
       console.warn('[ClientCameraSystem] Camera has unexpected parent:', this.camera.parent);
     }
   }
@@ -211,8 +213,8 @@ export class ClientCameraSystem extends SystemBase {
       event.clientY - this.mouseState.lastPosition.y
     );
 
-    // RS3: ONLY MMB-drag orbits; RMB opens context menu, LMB selects/moves
-    if (this.mouseState.middleDown) {
+    // Allow both right-click and middle-click to orbit camera
+    if (this.mouseState.rightDown || this.mouseState.middleDown) {
       const invert = (this.settings as unknown as { invertY?: boolean }).invertY === true ? -1 : 1;
       // RS3-like: keep rotation responsive when fully zoomed out
       const minR = (this.settings as unknown as { minDistance?: number }).minDistance ?? 2.5;
