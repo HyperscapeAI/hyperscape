@@ -55,20 +55,14 @@ export class Avatar extends Node {
     if (this.factory) {
       // Only create instance if we don't already have one
       if (!this.instance) {
-        console.log('[Avatar] Creating new VRM instance')
-        console.log('[Avatar] this.hooks set?', !!this.hooks)
-        const vrmHooks = this.hooks as unknown as { scene?: unknown; octree?: unknown; [key: string]: unknown }
-        console.log('[Avatar] Hooks available:', vrmHooks ? Object.keys(vrmHooks) : 'none')
-        console.log('[Avatar] Hooks.scene:', vrmHooks?.scene ? 'YES' : 'NO')
-        console.log('[Avatar] Hooks.octree:', vrmHooks?.octree ? 'YES' : 'NO')
-        
+                        const vrmHooks = this.hooks as unknown as { scene?: unknown; octree?: unknown; [key: string]: unknown }
+                                
         // CRITICAL: Update matrix before passing to factory
         // The avatar node needs its world transform updated to match its parent
         this.updateTransform()
         const worldPos = v1
         worldPos.setFromMatrixPosition(this.matrixWorld)
-        console.log('[Avatar] Creating VRM at world position:', worldPos.x, worldPos.y, worldPos.z)
-        
+                
         // Factory has typed create(matrix, hooks, node)
         this.instance = this.factory.create(this.matrixWorld, this.hooks ?? undefined, this)
         this.instance?.setEmote(this._emote)
@@ -90,16 +84,13 @@ export class Avatar extends Node {
           if (!avatarScene.parent) {
             console.warn('[Avatar] FALLBACK: Avatar scene has no parent! Manually adding to world.stage.scene')
             this.ctx.stage.scene.add(avatarScene)
-            console.log('[Avatar] FALLBACK: Avatar successfully added to scene')
-          } else {
-            console.log('[Avatar] Avatar scene already has parent:', avatarScene.parent.name || avatarScene.parent.type)
-          }
+                      } else {
+                      }
         }
         
         this._onLoad?.()
       } else {
-        console.log('[Avatar] Reusing existing VRM instance')
-        // Just update the existing instance
+                // Just update the existing instance
         this.instance?.move(this.matrixWorld)
       }
     }

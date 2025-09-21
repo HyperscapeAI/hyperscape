@@ -136,21 +136,17 @@ export function createClientWorld() {
   // Create a promise that resolves when RPG systems are loaded
   const systemsLoadedPromise = (async () => {
     try {
-      console.log('[Client World] Registering RPG game systems...');
-      await registerSystems(world);
-      console.log('[Client World] RPG game systems registered successfully');
-      
+            await registerSystems(world);
+            
       // Register client helper systems
       world.register('client-diagnostics', ClientDiagnostics);
       
       // Temporarily disable raycast test system to prevent canvas/ground plane conflicts
       // if (typeof window !== 'undefined' && (window as any).__ENABLE_RAYCAST_TEST__) {
       //   world.register('raycast-test', RaycastTestSystem);
-      //   console.log('[Client World] Raycast test system registered');
-      // }
+      //         // }
       
-      console.log('[Client World] Client helper systems registered');
-      // Expose selected constructors for browser-based tests (static import ensures availability)
+            // Expose selected constructors for browser-based tests (static import ensures availability)
       const anyWin = window as unknown as { Hyperscape?: Record<string, unknown> };
       anyWin.Hyperscape = anyWin.Hyperscape || {};
       anyWin.Hyperscape.CircularSpawnArea = CircularSpawnArea;

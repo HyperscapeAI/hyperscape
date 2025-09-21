@@ -187,18 +187,18 @@ export class PlayerEntity extends CombatantEntity {
     
     // CRITICAL: Set owner field for network identification
     if (data.owner !== undefined) {
-      (this.data as any).owner = data.owner;
+      this.data.owner = data.owner;
     }
     
     // Also preserve other network/identity fields
     if (data.userId !== undefined) {
-      (this.data as any).userId = data.userId;
+      this.data.userId = data.userId;
     }
     if (data.avatar !== undefined) {
-      (this.data as any).avatar = data.avatar;
+      this.data.avatar = data.avatar;
     }
     if (data.sessionAvatar !== undefined) {
-      (this.data as any).sessionAvatar = data.sessionAvatar;
+      this.data.sessionAvatar = data.sessionAvatar;
     }
     
     // Initialize player-specific properties

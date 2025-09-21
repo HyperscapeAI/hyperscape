@@ -707,22 +707,18 @@ function LoadingOverlay({ world }: { world: World }) {
   const [progress, setProgress] = useState(0)
   const { title, desc, image } = world.settings
   useEffect(() => {
-    console.log('[LoadingOverlay] Mounted, listening for progress events')
-    const handleProgress = (data: unknown) => {
-      console.log('[LoadingOverlay] Progress update:', data)
-      if (typeof data === 'number') {
+        const handleProgress = (data: unknown) => {
+            if (typeof data === 'number') {
         setProgress(data)
       }
     }
     world.on(EventType.ASSETS_LOADING_PROGRESS, handleProgress)
     return () => {
-      console.log('[LoadingOverlay] Unmounted')
-      world.off(EventType.ASSETS_LOADING_PROGRESS, handleProgress)
+            world.off(EventType.ASSETS_LOADING_PROGRESS, handleProgress)
     }
   }, [])
   useEffect(() => {
-    console.log('[LoadingOverlay] Progress changed to:', progress)
-  }, [progress])
+      }, [progress])
   return (
     <div
       style={{

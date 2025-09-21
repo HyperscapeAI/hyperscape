@@ -44,8 +44,7 @@ export class ClientInputSystem extends System {
   }
   
   override start(): void {
-    console.log('[ClientInputSystem] Started - capturing input at', MovementConfig.clientTickRate, 'Hz');
-    this.lastInputTime = performance.now();
+        this.lastInputTime = performance.now();
     
     // Listen for server acknowledgments
     this.world.on('inputAck', this.handleInputAck.bind(this));
@@ -259,13 +258,11 @@ export class ClientInputSystem extends System {
    * Handle button press
    */
   private handleButtonPress(button: string): void {
-    console.log('[ClientInputSystem] Button pressed:', button);
-    switch (button) {
+        switch (button) {
       case 'KeyW':
       case 'ArrowUp':
         this.buttons |= InputButtons.FORWARD;
-        console.log('[ClientInputSystem] FORWARD button set, buttons:', this.buttons);
-        break;
+                break;
       case 'KeyS':
       case 'ArrowDown':
         this.buttons |= InputButtons.BACKWARD;

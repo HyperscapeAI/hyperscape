@@ -204,7 +204,10 @@ export class ResourceInteractionSystem extends SystemBase {
 
   private getLocalPlayer(): Entity | null {
     // Get the local player from the world's entities
-    return (this.world.entities as any).player || null;
+    if (this.world.entities) {
+      return this.world.entities.player || null;
+    }
+    return null;
   }
 
   private handleActionExecute(params: {
@@ -468,12 +471,12 @@ export class ResourceInteractionSystem extends SystemBase {
     this.activeGathering = null;
   }
 
-  private startMining(resource: ResourceInteractable): void {
+  private startMining(_resource: ResourceInteractable): void {
     // Similar to chopping but for mining rocks
     const localPlayer = this.world.getPlayer();
     if (!localPlayer) return;
     
-    Logger.system('ResourceInteractionSystem', `Starting to mine: ${resource.id}`);
+    Logger.system('ResourceInteractionSystem', `Starting to mine: ${_resource.id}`);
     
     // For now, just emit a message - implement similar to chopping
     this.emitTypedEvent(EventType.UI_MESSAGE, {
@@ -483,12 +486,12 @@ export class ResourceInteractionSystem extends SystemBase {
     });
   }
 
-  private startFishing(resource: ResourceInteractable): void {
+  private startFishing(_resource: ResourceInteractable): void {
     // Similar to chopping but for fishing spots
     const localPlayer = this.world.getPlayer();
     if (!localPlayer) return;
     
-    Logger.system('ResourceInteractionSystem', `Starting to fish: ${resource.id}`);
+    Logger.system('ResourceInteractionSystem', `Starting to fish: ${_resource.id}`);
     
     // For now, just emit a message - implement similar to chopping
     this.emitTypedEvent(EventType.UI_MESSAGE, {

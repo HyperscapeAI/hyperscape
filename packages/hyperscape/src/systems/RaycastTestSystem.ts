@@ -51,11 +51,9 @@ export class RaycastTestSystem extends System {
         testRunner?: TestRunnerSystem
       }).testRunner?.isTestRunning?.() === true
     if (!isTestEnv) {
-      console.log('[RaycastTest] Skipping raycast tests (not in test mode)');
-      return;
+            return;
     }
-    console.log('[RaycastTest] Starting raycast test system');
-    
+        
     // Use the existing stage ground plane instead of creating our own to avoid z-fighting
     // this.createGroundPlane(); // Commented out to prevent duplicate ground planes
     
@@ -67,10 +65,7 @@ export class RaycastTestSystem extends System {
     if (this.isRunningTests) return;
     this.isRunningTests = true;
     
-    console.log('[RaycastTest] ========================================');
-    console.log('[RaycastTest] Starting comprehensive raycast tests');
-    console.log('[RaycastTest] ========================================');
-    
+                
     const camera = this.world.camera;
     const canvas = this.world.graphics?.renderer?.domElement;
     
@@ -248,9 +243,7 @@ export class RaycastTestSystem extends System {
 
   private printTestSummary(): void {
     console.log('\n[RaycastTest] ========================================');
-    console.log('[RaycastTest] TEST SUMMARY');
-    console.log('[RaycastTest] ========================================');
-    
+            
     let passedRaycast = 0;
     let passedMovement = 0;
     

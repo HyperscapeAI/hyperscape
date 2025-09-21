@@ -14,8 +14,7 @@ interface PhysXWindow extends Window {
 export async function loadPhysXScript(options?: PhysXInitOptions): Promise<PhysXModule> {
   // Check if PhysX is already loaded
   const w = window as PhysXWindow
-          if (w.PhysX) {
-    console.log('[physx-script-loader] PhysX already loaded, using existing')
+  if (w.PhysX) {
     return w.PhysX!(options)
   }
 
@@ -30,17 +29,13 @@ export async function loadPhysXScript(options?: PhysXInitOptions): Promise<PhysX
     script.src = '/physx-js-webidl.js'
     script.async = true
     
-    script.onload = () => {
-      console.log('[physx-script-loader] Script loaded successfully')
-      
+    script.onload = () => {      
       // Give it a moment to initialize
       setTimeout(() => {
         const w2 = window as PhysXWindow
         if (w2.PhysX) {
-          console.log('[physx-script-loader] PhysX function found, initializing...')
           const PhysXFn = w2.PhysX!
           PhysXFn(options).then((physx) => {
-            console.log('[physx-script-loader] PhysX initialized successfully')
             resolve(physx)
           }).catch((error) => {
             console.error('[physx-script-loader] PhysX initialization failed:', error)
@@ -48,7 +43,6 @@ export async function loadPhysXScript(options?: PhysXInitOptions): Promise<PhysX
           })
         } else {
           console.error('[physx-script-loader] PhysX function not found after script load')
-          console.log('[physx-script-loader] Window keys:', Object.keys(window))
           reject(new Error('PhysX global function not found after script load'))
         }
       }, 100)
@@ -59,7 +53,6 @@ export async function loadPhysXScript(options?: PhysXInitOptions): Promise<PhysX
       reject(new Error('Failed to load PhysX script'))
     }
     
-    console.log('[physx-script-loader] Appending script tag to load PhysX...')
     document.head.appendChild(script)
   })
 }

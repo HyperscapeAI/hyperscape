@@ -162,8 +162,8 @@ export class ClientNetwork extends SystemBase {
     this.connected = true;  // Mark as connected when we get the snapshot
     
     // CRITICAL: Ensure world.network points to this instance and has our ID
-    if (!this.world.network || this.world.network.id !== this.id) {
-      (this.world as any).network = this;
+    if (!this.world.network || (this.world.network as { id?: string }).id !== this.id) {
+      (this.world as { network?: unknown }).network = this;
     }
     // Ensure Physics is fully initialized before processing entities
     // This is needed because PlayerLocal uses physics extensions during construction

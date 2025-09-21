@@ -465,32 +465,32 @@ export class Node {
     return this._onPointerEnter
   }
 
-  set onPointerEnter(value: ((event: Event) => void) | undefined) {
-    this._onPointerEnter = value as (event: PointerEvent) => void
+  set onPointerEnter(value: ((event: PointerEvent) => void) | undefined) {
+    this._onPointerEnter = value
   }
 
   get onPointerLeave(): ((event: PointerEvent) => void) | undefined {
     return this._onPointerLeave
   }
 
-  set onPointerLeave(value: ((event: Event) => void) | undefined) {
-    this._onPointerLeave = value as (event: PointerEvent) => void
+  set onPointerLeave(value: ((event: PointerEvent) => void) | undefined) {
+    this._onPointerLeave = value
   }
 
   get onPointerDown(): ((event: PointerEvent) => void) | undefined {
     return this._onPointerDown
   }
 
-  set onPointerDown(value: ((event: Event) => void) | undefined) {
-    this._onPointerDown = value as (event: PointerEvent) => void
+  set onPointerDown(value: ((event: PointerEvent) => void) | undefined) {
+    this._onPointerDown = value
   }
 
   get onPointerUp(): ((event: PointerEvent) => void) | undefined {
     return this._onPointerUp
   }
 
-  set onPointerUp(value: ((event: Event) => void) | undefined) {
-    this._onPointerUp = value as (event: PointerEvent) => void
+  set onPointerUp(value: ((event: PointerEvent) => void) | undefined) {
+    this._onPointerUp = value
   }
 
   get cursor() {

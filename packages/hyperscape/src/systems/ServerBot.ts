@@ -291,14 +291,14 @@ export class ServerBot extends System {
     const network = this.clientWorld.getSystem('network') || 
                    this.clientWorld.getSystem('ClientNetwork') ||
                    this.clientWorld.getSystem('Network') ||
-                   (this.clientWorld as any).network;
+                   (this.clientWorld as { network?: unknown }).network;
                    
     if (!network) {
       Logger.error('[ServerBot] Cannot find network system in client world');
       return;
     }
     
-    if ('send' in network) {
+    if (typeof network === 'object' && network !== null && 'send' in network) {
       const net = network as { send?: (method: string, data: unknown) => void }
       if (net.send) {
         // Send the move request

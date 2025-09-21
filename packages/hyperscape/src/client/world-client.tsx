@@ -10,13 +10,10 @@ import type { ClientProps } from '../types/client-types'
 export { System } from '../systems/System'
 
 export function Client({ wsUrl, onSetup }: ClientProps) {
-  console.log('[Client Component] Rendering Client component')
-  
   const viewportRef = useRef<HTMLDivElement>(null)
   const uiRef = useRef<HTMLDivElement>(null)
   const world = useMemo(() => {
-    console.log('[Client Component] Creating client world')
-    const world = createClientWorld()
+        const world = createClientWorld()
     return world
   }, [])
   const [ui, setUI] = useState(world.ui?.state || { visible: true, active: false, app: null, pane: null })
@@ -39,12 +36,10 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
       const ui = uiRef.current
       
       if (!viewport || !ui) {
-        console.log('[Client] Waiting for refs...')
-        return
+                return
       }
       
-      console.log('[Client] Starting initialization...')
-      
+            
       const baseEnvironment = {
         model: '/base-environment.glb',
         bg: '/day2-2k.jpg',
@@ -68,8 +63,7 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
           `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
       }
       
-      console.log('[Client] WebSocket URL:', finalWsUrl)
-
+      
       // Set assetsUrl from environment variable for asset:// URL resolution
       const assetsUrl =
         window.env?.PUBLIC_ASSETS_URL ||
@@ -88,23 +82,20 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
         onSetup(world, config)
       }
       
-      console.log('[Client] Initializing world with config:', config)
-
+      
       // Ensure RPG systems are registered before initializing the world
       const maybeWorld = world as unknown as World & { systemsLoadedPromise?: Promise<void> }
       if (maybeWorld.systemsLoadedPromise) {
         try {
           await maybeWorld.systemsLoadedPromise
-          console.log('[Client] RPG systems loaded before world.init')
-        } catch (e) {
+                  } catch (e) {
           console.warn('[Client] Proceeding without awaiting systemsLoadedPromise due to error:', e)
         }
       }
       
       try {
         await world.init(config)
-        console.log('[Client] World initialized successfully')
-      } catch (error) {
+              } catch (error) {
         console.error('[Client] Failed to initialize world:', error)
       }
     }
@@ -112,8 +103,7 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
     init()
   }, [world, wsUrl, onSetup])
   
-  console.log('[Client Component] Rendering with ui visible:', ui.visible)
-  
+    
   return (
     <div
       className='App'

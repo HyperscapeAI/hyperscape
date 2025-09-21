@@ -41,8 +41,7 @@ export class ClientLoader extends SystemBase {
   preloader?: Promise<void> | null
   constructor(world: World) {
     super(world, { name: 'client-loader', dependencies: { required: [], optional: [] }, autoCleanup: true })
-    console.log('[ClientLoader] Constructor called')
-    this.files = new Map()
+        this.files = new Map()
     this.promises = new Map()
     this.results = new Map()
     this.rgbeLoader = new RGBELoader()
@@ -56,15 +55,11 @@ export class ClientLoader extends SystemBase {
   }
 
   async init(options: WorldOptions): Promise<void> {
-    console.log('[ClientLoader] init() called')
-    await super.init(options)
+        await super.init(options)
   }
 
   start() {
-    console.log('[ClientLoader] start() called')
-    console.log('[ClientLoader] world.stage exists?', !!this.world.stage)
-    console.log('[ClientLoader] world.stage.scene exists?', !!(this.world.stage && this.world.stage.scene))
-    this.vrmHooks = {
+                this.vrmHooks = {
       camera: this.world.camera,
       scene: this.world.stage.scene,
       octree: this.world.stage.octree,
@@ -321,8 +316,7 @@ export class ClientLoader extends SystemBase {
               if (customHooks) {
                 const clonedAvatar = clone.get('avatar')
                 if (clonedAvatar) {
-                  console.log('[ClientLoader] Applying custom hooks to cloned avatar')
-                  Object.assign(clonedAvatar, { hooks: customHooks })
+                                    Object.assign(clonedAvatar, { hooks: customHooks })
                 }
               }
               // Always expose a stable map interface
@@ -490,8 +484,7 @@ export class ClientLoader extends SystemBase {
         
         // Test that the node structure is correct before returning
         const testGet = node.get('avatar')
-        console.log('[ClientLoader] Test node.get("avatar"):', testGet ? { id: testGet.id, name: testGet.name } : 'null')
-        
+                
         const logger = this.logger
         const avatar: LoadedAvatar = {
           toNodes(customHooks) {

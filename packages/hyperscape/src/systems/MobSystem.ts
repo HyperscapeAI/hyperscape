@@ -109,8 +109,7 @@ export class MobSystem extends SystemBase {
   private onPlayerEnter(data: unknown): void {
     // Handle player entering the world
     // Could spawn mobs around the player or adjust mob behavior
-    console.log('[MobSystem] Player entered:', data);
-  }
+      }
 
   private initializeSpawnPoints(): void {
     // Load spawn points from externalized world areas data

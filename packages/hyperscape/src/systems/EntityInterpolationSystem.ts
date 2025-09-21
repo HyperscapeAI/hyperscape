@@ -50,8 +50,7 @@ export class EntityInterpolationSystem extends System {
   }
   
   override start(): void {
-    console.log('[EntityInterpolation] Starting entity interpolation system');
-    
+        
     // Listen for entity updates
     this.world.on('entityModified', this.handleEntityUpdate.bind(this));
     this.world.on('entityRemoved', this.handleEntityRemoved.bind(this));
@@ -63,8 +62,7 @@ export class EntityInterpolationSystem extends System {
   private handleEntityAdded(entity: unknown): void {
     // For now, just log the entity addition
     if (typeof entity === 'object' && entity && 'id' in entity) {
-      console.log('[EntityInterpolation] Entity added:', (entity as { id: string }).id);
-    }
+          }
   }
 
   /**

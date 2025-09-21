@@ -119,8 +119,7 @@ export class ClientCameraSystem extends SystemBase {
     
     // Remove camera from rig if it's attached
     if (this.camera.parent === this.world.rig) {
-      console.log('[ClientCameraSystem] Detaching camera from world.rig to make it independent');
-      
+            
       // Get world position and rotation before removing from parent
       const worldPos = _v3_1
       const worldQuat = _q_1
@@ -139,8 +138,7 @@ export class ClientCameraSystem extends SystemBase {
       this.camera.position.copy(worldPos);
       this.camera.quaternion.copy(worldQuat);
       
-      console.log('[ClientCameraSystem] Camera is now independent from rig transforms');
-    } else if (this.camera.parent && this.camera.parent !== this.world.stage.scene) {
+          } else if (this.camera.parent && this.camera.parent !== this.world.stage.scene) {
       console.warn('[ClientCameraSystem] Camera has unexpected parent:', this.camera.parent);
     }
   }

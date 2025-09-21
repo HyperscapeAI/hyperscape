@@ -148,10 +148,7 @@ export function createVRMFactory(glb: GLBData, setupMaterial?: (material: THREE.
   }
 
   function create(matrix: THREE.Matrix4, hooks: VRMHooks, node?: { ctx?: { entity?: unknown } }) {
-    console.log('[VRMFactory] Creating VRM instance')
-    console.log('[VRMFactory] Hooks provided:', hooks ? Object.keys(hooks) : 'none')
-    console.log('[VRMFactory] Hooks.scene:', hooks?.scene ? 'YES' : 'NO')
-    
+                
     // CRITICAL: Check if we can get scene from node context as fallback
     const nodeWithCtx = node as unknown as { ctx?: { stage?: { scene?: THREE.Scene } } }
     const fallbackScene = nodeWithCtx?.ctx?.stage?.scene
@@ -171,12 +168,10 @@ export function createVRMFactory(glb: GLBData, setupMaterial?: (material: THREE.
     
     if (hooks?.scene) {
       hooks.scene.add(vrm.scene)
-      console.log('[VRMFactory] Added VRM scene to world.stage.scene via hooks')
-    } else if (fallbackScene) {
+          } else if (fallbackScene) {
       console.warn('[VRMFactory] WARNING: No scene in hooks, using fallback from node.ctx.stage.scene')
       fallbackScene.add(vrm.scene)
-      console.log('[VRMFactory] Added VRM scene to world.stage.scene via fallback')
-    } else {
+          } else {
       console.error('[VRMFactory] ERROR: No scene in hooks AND no fallback scene available, VRM will not be visible!')
     }
 

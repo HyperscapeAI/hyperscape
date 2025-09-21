@@ -9,7 +9,7 @@
  * 3. Use these utilities when converting between different vector representations
  */
 
-import THREE, { toTHREEVector3 } from './three'
+import THREE from './three'
 
 // Re-export for convenience
 export { toTHREEVector3 } from './three'

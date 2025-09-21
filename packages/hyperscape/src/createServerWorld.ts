@@ -20,12 +20,10 @@ import { ServerBot } from './systems/ServerBot'
 import { ServerPositionValidator } from './systems/ServerPositionValidator'
 
 export async function createServerWorld() {
-  console.log('[Server World] Creating server world...');
-  const world = new World()
+    const world = new World()
   
   // Register core server systems
-  console.log('[Server World] Registering core server systems...');
-  world.register('server', Server);
+    world.register('server', Server);
   world.register('livekit', ServerLiveKit);
   world.register('network', ServerNetwork);
   world.register('loader', ServerLoader);
@@ -43,19 +41,15 @@ export async function createServerWorld() {
   
   // Do not register client systems on server; server exposes only RPG systems via SystemLoader when enabled
   
-  console.log('[Server World] Core systems registered');
-  
+    
   // Register RPG game systems
   try {
-    console.log('[Server World] Registering RPG game systems...');
-    await registerSystems(world);
-    console.log('[Server World] RPG game systems registered successfully');
-    
+        await registerSystems(world);
+        
     // Register server test systems
     // Test systems consolidated into MovementValidationSystem (registered in SystemLoader)
     world.register('server-bot', ServerBot);
-    console.log('[Server World] All test systems registered');
-  } catch (error) {
+      } catch (error) {
     console.error('[Server World] Failed to register RPG game systems:', error);
     if (error instanceof Error) {
       console.error('[Server World] Error stack:', error.stack);
@@ -63,7 +57,6 @@ export async function createServerWorld() {
     throw error; // Re-throw to prevent server from starting with incomplete systems
   }
   
-  console.log('[Server World] Server world created successfully');
-  
+    
   return world;
 }

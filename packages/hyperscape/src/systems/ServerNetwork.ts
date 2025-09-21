@@ -139,8 +139,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     
     // We'll ground the spawn position to terrain when players connect, not here
     // The terrain system might not be ready yet during startup
-    console.log('[ServerNetwork] Default spawn loaded:', this.spawn.position);
-    
+        
     
     // hydrate entities
     const entities = await this.db('entities');
@@ -652,8 +651,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
                 savedY,
                 Number(playerRow.positionZ) || 0
               ];
-              console.log('[ServerNetwork] Loaded saved player position:', { x: spawnPosition[0], y: spawnPosition[1], z: spawnPosition[2] });
-            }
+                          }
           } else {
             // Use default spawn for new players
             spawnPosition = Array.isArray(this.spawn.position)
@@ -663,12 +661,10 @@ export class ServerNetwork extends System implements NetworkWithSocket {
                   Number(this.spawn.position[2]) || 0
                 ]
               : [0, 50, 0];  // Safe default with proper Y height
-            console.log('[ServerNetwork] Using default spawn for new player:', { x: spawnPosition[0], y: spawnPosition[1], z: spawnPosition[2] });
-          }
+                      }
         } catch (_err: unknown) {
           // If DatabaseSystem is not ready yet, use default spawn without error
-          console.log('[ServerNetwork] DatabaseSystem not ready yet, using default spawn');
-          spawnPosition = Array.isArray(this.spawn.position)
+                    spawnPosition = Array.isArray(this.spawn.position)
             ? [
                 Number(this.spawn.position[0]) || 0, 
                 Number(this.spawn.position[1] ?? 50),  // Safe Y fallback
@@ -678,8 +674,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
         }
       } else {
         // DatabaseSystem not available, use default spawn
-        console.log('[ServerNetwork] DatabaseSystem not available, using default spawn');
-        spawnPosition = Array.isArray(this.spawn.position)
+                spawnPosition = Array.isArray(this.spawn.position)
           ? [
               Number(this.spawn.position[0]) || 0, 
               Number(this.spawn.position[1] ?? 50),  // Safe Y fallback
@@ -715,8 +710,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
         spawnPosition[1] = 10;
       }
       
-      console.log('[ServerNetwork] FINAL spawn position:', { x: spawnPosition[0], y: spawnPosition[1], z: spawnPosition[2] });
-
+      
       // DEBUG: Check if position is actually being passed correctly
       if (Math.abs(spawnPosition[1]) < 1) {
         console.error('[ServerNetwork] WARNING: Spawn Y is near ground level:', spawnPosition[1]);
@@ -746,8 +740,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       // DEBUG: Check if player entity was serialized correctly
       const playerEntity = serializedEntities.find((e: { id: string }) => e.id === socketId);
       if (playerEntity) {
-        console.log('[ServerNetwork] Serialized player position in snapshot:', playerEntity.position);
-        if (Array.isArray(playerEntity.position) && Math.abs(playerEntity.position[1]) < 1) {
+                if (Array.isArray(playerEntity.position) && Math.abs(playerEntity.position[1]) < 1) {
           console.error('[ServerNetwork] ERROR: Player Y in snapshot is near ground:', playerEntity.position[1]);
         }
       } else {
@@ -773,8 +766,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       // Emit typed player joined event (after snapshot)
       if (socket.player) {
         const playerId = socket.player.data.id as string;
-      console.log('[ServerNetwork] Emitting typed PLAYER_JOINED for playerId:', playerId);
-      this.world.emit(EventType.PLAYER_JOINED, { playerId });
+            this.world.emit(EventType.PLAYER_JOINED, { playerId });
       }
 
       // Broadcast new player entity to all existing clients except the new connection
@@ -906,8 +898,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     if (cmd === 'spawn') {
       const op = arg1;
       // TODO: Parse spawn operation properly
-      console.log('[ServerNetwork] Spawn command:', op);
-    }
+          }
     
     if (cmd === 'chat') {
       const op = arg1;
@@ -1039,22 +1030,18 @@ export class ServerNetwork extends System implements NetworkWithSocket {
   onEntityEvent(socket: Socket, data: unknown): void {
     const eventData = data as EntityEventData;
     // Handle entity event
-    console.log('[ServerNetwork] Entity event:', eventData);
-  }
+      }
 
   onEntityRemoved(socket: Socket, data: unknown): void {
     const removedData = data as EntityRemovedData;
     // Handle entity removal
-    console.log('[ServerNetwork] Entity removed:', removedData);
-  }
+      }
 
   onSettings(socket: Socket, data: unknown): void {
     // Handle settings change
-    console.log('[ServerNetwork] Settings changed:', data);
-  }
+      }
 
   onSpawnModified(socket: Socket, data: SpawnData): void {
     // Handle spawn modification
-    console.log('[ServerNetwork] Spawn modified:', data);
-  }
+      }
 }

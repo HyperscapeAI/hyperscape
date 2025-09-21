@@ -297,8 +297,7 @@ class MultiplayerIntegrationTest {
         const player = world.entities?.player;
         if (player && player.position) {
           const currentPos = player.position;
-          console.log('[Test] Sending direct moveRequest from:', currentPos);
-          world.network.send('moveRequest', {
+                    world.network.send('moveRequest', {
             target: [currentPos.x, currentPos.y, currentPos.z - 20],
             runMode: false
           });
@@ -736,8 +735,7 @@ class MultiplayerIntegrationTest {
         const world = (window as any).world || testWindow.__HYPERSCAPE_WORLD__;
         if (world) {
           testWindow.world = world as TestWindow['world'];
-          console.log('[Test] World found and exposed for testing');
-          clearInterval(checkWorld);
+                    clearInterval(checkWorld);
         }
       }, 100);
     });

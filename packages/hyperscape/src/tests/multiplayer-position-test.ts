@@ -36,8 +36,7 @@ export async function runMultiplayerPositionTest(): Promise<TestResult> {
   let page: Page | null = null;
 
   try {
-    console.log('[TEST] Starting multiplayer position validation test...');
-    
+        
     // Launch browser
     browser = await chromium.launch({
       headless: false, // Show browser for debugging
@@ -119,8 +118,7 @@ export async function runMultiplayerPositionTest(): Promise<TestResult> {
     } else if ('clientPosition' in validation && validation.clientPosition && 
                'serverPosition' in validation && validation.serverPosition &&
                'distance' in validation && typeof validation.distance === 'number') {
-      console.log('[TEST] Position validation:', validation);
-      
+            
       // Check Y=0 spawn bug
       if (Math.abs(validation.clientPosition.y) < 0.5) {
         result.errors.push(`Y=0 SPAWN BUG DETECTED! Client Y=${validation.clientPosition.y}`);

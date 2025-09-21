@@ -76,8 +76,7 @@ export class DeltaCompressionSystem extends System {
   }
   
   override start(): void {
-    console.log('[DeltaCompression] Starting delta compression system');
-    
+        
     // Intercept outgoing packets for compression
     if (this.world.isServer && this.enabled) {
       this.interceptServerPackets();

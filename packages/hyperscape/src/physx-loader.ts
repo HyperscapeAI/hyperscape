@@ -15,7 +15,6 @@ let PhysXLoader: ((options?: PhysXInitOptions) => Promise<PhysXModule>) | undefi
 {
   const nodeRequire = (globalThis as { require?: (id: string) => unknown }).require
   if (!PhysXLoader && nodeRequire) {
-    try {
       // Try CommonJS require
       const physxModule = nodeRequire('@hyperscape/physx-js-webidl') as
         | typeof PhysX
@@ -23,10 +22,6 @@ let PhysXLoader: ((options?: PhysXInitOptions) => Promise<PhysXModule>) | undefi
       const candidate = (physxModule as { default?: typeof PhysX }).default ||
         (physxModule as typeof PhysX)
       PhysXLoader = candidate as (options?: PhysXInitOptions) => Promise<PhysXModule>
-      console.log('[physx-loader] Loaded via require, type:', typeof candidate)
-    } catch (e) {
-      console.log('[physx-loader] Require failed:', e)
-    }
   }
 }
 
@@ -35,9 +30,7 @@ if (!PhysXLoader) {
   // Use a function that returns a promise for the loader
   PhysXLoader = async (options?: PhysXInitOptions): Promise<PhysXModule> => {
     const physxModule = await import('@hyperscape/physx-js-webidl')
-    console.log('[physx-loader] Dynamic import result:', physxModule)
-    console.log('[physx-loader] Keys:', Object.keys(physxModule))
-    
+
     // The actual loader might be nested
     const candidate = (physxModule as { default?: unknown }).default ?? (physxModule as unknown)
     

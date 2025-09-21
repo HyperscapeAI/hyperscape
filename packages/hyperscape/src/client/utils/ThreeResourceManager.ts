@@ -173,8 +173,7 @@ export class ThreeResourceManager {
         }
       }
 
-      console.log('[ThreeResourceManager] Disposed renderer');
-    } catch (_error) {
+          } catch (_error) {
       console.error('[ThreeResourceManager] Error disposing renderer:', _error);
     }
   }
@@ -200,8 +199,7 @@ export class ThreeResourceManager {
     // Clear the scene
     scene.clear();
     
-    console.log('[ThreeResourceManager] Disposed scene and all children');
-  }
+      }
 
   /**
    * Get memory usage information (if available)
@@ -226,8 +224,7 @@ export class ThreeResourceManager {
     if (window.gc) {
       window.gc();
     }
-    console.log('[ThreeResourceManager] Forced garbage collection');
-  }
+      }
 }
 
 /**

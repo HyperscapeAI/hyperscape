@@ -452,8 +452,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
     }
     
     this.lastServerUpdate = performance.now();
-    console.log('[PlayerLocal] ✅ Initialized at server position:', this.serverPosition);
-    
+        
     // Start aggressive position validation
     this.startPositionValidation();
   }
@@ -549,6 +548,13 @@ export class PlayerLocal extends Entity implements HotReloadable {
   private validateTerrainPosition(): void {
     // Follow terrain height
     const terrain = this.world.getSystem('terrain') as TerrainSystem;
+    
+    // Check if terrain system exists before using it
+    if (!terrain) {
+      // Terrain system not loaded yet, skip validation
+      return;
+    }
+    
     const terrainHeight = terrain.getHeightAt(this.position.x, this.position.z);
     const targetY = terrainHeight + 0.1; // Small offset above terrain
     const diff = targetY - this.position.y;
@@ -573,8 +579,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
   }
 
   async init(): Promise<void> {
-    console.log('[PlayerLocal] Starting init...')
-    
+        
     // Make sure we're added to the world's entities
     if (!this.world.entities.has(this.id)) {
       console.warn('[PlayerLocal] Not in world entities, adding now...')
@@ -583,12 +588,10 @@ export class PlayerLocal extends Entity implements HotReloadable {
     
     // Register for physics updates
     this.world.setHot(this, true)
-    console.log('[PlayerLocal] Registered for physics updates')
-    
+        
     // Verify we're actually in the hot set
     if (this.world.hot?.has(this)) {
-      console.log('[PlayerLocal] ✅ Confirmed in hot set for fixedUpdate')
-    } else {
+          } else {
       console.error('[PlayerLocal] ❌ NOT in hot set - fixedUpdate will not be called!')
     }
 
@@ -652,8 +655,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
     // Attach the camera rig to the player's base so it follows the player
     if (this.world.rig && this.base) {
       this.base.add(this.world.rig)
-      console.log('[PlayerLocal] Camera rig attached to player base')
-    }
+          }
 
     // Base node starts at player's position to avoid initial camera looking underground
 
@@ -666,8 +668,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
       y: this.position.y, 
       z: this.position.z
     })
-    console.log('[PlayerLocal] Raw data.position:', this.data.position)
-    
+        
     // The Entity constructor has already set our position from the server snapshot
     // We just need to use it!
     let spawnX = this.position.x
@@ -684,14 +685,12 @@ export class PlayerLocal extends Entity implements HotReloadable {
         spawnX = (typeof spawn[0] === 'number' && !isNaN(spawn[0])) ? spawn[0] : 0
         spawnY = (typeof spawn[1] === 'number' && !isNaN(spawn[1])) ? spawn[1] : 0.1
         spawnZ = (typeof spawn[2] === 'number' && !isNaN(spawn[2])) ? spawn[2] : 0
-        console.log('[PlayerLocal] Using world settings spawn as fallback:', { spawnX, spawnY, spawnZ })
-        
+                
         // Update our position with the fallback
         this.position.set(spawnX, spawnY, spawnZ)
       }
     } else {
-      console.log('[PlayerLocal] Using server-provided position:', { spawnX, spawnY, spawnZ })
-    }
+          }
     
     // Ensure base node matches the entity's current position (from server)
     if (this.base) {
@@ -699,11 +698,9 @@ export class PlayerLocal extends Entity implements HotReloadable {
       if (this.serverPosition) {
         this.position.copy(this.serverPosition);
         // Base is a child of node, so it should stay at relative (0,0,0)
-        console.log('[PlayerLocal] Node position set to serverPosition:', this.serverPosition.x, this.serverPosition.y, this.serverPosition.z);
-      } else {
+              } else {
         // Base is a child of node, so it should stay at relative (0,0,0)
-        console.log('[PlayerLocal] Node already at entity position:', this.position.x, this.position.y, this.position.z);
-      }
+              }
       
       // CRITICAL: Validate player is on terrain after spawn
       this.validateTerrainPosition()
@@ -794,12 +791,10 @@ export class PlayerLocal extends Entity implements HotReloadable {
     
     // Note: Group nodes don't have Three.js representations - their children handle their own scene addition
     if (this.base) {
-      console.log('[PlayerLocal] Base activated')
-      
+            
       // Also add aura to base for nametag/bubble
       this.base.add(this.aura)
-      console.log('[PlayerLocal] Aura added to base')
-    } else {
+          } else {
       console.warn('[PlayerLocal] Could not add base to scene - stage not ready')
     }
 
@@ -824,8 +819,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
     
     // Initialize physics capsule
     await this.initCapsule()
-    console.log('[PlayerLocal] Capsule initialized successfully')
-    this.initControl()
+        this.initControl()
 
     // Initialize camera system
     this.initCameraSystem()
@@ -834,8 +828,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
     setTimeout(() => {
       const cameraSystem = getSystem(this.world, 'client-camera-system')
       if (cameraSystem) {
-        console.log('[PlayerLocal] Re-emitting camera target event')
-        this.world.emit(EventType.CAMERA_SET_TARGET, { target: this })
+                this.world.emit(EventType.CAMERA_SET_TARGET, { target: this })
       }
     }, 1000)
 
@@ -852,8 +845,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
     this.world.on(EventType.PLAYER_HEALTH_UPDATED, this.handleHealthChange.bind(this))
     this.world.on(EventType.PLAYER_TELEPORT_REQUEST, this.handleTeleport.bind(this))
 
-    console.log('[PlayerLocal] Init completed successfully')
-
+    
     // Signal to UI that the world is ready
     this.world.emit(EventType.READY)
   }
@@ -868,19 +860,16 @@ export class PlayerLocal extends Entity implements HotReloadable {
     
     // If we already have the correct avatar loaded, just reuse it
     if (this.avatarUrl === avatarUrl && this._avatar) {
-      console.log('[PlayerLocal] Avatar already loaded for URL:', avatarUrl)
-      return
+            return
     }
     
     // Check if loader is available - if not, we'll retry later
     if (!this.world.loader) {
-      console.log('[PlayerLocal] Loader not available yet, will retry avatar loading...')
-      // Set up a retry mechanism
+            // Set up a retry mechanism
       if (!this.avatarRetryInterval) {
         this.avatarRetryInterval = setInterval(async () => {
           if (this.world.loader) {
-            console.log('[PlayerLocal] Loader now available, retrying avatar load...')
-            clearInterval(this.avatarRetryInterval as unknown as number)
+                        clearInterval(this.avatarRetryInterval as unknown as number)
             this.avatarRetryInterval = null
             await this.applyAvatar()
           }
@@ -897,17 +886,14 @@ export class PlayerLocal extends Entity implements HotReloadable {
     
     // Prevent concurrent loads for the same URL
     if (this.loadingAvatarUrl === avatarUrl) {
-      console.log('[PlayerLocal] Avatar load already in progress for', avatarUrl)
-      return
+            return
     }
     this.loadingAvatarUrl = avatarUrl
-    console.log('[PlayerLocal] Set loadingAvatarUrl to:', avatarUrl)
-    
+        
     // Only destroy if we're loading a different avatar
     if (this._avatar && this.avatarUrl !== avatarUrl) {
       const oldInstance = (this._avatar as AvatarNode).instance
-      console.log('[PlayerLocal] Destroying previous avatar instance for new URL')
-      if (oldInstance && oldInstance.destroy) {
+            if (oldInstance && oldInstance.destroy) {
         oldInstance.destroy() // This calls hooks.scene.remove(vrm.scene)
       }
       this._avatar = undefined
@@ -915,30 +901,25 @@ export class PlayerLocal extends Entity implements HotReloadable {
     
     // Only clear cache if we're loading a different avatar URL
     if (this.avatarUrl !== avatarUrl) {
-      console.log('[PlayerLocal] Different avatar URL detected, clearing cache...')
-      const loader = this.world.loader as ClientLoader
+            const loader = this.world.loader as ClientLoader
       if (loader) {
         // Clear cache for the old avatar URL only
         const oldKey = `avatar/${this.avatarUrl}`
         if (loader.promises.has(oldKey)) {
-          console.log('[PlayerLocal] Clearing old avatar cache:', oldKey)
-          loader.promises.delete(oldKey)
+                    loader.promises.delete(oldKey)
           loader.results.delete(oldKey)
         }
       }
     }
 
-    console.log('[PlayerLocal] About to load avatar from:', avatarUrl)
-    console.log('[PlayerLocal] world.loader exists?', !!this.world.loader)
-
+        
     await this.world.loader
       ?.load('avatar', avatarUrl)
       .then(async (src) => {
         // src is LoaderResult, which may be a Texture or an object with toNodes
         // Avatar loader should return an object with toNodes(): Map<string, Avatar>
         const avatarSrc = src as { toNodes: () => Map<string, Avatar> }
-        console.log('[PlayerLocal] Avatar loaded, src type:', typeof avatarSrc, 'src:', avatarSrc)
-        if (this._avatar && this._avatar.deactivate) {
+                if (this._avatar && this._avatar.deactivate) {
           this._avatar.deactivate()
         }
 
@@ -951,8 +932,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
           loader: this.world.loader
         }
         const nodeMap = (avatarSrc as { toNodes: (hooks?: unknown) => Map<string, Avatar> }).toNodes(vrmHooks)
-        console.log('[PlayerLocal] NodeMap type:', nodeMap?.constructor?.name, 'keys:', nodeMap instanceof Map ? Array.from(nodeMap.keys()) : 'not a map')
-        
+                
         // Check if nodeMap is actually a Map
         if (!(nodeMap instanceof Map)) {
           throw new Error(`NodeMap is not a Map, got: ${nodeMap}`)
@@ -966,8 +946,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
         
         // The avatar node is a child of the root node or in the map directly
         const avatarNode = nodeMap.get('avatar') || rootNode
-        console.log('[PlayerLocal] Root node:', rootNode, 'Avatar node:', avatarNode)
-        
+                
         // Use the avatar node if we found it, otherwise try root
         const nodeToUse = avatarNode || rootNode
         if (!nodeToUse) {
@@ -987,16 +966,12 @@ export class PlayerLocal extends Entity implements HotReloadable {
           }
           
           // Check current hooks
-          console.log('[PlayerLocal] Current avatar hooks:', avatarAsNode.hooks ? Object.keys(avatarAsNode.hooks) : 'none')
-          
+                    
           // CRITICAL: ALWAYS update the hooks on the avatar node BEFORE mounting
           // The avatar was created with ClientLoader's hooks, but we need to use
           // the world's stage scene for proper rendering
-          console.log('[PlayerLocal] Force updating avatar hooks to use world.stage.scene')
-          console.log('[PlayerLocal] vrmHooks.scene exists?', !!vrmHooks.scene)
-          avatarAsNode.hooks = vrmHooks
-          console.log('[PlayerLocal] New hooks set:', Object.keys(vrmHooks))
-          
+                              avatarAsNode.hooks = vrmHooks
+                    
           // CRITICAL: Verify hooks are properly set
           if (!avatarAsNode.hooks) {
             console.error('[PlayerLocal] CRITICAL: Hooks not set after assignment!')
@@ -1024,21 +999,17 @@ export class PlayerLocal extends Entity implements HotReloadable {
           // The instance.move() method will position it at the base's world position
           if (avatarAsNode.position) {
             avatarAsNode.position.set(0, 0, 0)
-            console.log('[PlayerLocal] Avatar node position set to origin (0,0,0) - will be positioned by instance.move()')
-          }
+                      }
           
           // Activate the node (this creates the Three.js representation)
           if (avatarAsNode.activate) {
             avatarAsNode.activate(this.world)
-            console.log('[PlayerLocal] Avatar node activated')
-          }
+                      }
           
           // Mount the avatar node to create its instance
           if (avatarAsNode.mount) {
-            console.log('[PlayerLocal] Mounting avatar node...')
-            await avatarAsNode.mount()
-            console.log('[PlayerLocal] Avatar node mounted')
-          }
+                        await avatarAsNode.mount()
+                      }
           
           // After mounting, the avatar instance should be available
           // The instance manages its own scene internally - do NOT add raw.scene to base
@@ -1060,8 +1031,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
         // Now the instance should be available
         if ((nodeToUse as unknown as AvatarNode).instance) {
           const instance = (nodeToUse as unknown as AvatarNode).instance
-          console.log('[PlayerLocal] Avatar has instance after mounting:', instance)
-          
+                    
           // The Avatar node handles its own Three.js representation
           // We don't need to manually add anything since the node is already added to base
           // Just ensure visibility and disable rate check
@@ -1069,24 +1039,19 @@ export class PlayerLocal extends Entity implements HotReloadable {
           // Disable rate check if available
           if (instance && instance.disableRateCheck) {
             instance.disableRateCheck()
-            console.log('[PlayerLocal] Avatar rate check disabled')
-          }
+                      }
           
           // Log instance properties for debugging
           if (instance && instance.height) {
-            console.log('[PlayerLocal] Avatar height:', instance.height)
-          }
+                      }
           if (instance && instance.setEmote) {
-            console.log('[PlayerLocal] Avatar has setEmote method')
-          }
+                      }
         } else {
           console.warn('[PlayerLocal] Avatar node has no instance after mounting')
         }
         // Avatar might be a custom Node, not a THREE.Object3D, so visibility might not exist
         const avatarVisible = (this._avatar as AvatarNode).visible !== undefined ? (this._avatar as AvatarNode).visible : 'N/A'
-        console.log('[PlayerLocal] Avatar visible:', avatarVisible)
-        console.log('[PlayerLocal] Base children count:', this.base && (this.base as GroupNode).children ? (this.base as GroupNode).children.length : 0)
-
+                
         // Set up nametag and bubble positioning
         const headHeight = this._avatar && this._avatar.getHeadToHeight ? this._avatar.getHeadToHeight() : 1.8
         const safeHeadHeight = headHeight ?? 1.8
@@ -1108,12 +1073,10 @@ export class PlayerLocal extends Entity implements HotReloadable {
         if (this._avatar) {
           if ('visible' in this._avatar) {
             ;(this._avatar as { visible: boolean }).visible = true
-            console.log('[PlayerLocal] Avatar visibility set to true')
-          }
+                      }
           if (this._avatar && (this._avatar as AvatarNode).position) {
             ;(this._avatar as AvatarNode).position.set(0, 0, 0)
-            console.log('[PlayerLocal] Avatar position reset to origin')
-          }
+                      }
           
           // Verify avatar instance is actually in the scene graph
           if (this._avatar && (this._avatar as AvatarNode).instance) {
@@ -1182,8 +1145,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
   }
 
   async initCapsule(): Promise<void> {
-    console.log('[PlayerLocal] Initializing physics capsule...')
-
+    
     // Validation: Ensure we have a valid position from server
     if (
       isNaN(this.position.x) ||
@@ -1203,10 +1165,8 @@ export class PlayerLocal extends Entity implements HotReloadable {
     }
 
     // Wait for PhysX to be ready - required for player physics
-    console.log('[PlayerLocal] Waiting for PhysX...')
-    await waitForPhysX('PlayerLocal', 10000) // 10 second timeout
-    console.log('[PlayerLocal] PhysX ready')
-
+        await waitForPhysX('PlayerLocal', 10000) // 10 second timeout
+    
     // Get the global PHYSX object - required
     const PHYSX = getPhysX()
     if (!PHYSX) {
@@ -1280,8 +1240,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
     shape.setQueryFilterData(filterData);
     shape.setSimulationFilterData(filterData);
     
-    console.log('[PlayerLocal] Capsule filter data - group:', playerLayer.group, 'mask:', playerLayer.mask);
-
+    
     this.capsule.attachShape(shape)
 
     // CRITICAL: Initialize physics capsule at SERVER position, not local position
@@ -1345,10 +1304,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
     const finalPose = this.capsule.getGlobalPose()
     const finalPosition = finalPose.p
 
-    console.log('[PlayerLocal] Physics capsule initialized successfully')
-    console.log('[PlayerLocal] Physics position:', finalPosition.x, finalPosition.y, finalPosition.z)
-    console.log('[PlayerLocal] Base position:', this.position.x, this.position.y, this.position.z)
-
+            
     // Verify positions match
     const positionDelta = new THREE.Vector3(
       Math.abs(finalPosition.x - this.position.x),
@@ -1359,8 +1315,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
     if (positionDelta.length() > 0.001) {
       console.warn('[PlayerLocal] Position mismatch between physics and base:', positionDelta.length())
     } else {
-      console.log('[PlayerLocal] Physics and base positions are synchronized')
-    }
+          }
 
     // Don't force terrain clamp on init - trust server position
     // Server reconciliation will handle position updates
@@ -1400,12 +1355,10 @@ export class PlayerLocal extends Entity implements HotReloadable {
     const cameraSystem = getSystem(this.world, 'client-camera-system')
     if (cameraSystem) {
       // Using unified camera system - just set ourselves as target
-      console.log('[PlayerLocal] Using unified camera system')
-      this.world.emit(EventType.CAMERA_SET_TARGET, { target: this })
+            this.world.emit(EventType.CAMERA_SET_TARGET, { target: this })
     } else {
       // Fall back to traditional camera control
-      console.log('[PlayerLocal] Using fallback camera control')
-      if (this.control?.camera) {
+            if (this.control?.camera) {
         this.control.camera.write = (camera: THREE.Camera) => {
           camera.position.copy(this.cam.position)
           camera.quaternion.copy(this.cam.quaternion)
@@ -1421,8 +1374,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
     // Register with camera system if available
     const cameraSystem = getSystem(this.world, 'client-camera-system')
     if (cameraSystem) {
-      console.log('[PlayerLocal] Registering with camera system')
-      // The camera target expects an object with a THREE.Vector3 position; the Entity already has node.position
+            // The camera target expects an object with a THREE.Vector3 position; the Entity already has node.position
       this.world.emit(EventType.CAMERA_SET_TARGET, { target: this })
       
       // Debug camera system state

@@ -59,14 +59,12 @@ export class DataManager {
       return this.validationResult!;
     }
 
-    console.log('[DataManager] Initializing and validating game data...');
-    
+        
     this.validationResult = await this.validateAllData();
     this.isInitialized = true;
 
     if (this.validationResult.isValid) {
-      console.log('[DataManager] ✅ All game data loaded and validated successfully');
-      console.log(`[DataManager] 📊 Data Summary: ${this.validationResult.itemCount} items, ${this.validationResult.mobCount} mobs, ${this.validationResult.areaCount} areas, ${this.validationResult.treasureCount} treasure locations`);
+            console.log(`[DataManager] 📊 Data Summary: ${this.validationResult.itemCount} items, ${this.validationResult.mobCount} mobs, ${this.validationResult.areaCount} areas, ${this.validationResult.treasureCount} treasure locations`);
     } else {
       console.error('[DataManager] ❌ Data validation failed:', this.validationResult.errors);
     }

@@ -88,7 +88,6 @@ class PhysXManager extends EventEmitter {
 
     // If failed, retry
     if (this.state === PhysXState.FAILED) {
-      console.log('[PhysXManager] Retrying PhysX load after previous failure')
       this.state = PhysXState.NOT_LOADED
       this.error = null
     }
@@ -199,11 +198,6 @@ class PhysXManager extends EventEmitter {
     const isBrowser = !isServer && typeof window !== 'undefined' && typeof window.document !== 'undefined'
     const isTest = typeof process !== 'undefined' && (process.env.NODE_ENV === 'test' || process.env.VITEST)
 
-    // PhysX on server requires a Node.js-compatible build
-    if (isServer) {
-      console.log('[PhysXManager] Initializing PhysX on server (requires Node.js-compatible build)')
-    }
-
     // Add a timeout to detect if WASM loading is stuck
     const timeoutId = setTimeout(() => {
       throw new Error('PhysX WASM loading timeout after 30 seconds')
@@ -224,9 +218,7 @@ class PhysXManager extends EventEmitter {
       }
       
       // In Node.js environments, we need to handle WASM loading differently
-      if (isServer || isTest) {
-        console.log('[PhysXManager] Configuring Node.js WASM loading')
-        
+      if (isServer || isTest) {        
         // Pre-load the WASM file for Node.js environments
         try {
           // Dynamically import Node.js modules to avoid bundling issues

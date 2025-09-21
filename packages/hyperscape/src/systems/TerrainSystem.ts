@@ -516,12 +516,10 @@ export class TerrainSystem extends System {
   }
 
   async start(): Promise<void> {
-    console.log('[TerrainSystem] Starting terrain system...')
-
+    
     // Initialize noise generator if not already initialized (failsafe)
     if (!this.noise) {
-      console.log('[TerrainSystem] Initializing noise generator with deterministic seed...')
-      this.noise = new NoiseGenerator(this.computeSeedFromWorldId())
+            this.noise = new NoiseGenerator(this.computeSeedFromWorldId())
       this.initializeBiomeCenters()
     }
 
@@ -557,8 +555,7 @@ export class TerrainSystem extends System {
       this.verifyTerrainBoundingBoxes()
     }, 30000) // Verify every 30 seconds
 
-    console.log('[TerrainSystem] Terrain system started successfully')
-  }
+      }
 
   private setupClientTerrain(): void {
     const stage = this.world.stage as { scene: THREE.Scene }
@@ -625,8 +622,7 @@ export class TerrainSystem extends System {
     let minHeight = Infinity
     let maxHeight = -Infinity
 
-    console.log('[TerrainSystem] Loading initial tiles...')
-
+    
     // Generate initial 3x3 grid around origin
     const initialRange = 1
     for (let dx = -initialRange; dx <= initialRange; dx++) {
@@ -662,8 +658,7 @@ export class TerrainSystem extends System {
 
     // Mark initial tiles as ready
     this._initialTilesReady = true
-    console.log('[TerrainSystem] Initial tiles ready - players can now spawn')
-  }
+      }
 
   private generateTile(tileX: number, tileZ: number, generateContent = true): TerrainTile {
     const key = `${tileX}_${tileZ}`
@@ -1611,8 +1606,7 @@ export class TerrainSystem extends System {
       if (Math.random() < 0.002) {
         // Log approximately once every 500 frames at 60fps
         const stats = this.instancedMeshManager.getPoolingStats()
-        console.log('[InstancedMeshManager] Pooling stats:', stats)
-      }
+              }
     }
   }
 

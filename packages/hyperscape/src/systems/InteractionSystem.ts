@@ -140,8 +140,7 @@ export class InteractionSystem extends SystemBase {
   }
 
   start(): void {
-    console.log('[InteractionSystem] Starting...')
-    // Try to initialize when system starts
+        // Try to initialize when system starts
     this.tryInitialize()
 
     // Listen for resource mesh creation to auto-register them
@@ -271,8 +270,7 @@ export class InteractionSystem extends SystemBase {
 
     if (!scene || !camera || !canvas) {
       // Retry later instead of throwing to avoid breaking the system startup
-      console.log('[InteractionSystem] Not ready yet, will retry in 100ms')
-      setTimeout(() => this.tryInitialize(), 100)
+            setTimeout(() => this.tryInitialize(), 100)
       return
     }
 
@@ -489,8 +487,7 @@ export class InteractionSystem extends SystemBase {
    * Handle mouse click for interactions
    */
   private onClick(_event: MouseEvent): void {
-    console.log('[InteractionSystem] onClick triggered')
-    // Prevent bubbling to document/UI that might also react to click
+        // Prevent bubbling to document/UI that might also react to click
     _event.preventDefault()
     _event.stopPropagation()
 
@@ -874,17 +871,14 @@ export class InteractionSystem extends SystemBase {
     
     // If terrain didn't hit, try all movement masks
     if (!physxHit) {
-      console.log('[Raycast Debug] Terrain raycast missed, trying combined mask')
-      physxHit = this.world.raycast(origin, direction, RAYCAST_DISTANCE, movementMask)
+            physxHit = this.world.raycast(origin, direction, RAYCAST_DISTANCE, movementMask)
     }
     
     // Debug: try with all layers if still no hit
     if (!physxHit) {
-      console.log('[Raycast Debug] Combined mask missed, trying 0xFFFFFFFF')
-      physxHit = this.world.raycast(origin, direction, RAYCAST_DISTANCE, 0xFFFFFFFF)
+            physxHit = this.world.raycast(origin, direction, RAYCAST_DISTANCE, 0xFFFFFFFF)
       if (physxHit) {
-        console.log('[Raycast Debug] Hit with 0xFFFFFFFF at:', physxHit.point)
-      }
+              }
     }
 
     this.logger.info(`[Raycast Debug] PhysX raycast result (movementMask): ${physxHit ? 'hit' : 'null'}`)

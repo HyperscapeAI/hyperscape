@@ -692,8 +692,7 @@ export class Physics extends SystemBase implements IPhysics {
     shape.setQueryFilterData(filterData);
     shape.setSimulationFilterData(filterData);
     
-    console.log('[Physics] Ground helper plane filter data - group:', layer.group, 'mask:', layer.mask);
-    const transform = new PHYSX.PxTransform(PHYSX.PxIDENTITYEnum.PxIdentity);
+        const transform = new PHYSX.PxTransform(PHYSX.PxIDENTITYEnum.PxIdentity);
     transform.p.y = -0.5;
     const body = this.physics.createRigidStatic(transform);
     body.attachShape(shape);

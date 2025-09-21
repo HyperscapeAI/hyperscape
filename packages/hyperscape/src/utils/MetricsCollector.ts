@@ -224,8 +224,7 @@ export class MetricsCollector {
   shutdown(): void {
     // Clean up any resources, reset metrics if needed
     if (this.logFrequentMetrics) {
-      console.log('[MetricsCollector] Shutting down metrics collection');
-    }
+          }
     // Reset start times
     this.renderStartTime = 0;
     this.physicsStartTime = 0;

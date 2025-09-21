@@ -39,15 +39,13 @@ export class XR extends SystemBase {
         try {
           this.supportsVR = await xr.isSessionSupported('immersive-vr')
         } catch (_error) {
-          console.log('[XR] VR permissions not available, VR support disabled');
-          this.supportsVR = false;
+                    this.supportsVR = false;
         }
 
         try {
           this.supportsAR = await xr.isSessionSupported('immersive-ar')
         } catch (_error) {
-          console.log('[XR] AR permissions not available, AR support disabled');
-          this.supportsAR = false;
+                    this.supportsAR = false;
         }
       } else {
         this.supportsVR = false;

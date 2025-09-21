@@ -24,17 +24,13 @@ declare global {
 
 installThreeJSExtensions()
 
-console.log('[App] Starting Hyperscape client...')
 
 // Initialize error reporting as early as possible
-console.log('[App] Initializing error reporting system...')
 
 function App() {
-  console.log('[App Component] Rendering App component')
-  
+    
   // Initialize player token for persistent identity
   React.useEffect(() => {
-    console.log('[App Component] useEffect running')
     const token = playerTokenManager.getOrCreatePlayerToken('Player');
     const session = playerTokenManager.startSession();
     
@@ -55,22 +51,19 @@ function App() {
     import.meta.env.PUBLIC_WS_URL || 
     `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
   
-  console.log('[App] WebSocket URL:', wsUrl)
-  
+    
   // Add a ref to verify the component is mounting
   const appRef = React.useRef<HTMLDivElement>(null)
   React.useEffect(() => {
     if (appRef.current) {
-      console.log('[App Component] App div mounted in DOM:', appRef.current)
-    }
+          }
   }, [])
   
   return (
     <div ref={appRef} data-component="app-root">
       <ErrorBoundary>
         <Client wsUrl={wsUrl} onSetup={(world: World, config) => {
-          console.log('[App] Client onSetup called with world and config', { world, config })
-          // Make world accessible globally for debugging
+                    // Make world accessible globally for debugging
           if (typeof window !== 'undefined') {
             const globalWindow = window as Window & { world?: unknown; THREE?: unknown };
             globalWindow.world = world;
@@ -88,12 +81,9 @@ function App() {
 
 function mountApp() {
   try {
-    console.log('[App] mountApp called, document.readyState:', document.readyState)
-    console.log('[App] Looking for root element...')
-    
+            
     const rootElement = document.getElementById('root')
-    console.log('[App] Root element found:', !!rootElement)
-    
+        
     if (rootElement) {
       console.log('[App] Root element details:', {
         id: rootElement.id,
@@ -102,14 +92,11 @@ function mountApp() {
         tagName: rootElement.tagName
       })
       
-      console.log('[App] Creating React root...')
-      const root = ReactDOM.createRoot(rootElement)
+            const root = ReactDOM.createRoot(rootElement)
       
-      console.log('[App] Rendering App component...')
-      root.render(<App />)
+            root.render(<App />)
       
-      console.log('[App] React app mounted successfully!')
-      
+            
       // Use React's callback to verify render completion
       // React 18's createRoot renders are async and may take multiple frames
       const verifyRender = (attempts = 0) => {
@@ -117,10 +104,7 @@ function mountApp() {
         const hasContent = rootElement.innerHTML.length > 0
         
         if (hasContent) {
-          console.log('[App] SUCCESS: Content rendered in root element')
-          console.log('[App] Rendered content length:', rootElement.innerHTML.length)
-          console.log('[App] First child:', rootElement.firstElementChild?.tagName)
-        } else if (attempts < maxAttempts) {
+                                      } else if (attempts < maxAttempts) {
           // Try again in the next frame
           console.log(`[App] Waiting for React to render... (attempt ${attempts + 1}/${maxAttempts})`)
           requestAnimationFrame(() => verifyRender(attempts + 1))
@@ -157,8 +141,7 @@ function mountApp() {
       
     } else {
       console.error('[App] Root element not found!')
-      console.log('[App] Available elements:', Array.from(document.querySelectorAll('*')).map(el => el.tagName + (el.id ? '#' + el.id : '')))
-    }
+          }
   } catch (error) {
     console.error('[App] Error during mounting:', error)
     if (error instanceof Error) {
@@ -178,14 +161,10 @@ function mountApp() {
 }
 
 // Ensure DOM is ready before mounting
-console.log('[App] Initial setup, document.readyState:', document.readyState)
 if (document.readyState === 'loading') {
-  console.log('[App] DOM still loading, adding DOMContentLoaded listener')
-  document.addEventListener('DOMContentLoaded', () => {
-    console.log('[App] DOMContentLoaded event fired')
-    mountApp()
+    document.addEventListener('DOMContentLoaded', () => {
+        mountApp()
   })
 } else {
-  console.log('[App] DOM already ready, mounting immediately')
-  mountApp()
+    mountApp()
 }

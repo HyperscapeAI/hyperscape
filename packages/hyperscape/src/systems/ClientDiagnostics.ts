@@ -50,8 +50,7 @@ export class ClientDiagnostics extends System {
   private player: PlayerWithDetails | null = null
   
   override start(): void {
-    console.log('[ClientDiagnostics] 🔍 Starting client diagnostics system')
-    
+        
     // Start diagnostics after a delay
     setTimeout(() => {
       this.findPlayer()
@@ -66,8 +65,7 @@ export class ClientDiagnostics extends System {
         const playerEntity = entity as PlayerWithDetails;
         if (playerEntity.isLocal && playerEntity.isPlayer) {
           this.player = playerEntity;
-          console.log('[ClientDiagnostics] Found local player:', this.player!.id)
-          this.runDiagnostics()
+                    this.runDiagnostics()
           return
         }
       }
@@ -80,8 +78,7 @@ export class ClientDiagnostics extends System {
   private runDiagnostics(): void {
     if (!this.player) return
     
-    console.log('[ClientDiagnostics] ========== DIAGNOSTIC REPORT ==========')
-    
+        
     // 1. Player position
     console.log(`[ClientDiagnostics] Player position: (${this.player.position.x.toFixed(2)}, ${this.player.position.y.toFixed(2)}, ${this.player.position.z.toFixed(2)})`)
     
@@ -113,8 +110,7 @@ export class ClientDiagnostics extends System {
     // 3. Avatar status
     const avatar = this.player.avatar;
     if (avatar) {
-      console.log('[ClientDiagnostics] Avatar exists: YES')
-      console.log(`[ClientDiagnostics] Avatar type: ${avatar.constructor?.name || typeof avatar}`)
+            console.log(`[ClientDiagnostics] Avatar type: ${avatar.constructor?.name || typeof avatar}`)
       
       if (avatar.position) {
         console.log(`[ClientDiagnostics] Avatar position: (${avatar.position.x.toFixed(2)}, ${avatar.position.y.toFixed(2)}, ${avatar.position.z.toFixed(2)})`)
@@ -128,8 +124,7 @@ export class ClientDiagnostics extends System {
       if (avatar.parent) {
         console.log(`[ClientDiagnostics] Avatar parent: ${avatar.parent === base ? 'base' : avatar.parent.name || 'unknown'}`)
       } else {
-        console.log('[ClientDiagnostics] Avatar parent: NONE ❌')
-      }
+              }
       
       // Check if avatar is in scene
       let parent = avatar.parent
@@ -147,8 +142,7 @@ export class ClientDiagnostics extends System {
       
       // Check for VRM components
       if (avatar.vrm) {
-        console.log('[ClientDiagnostics] Avatar has VRM data: YES')
-      }
+              }
       
       // Check children (meshes)
       if (avatar.children) {
@@ -160,23 +154,19 @@ export class ClientDiagnostics extends System {
         console.log(`[ClientDiagnostics] Avatar mesh count: ${meshCount}`)
       }
     } else {
-      console.log('[ClientDiagnostics] Avatar exists: NO ❌')
-      console.log('[ClientDiagnostics] Avatar URL:', this.player.avatarUrl || 'not set')
-    }
+                }
     
     // 4. Physics capsule
     const capsule = this.player.capsule;
     if (capsule) {
-      console.log('[ClientDiagnostics] Physics capsule: EXISTS')
-      if (capsule.getGlobalPose) {
+            if (capsule.getGlobalPose) {
         const pose = capsule.getGlobalPose()
         if (pose) {
           console.log(`[ClientDiagnostics] Capsule position: (${pose.p.x.toFixed(2)}, ${pose.p.y.toFixed(2)}, ${pose.p.z.toFixed(2)})`)
         }
       }
     } else {
-      console.log('[ClientDiagnostics] Physics capsule: NOT CREATED')
-    }
+          }
     
     // 5. Movement state
     console.log(`[ClientDiagnostics] Moving: ${this.player.moving}`)
@@ -205,8 +195,7 @@ export class ClientDiagnostics extends System {
       console.log(`[ClientDiagnostics] Scene objects: ${totalObjects}, Meshes: ${totalMeshes}, Visible: ${totalVisible}`)
     }
     
-    console.log('[ClientDiagnostics] ========================================')
-    
+        
     // Schedule next report
     setTimeout(() => this.runDiagnostics(), 5000)
   }

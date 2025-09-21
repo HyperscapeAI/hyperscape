@@ -160,8 +160,7 @@ let rawDbInstance: RawDB | undefined
 export async function getDB(path: string): Promise<SystemDatabase> {
   if (!dbInstance) {
     try {
-      console.log('[DB] Initializing SQLite database at:', path)
-      const raw = await openRawDatabase(path)
+            const raw = await openRawDatabase(path)
       try { raw.pragma && raw.pragma('journal_mode', 'WAL') } catch {}
       try { raw.pragma && raw.pragma('synchronous', 'NORMAL') } catch {}
       try { raw.pragma && raw.pragma('foreign_keys', 'ON') } catch {}
@@ -173,8 +172,7 @@ export async function getDB(path: string): Promise<SystemDatabase> {
     } catch (error) {
       console.error('[DB] Error initializing database:', error instanceof Error ? error.message : String(error))
       console.error('[DB] Full error:', error)
-      console.log('[DB] Falling back to mock database for development')
-      dbInstance = createMockSystemDatabase()
+            dbInstance = createMockSystemDatabase()
     }
   }
   return dbInstance!
@@ -233,8 +231,7 @@ async function migrateRaw(raw: RawDB, systemDb: SystemDatabase): Promise<void> {
             } catch {}
           }
         } else {
-          console.log('[DB] Migration #5: entities table does not exist, skipping scale field update')
-        }
+                  }
       } catch {}
     },
     async db => {
@@ -256,8 +253,7 @@ async function migrateRaw(raw: RawDB, systemDb: SystemDatabase): Promise<void> {
   
   // Plugin migrations after core
   await runPluginMigrationsRaw(raw, systemDb)
-  console.log('[DB] All migrations completed')
-}
+  }
 
 async function runPluginMigrationsRaw(raw: RawDB, systemDb: SystemDatabase): Promise<void> {
   for (const [pluginName, migrations] of Object.entries(pluginMigrations)) {
