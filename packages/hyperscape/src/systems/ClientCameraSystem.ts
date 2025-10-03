@@ -84,6 +84,9 @@ export class ClientCameraSystem extends SystemBase {
     lastPosition: new THREE.Vector2(),
     delta: new THREE.Vector2()
   };
+  // Orbit state to prevent press-down snap until actual drag movement
+  private orbitingActive = false;
+  private orbitingPrimed = false;
   
   // Bound event handlers for cleanup
   private boundHandlers = {
@@ -211,6 +214,9 @@ export class ClientCameraSystem extends SystemBase {
       // Align targets to current spherical to avoid any initial jump
       this.targetSpherical.theta = this.spherical.theta;
       this.targetSpherical.phi = this.spherical.phi;
+      // Prime orbiting; activate only after passing small drag threshold
+      this.orbitingPrimed = true;
+      this.orbitingActive = false;
     } else if (event.button === 0) { // Left mouse button
       this.mouseState.leftDown = true;
       // Click-to-move is handled by InteractionSystem
@@ -229,6 +235,18 @@ export class ClientCameraSystem extends SystemBase {
 
     // Only middle-click drags orbit the camera
     if (this.mouseState.middleDown) {
+      // Activate orbiting only after surpassing a small movement threshold to avoid press snap
+      if (!this.orbitingActive) {
+        const drag = Math.abs(this.mouseState.delta.x) + Math.abs(this.mouseState.delta.y);
+        if (drag > 0.75) {
+          this.orbitingActive = true;
+          this.orbitingPrimed = false;
+        }
+      }
+      if (!this.orbitingActive) {
+        this.mouseState.lastPosition.set(event.clientX, event.clientY);
+        return;
+      }
       const invert = this.settings.invertY === true ? -1 : 1;
       // RS3-like: keep rotation responsive when fully zoomed out
       const minR = this.settings.minDistance;
@@ -254,6 +272,11 @@ export class ClientCameraSystem extends SystemBase {
     if (event.button === 2) this.mouseState.rightDown = false;
     if (event.button === 1) {
       this.mouseState.middleDown = false;
+      // Freeze target to current to avoid any snap when stopping rotation
+      this.targetSpherical.theta = this.spherical.theta;
+      this.targetSpherical.phi = this.spherical.phi;
+      this.orbitingActive = false;
+      this.orbitingPrimed = false;
     }
     if (event.button === 0) {
       this.mouseState.leftDown = false;
@@ -286,6 +309,8 @@ export class ClientCameraSystem extends SystemBase {
     this.mouseState.rightDown = false;
     this.mouseState.middleDown = false;
     this.mouseState.leftDown = false;
+    this.orbitingActive = false;
+    this.orbitingPrimed = false;
     if (this.canvas) {
       this.canvas.style.cursor = 'default';
     }
@@ -296,12 +321,14 @@ export class ClientCameraSystem extends SystemBase {
     const rotateStep = 0.06;
     if (event.code === 'ArrowLeft') {
       event.preventDefault();
-      this.targetSpherical.theta += rotateStep;
+      // ArrowLeft should rotate view left: decrease theta
+      this.targetSpherical.theta -= rotateStep;
       return;
     }
     if (event.code === 'ArrowRight') {
       event.preventDefault();
-      this.targetSpherical.theta -= rotateStep;
+      // ArrowRight should rotate view right: increase theta
+      this.targetSpherical.theta += rotateStep;
       return;
     }
     if (event.code === 'ArrowUp') {
@@ -430,12 +457,21 @@ export class ClientCameraSystem extends SystemBase {
     // RS3: no target smoothing; follow the player position directly to avoid any lag/jitter
     this.smoothedTarget.copy(this.targetPosition);
 
-    // Apply spherical smoothing for rotation only (no zoom smoothing). Freeze when not orbiting.
+    // Apply spherical smoothing only while orbiting. When not orbiting, snap to target to avoid drift.
     const rotationDamping = this.settings.rotationDampingFactor;
     if (this.mouseState.middleDown) {
-      this.spherical.phi += (this.targetSpherical.phi - this.spherical.phi) * rotationDamping;
-      const dTheta = this.shortestAngleDelta(this.spherical.theta, this.targetSpherical.theta);
-      this.spherical.theta += dTheta * rotationDamping;
+      const phiDelta = (this.targetSpherical.phi - this.spherical.phi);
+      const thetaDelta = this.shortestAngleDelta(this.spherical.theta, this.targetSpherical.theta);
+      if (Math.abs(phiDelta) > 1e-5) {
+        this.spherical.phi += phiDelta * rotationDamping;
+      } else {
+        this.spherical.phi = this.targetSpherical.phi;
+      }
+      if (Math.abs(thetaDelta) > 1e-5) {
+        this.spherical.theta += thetaDelta * rotationDamping;
+      } else {
+        this.spherical.theta = this.targetSpherical.theta;
+      }
     } else {
       this.spherical.phi = this.targetSpherical.phi;
       this.spherical.theta = this.targetSpherical.theta;
@@ -452,7 +488,7 @@ export class ClientCameraSystem extends SystemBase {
     const desiredDistance = this.spherical.radius;
     const collidedDistance = this.computeCollisionAdjustedDistance(desiredDistance);
     const targetEffective = Math.min(desiredDistance, collidedDistance);
-    if (this.zoomDirty) {
+    if (this.zoomDirty || this.orbitingActive) {
       // When zoom just changed, honor immediate response
       this.effectiveRadius = targetEffective;
     } else {

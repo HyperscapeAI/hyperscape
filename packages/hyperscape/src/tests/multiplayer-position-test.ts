@@ -168,7 +168,7 @@ export async function runMultiplayerPositionTest(): Promise<TestResult> {
       result.passed = false;
     }
     
-    // Camera smoothness check: ensure middle-mouse press does not snap camera position
+    // Camera smoothness check: ensure middle-mouse press/release does not snap camera position
     try {
       // Move mouse to the center of the canvas
       const box = await page.evaluate(() => {
@@ -200,6 +200,14 @@ export async function runMultiplayerPositionTest(): Promise<TestResult> {
         });
         // Release middle mouse
         await page.mouse.up({ button: 'middle' });
+        // Wait a frame after release
+        await page.waitForTimeout(16);
+        const camAfterRelease = await page.evaluate(() => {
+          const world = (window as any).world as TestWorld | undefined;
+          const cam = world?.camera as any;
+          if (!cam) return null;
+          return { x: cam.position.x, y: cam.position.y, z: cam.position.z };
+        });
 
         if (camBefore && camAfter) {
           const dx = camAfter.x - camBefore.x;
@@ -213,6 +221,17 @@ export async function runMultiplayerPositionTest(): Promise<TestResult> {
           }
         } else {
           result.warnings.push('Could not read camera for smoothness test');
+        }
+
+        if (camAfter && camAfterRelease) {
+          const dx2 = camAfterRelease.x - camAfter.x;
+          const dy2 = camAfterRelease.y - camAfter.y;
+          const dz2 = camAfterRelease.z - camAfter.z;
+          const dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2 + dz2 * dz2);
+          if (dist2 > 0.15) {
+            result.errors.push(`Camera snapped on MMB release: Δ=${dist2.toFixed(3)} units`);
+            result.passed = false;
+          }
         }
       }
     } catch (err) {
