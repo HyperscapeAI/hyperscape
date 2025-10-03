@@ -34,11 +34,14 @@ export default defineConfig({
     'process.env': '{}', // Replace process.env with empty object
     'process': 'undefined' // Replace process with undefined
   },
-  
   server: {
     port: Number(process.env.VITE_PORT) || 3333,
     open: false,
     host: true,
+    // Silence noisy missing source map warnings for vendored libs
+    sourcemapIgnoreList(relativeSourcePath, _sourcemapPath) {
+      return /src\/libs\/(stats-gl|three-custom-shader-material)\//.test(relativeSourcePath)
+    },
     proxy: {
       // Forward asset requests to Fastify server so asset:// resolves during Vite dev
       '/world-assets': {

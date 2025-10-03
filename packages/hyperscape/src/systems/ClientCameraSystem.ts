@@ -45,16 +45,21 @@ export class ClientCameraSystem extends SystemBase {
   private targetPosition = new THREE.Vector3();
   private smoothedTarget = new THREE.Vector3();
   private cameraPosition = new THREE.Vector3();
-  private cameraOffset = new THREE.Vector3(0, 1.8, 0); // Offset from player position (adjusted for terrain + 0.1 height)
+  private cameraOffset = new THREE.Vector3(0, 2, 0);
   private lookAtTarget = new THREE.Vector3();
+  // Collision-aware effective radius
+  private effectiveRadius = 6;
+  // Zoom handling flags to make zoom move instantly with no easing
+  private zoomDirty = false;
+  private lastDesiredRadius = this.spherical.radius;
   
   // Control settings
   private readonly settings = {
-      // RS3-like zoom bounds - increased max for better overview
-      minDistance: 2.5,
-      maxDistance: 50.0,  // Increased from 15.0 for better zoom out
-      // RS3-like pitch limits: ~10° to ~80°
-      minPolarAngle: Math.PI * 0.18,
+      // RS3-like zoom bounds (further min to avoid getting too close)
+      minDistance: 5.0,
+      maxDistance: 15.0,
+      // RS3-like pitch limits: tighten min to prevent overhead
+      minPolarAngle: Math.PI * 0.24,
       maxPolarAngle: Math.PI * 0.45,
       // RS3-like feel
       rotateSpeed: 0.9,
@@ -62,11 +67,13 @@ export class ClientCameraSystem extends SystemBase {
       panSpeed: 2.0,
       // Separate damping for crisp zoom vs smooth rotation
       rotationDampingFactor: 0.12,
-      zoomDampingFactor: 0.15,  // Reduced from 0.22 for more responsive zoom
-      cameraLerpFactor: 0.15,
+      zoomDampingFactor: 0.22,
+      // Damping for radius changes to avoid snap on MMB press
+      radiusDampingFactor: 0.18,
+      cameraLerpFactor: 0.1,
       invertY: false,
       // Discrete zoom step per wheel notch (world units)
-      zoomStep: 0.5  // Reduced from 1.2 for smoother, less sensitive zoom
+      zoomStep: 0.6
   };
   
   // Mouse state
@@ -195,11 +202,15 @@ export class ClientCameraSystem extends SystemBase {
     if (event.defaultPrevented) return;
     
     if (event.button === 2) { // Right mouse button
-      this.mouseState.rightDown = true;
+      // RS-style: do not orbit on RMB; reserved for context actions
+      this.mouseState.rightDown = false;
     } else if (event.button === 1) { // Middle mouse button (orbit)
       event.preventDefault();
       this.mouseState.middleDown = true;
       this.canvas!.style.cursor = 'grabbing';
+      // Align targets to current spherical to avoid any initial jump
+      this.targetSpherical.theta = this.spherical.theta;
+      this.targetSpherical.phi = this.spherical.phi;
     } else if (event.button === 0) { // Left mouse button
       this.mouseState.leftDown = true;
       // Click-to-move is handled by InteractionSystem
@@ -209,15 +220,15 @@ export class ClientCameraSystem extends SystemBase {
   }
 
   private onMouseMove(event: MouseEvent): void {
-    if (!this.mouseState.rightDown && !this.mouseState.middleDown) return;
+    if (!this.mouseState.middleDown) return;
 
     this.mouseState.delta.set(
       event.clientX - this.mouseState.lastPosition.x,
       event.clientY - this.mouseState.lastPosition.y
     );
 
-    // Allow both right-click and middle-click to orbit camera
-    if (this.mouseState.rightDown || this.mouseState.middleDown) {
+    // Only middle-click drags orbit the camera
+    if (this.mouseState.middleDown) {
       const invert = this.settings.invertY === true ? -1 : 1;
       // RS3-like: keep rotation responsive when fully zoomed out
       const minR = this.settings.minDistance;
@@ -239,9 +250,8 @@ export class ClientCameraSystem extends SystemBase {
   }
 
   private onMouseUp(event: MouseEvent): void {
-    if (event.button === 2) {
-      this.mouseState.rightDown = false;
-    }
+    // RMB does not control orbit; ensure flag is not sticky
+    if (event.button === 2) this.mouseState.rightDown = false;
     if (event.button === 1) {
       this.mouseState.middleDown = false;
     }
@@ -249,7 +259,7 @@ export class ClientCameraSystem extends SystemBase {
       this.mouseState.leftDown = false;
     }
 
-    if (!this.mouseState.rightDown && !this.mouseState.middleDown) {
+    if (!this.mouseState.middleDown) {
       this.canvas!.style.cursor = 'default';
     }
   }
@@ -260,12 +270,16 @@ export class ClientCameraSystem extends SystemBase {
     // Smooth zoom with less sensitivity
     const sign = Math.sign(event.deltaY);
     if (sign !== 0) {
-      // Reduced sensitivity for trackpads and high-resolution mice
-      const steps = Math.max(1, Math.min(3, Math.round(Math.abs(event.deltaY) / 120)));
+      // Discrete notches with modest scaling for trackpads/high-res wheels
+      const steps = Math.max(1, Math.min(5, Math.round(Math.abs(event.deltaY) / 100)));
       this.targetSpherical.radius += sign * steps * this.settings.zoomStep;
     }
     this.targetSpherical.radius = clamp(this.targetSpherical.radius, this.settings.minDistance, this.settings.maxDistance);
-    // Don't immediately snap effective radius - let update() handle smoothing
+    // RS-style: snap zoom immediately (no swooping)
+    this.spherical.radius = this.targetSpherical.radius;
+    this.effectiveRadius = this.targetSpherical.radius;
+    this.zoomDirty = true;
+    this.lastDesiredRadius = this.spherical.radius;
   }
 
   private onMouseLeave(_event: MouseEvent): void {
@@ -278,6 +292,37 @@ export class ClientCameraSystem extends SystemBase {
   }
 
   private onKeyDown(event: KeyboardEvent): void {
+    // RS-style camera control via arrow keys: rotate around character only
+    const rotateStep = 0.06;
+    if (event.code === 'ArrowLeft') {
+      event.preventDefault();
+      this.targetSpherical.theta += rotateStep;
+      return;
+    }
+    if (event.code === 'ArrowRight') {
+      event.preventDefault();
+      this.targetSpherical.theta -= rotateStep;
+      return;
+    }
+    if (event.code === 'ArrowUp') {
+      event.preventDefault();
+      this.targetSpherical.phi = clamp(
+        this.targetSpherical.phi - rotateStep,
+        this.settings.minPolarAngle,
+        this.settings.maxPolarAngle
+      );
+      return;
+    }
+    if (event.code === 'ArrowDown') {
+      event.preventDefault();
+      this.targetSpherical.phi = clamp(
+        this.targetSpherical.phi + rotateStep,
+        this.settings.minPolarAngle,
+        this.settings.maxPolarAngle
+      );
+      return;
+    }
+
     if (event.code === 'Home' || event.code === 'NumpadHome') {
       this.resetCamera();
       event.preventDefault();
@@ -382,24 +427,19 @@ export class ClientCameraSystem extends SystemBase {
     this.targetPosition.copy(targetPos);
     this.targetPosition.add(this.cameraOffset);
     
-    // Use much faster smoothing or direct follow for server updates
-    if (this.smoothedTarget.lengthSq() === 0) {
-      this.smoothedTarget.copy(this.targetPosition);
-    } else {
-      // Much faster lerp (0.5 instead of 0.15) to keep up with server updates
-      const targetLerp = 0.5;
-      this.smoothedTarget.lerp(this.targetPosition, targetLerp);
-    }
+    // RS3: no target smoothing; follow the player position directly to avoid any lag/jitter
+    this.smoothedTarget.copy(this.targetPosition);
 
-    // Apply spherical smoothing - faster for responsiveness
-    const rotationDamping = Math.min(0.3, this.settings.rotationDampingFactor * 2);
-    const zoomDamping = Math.min(0.5, this.settings.zoomDampingFactor * 2);
-    // Keep radius lerp snappy to avoid perceived zoom drift
-    this.spherical.radius += (this.targetSpherical.radius - this.spherical.radius) * zoomDamping;
-    this.spherical.phi += (this.targetSpherical.phi - this.spherical.phi) * rotationDamping;
-    // Interpolate theta via shortest arc
-    const dTheta = this.shortestAngleDelta(this.spherical.theta, this.targetSpherical.theta);
-    this.spherical.theta += dTheta * rotationDamping;
+    // Apply spherical smoothing for rotation only (no zoom smoothing). Freeze when not orbiting.
+    const rotationDamping = this.settings.rotationDampingFactor;
+    if (this.mouseState.middleDown) {
+      this.spherical.phi += (this.targetSpherical.phi - this.spherical.phi) * rotationDamping;
+      const dTheta = this.shortestAngleDelta(this.spherical.theta, this.targetSpherical.theta);
+      this.spherical.theta += dTheta * rotationDamping;
+    } else {
+      this.spherical.phi = this.targetSpherical.phi;
+      this.spherical.theta = this.targetSpherical.theta;
+    }
 
     // Hard clamp after smoothing to enforce strict RS3-like limits
     this.spherical.radius = clamp(
@@ -408,20 +448,32 @@ export class ClientCameraSystem extends SystemBase {
       this.settings.maxDistance
     );
 
-    // Calculate camera position from spherical coordinates - user-controlled zoom only
-    this.cameraPosition.setFromSpherical(this.spherical);
+    // Collision-aware effective radius with smoothing to avoid snap on MMB press
+    const desiredDistance = this.spherical.radius;
+    const collidedDistance = this.computeCollisionAdjustedDistance(desiredDistance);
+    const targetEffective = Math.min(desiredDistance, collidedDistance);
+    if (this.zoomDirty) {
+      // When zoom just changed, honor immediate response
+      this.effectiveRadius = targetEffective;
+    } else {
+      const radiusDamping = this.settings.radiusDampingFactor ?? 0.18;
+      this.effectiveRadius += (targetEffective - this.effectiveRadius) * radiusDamping;
+    }
+
+    // Calculate camera position from spherical coordinates using effective radius
+    const tempSpherical = _sph_1.set(this.effectiveRadius, this.spherical.phi, this.spherical.theta);
+    this.cameraPosition.setFromSpherical(tempSpherical);
     this.cameraPosition.add(this.smoothedTarget);
 
     // Calculate look-at target - look at player's chest/torso height
     this.lookAtTarget.copy(this.smoothedTarget);
-    // Always look at a point 1.5 units above the player's position (chest height)
-    // This prevents the camera from pointing down at the ground
+    // RS3-style: look directly at a fixed chest-height above target (no dynamic min/max)
     this.lookAtTarget.y = this.smoothedTarget.y + 1.5;
 
-    // Follow more directly for server-authoritative movement
-    // Use faster lerp to prevent lag behind server position updates
-    const cameraLerp = Math.min(0.5, this.settings.cameraLerpFactor * 2);
-    this.camera.position.lerp(this.cameraPosition, cameraLerp);
+    // Follow target. If zoom changed this frame, snap position instantly for straight-in/out motion
+    // RS3: move camera directly with no positional lerp to avoid swoop or lag
+    this.camera.position.copy(this.cameraPosition);
+    this.zoomDirty = false;
     
     // Camera always looks at the lookAt target
     // This keeps the player centered regardless of avatar rotation
@@ -430,19 +482,28 @@ export class ClientCameraSystem extends SystemBase {
     // Update camera matrices since it has no parent transform to inherit from
     this.camera.updateMatrixWorld(true);
 
-    const terrain = this.world.getSystem<TerrainSystem>('terrain') as TerrainSystem;
-    if (terrain && terrain.getHeightAt) {
-      const groundY = terrain.getHeightAt(this.camera.position.x, this.camera.position.z);
-      if (Number.isFinite(groundY) && this.camera.position.y < groundY + 1) {
-        this.camera.position.y = groundY + 1;
-      }
-      const normal = terrain.getNormalAt(this.camera.position.x, this.camera.position.z);
-      const slopeFactor = 1 - normal.y;
-      const dynamicOffset = 1 + slopeFactor * 0.5;
-      if (this.camera.position.y < groundY + dynamicOffset) {
-        this.camera.position.y = groundY + dynamicOffset;
-      }
+    // Do not clamp camera height to terrain; effective radius collision handles occlusion
+  }
+
+  private computeCollisionAdjustedDistance(desiredDistance: number): number {
+    if (!this.camera || !this.target) return desiredDistance;
+
+    // Direction from orbit center (smoothed target) to ideal camera position
+    const dir = _v3_3.set(
+      this.cameraPosition.x - this.smoothedTarget.x,
+      this.cameraPosition.y - this.smoothedTarget.y,
+      this.cameraPosition.z - this.smoothedTarget.z
+    ).normalize();
+
+    const origin = _v3_2.set(this.smoothedTarget.x, this.smoothedTarget.y, this.smoothedTarget.z);
+    const mask = this.world.createLayerMask('environment');
+    const hit = this.world.raycast(origin, dir, desiredDistance, mask);
+    if (hit && typeof hit.distance === 'number' && hit.distance > 0) {
+      const minDist = this.settings.minDistance;
+      const margin = 0.4;
+      return Math.max(Math.min(desiredDistance, hit.distance - margin), minDist);
     }
+    return desiredDistance;
   }
 
   private shortestAngleDelta(a: number, b: number): number {
@@ -533,7 +594,7 @@ export class ClientCameraSystem extends SystemBase {
       target: this.target,
       offset: _cameraInfoOffset,
       position: position,
-      isControlling: this.mouseState.rightDown || this.mouseState.middleDown,
+      isControlling: this.mouseState.middleDown,
       spherical: { radius: this.spherical.radius, phi: this.spherical.phi, theta: this.spherical.theta }
     };
   }

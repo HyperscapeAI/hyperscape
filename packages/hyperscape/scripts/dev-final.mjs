@@ -70,14 +70,8 @@ function killEverything() {
     // Ignore
   }
   
-  // Kill all bun processes as a last resort
-  try {
-    if (process.platform !== 'win32') {
-      execSync('pkill -9 bun 2>/dev/null || true', { stdio: 'ignore' })
-    }
-  } catch (e) {
-    // Ignore
-  }
+  // Note: Do NOT kill all bun processes here; this script itself runs under bun.
+  // Killing all bun processes would terminate this script before it can start servers.
 }
 
 // Track child processes

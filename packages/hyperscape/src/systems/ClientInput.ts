@@ -388,6 +388,8 @@ export class ClientInput extends SystemBase {
         button.onRelease?.()
       }
     }
+
+    // RuneScape-style: no keyboard-driven movement; do not send network cancels on key release
   }
   
   private onPointerDown = (e: PointerEvent) => {
@@ -712,38 +714,7 @@ export class ClientInput extends SystemBase {
     
     this.inputBuffer.push(buffered)
     
-    // Send to server
-    if (this.world.network?.send && this.buttons !== 0) {
-      const player = this.world.entities.player
-      if (player && 'position' in player) {
-        const pos = player.position as THREE.Vector3
-        const moveDistance = 30
-        let moveX = 0
-        let moveZ = 0
-        
-        if (this.buttons & InputButtons.FORWARD) moveZ -= 1
-        if (this.buttons & InputButtons.BACKWARD) moveZ += 1
-        if (this.buttons & InputButtons.LEFT) moveX -= 1
-        if (this.buttons & InputButtons.RIGHT) moveX += 1
-        
-        const length = Math.sqrt(moveX * moveX + moveZ * moveZ)
-        if (length > 0) {
-          moveX = (moveX / length) * moveDistance
-          moveZ = (moveZ / length) * moveDistance
-          
-          const targetX = pos.x + moveX
-          const targetZ = pos.z + moveZ
-          const runMode = (this.buttons & InputButtons.SPRINT) !== 0
-          
-          this.world.network.send('moveRequest', {
-            target: [targetX, pos.y, targetZ],
-            runMode: runMode
-          })
-        }
-      }
-      
-      buffered.sent = true
-    }
+    // RuneScape-style: no keyboard-driven movement; do not send moveRequest from keyboard
     
     // Trim buffer
     while (this.inputBuffer.length > MovementConfig.inputBufferSize) {
