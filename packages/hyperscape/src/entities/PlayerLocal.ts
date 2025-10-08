@@ -234,6 +234,8 @@ export class PlayerLocal extends Entity implements HotReloadable {
   private readonly staminaDrainPerSecond: number = 2   // drain while running
   private readonly staminaRegenWhileWalkingPerSecond: number = 2 // regen while walking
   private readonly staminaRegenPerSecond: number = 4  // regen while idle
+  // Internal helper: prevent spamming run->walk requests when energy hits 0
+  private autoRunSwitchSent: boolean = false
   // Implement HotReloadable interface
   hotReload?(): void {
     // Implementation for hot reload functionality
@@ -1319,7 +1321,8 @@ export class PlayerLocal extends Entity implements HotReloadable {
     // Configure physics as KINEMATIC - position-driven, not force-driven
     // This prevents falling and makes physics follow our position
     this.capsule.setRigidBodyFlag(PHYSX.PxRigidBodyFlagEnum.eKINEMATIC, true)
-    this.capsule.setRigidBodyFlag(PHYSX.PxRigidBodyFlagEnum.eENABLE_CCD, true)
+    // Disable CCD for kinematic body to avoid PhysX warning and potential jitter
+    // this.capsule.setRigidBodyFlag(PHYSX.PxRigidBodyFlagEnum.eENABLE_CCD, true)
     this.capsule.setRigidDynamicLockFlag(PHYSX.PxRigidDynamicLockFlagEnum.eLOCK_ANGULAR_X, true)
     this.capsule.setRigidDynamicLockFlag(PHYSX.PxRigidDynamicLockFlagEnum.eLOCK_ANGULAR_Z, true)
     this.capsule.setActorFlag(PHYSX.PxActorFlagEnum.eDISABLE_GRAVITY, true)
@@ -1668,6 +1671,30 @@ export class PlayerLocal extends Entity implements HotReloadable {
     // Avatar position update is already handled above in section 7
     
     // Removed local emote network updates - server is authoritative
+
+    // UI-only stamina logic based on current emote/state from server (no movement writes)
+    const dt = delta
+    const currentEmote = this.emote || ''
+    if (currentEmote === 'run') {
+      this.stamina = THREE.MathUtils.clamp(this.stamina - this.staminaDrainPerSecond * dt, 0, 100)
+      if (this.stamina <= 0 && !this.autoRunSwitchSent) {
+        // Auto-switch to walk on server when energy depletes (RS-style)
+        this.runMode = false
+        try { this.world.network.send('moveRequest', { runMode: false }) } catch {}
+        this.autoRunSwitchSent = true
+      }
+    } else if (currentEmote === 'walk') {
+      this.stamina = THREE.MathUtils.clamp(this.stamina + this.staminaRegenWhileWalkingPerSecond * dt, 0, 100)
+      if (this.stamina > 1) {
+        this.autoRunSwitchSent = false
+      }
+    } else {
+      // Idle or other emote
+      this.stamina = THREE.MathUtils.clamp(this.stamina + this.staminaRegenPerSecond * dt, 0, 100)
+      if (this.stamina > 1) {
+        this.autoRunSwitchSent = false
+      }
+    }
   }
 
   lateUpdate(_delta: number): void {

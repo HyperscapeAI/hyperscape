@@ -476,9 +476,15 @@ export function Minimap({
       targetY = (Number.isFinite(h) ? h : 0) + 0.1
     }
 
-    if (typeof (player as PlayerLocal).setClickMoveTarget === 'function') {
-      ;(player as PlayerLocal).setClickMoveTarget({ x: targetX, y: targetY, z: targetZ })
-    }
+    // Send server-authoritative move request instead of local movement
+    try {
+      const currentRun = (player as any)?.runMode === true
+      ;(world as any).network?.send?.('moveRequest', {
+        target: [targetX, targetY, targetZ],
+        runMode: currentRun,
+        cancel: false
+      })
+    } catch {}
 
     // Persist destination dot until arrival (no auto-fade)
     setLastDestinationWorld({ x: targetX, z: targetZ })
@@ -642,6 +648,10 @@ export function Minimap({
             ;(pl as any).runMode = !(pl as any).runMode
           }
           setRunMode((pl as any).runMode === true)
+          // Also inform server immediately to update current path speed
+          try {
+            ;(world as any).network?.send?.('moveRequest', { runMode: (pl as any).runMode })
+          } catch {}
         }}
         onMouseDown={(e) => { e.preventDefault(); e.stopPropagation() }}
         onContextMenu={(e) => { e.preventDefault(); e.stopPropagation() }}

@@ -168,6 +168,76 @@ export async function runMultiplayerPositionTest(): Promise<TestResult> {
       result.passed = false;
     }
     
+    // Camera smoothness check: ensure middle-mouse press/release does not snap camera position
+    try {
+      // Move mouse to the center of the canvas
+      const box = await page.evaluate(() => {
+        const canvas = document.querySelector('canvas');
+        if (!canvas) return null as any;
+        const rect = canvas.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      });
+      if (!box) {
+        result.warnings.push('Canvas not found for camera smoothness test');
+      } else {
+        await page.mouse.move(Math.round(box.x), Math.round(box.y));
+        // Sample camera position before press
+        const camBefore = await page.evaluate(() => {
+          const world = (window as any).world as TestWorld | undefined;
+          const cam = world?.camera as any;
+          if (!cam) return null;
+          return { x: cam.position.x, y: cam.position.y, z: cam.position.z };
+        });
+        // Press middle mouse without moving
+        await page.mouse.down({ button: 'middle' });
+        // Wait a frame to allow handlers to run
+        await page.waitForTimeout(16);
+        const camAfter = await page.evaluate(() => {
+          const world = (window as any).world as TestWorld | undefined;
+          const cam = world?.camera as any;
+          if (!cam) return null;
+          return { x: cam.position.x, y: cam.position.y, z: cam.position.z };
+        });
+        // Release middle mouse
+        await page.mouse.up({ button: 'middle' });
+        // Wait a frame after release
+        await page.waitForTimeout(16);
+        const camAfterRelease = await page.evaluate(() => {
+          const world = (window as any).world as TestWorld | undefined;
+          const cam = world?.camera as any;
+          if (!cam) return null;
+          return { x: cam.position.x, y: cam.position.y, z: cam.position.z };
+        });
+
+        if (camBefore && camAfter) {
+          const dx = camAfter.x - camBefore.x;
+          const dy = camAfter.y - camBefore.y;
+          const dz = camAfter.z - camBefore.z;
+          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+          // If there is an abrupt snap (> 0.15 units in one frame), flag error
+          if (dist > 0.15) {
+            result.errors.push(`Camera snapped on MMB press: Δ=${dist.toFixed(3)} units`);
+            result.passed = false;
+          }
+        } else {
+          result.warnings.push('Could not read camera for smoothness test');
+        }
+
+        if (camAfter && camAfterRelease) {
+          const dx2 = camAfterRelease.x - camAfter.x;
+          const dy2 = camAfterRelease.y - camAfter.y;
+          const dz2 = camAfterRelease.z - camAfter.z;
+          const dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2 + dz2 * dz2);
+          if (dist2 > 0.15) {
+            result.errors.push(`Camera snapped on MMB release: Δ=${dist2.toFixed(3)} units`);
+            result.passed = false;
+          }
+        }
+      }
+    } catch (err) {
+      result.warnings.push(`Camera smoothness check skipped due to error: ${String(err)}`);
+    }
+
     // Check console for teleport spam
     const teleportLogs = consoleLogs.filter(log => 
       log.includes('teleport to server position')

@@ -890,8 +890,22 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       return;
     }
 
-    const t = payload?.target as [number, number, number] | null;
-    if (!t) return;
+    const t = (Array.isArray(payload?.target) ? payload!.target as [number, number, number] : null);
+    // If only runMode is provided, update current movement speed/emote without changing target
+    if (!t) {
+      if (typeof payload?.runMode === 'boolean') {
+        const info = this.moveTargets.get(playerEntity.id);
+        if (info) {
+          info.maxSpeed = payload.runMode ? 8 : 4;
+          // Update emote immediately
+          this.send('entityModified', {
+            id: playerEntity.id,
+            changes: { e: payload.runMode ? 'run' : 'walk' }
+          });
+        }
+      }
+      return;
+    }
 
     // Simple target creation - no complex terrain anchoring
     const target = new THREE.Vector3(t[0], t[1], t[2]);
@@ -904,12 +918,24 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       lastUpdate: 0
     });
 
-    // Send immediate update to start movement
+    // Immediately rotate the player to face the new target and broadcast state
     const curr = playerEntity.position;
+    const dx = target.x - curr.x;
+    const dz = target.z - curr.z;
+    if (Math.abs(dx) + Math.abs(dz) > 1e-4) {
+      const dir = this._tempVec3.set(dx, 0, dz).normalize();
+      this._tempVec3Fwd.set(0, 0, -1);
+      this._tempQuat.setFromUnitVectors(this._tempVec3Fwd, dir);
+      if (playerEntity.node) {
+        playerEntity.node.quaternion.copy(this._tempQuat);
+      }
+      playerEntity.data.quaternion = [this._tempQuat.x, this._tempQuat.y, this._tempQuat.z, this._tempQuat.w];
+    }
     this.send('entityModified', {
       id: playerEntity.id,
       changes: {
         p: [curr.x, curr.y, curr.z],
+        q: playerEntity.data.quaternion,
         v: [0, 0, 0],
         e: payload?.runMode ? 'run' : 'walk'
       }

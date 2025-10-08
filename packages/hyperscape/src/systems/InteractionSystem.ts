@@ -12,6 +12,11 @@ export class InteractionSystem extends System {
   private canvas: HTMLCanvasElement | null = null;
   private targetMarker: THREE.Mesh | null = null;
   private targetPosition: THREE.Vector3 | null = null;
+  private isDragging: boolean = false;
+  private mouseDownButton: number | null = null;
+  private mouseDownClientPos: { x: number; y: number } | null = null;
+  private readonly dragThresholdPx: number = 5;
+  private readonly maxClickDistance: number = 100;
   
   constructor(world: World) {
     super(world);
@@ -24,11 +29,17 @@ export class InteractionSystem extends System {
     // Bind once so we can remove correctly on destroy
     this.onCanvasClick = this.onCanvasClick.bind(this);
     this.onRightClick = this.onRightClick.bind(this);
+    this.onMouseMove = this.onMouseMove.bind(this);
+    this.onMouseDown = this.onMouseDown.bind(this);
+    this.onMouseUp = this.onMouseUp.bind(this);
     
     // Use regular bubbling phase (false) so resource clicks can prevent movement
     // ResourceInteractionSystem uses capture phase, so it runs first
     this.canvas.addEventListener('click', this.onCanvasClick, false);
     this.canvas.addEventListener('contextmenu', this.onRightClick, false);
+    this.canvas.addEventListener('mousemove', this.onMouseMove, false);
+    this.canvas.addEventListener('mousedown', this.onMouseDown, false);
+    this.canvas.addEventListener('mouseup', this.onMouseUp, false);
     
     // Create target marker (visual indicator)
     this.createTargetMarker();
@@ -58,7 +69,14 @@ export class InteractionSystem extends System {
   
   private onRightClick = (event: MouseEvent): void => {
     event.preventDefault();
-    // Cancel movement on right click
+    // If user dragged with RMB (orbit gesture), suppress context action
+    if (this.isDragging) {
+      this.isDragging = false;
+      this.mouseDownButton = null;
+      this.mouseDownClientPos = null;
+      return;
+    }
+    // Cancel movement on right click click
     this.clearTarget();
   };
   
@@ -82,11 +100,7 @@ export class InteractionSystem extends System {
     if (event.button !== 0) return; // Left click only
     if (!this.canvas || !this.world.camera) return;
     
-    // Check if event was already handled by another system (e.g., ResourceInteractionSystem)
-    if (event.defaultPrevented) {
-      console.log('[InteractionSystem] Click already handled by another system');
-      return;
-    }
+    // Always handle left-click movement even if another system prevented default
     
     // Now prevent default for our handling
     event.preventDefault();
@@ -99,19 +113,15 @@ export class InteractionSystem extends System {
     // Raycast to find click position
     _raycaster.setFromCamera(_mouse, this.world.camera);
     
-    // Try to intersect with terrain first
+    // Raycast against full scene to find terrain sooner; fallback to infinite ground plane
     const scene = this.world.stage?.scene;
-    const terrain = scene?.children.find(obj => obj.name === 'terrain');
     let target: THREE.Vector3 | null = null;
-    
-    if (terrain) {
-      const intersects = _raycaster.intersectObject(terrain, true);
+    if (scene) {
+      const intersects = _raycaster.intersectObjects(scene.children, true);
       if (intersects.length > 0) {
-        target = intersects[0].point;
+        target = intersects[0].point.clone();
       }
     }
-    
-    // Fallback to ground plane at Y=0
     if (!target) {
       const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
       target = new THREE.Vector3();
@@ -127,6 +137,18 @@ export class InteractionSystem extends System {
         this.targetMarker.visible = false;
       }
       
+      // Clamp target distance from player on XZ plane (server will also validate)
+      const player = (this.world as any).entities?.player;
+      if (player && player.position) {
+        const p = player.position as THREE.Vector3;
+        const flatDir = new THREE.Vector3(target.x - p.x, 0, target.z - p.z);
+        const dist = flatDir.length();
+        if (dist > this.maxClickDistance) {
+          flatDir.normalize().multiplyScalar(this.maxClickDistance);
+          target = new THREE.Vector3(p.x + flatDir.x, target.y, p.z + flatDir.z);
+        }
+      }
+
       // Update target position and show NEW marker
       this.targetPosition = target.clone();
       if (this.targetMarker) {
@@ -137,14 +159,46 @@ export class InteractionSystem extends System {
       // ONLY send move request to server - no local movement!
       // Server is completely authoritative for movement
       if (this.world.network?.send) {
+        // Cancel any previous movement first to ensure server resets pathing
+        try { this.world.network.send('moveRequest', { target: null, cancel: true }) } catch {}
+        // Read player's runMode toggle if available; fallback to shift key
+        let runMode = !!event.shiftKey;
+        try {
+          const player = (this.world as any).entities?.player as { runMode?: boolean };
+          if (player && typeof player.runMode === 'boolean') {
+            runMode = player.runMode;
+          }
+        } catch (_e) {}
         this.world.network.send('moveRequest', {
           target: [target.x, target.y, target.z],
-          runMode: event.shiftKey,
+          runMode,
           cancel: false  // Explicitly not cancelling
         });
         console.log('[InteractionSystem] Sent move request to server (server-authoritative)');
       }
     }
+  };
+
+  private onMouseMove = (event: MouseEvent): void => {
+    if (!this.canvas) return;
+    if (this.mouseDownButton === null || !this.mouseDownClientPos) return;
+    const dx = event.clientX - this.mouseDownClientPos.x;
+    const dy = event.clientY - this.mouseDownClientPos.y;
+    if (!this.isDragging && (Math.abs(dx) > this.dragThresholdPx || Math.abs(dy) > this.dragThresholdPx)) {
+      this.isDragging = true;
+    }
+  };
+
+  private onMouseDown = (event: MouseEvent): void => {
+    this.isDragging = false;
+    this.mouseDownButton = event.button;
+    this.mouseDownClientPos = { x: event.clientX, y: event.clientY };
+  };
+
+  private onMouseUp = (_event: MouseEvent): void => {
+    this.isDragging = false;
+    this.mouseDownButton = null;
+    this.mouseDownClientPos = null;
   };
   
   override update(): void {
@@ -173,6 +227,9 @@ export class InteractionSystem extends System {
     if (this.canvas) {
       this.canvas.removeEventListener('click', this.onCanvasClick);
       this.canvas.removeEventListener('contextmenu', this.onRightClick);
+      this.canvas.removeEventListener('mousemove', this.onMouseMove);
+      this.canvas.removeEventListener('mousedown', this.onMouseDown);
+      this.canvas.removeEventListener('mouseup', this.onMouseUp);
     }
     const scene = this.world.stage?.scene;
     if (this.targetMarker && scene) {
