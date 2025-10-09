@@ -89,108 +89,26 @@ export function CurvePane({ curve, xLabel, xRange, yLabel, yMin, yMax, onCommit,
   return (
     <div
       ref={paneRef}
-      className='curvepane'
-      style={{
-        position: 'absolute',
-        top: '20px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        width: '500px',
-        height: '400px',
-        background: 'rgba(22, 22, 28, 1)',
-        border: '1px solid rgba(255, 255, 255, 0.03)',
-        borderRadius: '10px',
-        boxShadow: 'rgba(0, 0, 0, 0.5) 0px 10px 30px',
-        pointerEvents: 'auto',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
+      className='curvepane absolute top-5 left-1/2 -translate-x-1/2 w-[500px] h-[400px] bg-[rgba(22,22,28,1)] border border-white/[0.03] rounded-[10px] shadow-[rgba(0,0,0,0.5)_0px_10px_30px] pointer-events-auto flex flex-col'
     >
-      <style>{`
-        .curvepane-head {
-          height: 50px;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-          display: flex;
-          align-items: center;
-          padding: 0 20px;
-        }
-        .curvepane-head-title {
-          flex: 1;
-          font-weight: 500;
-        }
-        .curvepane-head-close {
-          width: 40px;
-          height: 40px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: rgba(255, 255, 255, 0.5);
-        }
-        .curvepane-head-close:hover {
-          cursor: pointer;
-          color: white;
-        }
-        .curvepane-content {
-          flex: 1;
-          padding: 20px;
-          display: flex;
-          flex-direction: column;
-        }
-        .curvepane-canvas {
-          width: 100%;
-          flex: 1;
-          background: #1a1a1a;
-          border-radius: 5px;
-          cursor: crosshair;
-        }
-        .curvepane-labels {
-          display: flex;
-          justify-content: space-between;
-          margin-top: 10px;
-          font-size: 12px;
-          color: rgba(255, 255, 255, 0.5);
-        }
-        .curvepane-footer {
-          padding: 20px;
-          border-top: 1px solid rgba(255, 255, 255, 0.05);
-          display: flex;
-          gap: 10px;
-          justify-content: flex-end;
-        }
-        .curvepane-btn {
-          padding: 8px 16px;
-          border-radius: 5px;
-          border: none;
-          font-size: 14px;
-          cursor: pointer;
-        }
-        .curvepane-btn-cancel {
-          background: #333;
-          color: white;
-        }
-        .curvepane-btn-commit {
-          background: #00a7ff;
-          color: white;
-        }
-      `}</style>
-      <div className='curvepane-head' ref={headRef}>
-        <div className='curvepane-head-title'>Curve Editor</div>
-        <div className='curvepane-head-close' onClick={onCancel}>
+      <div className='curvepane-head h-[50px] border-b border-white/5 flex items-center px-5' ref={headRef}>
+        <div className='curvepane-head-title flex-1 font-medium'>Curve Editor</div>
+        <div className='curvepane-head-close w-10 h-10 flex items-center justify-center text-white/50 hover:text-white cursor-pointer' onClick={onCancel}>
           ×
         </div>
       </div>
-      <div className='curvepane-content'>
-        <canvas ref={canvasRef} className='curvepane-canvas' />
-        <div className='curvepane-labels'>
+      <div className='curvepane-content flex-1 p-5 flex flex-col'>
+        <canvas ref={canvasRef} className='curvepane-canvas w-full flex-1 bg-[#1a1a1a] rounded-[5px] cursor-crosshair' />
+        <div className='curvepane-labels flex justify-between mt-2.5 text-xs text-white/50'>
           <span>{xLabel} ({xRange ? `${xRange[0]} - ${xRange[1]}` : '0 - 1'})</span>
           <span>{yLabel} ({yMin} - {yMax})</span>
         </div>
       </div>
-      <div className='curvepane-footer'>
-        <button className='curvepane-btn curvepane-btn-cancel' onClick={onCancel}>
+      <div className='curvepane-footer p-5 border-t border-white/5 flex gap-2.5 justify-end'>
+        <button className='curvepane-btn px-4 py-2 rounded-[5px] border-none text-sm cursor-pointer bg-[#333] text-white' onClick={onCancel}>
           Cancel
         </button>
-        <button className='curvepane-btn curvepane-btn-commit' onClick={onCommit}>
+        <button className='curvepane-btn px-4 py-2 rounded-[5px] border-none text-sm cursor-pointer bg-[#00a7ff] text-white' onClick={onCommit}>
           Apply
         </button>
       </div>

@@ -111,8 +111,8 @@ export interface HyperscapeObject3D extends THREE.Object3D {
   position: THREE.Vector3
   quaternion: THREE.Quaternion
   rotation: THREE.Euler
-  add?: (...objects: THREE.Object3D[]) => void
-  remove?: (...objects: THREE.Object3D[]) => void
+  add(...object: THREE.Object3D[]): this
+  remove(...object: THREE.Object3D[]): this
 }
 
 export interface HyperscapeMaterial extends THREE.Material {

@@ -394,8 +394,8 @@ export class RigidBody extends Node {
     if (PHYSX?.PxRigidBodyExt?.addForceAtPos) {
       PHYSX.PxRigidBodyExt.addForceAtPos(
         this.actor as PxRigidBody,
-        pxForce as PxVec3,
-        pxPos as PxVec3,
+        pxForce as unknown as PxVec3,
+        pxPos as unknown as PxVec3,
         forceMode,
         true
       )
@@ -410,8 +410,8 @@ export class RigidBody extends Node {
     if (PHYSX?.PxRigidBodyExt?.addForceAtLocalPos) {
       PHYSX.PxRigidBodyExt.addForceAtLocalPos(
         this.actor as PxRigidBody,
-        pxForce as PxVec3,
-        pxPos as PxVec3,
+        pxForce as unknown as PxVec3,
+        pxPos as unknown as PxVec3,
         forceMode,
         true
       )

@@ -27,6 +27,12 @@ export class PlayerEntity extends CombatantEntity {
   
   // Player-specific UI elements (nameTag, healthBar now in Entity)
   private staminaBarUI: THREE.Sprite | null = null;
+  
+  // Chat animation - override in subclasses if needed
+  chat(_text: string): void {
+    // Default implementation - no animation
+    // Subclasses like PlayerRemote can override to show chat bubbles
+  }
 
   constructor(world: World, data: PlayerEntityData, local?: boolean) {
     // Convert PlayerEntityData to CombatantConfig format

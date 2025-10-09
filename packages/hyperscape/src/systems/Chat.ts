@@ -19,11 +19,6 @@ const CHAT_MAX_MESSAGES = 50;
 
 export type ChatListener = (messages: ChatMessage[]) => void;
 
-// Interface for players that can chat
-interface PlayerWithChat extends Player {
-  chat(text: string): void;
-}
-
 export class Chat extends SystemBase {
   msgs: ChatMessage[];
   private chatListeners: Set<ChatListener>;
@@ -53,7 +48,7 @@ export class Chat extends SystemBase {
     
     // trigger player chat animation if applicable
     if (msg.fromId) {
-      const player = this.world.entities.players?.get(msg.fromId) as PlayerWithChat | undefined;
+      const player = this.world.entities.players?.get(msg.fromId);
       if (player) {
         player.chat(msg.body);
       }

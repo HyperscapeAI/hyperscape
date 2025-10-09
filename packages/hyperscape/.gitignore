@@ -69,3 +69,8 @@ playwright-report/
 
 *.sqlite
 *.sqlite-*
+
+# Capacitor native platforms
+ios/
+android/
+capacitor.config.json

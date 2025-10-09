@@ -80,9 +80,9 @@ class MultiplayerIntegrationTest {
       
       // Set WebSocket URL environment variable before loading page
       await page.addInitScript(() => {
-        // The frontend is on port 3333 but WebSocket backend is on 4444
+        // The frontend is on port 3333 but WebSocket backend is on 5555
         window.env = {
-          PUBLIC_WS_URL: 'ws://localhost:4444/ws'
+          PUBLIC_WS_URL: 'ws://localhost:5555/ws'
         };
       });
       
@@ -260,7 +260,7 @@ class MultiplayerIntegrationTest {
     const debugInfo = await page.evaluate(() => {
       const world = window.world;
       const player = world?.entities?.player;
-      const hasClientInput = world?.getSystem ? !!world.getSystem('client-input') : false;
+      const hasClientInput = world?.getSystem ? !!world.getSystem('controls') : false;
       const hasNetwork = !!world?.network;
       const networkConnected = world?.network?.socket?.connected || 
                              world?.network?.ws?.readyState === 1 || // WebSocket.OPEN
@@ -529,7 +529,7 @@ class MultiplayerIntegrationTest {
     // Check input system stats
     const inputStats = await page.evaluate(() => {
       const testWindow = window as unknown as TestWindow;
-      const input = testWindow.world?.getSystem('client-input');
+      const input = testWindow.world?.getSystem('controls');
       return input?.getStats ? input.getStats() : null;
     });
     

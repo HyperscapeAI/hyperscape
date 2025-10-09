@@ -318,7 +318,7 @@ export class Controller extends Node {
     if (!this.controller) return
     
     // Convert vec3 to PxVec3 first
-    const pxVec3 = vec3.toPxVec3();
+    const pxVec3 = vec3.toPxVec3?.();
     if (pxVec3) {
       // For now, call move without filters to avoid type mismatch
       // The physics system should handle collision filtering internally
@@ -344,7 +344,8 @@ export class Controller extends Node {
     
     // this.isGrounded = moveFlags.isSet(PHYSX.PxControllerCollisionFlagEnum.eCOLLISION_DOWN) // prettier-ignore
     const pos = this.controller.getFootPosition()
-    this.position.copy(pos)
+    // pos is PxExtendedVec3; copy manually
+    this.position.set((pos as any).x, (pos as any).y, (pos as any).z)
     this.didMove = true
   }
 

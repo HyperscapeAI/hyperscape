@@ -166,13 +166,18 @@ async function startServer() {
   }
   
   // Start new server
-  log('Starting server on port 4444...', colors.blue)
+  const port = process.env.PORT || '5555'
+  log(`Starting server on port ${port}...`, colors.blue)
   serverProcess = spawn('bun', [path.join(rootDir, 'build/index.js')], {
     stdio: 'inherit',
     cwd: rootDir,
     env: {
-      ...process.env,
-      PORT: '4444',
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      USER: process.env.USER,
+      PORT: port,
+      PUBLIC_WS_URL: process.env.PUBLIC_WS_URL || `ws://localhost:${port}/ws`,
+      PUBLIC_ASSETS_URL: process.env.PUBLIC_ASSETS_URL || '/world-assets/',
       NODE_ENV: process.env.NODE_ENV || 'development'
     }
   })

@@ -5,6 +5,7 @@ import { ClientAudio } from './systems/ClientAudio'
 import { ClientCameraSystem } from './systems/ClientCameraSystem'
 import { ClientEnvironment } from './systems/ClientEnvironment'
 import { ClientGraphics } from './systems/ClientGraphics'
+import { ClientInput } from './systems/ClientInput'
 import { ClientLiveKit } from './systems/ClientLiveKit'
 import { ClientLoader } from './systems/ClientLoader'
 import { ClientNetwork } from './systems/ClientNetwork'
@@ -41,6 +42,7 @@ import { Nametags } from './systems/Nametags'
 import { Particles } from './systems/Particles'
 import { Wind } from './systems/Wind'
 import { XR } from './systems/XR'
+import { TerrainValidationSystem } from './systems/TerrainValidationSystem'
 
 
 // Window extension for browser testing
@@ -68,6 +70,7 @@ export function createClientWorld() {
   world.register('graphics', ClientGraphics);
   world.register('environment', ClientEnvironment);
   world.register('audio', ClientAudio);
+  world.register('controls', ClientInput);
   world.register('actions', ClientActions);
   world.register('client-interface', ClientInterface);
   // Core physics (creates environment ground plane and layer masks)
@@ -82,8 +85,6 @@ export function createClientWorld() {
   
   // Register heightmap-based pathfinding (only activates with terrain)
   world.register('heightmap-pathfinding', HeightmapPathfinding);
-  
-  // No client input system - using InteractionSystem for click-to-move only
   
   // NO interpolation system - server is authoritative for movement
   
@@ -101,6 +102,7 @@ export function createClientWorld() {
   world.register('particles', Particles)
   world.register('wind', Wind)
   world.register('xr', XR)
+  // Defer validation registration until after RPG systems are registered
 
   // Setup THREE.js access after world initialization
   const setupStageWithTHREE = () => {
@@ -145,6 +147,11 @@ export function createClientWorld() {
           windowWithWorld.THREE = stageSystem.THREE;
         }
       }
+
+      // Now that RPG systems are registered, run validation
+      console.log('[Client World] Registering terrain validation system...');
+      world.register('terrain-validation', TerrainValidationSystem);
+      console.log('[Client World] Terrain validation system registered');
     } catch (error) {
       console.error('[Client World] Failed to register RPG game systems:', error);
       if (error instanceof Error) {

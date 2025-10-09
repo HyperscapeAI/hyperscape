@@ -111,7 +111,7 @@ export class PathfindingSystem extends SystemBase {
     // Try to get obstacles from the stage system
     const stage = this.world.getSystem('Stage');
     if (stage && 'scene' in stage && (stage as { scene?: THREE.Scene }).scene) {
-      const scene = (stage as { scene?: THREE.Scene }).scene;
+      const scene = (stage as { scene?: THREE.Scene }).scene!;
       scene.traverse((obj: THREE.Object3D) => {
         // Check if object is an obstacle (has collision, is static, etc.)
         if (obj.userData?.isObstacle || obj.userData?.collision) {
@@ -154,7 +154,7 @@ export class PathfindingSystem extends SystemBase {
     const dirVector = direction.clone();
      
     // Prefer physics raycast for robust obstruction checks
-    const hit = this.world.raycast(fromVector, dirVector, distance, this.world.createLayerMask('environment'));
+    const hit = this.world.raycast(fromVector, dirVector, distance, this.world.createLayerMask('terrain', 'environment'));
     if (hit && hit.distance < distance - 0.1) {
       const point = hit.point;
       if (!this.isWalkable(point)) {
@@ -279,7 +279,7 @@ export class PathfindingSystem extends SystemBase {
     const origin = point.clone();
     origin.y += 2;
     const dir = new THREE.Vector3(0, -1, 0);
-    const hit = this.world.raycast(origin, dir, 5, this.world.createLayerMask('environment'));
+    const hit = this.world.raycast(origin, dir, 5, this.world.createLayerMask('terrain', 'environment'));
     if (!hit) return false;
     const groundPoint = toTHREEVector3(hit.point);
     const groundHeight = groundPoint.y;
@@ -294,7 +294,7 @@ export class PathfindingSystem extends SystemBase {
     // Use PhysX raycast to query ground height
     const origin = new THREE.Vector3(position.x, 100, position.z);
     const dir = new THREE.Vector3(0, -1, 0);
-    const hit = this.world.raycast(origin, dir, 200, this.world.createLayerMask('environment'));
+    const hit = this.world.raycast(origin, dir, 200, this.world.createLayerMask('terrain', 'environment'));
     if (hit) return hit.point.y;
     return position.y;
   }

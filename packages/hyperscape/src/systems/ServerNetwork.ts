@@ -327,12 +327,17 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     const packet = writePacket(name, data);
     // Only log non-entityModified packets to reduce spam
     // Keep logs quiet in production unless debugging a specific packet
+    let sentCount = 0;
     this.sockets.forEach(socket => {
       if (socket.id === ignoreSocketId) {
         return;
       }
       socket.sendPacket(packet);
+      sentCount++;
     });
+    if (name === 'chatAdded') {
+      console.log(`[ServerNetwork] Broadcast '${name}' to ${sentCount} clients (ignored: ${ignoreSocketId || 'none'})`);
+    }
   }
 
   sendTo<T = unknown>(socketId: string, name: string, data: T): void {
@@ -354,6 +359,9 @@ export class ServerNetwork extends System implements NetworkWithSocket {
   }
 
   enqueue(socket: Socket, method: string, data: unknown): void {
+    if (method === 'onChatAdded') {
+      console.log('[ServerNetwork] Enqueueing onChatAdded from socket:', socket.id);
+    }
     this.queue.push([socket, method, data]);
   }
 
@@ -394,6 +402,9 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       try {
         const [socket, method, data] = this.queue.shift()!;
         const handler = this.handlers[method];
+        if (method === 'onChatAdded') {
+          console.log('[ServerNetwork] Processing onChatAdded handler from socket:', socket.id);
+        }
         if (handler) {
           handler.call(this, socket, data);
         } else {
@@ -695,10 +706,12 @@ export class ServerNetwork extends System implements NetworkWithSocket {
 
   onChatAdded = (socket: Socket, data: unknown): void => {
     const msg = data as ChatMessage;
+    console.log('[ServerNetwork] Received chatAdded from socket:', socket.id, 'message:', msg);
     // Add message to chat if method exists
     if (this.world.chat.add) {
       this.world.chat.add(msg, false);
     }
+    console.log('[ServerNetwork] Broadcasting chatAdded to all clients except:', socket.id);
     this.send('chatAdded', msg, socket.id);
   };
 

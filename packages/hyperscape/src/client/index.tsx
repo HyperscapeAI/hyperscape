@@ -1,4 +1,5 @@
 import React from 'react'
+import './index.css'
 import ReactDOM from 'react-dom/client'
 import { Client } from './world-client'
 import { ErrorBoundary } from './ErrorBoundary'
@@ -65,13 +66,28 @@ function App() {
         <Client wsUrl={wsUrl} onSetup={(world: World, config) => {
                     // Make world accessible globally for debugging
           if (typeof window !== 'undefined') {
-            const globalWindow = window as Window & { world?: unknown; THREE?: unknown };
+            const globalWindow = window as Window & { world?: unknown; THREE?: unknown; testChat?: () => void };
             globalWindow.world = world;
             globalWindow.THREE = THREE;
             // Expose testing helpers for browser-based tests
             const anyWin = window as unknown as { Hyperscape?: Record<string, unknown> };
             anyWin.Hyperscape = anyWin.Hyperscape || {};
             anyWin.Hyperscape.CircularSpawnArea = CircularSpawnArea;
+            
+            // Add chat test function
+            globalWindow.testChat = () => {
+              console.log('=== TESTING CHAT ===');
+              console.log('world.chat:', world.chat);
+              console.log('world.network:', world.network);
+              console.log('world.network.id:', (world.network as { id?: string })?.id);
+              console.log('world.network.isClient:', world.network?.isClient);
+              console.log('world.network.send:', world.network?.send);
+              
+              const testMsg = 'Test message from console at ' + new Date().toLocaleTimeString();
+              console.log('Sending test message:', testMsg);
+              world.chat.send(testMsg);
+            };
+            console.log('💬 Chat test function available: call testChat() in console');
           }
         }} />
       </ErrorBoundary>

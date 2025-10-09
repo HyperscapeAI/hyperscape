@@ -480,6 +480,14 @@ export class ClientInput extends SystemBase {
   
   private onTouchStart = (e: TouchEvent) => {
     if ((e as any).isCoreUI) return
+    // Ignore touches that begin on UI elements so mobile UI remains interactive
+    const t = e.changedTouches && e.changedTouches[0]
+    if (t) {
+      const el = document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null
+      if (el && this.viewport && el !== (this.viewport as unknown as HTMLElement)) {
+        return
+      }
+    }
     e.preventDefault()
     
     for (let i = 0; i < e.changedTouches.length; i++) {
@@ -501,6 +509,14 @@ export class ClientInput extends SystemBase {
   
   private onTouchMove = (e: TouchEvent) => {
     if ((e as any).isCoreUI) return
+    // Don't interfere with UI drags/gestures
+    const t = e.changedTouches && e.changedTouches[0]
+    if (t) {
+      const el = document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null
+      if (el && this.viewport && el !== (this.viewport as unknown as HTMLElement)) {
+        return
+      }
+    }
     
     for (let i = 0; i < e.changedTouches.length; i++) {
       const touch = e.changedTouches[i]
@@ -520,6 +536,14 @@ export class ClientInput extends SystemBase {
   
   private onTouchEnd = (e: TouchEvent) => {
     if ((e as any).isCoreUI) return
+    // Allow UI taps to complete and generate click events
+    const t = e.changedTouches && e.changedTouches[0]
+    if (t) {
+      const el = document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null
+      if (el && this.viewport && el !== (this.viewport as unknown as HTMLElement)) {
+        return
+      }
+    }
     
     for (let i = 0; i < e.changedTouches.length; i++) {
       const touch = e.changedTouches[i]

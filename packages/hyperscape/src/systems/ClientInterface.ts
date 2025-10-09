@@ -45,6 +45,7 @@ export interface ClientPrefsData {
   music?: number
   sfx?: number
   voice?: number
+  chatVisible?: boolean
   v?: number
 }
 
@@ -77,6 +78,7 @@ export class ClientInterface extends SystemBase {
   music: number = 1
   sfx: number = 1
   voice: number = 1
+  chatVisible: boolean = true
   v: number = 0
   changes: Record<string, { prev: PrefsValue; value: PrefsValue }> | null = null
   
@@ -124,6 +126,7 @@ export class ClientInterface extends SystemBase {
         if (parsed.shadows !== undefined) this.shadows = parsed.shadows
         if (parsed.postprocessing !== undefined) this.postprocessing = parsed.postprocessing
         if (parsed.bloom !== undefined) this.bloom = parsed.bloom
+        if (parsed.chatVisible !== undefined) this.chatVisible = parsed.chatVisible
         if (parsed.music !== undefined) this.music = parsed.music
         if (parsed.sfx !== undefined) this.sfx = parsed.sfx
         if (parsed.voice !== undefined) this.voice = parsed.voice
@@ -377,6 +380,7 @@ export class ClientInterface extends SystemBase {
       music: this.music,
       sfx: this.sfx,
       voice: this.voice,
+      chatVisible: this.chatVisible,
       v: this.v,
     }
     
@@ -398,6 +402,7 @@ export class ClientInterface extends SystemBase {
   setMusic(value: number) { this.modify('music', value) }
   setSFX(value: number) { this.modify('sfx', value) }
   setVoice(value: number) { this.modify('voice', value) }
+  setChatVisible(value: boolean) { this.modify('chatVisible', value) }
   
   // Event handlers
   private onReady = () => {

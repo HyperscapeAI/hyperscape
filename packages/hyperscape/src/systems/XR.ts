@@ -86,13 +86,13 @@ export class XR extends SystemBase {
     this.controller1Model = new THREE.Group()
     const model1 = this.controllerModelFactory.createControllerModel(grip1)
     if (model1) this.controller1Model.add(model1)
-    if (this.world.rig && this.controller1Model) this.world.rig.add?.(this.controller1Model)
+    if (this.world.rig && this.controller1Model) this.world.rig.add(this.controller1Model)
 
     const grip2 = this.world.graphics!.renderer!.xr.getControllerGrip(1)
     this.controller2Model = new THREE.Group()
     const model2 = this.controllerModelFactory.createControllerModel(grip2)
     if (model2) this.controller2Model.add(model2)
-    if (this.world.rig && this.controller2Model) this.world.rig.add?.(this.controller2Model)
+    if (this.world.rig && this.controller2Model) this.world.rig.add(this.controller2Model)
 
     ;(session as unknown as { addEventListener: (type: string, listener: () => void) => void }).addEventListener('end', this.onSessionEnd)
     this.session = session
@@ -108,8 +108,8 @@ export class XR extends SystemBase {
     }
     this.world.camera!.position.set(0, 0, 0)
     this.world.camera!.rotation.set(0, 0, 0)
-    if (this.world.rig && this.controller1Model) this.world.rig.remove?.(this.controller1Model)
-    if (this.world.rig && this.controller2Model) this.world.rig.remove?.(this.controller2Model)
+    if (this.world.rig && this.controller1Model) this.world.rig.remove(this.controller1Model)
+    if (this.world.rig && this.controller2Model) this.world.rig.remove(this.controller2Model)
     this.session = null
     this.camera = null
     this.controller1Model = null

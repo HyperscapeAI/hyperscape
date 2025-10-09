@@ -8,6 +8,7 @@ import {
   SpawnPoint
 } from '../../types';
 import type { NPCSystem } from '../../systems/NPCSystem';
+import { TerrainSystem } from '../../systems/TerrainSystem';
 
 export class NPCSpawnManager {
   private world: World;
@@ -128,11 +129,17 @@ export class NPCSpawnManager {
     const angle = Math.random() * Math.PI * 2;
     const distance = Math.random() * spawnPoint.radius;
     
-    const position: Position3D = {
-      x: spawnPoint.position.x + Math.cos(angle) * distance,
-      y: spawnPoint.position.y,
-      z: spawnPoint.position.z + Math.sin(angle) * distance
-    };
+    const px = spawnPoint.position.x + Math.cos(angle) * distance
+    const pz = spawnPoint.position.z + Math.sin(angle) * distance
+    let py = spawnPoint.position.y
+    try {
+      const terrain = this.world.getSystem<TerrainSystem>('terrain')
+      if (terrain) {
+        const th = terrain.getHeightAt(px, pz)
+        if (Number.isFinite(th)) py = (th as number) + 0.1
+      }
+    } catch (_e) {}
+    const position: Position3D = { x: px, y: py, z: pz };
     
     // Get NPC type for spawning
     const npcType = this.getNPCTypeFromId(spawnPoint.npcId);

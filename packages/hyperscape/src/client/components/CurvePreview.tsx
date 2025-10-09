@@ -75,21 +75,15 @@ export function CurvePreview({ curve, width = 200, height = 100, xRange = [0, 1]
   return (
     <div
       ref={divRef}
+      className="border border-white/10 rounded overflow-hidden"
       style={{
         width: `${width}px`,
         height: `${height}px`,
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        borderRadius: '4px',
-        overflow: 'hidden',
       }}
     >
       <canvas
         ref={canvasRef}
-      style={{
-        width: '100%',
-        height: '100%',
-          display: 'block',
-      }}
+        className="w-full h-full block"
     />
     </div>
   )

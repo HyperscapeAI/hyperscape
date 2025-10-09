@@ -31,7 +31,7 @@ const UP = new THREE.Vector3(0, 1, 0)
 
 interface NodeWithInstance extends THREE.Object3D {
   instance?: THREE.Object3D
-  activate?: (world: World) => void
+  activate?: (...args: unknown[]) => void
 }
 
 interface GroupNode extends THREE.Group {
@@ -359,7 +359,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
   }
   speaking: boolean = false
   lastSendAt: number = 0
-  base: THREE.Group | null = null
+  base: THREE.Group | undefined = undefined
   aura: THREE.Group | null = null
   nametag: Nametag | null = null
   bubble: UI | null = null
@@ -577,26 +577,27 @@ export class PlayerLocal extends Entity implements HotReloadable {
   }
   
   private async waitForTerrain(): Promise<void> {
-    // Get terrain system
-    const terrainSystem = this.world.getSystem('terrain')
+    // Get terrain system with proper type
+    interface TerrainSystemWithInit {
+      isInitialized: boolean | (() => boolean);
+    }
+    
+    const terrainSystem = this.world.getSystem('terrain') as TerrainSystemWithInit | null
     
     if (!terrainSystem) {
       // No terrain system, proceed without wait
       return
     }
     
-    // Check if terrain has an isInitialized method or property
-    const terrain = terrainSystem as { isInitialized?: boolean | (() => boolean) }
-    
     // Helper to check if terrain is ready
     const isTerrainReady = (): boolean => {
-      if (typeof terrain.isInitialized === 'function') {
-        return terrain.isInitialized()
-      } else if (typeof terrain.isInitialized === 'boolean') {
-        return terrain.isInitialized
+      if (!terrainSystem) return false
+      const init = terrainSystem.isInitialized
+      if (typeof init === 'function') {
+        return init.call(terrainSystem)
+      } else {
+        return init
       }
-      // If no isInitialized property, assume terrain is ready
-      return true
     }
     
     // Check if terrain is already initialized
@@ -848,7 +849,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
       this.nametag.activate(this.world)
     }
     // Add the nametag's THREE.js object if it exists
-    const nametagInstance = (this.nametag as NodeWithInstance).instance
+    const nametagInstance = (this.nametag as unknown as NodeWithInstance).instance
     if (nametagInstance && nametagInstance.isObject3D) {
       this.aura.add(nametagInstance)
     }
@@ -894,7 +895,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
       this.bubble.activate(this.world)
     }
     // Add the bubble's THREE.js object if it exists
-    const bubbleInstance = (this.bubble as NodeWithInstance).instance
+    const bubbleInstance = (this.bubble as unknown as NodeWithInstance).instance
     if (bubbleInstance && bubbleInstance.isObject3D) {
       this.aura.add(bubbleInstance)
     }
@@ -942,6 +943,8 @@ export class PlayerLocal extends Entity implements HotReloadable {
       const cameraSystem = getSystem(this.world, 'client-camera-system')
       if (cameraSystem) {
                 this.world.emit(EventType.CAMERA_SET_TARGET, { target: this })
+      } else {
+        console.warn('[PlayerLocal] Camera system still not found after retry - camera controls may not work')
       }
     }, 1000)
 
@@ -1033,7 +1036,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
       .then(async (src) => {
         // src is LoaderResult, which may be a Texture or an object with toNodes
         // Avatar loader should return an object with toNodes(): Map<string, Avatar>
-        const avatarSrc = src as { toNodes: () => Map<string, Avatar> }
+        const avatarSrc = src as unknown as { toNodes: () => Map<string, Avatar> }
                 if (this._avatar && this._avatar.deactivate) {
           this._avatar.deactivate()
         }
@@ -1465,9 +1468,8 @@ export class PlayerLocal extends Entity implements HotReloadable {
       
       // Debug camera system state
       const camSys = cameraSystem as any
-    } else {
-      console.warn('[PlayerLocal] No camera system found - camera controls may not work')
     }
+    // Note: if camera system not found, retry mechanism in init() will handle it
 
     // Emit avatar ready event for camera height adjustment
     if (this._avatar) {
@@ -1805,7 +1807,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
     })
   }
 
-  say(msg: string): void {
+  chat(msg: string): void {
     this.nametag!.active = false
     this.bubbleText!.value = msg
     this.bubble!.active = true
@@ -1813,6 +1815,11 @@ export class PlayerLocal extends Entity implements HotReloadable {
       this.bubble!.active = false
       this.nametag!.active = true
     }, 5000)
+  }
+  
+  // Alias for backward compatibility
+  say(msg: string): void {
+    this.chat(msg)
   }
 
   onNetworkData(data: Partial<NetworkData>): void {
@@ -1888,16 +1895,12 @@ export class PlayerLocal extends Entity implements HotReloadable {
     }
     
     if (this.nametag) {
-      if ('deactivate' in this.nametag && typeof this.nametag.deactivate === 'function') {
-        this.nametag.deactivate();
-      }
+      this.nametag.deactivate();
       this.nametag = null;
     }
     
     if (this.bubble) {
-      if ('deactivate' in this.bubble && typeof this.bubble.deactivate === 'function') {
-        this.bubble.deactivate();
-      }
+      this.bubble.deactivate();
       this.bubble = null;
     }
     
@@ -1914,7 +1917,7 @@ export class PlayerLocal extends Entity implements HotReloadable {
         this.base.parent.remove(this.base);
       }
       // THREE.Group doesn't have deactivate method
-      this.base = null;
+      this.base = undefined;
     }
     
     // Notify systems of player destruction

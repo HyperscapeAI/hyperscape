@@ -31,21 +31,54 @@ cd hyperscape/packages/hyperscape
 # Install dependencies
 bun install
 
-# Copy environment variables
-cp .env.example .env
+# Check your configuration (optional)
+npm run config:check
 
 # Start the development server
 bun run dev
 ```
 
-The server will start on `http://localhost:4444`
+The frontend will start on `http://localhost:3333` and backend on `http://localhost:5555`
 
 ### First Time Setup
 
-1. Open your browser to `http://localhost:4444`
+1. Open your browser to `http://localhost:3333`
 2. Create a character - you'll spawn in a random starter town
 3. Use WASD to move, click to interact with objects
 4. Right-click to open context menus for advanced actions
+
+### Configuration
+
+Hyperscape uses environment variables for flexible deployment. The system works great with defaults for local development, but you can customize it for mobile, LAN testing, or production deployment.
+
+**Check your configuration**:
+```bash
+npm run config:check  # Desktop development
+npm run config:check:mobile  # Mobile development
+```
+
+See [CONFIG.md](./CONFIG.md) for complete configuration documentation.
+
+### Mobile Development
+
+Hyperscape supports iOS and Android through CapacitorJS.
+
+**Quick Start:**
+```bash
+# 1. Get your local IP for mobile connection
+npm run cap:ip
+
+# 2. Export the server URL (use command from step 1)
+export CAP_SERVER_URL="http://192.168.1.XXX:3333"
+
+# 3. Start dev server (separate terminal)
+npm run dev
+
+# 4. Open mobile app
+npm run ios:dev      # or android:dev
+```
+
+See [MOBILE-QUICKSTART.md](./MOBILE-QUICKSTART.md) for quick reference or [MOBILE.md](./MOBILE.md) for complete documentation.
 
 ## Game Systems
 
@@ -365,7 +398,7 @@ POST /api/actions/attack
 **Server won't start**
 - Check Node.js version (18+ required)
 - Verify SQLite database permissions
-- Ensure port 4444 is available
+- Ensure port 5555 is available
 
 **Client connection fails**
 - Verify WebSocket connection (check browser dev tools)

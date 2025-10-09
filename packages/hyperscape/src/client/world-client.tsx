@@ -30,6 +30,23 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
     }
   }, [])
 
+  // Handle window resize to update Three.js canvas
+  useEffect(() => {
+    const handleResize = () => {
+      const viewport = viewportRef.current
+      if (viewport && world.graphics) {
+        const width = viewport.offsetWidth
+        const height = viewport.offsetHeight
+        world.graphics.resize(width, height)
+      }
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [world])
+
   useEffect(() => {
     const init = async () => {
       const viewport = viewportRef.current
@@ -106,18 +123,14 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
     
   return (
     <div
-      className='App'
-      style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: '100vh',
-      }}
+      className='App absolute top-0 left-0 right-0 h-screen'
     >
       <style>{`
         .App__viewport {
-          position: absolute;
+          position: fixed;
+          overflow: hidden;
+          width: 100%;
+          height: 100%;
           inset: 0;
         }
         .App__ui {
@@ -126,6 +139,8 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
           pointer-events: none;
           user-select: none;
           display: ${ui.visible ? 'block' : 'none'};
+          overflow: hidden;
+          z-index: 10;
         }
       `}</style>
       <div className='App__viewport' ref={viewportRef} data-component="viewport">

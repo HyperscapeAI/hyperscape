@@ -6,6 +6,7 @@ import type {
 } from './types/three-extensions';
 // MaterialSetupFunction removed - unused import
 import { ClientLiveKit } from './systems/ClientLiveKit';
+import { EventType } from './types/events';
 
 
 
@@ -331,7 +332,7 @@ export class World extends EventEmitter {
     // this gives us minimal z-fighting without needing logarithmic depth buffers
     // Initialize with default aspect ratio of 16:9 (will be updated by graphics system)
     this.camera = new THREE.PerspectiveCamera(70, 16/9, 0.2, 1200);
-    this.rig.add?.(this.camera);
+    this.rig.add(this.camera);
 
     // Register core systems
     this.register('settings', SettingsSystem);
@@ -422,10 +423,38 @@ export class World extends EventEmitter {
     // Sort systems based on dependencies
     const sortedSystems = this.topologicalSort(this.systems);
     
-    // Initialize systems in dependency order
-    for (const system of sortedSystems) {
-      await system.init(options);
+    const totalSystems = sortedSystems.length;
+    let initializedSystems = 0;
+    
+    // Create a reverse lookup for system names
+    const systemNameMap = new Map<System, string>();
+    for (const [name, system] of this.systemsByName) {
+      systemNameMap.set(system, name);
     }
+    
+    // Initialize systems in dependency order with progress tracking
+    for (const system of sortedSystems) {
+      const systemName = systemNameMap.get(system) || 'Unknown System';
+      
+      // Emit progress before initializing
+      this.emit(EventType.ASSETS_LOADING_PROGRESS, {
+        progress: Math.floor((initializedSystems / totalSystems) * 100),
+        stage: `Initializing ${systemName}...`,
+        total: totalSystems,
+        current: initializedSystems
+      });
+      
+      await system.init(options);
+      initializedSystems++;
+    }
+    
+    // Emit final progress
+    this.emit(EventType.ASSETS_LOADING_PROGRESS, {
+      progress: 100,
+      stage: 'Starting world...',
+      total: totalSystems,
+      current: initializedSystems
+    });
     
     this.start();
   }

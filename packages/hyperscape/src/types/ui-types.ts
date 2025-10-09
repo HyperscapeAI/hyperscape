@@ -355,6 +355,8 @@ export interface MinimapProps {
   zoom?: number;
   className?: string;
   style?: React.CSSProperties;
+  onCompassClick?: () => void;
+  showStaminaBar?: boolean;
 }
 
 /**

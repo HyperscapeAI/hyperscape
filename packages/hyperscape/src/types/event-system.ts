@@ -59,7 +59,7 @@ export interface EventMap {
   [EventType.ENTITY_DEATH]: { entityId: string };
   [EventType.ENTITY_UPDATED]: { entityId: string; changes: Record<string, string | number | boolean> };
   [EventType.ASSET_LOADED]: { assetId: string; assetType: string };
-  [EventType.ASSETS_LOADING_PROGRESS]: { progress: number; total: number };
+  [EventType.ASSETS_LOADING_PROGRESS]: { progress: number; total: number; stage?: string; current?: number };
   [EventType.UI_TOGGLE]: { visible: boolean };
   [EventType.UI_OPEN_PANE]: { pane: string };
   [EventType.UI_CLOSE_PANE]: { pane: string };

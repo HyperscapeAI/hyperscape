@@ -31,6 +31,7 @@ import { EntityType, InteractionType, ItemRarity, MobAIState, MobType, NPCType, 
 import { EventType } from '../types/events';
 import type { EntitySpawnedEvent } from '../types/systems';
 import { Logger } from '../utils/Logger';
+import { TerrainSystem } from './TerrainSystem';
 import { SystemBase } from './SystemBase';
 
 export class EntityManager extends SystemBase {
@@ -367,6 +368,19 @@ export class EntityManager extends SystemBase {
     }
     
     const level = data.level || 1;
+
+    // Ground to terrain height map explicitly for server/client authoritative spawn
+    try {
+      const terrain = this.world.getSystem<TerrainSystem>('terrain');
+      if (terrain && typeof position.x === 'number' && typeof position.z === 'number') {
+        const th = terrain.getHeightAt(position.x, position.z);
+        if (Number.isFinite(th)) {
+          position = { x: position.x, y: (th as number) + 0.1, z: position.z };
+        }
+      }
+    } catch (_e) {
+      // If terrain not available, keep provided Y
+    }
     
     const config: MobEntityConfig = {
       id: data.customId || `mob_${this.nextEntityId++}`,

@@ -300,8 +300,12 @@ export class ClientEnvironment extends System {
     }
 
     // Dispose CSM lights and shadow maps
-    if (this.csm && typeof (this.csm as { dispose?: () => void }).dispose === 'function') {
-      ;(this.csm as unknown as { dispose: () => void }).dispose()
+    if (this.csm) {
+      // CSM has dispose method from three-csm library
+      interface CSMWithDispose {
+        dispose(): void;
+      }
+      (this.csm as unknown as CSMWithDispose).dispose()
     }
     this.skys = []
     this.model = null

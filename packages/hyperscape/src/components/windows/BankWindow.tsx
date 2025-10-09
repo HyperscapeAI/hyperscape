@@ -122,113 +122,42 @@ export function BankWindow({ world, visible, onClose, bankId = 'bank_town_0' }: 
     <DraggableWindow
       initialPosition={{ x: 300, y: 150 }}
       dragHandle={
-        <div style={{
-          padding: '0.75rem 1rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: 'rgba(11, 10, 21, 0.95)',
-          borderTopLeftRadius: '1rem',
-          borderTopRightRadius: '1rem',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontSize: '1rem' }}>🏦</span>
-            <span style={{ fontSize: '0.875rem', fontWeight: '500' }}>Bank Storage</span>
+        <div className="py-3 px-4 flex items-center justify-between bg-[rgba(11,10,21,0.95)] rounded-t-2xl border-b border-white/10">
+          <div className="flex items-center gap-2">
+            <span className="text-base">🏦</span>
+            <span className="text-sm font-medium">Bank Storage</span>
           </div>
           <button
             onClick={onClose}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'rgba(255, 255, 255, 0.7)',
-              cursor: 'pointer',
-              padding: '0.25rem',
-              borderRadius: '4px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
+            className="bg-transparent border-none text-white/70 cursor-pointer p-1 rounded flex items-center justify-center hover:text-white"
           >
-            <span style={{ fontSize: '1rem' }}>×</span>
+            <span className="text-base">×</span>
           </button>
         </div>
       }
-      style={{
-        position: 'fixed',
-        zIndex: 1300
-      }}
+      className="fixed z-[1300]"
     >
-      <div style={{
-        width: '600px',
-        background: 'rgba(11, 10, 21, 0.95)',
-        border: '0.0625rem solid #2a2b39',
-        backdropFilter: 'blur(5px)',
-        borderRadius: '1rem',
-        borderTopLeftRadius: 0,
-        borderTopRightRadius: 0,
-        padding: '1rem'
-      }}>
-        <div style={{ display: 'flex', gap: '1rem', height: '400px' }}>
+      <div className="w-[600px] bg-[rgba(11,10,21,0.95)] border border-dark-border backdrop-blur-md rounded-2xl rounded-t-none p-4">
+        <div className="flex gap-4 h-[400px]">
           {/* Inventory Side */}
-          <div style={{ flex: 1 }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: '0.5rem'
-            }}>
-              <h4 style={{ 
-                margin: 0, 
-                fontSize: '0.875rem', 
-                color: 'rgba(255, 255, 255, 0.9)',
-                fontWeight: '500'
-              }}>
+          <div className="flex-1">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="m-0 text-sm text-white/90 font-medium">
                 Your Inventory
               </h4>
               <button
                 onClick={handleDepositAll}
-                style={{
-                  background: 'rgba(34, 197, 94, 0.2)',
-                  border: '1px solid rgba(34, 197, 94, 0.4)',
-                  color: '#22c55e',
-                  padding: '0.25rem 0.5rem',
-                  borderRadius: '4px',
-                  fontSize: '0.75rem',
-                  cursor: 'pointer'
-                }}
+                className="bg-green-500/20 border border-green-500/40 text-green-500 py-1 px-2 rounded text-xs cursor-pointer hover:bg-green-500/30"
               >
                 Deposit All
               </button>
             </div>
             
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(7, 1fr)',
-              gap: '2px',
-              marginBottom: '0.5rem',
-              maxHeight: '320px',
-              overflowY: 'auto',
-              padding: '0.25rem',
-              background: 'rgba(0, 0, 0, 0.2)',
-              borderRadius: '4px'
-            }}>
+            <div className="grid grid-cols-7 gap-0.5 mb-2 max-h-[320px] overflow-y-auto p-1 bg-black/20 rounded">
               {inventoryGrid.map((item, index) => (
                 <div
                   key={index}
-                  style={{
-                    width: '32px',
-                    height: '32px',
-                    background: item ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-                    border: selectedInventoryItem === item ? '2px solid #22c55e' : '1px solid rgba(255, 255, 255, 0.2)',
-                    borderRadius: '3px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    position: 'relative',
-                    cursor: item ? 'pointer' : 'default',
-                    fontSize: '0.75rem'
-                  }}
+                  className={`w-8 h-8 ${item ? 'bg-white/10' : 'bg-white/5'} ${selectedInventoryItem === item ? 'border-2 border-green-500' : 'border border-white/20'} rounded-sm flex items-center justify-center relative ${item ? 'cursor-pointer' : 'cursor-default'} text-xs`}
                   onClick={() => setSelectedInventoryItem(item)}
                   onDoubleClick={() => item && handleDepositItem(item)}
                 >
@@ -236,18 +165,7 @@ export function BankWindow({ world, visible, onClose, bankId = 'bank_town_0' }: 
                     <>
                       {getItemIcon(item.item)}
                       {item.quantity > 1 && (
-                        <div style={{
-                          position: 'absolute',
-                          bottom: '1px',
-                          right: '1px',
-                          background: 'rgba(0, 0, 0, 0.8)',
-                          color: 'white',
-                          fontSize: '0.5rem',
-                          padding: '0px 2px',
-                          borderRadius: '2px',
-                          minWidth: '8px',
-                          textAlign: 'center'
-                        }}>
+                        <div className="absolute bottom-px right-px bg-black/80 text-white text-[0.5rem] px-0.5 rounded-sm min-w-[8px] text-center">
                           {item.quantity}
                         </div>
                       )}
@@ -259,90 +177,37 @@ export function BankWindow({ world, visible, onClose, bankId = 'bank_town_0' }: 
           </div>
 
           {/* Transfer Buttons */}
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            gap: '0.5rem',
-            padding: '0 0.5rem'
-          }}>
+          <div className="flex flex-col justify-center gap-2 px-2">
             <button
               onClick={() => selectedInventoryItem && handleDepositItem(selectedInventoryItem)}
               disabled={!selectedInventoryItem}
-              style={{
-                background: selectedInventoryItem ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255, 255, 255, 0.1)',
-                border: selectedInventoryItem ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(255, 255, 255, 0.2)',
-                color: selectedInventoryItem ? '#22c55e' : 'rgba(255, 255, 255, 0.5)',
-                padding: '0.5rem',
-                borderRadius: '4px',
-                cursor: selectedInventoryItem ? 'pointer' : 'not-allowed',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
+              className={`${selectedInventoryItem ? 'bg-green-500/20 border-green-500/40 text-green-500 cursor-pointer' : 'bg-white/10 border-white/20 text-white/50 cursor-not-allowed'} border p-2 rounded flex items-center justify-center`}
               title="Deposit selected item"
             >
-              <span style={{ fontSize: '1rem' }}>→</span>
+              <span className="text-base">→</span>
             </button>
             
             <button
               onClick={() => selectedBankItem && handleWithdrawItem(selectedBankItem, 1)}
               disabled={!selectedBankItem}
-              style={{
-                background: selectedBankItem ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255, 255, 255, 0.1)',
-                border: selectedBankItem ? '1px solid rgba(59, 130, 246, 0.4)' : '1px solid rgba(255, 255, 255, 0.2)',
-                color: selectedBankItem ? '#3b82f6' : 'rgba(255, 255, 255, 0.5)',
-                padding: '0.5rem',
-                borderRadius: '4px',
-                cursor: selectedBankItem ? 'pointer' : 'not-allowed',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
+              className={`${selectedBankItem ? 'bg-blue-500/20 border-blue-500/40 text-blue-500 cursor-pointer' : 'bg-white/10 border-white/20 text-white/50 cursor-not-allowed'} border p-2 rounded flex items-center justify-center`}
               title="Withdraw selected item"
             >
-              <span style={{ fontSize: '1rem' }}>←</span>
+              <span className="text-base">←</span>
             </button>
           </div>
 
           {/* Bank Side */}
-          <div style={{ flex: 1 }}>
-            <h4 style={{ 
-              margin: 0, 
-              marginBottom: '0.5rem',
-              fontSize: '0.875rem', 
-              color: 'rgba(255, 255, 255, 0.9)',
-              fontWeight: '500'
-            }}>
+          <div className="flex-1">
+            <h4 className="m-0 mb-2 text-sm text-white/90 font-medium">
               Bank Storage ({bankItems.length} items)
             </h4>
             
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(7, 1fr)',
-              gap: '2px',
-              maxHeight: '320px',
-              overflowY: 'auto',
-              padding: '0.25rem',
-              background: 'rgba(0, 0, 0, 0.2)',
-              borderRadius: '4px'
-            }}>
+            <div className="grid grid-cols-7 gap-0.5 max-h-[320px] overflow-y-auto p-1 bg-black/20 rounded">
               {bankGrid.map((item, index) => (
                 <div
                   key={index}
-                  style={{
-                    width: '32px',
-                    height: '32px',
-                    background: item ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-                    border: selectedBankItem === item ? '2px solid #3b82f6' : '1px solid rgba(255, 255, 255, 0.2)',
-                    borderRadius: '3px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    position: 'relative',
-                    cursor: item ? 'pointer' : 'default',
-                    fontSize: '0.75rem'
-                  }}
+                  className={`w-8 h-8 ${item ? 'bg-white/10' : 'bg-white/5'} ${selectedBankItem === item ? 'border-2 border-blue-500' : 'border border-white/20'} rounded-sm flex items-center justify-center relative ${item ? 'cursor-pointer' : 'cursor-default'} text-xs`}
                   onClick={() => setSelectedBankItem(item)}
                   onDoubleClick={() => item && handleWithdrawItem(item, 1)}
                 >
@@ -350,18 +215,7 @@ export function BankWindow({ world, visible, onClose, bankId = 'bank_town_0' }: 
                     <>
                       {getItemIcon({ name: item.name })}
                       {item.quantity > 1 && (
-                        <div style={{
-                          position: 'absolute',
-                          bottom: '1px',
-                          right: '1px',
-                          background: 'rgba(0, 0, 0, 0.8)',
-                          color: 'white',
-                          fontSize: '0.5rem',
-                          padding: '0px 2px',
-                          borderRadius: '2px',
-                          minWidth: '8px',
-                          textAlign: 'center'
-                        }}>
+                        <div className="absolute bottom-px right-px bg-black/80 text-white text-[0.5rem] px-0.5 rounded-sm min-w-[8px] text-center">
                           {item.quantity}
                         </div>
                       )}
@@ -374,12 +228,7 @@ export function BankWindow({ world, visible, onClose, bankId = 'bank_town_0' }: 
         </div>
 
         {/* Instructions */}
-        <div style={{
-          marginTop: '0.5rem',
-          fontSize: '0.75rem',
-          color: 'rgba(255, 255, 255, 0.6)',
-          textAlign: 'center'
-        }}>
+        <div className="mt-2 text-xs text-white/60 text-center">
           Click to select • Double-click to transfer • Use arrow buttons for selected items
         </div>
       </div>

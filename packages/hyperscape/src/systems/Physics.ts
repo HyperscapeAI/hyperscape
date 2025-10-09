@@ -249,7 +249,7 @@ export class Physics extends SystemBase implements IPhysics {
   // Plugin-specific extensions
   enabled: boolean = true;
   timeStep: number = 1 / 30; // 30 FPS for consistent timing with fixedDeltaTime
-  gravity: Vector3 = { x: 0, y: -9.81, z: 0 };
+  gravity: Vector3 = new THREE.Vector3(0, -9.81, 0);
   controllers: Map<string, any> = new Map();
   step?: (deltaTime: number) => void;
   createCharacterController?: (options: any) => any;
@@ -949,8 +949,8 @@ export class Physics extends SystemBase implements IPhysics {
     }
     
     // Try to use enhanced Vector3 methods first
-    let pxOrigin: PxVec3 | null = origin.toPxVec3?.(this._pv1 || undefined) || null;
-    let pxDirection: PxVec3 | null = dirNormalized.toPxVec3?.(this._pv2 || undefined) || null;
+    let pxOrigin: PxVec3 | null = (origin as any).toPxVec3?.(this._pv1 || undefined) || null;
+    let pxDirection: PxVec3 | null = (dirNormalized as any).toPxVec3?.(this._pv2 || undefined) || null;
     
     // If the enhanced method didn't work, create PxVec3 manually
     if (!pxOrigin) {
@@ -1102,8 +1102,8 @@ export class Physics extends SystemBase implements IPhysics {
   // Internal overlap sphere method with layer mask support
   private _overlapSphere(radius: number, origin: THREE.Vector3, layerMask: number = 0xFFFFFFFF): OverlapHit[] {
     // Use the enhanced Vector3 method if available, otherwise set position manually
-    if (origin.toPxVec3 && this.overlapPose.p) {
-      origin.toPxVec3(this.overlapPose.p);
+    if ((origin as any).toPxVec3 && this.overlapPose.p) {
+      (origin as any).toPxVec3(this.overlapPose.p);
     } else if (this.overlapPose.p) {
       this.overlapPose.p.x = origin.x;
       this.overlapPose.p.y = origin.y;

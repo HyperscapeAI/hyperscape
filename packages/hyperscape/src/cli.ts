@@ -17,7 +17,7 @@ program
   .command('start')
   .description('Start a Hyperscape world server')
   .option('-w, --world <path>', 'Path to world directory', '.')
-  .option('-p, --port <port>', 'Server port', '4444')
+  .option('-p, --port <port>', 'Server port', '5555')
   .option('--dev', 'Run in development mode with file watching')
   .action(async (options) => {
     const worldPath = resolve(options.world)

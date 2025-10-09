@@ -62,13 +62,17 @@ export class ColliderComponent extends Component {
   }
   
   get size(): Vector3 {
-    return this.get<Vector3>('size');
+    return this.get<Vector3>('size')!;
   }
   
   set size(value: Vector3 | { x: number; y: number; z: number }) {
     const currentSize = this.get<Vector3>('size');
     // Both types have x, y, z properties - use them directly
-    currentSize.set(value.x, value.y, value.z);
+    if (currentSize) {
+      currentSize.set(value.x, value.y, value.z);
+    } else {
+      this.set('size', new THREE.Vector3(value.x, value.y, value.z));
+    }
     this.updatePhysicsShape();
   }
   

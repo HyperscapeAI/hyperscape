@@ -20,6 +20,7 @@ import { items } from '../data/items';
 import type { DroppedItem, } from '../types/systems';
 import { calculateDistance } from '../utils/EntityUtils';
 import { EntityManager } from './EntityManager';
+import { TerrainSystem } from './TerrainSystem';
 
 
 export class LootSystem extends SystemBase {
@@ -325,6 +326,15 @@ export class LootSystem extends SystemBase {
     if (!entityManager) {
       return;
     }
+
+    // Ground to terrain before spawning entity
+    try {
+      const terrain = this.world.getSystem<TerrainSystem>('terrain');
+      if (terrain) {
+        const th = terrain.getHeightAt(position.x, position.z);
+        if (Number.isFinite(th)) position = { x: position.x, y: (th as number) + 0.2, z: position.z };
+      }
+    } catch (_e) {}
 
     const itemEntity = await entityManager.spawnEntity({
       id: dropId,

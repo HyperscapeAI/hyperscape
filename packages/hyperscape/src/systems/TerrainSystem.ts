@@ -241,6 +241,7 @@ export class TerrainSystem extends System {
     WORLD_SIZE: 100, // 100x100 grid = 10km x 10km world
     TILE_RESOLUTION: 64, // 64x64 vertices per tile for smooth terrain
     MAX_HEIGHT: 80, // 80m max height variation
+    WATER_THRESHOLD: 14.4, // Water appears below 14.4m (0.18 * MAX_HEIGHT)
 
     // Chunking - Only adjacent tiles
     VIEW_DISTANCE: 1, // Load only 1 tile in each direction (3x3 = 9 tiles)
@@ -259,6 +260,7 @@ export class TerrainSystem extends System {
   }
 
   // GDD-Compliant Biomes - All 8 specified biomes from Game Design Document
+  // Colors are chosen for high saturation and visual clarity
   private readonly BIOMES: Record<string, BiomeData> = {
     // Core biomes from GDD
     mistwood_valley: {
@@ -267,15 +269,15 @@ export class TerrainSystem extends System {
       description: 'A mystical valley shrouded in perpetual mist, home to ancient trees and hidden dangers',
       difficultyLevel: 1,
       terrain: 'forest',
-      color: 0x4caf50, // Brighter green
+      color: 0x2d6f3b, // Rich forest green
       heightRange: [0.1, 0.4],
       resources: ['tree', 'herb'],
       mobs: ['goblin', 'bandit'],
       fogIntensity: 0.7,
       ambientSound: 'forest_ambient',
       colorScheme: {
-        primary: '#4CAF50',
-        secondary: '#388E3C',
+        primary: '#2d6f3b',
+        secondary: '#1f5229',
         fog: '#e0e8e4',
       },
       terrainMultiplier: 0.6,
@@ -294,15 +296,15 @@ export class TerrainSystem extends System {
       description: 'A barren wasteland overrun by goblin hordes, scarred by their destructive presence',
       difficultyLevel: 1,
       terrain: 'wastes',
-      color: 0xd2b48c, // Lighter tan
+      color: 0xb8956a, // Rich sandy tan
       heightRange: [0.0, 0.3],
       resources: ['rock', 'ore'],
       mobs: ['goblin', 'hobgoblin'],
       fogIntensity: 0.3,
       ambientSound: 'wastes_wind',
       colorScheme: {
-        primary: '#D2B48C',
-        secondary: '#BC9D76',
+        primary: '#b8956a',
+        secondary: '#9a7d57',
         fog: '#d4c4b0',
       },
       terrainMultiplier: 0.4,
@@ -321,15 +323,15 @@ export class TerrainSystem extends System {
       description: 'An ancient forest where darkness reigns eternal and powerful warriors guard forbidden secrets',
       difficultyLevel: 2,
       terrain: 'forest',
-      color: 0x2e7d32, // More saturated dark green
+      color: 0x1a4d1f, // Deep, dark forest green
       heightRange: [0.2, 0.7],
       resources: ['tree', 'herb', 'rare_ore'],
       mobs: ['dark_warrior', 'barbarian'],
       fogIntensity: 0.8,
       ambientSound: 'dark_forest_ambient',
       colorScheme: {
-        primary: '#2E7D32',
-        secondary: '#1B5E20',
+        primary: '#1a4d1f',
+        secondary: '#0f3314',
         fog: '#2a3a2a',
       },
       terrainMultiplier: 0.9,
@@ -348,15 +350,15 @@ export class TerrainSystem extends System {
       description: 'Frozen mountains at the edge of the world where only the strongest survive the eternal winter',
       difficultyLevel: 3,
       terrain: 'frozen',
-      color: 0xadd8e6, // Light snowy blue
+      color: 0xc5dce8, // Icy blue-white
       heightRange: [0.6, 1.0],
       resources: ['rock', 'gem', 'rare_ore'],
       mobs: ['ice_warrior', 'black_knight'],
       fogIntensity: 0.6,
       ambientSound: 'frozen_wind',
       colorScheme: {
-        primary: '#ADD8E6',
-        secondary: '#87CEEB',
+        primary: '#c5dce8',
+        secondary: '#a3c7d6',
         fog: '#e8f0f8',
       },
       terrainMultiplier: 1.2,
@@ -375,15 +377,15 @@ export class TerrainSystem extends System {
       description: 'A corrupted wasteland where dark magic has twisted the very earth into a nightmarish realm',
       difficultyLevel: 3,
       terrain: 'corrupted',
-      color: 0x8b4513, // Reddish-brown
+      color: 0x6b3820, // Dark rust brown
       heightRange: [0.0, 0.4],
       resources: ['rare_ore'],
       mobs: ['dark_ranger', 'black_knight'],
       fogIntensity: 0.5,
       ambientSound: 'corrupted_whispers',
       colorScheme: {
-        primary: '#8B4513',
-        secondary: '#7A3D10',
+        primary: '#6b3820',
+        secondary: '#542c19',
         fog: '#8a7a6a',
       },
       terrainMultiplier: 0.3,
@@ -402,15 +404,15 @@ export class TerrainSystem extends System {
       description: 'Serene lakes providing safe passage and abundant fishing opportunities',
       difficultyLevel: 0,
       terrain: 'lake',
-      color: 0x1e88e5, // Vibrant blue
+      color: 0x1976d2, // Deep, saturated blue
       heightRange: [-0.2, 0.1],
       resources: ['fish'],
       mobs: [],
       fogIntensity: 0.1,
       ambientSound: 'water_lapping',
       colorScheme: {
-        primary: '#1E88E5',
-        secondary: '#1565C0',
+        primary: '#1976d2',
+        secondary: '#1565c0',
         fog: '#d0e4f7',
       },
       terrainMultiplier: 0.1,
@@ -429,15 +431,15 @@ export class TerrainSystem extends System {
       description: 'Rolling grasslands where bandits roam and resources are scattered across the open fields',
       difficultyLevel: 1,
       terrain: 'plains',
-      color: 0x8bc34a, // Vibrant lime green
+      color: 0x6b9c3d, // Rich grassland green
       heightRange: [0.0, 0.2],
       resources: ['tree', 'herb'],
       mobs: ['bandit', 'barbarian'],
       fogIntensity: 0.2,
       ambientSound: 'plains_wind',
       colorScheme: {
-        primary: '#8BC34A',
-        secondary: '#689F38',
+        primary: '#6b9c3d',
+        secondary: '#567d32',
         fog: '#e8f0e0',
       },
       terrainMultiplier: 0.3,
@@ -456,15 +458,15 @@ export class TerrainSystem extends System {
       description: 'Safe havens where new adventurers begin their journey, protected from hostile forces',
       difficultyLevel: 0,
       terrain: 'plains',
-      color: 0x9ccc65, // Light, friendly green
+      color: 0x7eb83f, // Bright, welcoming green
       heightRange: [0.1, 0.3],
       resources: ['tree'],
       mobs: [],
       fogIntensity: 0.0,
       ambientSound: 'town_ambient',
       colorScheme: {
-        primary: '#9CCC65',
-        secondary: '#7CB342',
+        primary: '#7eb83f',
+        secondary: '#649333',
         fog: '#f0f8f0',
       },
       terrainMultiplier: 0.2,
@@ -657,13 +659,78 @@ export class TerrainSystem extends System {
     // Create geometry for this tile
     const geometry = this.createTileGeometry(tileX, tileZ)
 
-    // Create material with vertex colors
+    // Create material with vertex colors and tri-planar slope shading
     const material = new THREE.MeshStandardMaterial({
       vertexColors: true,
       wireframe: false,
       metalness: 0.1,
       roughness: 0.9,
     })
+
+    // Add tri-planar slope coloring via onBeforeCompile (most performant approach)
+    material.onBeforeCompile = (shader) => {
+      // Add uniforms for slope coloring
+      shader.uniforms.uSlopeColor = { value: new THREE.Color(0x6b6560) } // Gray-brown rock
+      shader.uniforms.uSlopeThreshold = { value: 0.6 } // Normal Y threshold
+      shader.uniforms.uSlopeBlend = { value: 0.2 } // Blend smoothness
+
+      // Inject varying declaration for normal in vertex shader
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <common>',
+        `#include <common>
+        varying vec3 vWorldNormal;`
+      )
+
+      // Calculate world normal in vertex shader
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <worldpos_vertex>',
+        `#include <worldpos_vertex>
+        vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);`
+      )
+
+      // Inject uniform declarations and tri-planar logic in fragment shader
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <common>',
+        `#include <common>
+        uniform vec3 uSlopeColor;
+        uniform float uSlopeThreshold;
+        uniform float uSlopeBlend;
+        varying vec3 vWorldNormal;`
+      )
+
+      // Apply slope coloring to diffuse color
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        
+        // Calculate slope factor (0 = flat, 1 = vertical)
+        float slopeFactor = 1.0 - abs(vWorldNormal.y);
+        
+        // Tri-planar blending weights based on world normal
+        vec3 blendWeights = abs(vWorldNormal);
+        blendWeights = pow(blendWeights, vec3(3.0));
+        blendWeights = blendWeights / (blendWeights.x + blendWeights.y + blendWeights.z);
+        
+        // Smooth slope color blending
+        float slopeBlendFactor = smoothstep(
+          uSlopeThreshold - uSlopeBlend,
+          uSlopeThreshold + uSlopeBlend,
+          slopeFactor
+        );
+        
+        // Blend base color with slope color on steep surfaces
+        vec3 finalColor = mix(diffuseColor.rgb, uSlopeColor, slopeBlendFactor * 0.7);
+        
+        // Apply subtle tri-planar directional variation
+        vec3 xColor = finalColor * (0.95 + 0.05 * blendWeights.x);
+        vec3 yColor = finalColor;
+        vec3 zColor = finalColor * (0.92 + 0.08 * blendWeights.z);
+        
+        diffuseColor.rgb = xColor * blendWeights.x + 
+                          yColor * blendWeights.y + 
+                          zColor * blendWeights.z;`
+      )
+    }
 
     // Create mesh
     const mesh = new THREE.Mesh(geometry, material)
@@ -785,7 +852,7 @@ export class TerrainSystem extends System {
         contactedHandles: new Set<PhysicsHandle>(),
         triggeredHandles: new Set<PhysicsHandle>(),
       }
-      tile.collider = physics.addActor(actor, handle)
+      tile.collider = physics.addActor(actor, handle) as unknown as THREE.Mesh | null
 
     // Add to scene if client-side
     if (this.terrainContainer) {
@@ -799,8 +866,10 @@ export class TerrainSystem extends System {
       // Generate visual features (roads, lakes)
       this.generateVisualFeatures(tile)
 
-      // Add water meshes for low areas
-      this.generateWaterMeshes(tile)
+      // Add water meshes for low areas (client-side only - purely visual)
+      if (this.world.network?.isClient) {
+        this.generateWaterMeshes(tile)
+      }
 
       // Add visible resource meshes (simple proxies)
       if (tile.resources.length > 0 && tile.mesh && this.world.network?.isClient) {
@@ -890,11 +959,10 @@ export class TerrainSystem extends System {
     const positions = geometry.attributes.position
     const colors = new Float32Array(positions.count * 3)
     const heightData: number[] = []
+    const biomeIds = new Float32Array(positions.count) // Store biome ID for shader
 
     // Default biome fallback for coloring
     const defaultBiomeData = this.BIOMES['plains'] || { color: 0x7fb069, name: 'Plains' }
-
-    // No longer using road segments - paths are generated with noise
 
     // Generate heightmap and vertex colors
     for (let i = 0; i < positions.count; i++) {
@@ -905,6 +973,7 @@ export class TerrainSystem extends System {
       if (isNaN(localX) || isNaN(localZ)) {
         positions.setY(i, 10)
         heightData.push(10)
+        biomeIds[i] = 0
         continue
       }
 
@@ -940,6 +1009,10 @@ export class TerrainSystem extends System {
       const biomeInfluences = this.getBiomeInfluencesAtPosition(x, z)
       const normalizedHeight = height / 80 // Max height is 80
 
+      // Store dominant biome ID for shader
+      const dominantBiome = biomeInfluences[0]?.type || 'plains'
+      biomeIds[i] = this.getBiomeId(dominantBiome)
+
       // Blend biome colors based on influences
       const color = new THREE.Color(0, 0, 0)
 
@@ -947,46 +1020,41 @@ export class TerrainSystem extends System {
         const biomeData = this.BIOMES[influence.type] || defaultBiomeData
         const biomeColor = new THREE.Color(biomeData.color)
 
-        // Weight the color contribution
+        // Weight the color contribution (keep in linear space)
         color.r += biomeColor.r * influence.weight
         color.g += biomeColor.g * influence.weight
         color.b += biomeColor.b * influence.weight
       }
 
-      // Boost saturation for more vibrant final color
-      const hsl = { h: 0, s: 0, l: 0 }
-      color.getHSL(hsl)
-      hsl.s = Math.min(1.0, hsl.s * 1.5) // 50% saturation boost
-      color.setHSL(hsl.h, hsl.s, hsl.l)
-
-      // Apply height-based environmental effects
+      // Apply height-based environmental effects BEFORE brightness adjustments
       // Snow on high peaks
       if (normalizedHeight > 0.7) {
-        const snowColor = new THREE.Color(0xfafcff)
+        const snowColor = new THREE.Color(0xffffff) // Pure white snow
         const snowFactor = Math.pow((normalizedHeight - 0.7) / 0.3, 1.5)
-        color.lerp(snowColor, snowFactor * 0.85)
-      }
-      // Rock exposure on slopes
-      else if (normalizedHeight > 0.55) {
-        const rockColor = new THREE.Color(0x8a8583)
-        const rockFactor = (normalizedHeight - 0.55) / 0.45
-        color.lerp(rockColor, rockFactor * 0.2)
+        color.lerp(snowColor, snowFactor * 0.7)
       }
       // Water tinting for low areas
       else if (normalizedHeight < 0.18) {
-        const waterColor = new THREE.Color(0x406090) // Brighter, more saturated water tint
+        const waterColor = new THREE.Color(0x2a5580) // Deep water blue
         const depth = Math.max(0, 0.18 - normalizedHeight)
-        color.lerp(waterColor, Math.min(0.7, depth * 3.5))
+        color.lerp(waterColor, Math.min(0.8, depth * 4.0))
       }
 
-      // Smooth lighting gradient based on height
-      const brightness = 0.8 + normalizedHeight * 0.3
-      color.multiplyScalar(brightness)
+      // Boost saturation AFTER environmental effects but BEFORE brightness
+      const hsl = { h: 0, s: 0, l: 0 }
+      color.getHSL(hsl)
+      hsl.s = Math.min(1.0, hsl.s * 1.8) // 80% saturation boost
+      hsl.l = Math.max(0.2, Math.min(0.8, hsl.l)) // Clamp lightness
+      color.setHSL(hsl.h, hsl.s, hsl.l)
 
-      // Add organic variation using smooth noise
+      // Subtle height-based ambient occlusion (darken valleys slightly)
+      const ambientOcclusion = 0.85 + normalizedHeight * 0.15
+      color.multiplyScalar(ambientOcclusion)
+
+      // Very subtle organic variation (reduced from 8% to 3%)
       const noiseScale = 0.008
       const colorNoise = this.noise.simplex2D(x * noiseScale, z * noiseScale)
-      const colorVariation = 1.0 + colorNoise * 0.08
+      const colorVariation = 1.0 + colorNoise * 0.03
       color.multiplyScalar(colorVariation)
 
       // Apply road-like patterns using noise (no actual road segments)
@@ -1005,28 +1073,41 @@ export class TerrainSystem extends System {
 
       if (pathInfluence > 0.1 && normalizedHeight < 0.5) {
         // Only on lower terrain
-        const pathColor = new THREE.Color(0x8a7050) // Natural dirt path color
-        // Add some variation to the path color
-        const pathVariation = 0.9 + this.noise.simplex2D(x * 0.01, z * 0.01) * 0.2
-        pathColor.multiplyScalar(pathVariation)
-        color.lerp(pathColor, pathInfluence * 0.6)
+        const pathColor = new THREE.Color(0x6b5840) // Darker dirt path
+        color.lerp(pathColor, pathInfluence * 0.5)
       }
 
-      // Convert to sRGB to ensure colors pop on standard displays
-      color.convertLinearToSRGB()
-
+      // Store color in linear space (THREE.js expects this)
       colors[i * 3] = color.r
       colors[i * 3 + 1] = color.g
       colors[i * 3 + 2] = color.b
     }
 
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+    geometry.setAttribute('biomeId', new THREE.BufferAttribute(biomeIds, 1))
     geometry.computeVertexNormals()
 
     // Store height data for persistence
     this.storeHeightData(tileX, tileZ, heightData)
 
     return geometry
+  }
+
+  /**
+   * Map biome name to numeric ID for shader
+   */
+  private getBiomeId(biomeName: string): number {
+    const biomeIds: Record<string, number> = {
+      'starter_towns': 0,
+      'plains': 1,
+      'mistwood_valley': 2,
+      'goblin_wastes': 3,
+      'darkwood_forest': 4,
+      'northern_reaches': 5,
+      'blasted_lands': 6,
+      'lakes': 7,
+    }
+    return biomeIds[biomeName] || 1
   }
 
   getHeightAt(worldX: number, worldZ: number): number {
@@ -1317,11 +1398,21 @@ export class TerrainSystem extends System {
       const worldX = tile.x * this.CONFIG.TILE_SIZE + (Math.random() - 0.5) * this.CONFIG.TILE_SIZE
       const worldZ = tile.z * this.CONFIG.TILE_SIZE + (Math.random() - 0.5) * this.CONFIG.TILE_SIZE
 
-      // Check if position is walkable (don't place trees in water or on steep slopes)
+      const height = this.getHeightAt(worldX, worldZ)
+      
+      // Get biome influences at this exact position
+      const biomeInfluences = this.getBiomeInfluencesAtPosition(worldX, worldZ)
+      const dominantBiomeType = biomeInfluences[0]?.type || 'plains'
+      
+      // Never spawn trees in lakes biome
+      if (dominantBiomeType === 'lakes') continue
+      
+      // Check if underwater - use consistent water threshold
+      if (height < this.CONFIG.WATER_THRESHOLD) continue
+
+      // Check if position is walkable (don't place trees on steep slopes)
       const walkableCheck = this.isPositionWalkable(worldX, worldZ)
       if (!walkableCheck.walkable) continue
-
-      const height = this.getHeightAt(worldX, worldZ)
       const position = this._tempVec3.set(
         worldX - tile.x * this.CONFIG.TILE_SIZE,
         height,
@@ -1375,10 +1466,10 @@ export class TerrainSystem extends System {
         const worldX = tile.x * this.CONFIG.TILE_SIZE + (Math.random() - 0.5) * this.CONFIG.TILE_SIZE
         const worldZ = tile.z * this.CONFIG.TILE_SIZE + (Math.random() - 0.5) * this.CONFIG.TILE_SIZE
 
-        // For fishing spots, place near water
+        // For fishing spots, place in water only
         if (resourceType === 'fish') {
           const height = this.getHeightAt(worldX, worldZ)
-          if (height >= biomeData.waterLevel) continue // Only place fish in water
+          if (height >= this.CONFIG.WATER_THRESHOLD) continue // Only place fish in water
         }
 
         const height = this.getHeightAt(worldX, worldZ)
@@ -1688,7 +1779,7 @@ export class TerrainSystem extends System {
     const height = this.getHeightAt(worldX, worldZ)
 
     // Check if underwater (water impassable rule)
-    if (height < biomeData.waterLevel) {
+    if (height < this.CONFIG.WATER_THRESHOLD) {
       return { walkable: false, reason: 'Water bodies are impassable' }
     }
 
@@ -1779,7 +1870,6 @@ export class TerrainSystem extends System {
     const tileX = Math.floor(worldX / this.CONFIG.TILE_SIZE)
     const tileZ = Math.floor(worldZ / this.CONFIG.TILE_SIZE)
     const biome = this.getBiomeAt(tileX, tileZ)
-    const biomeData = this.BIOMES[biome]
     const slope = this.calculateSlope(worldX, worldZ)
     const walkableCheck = this.isPositionWalkable(worldX, worldZ)
 
@@ -1788,7 +1878,7 @@ export class TerrainSystem extends System {
       biome,
       walkable: walkableCheck.walkable,
       slope,
-      underwater: height < biomeData.waterLevel,
+      underwater: height < this.CONFIG.WATER_THRESHOLD,
     }
   }
 
@@ -1811,110 +1901,47 @@ export class TerrainSystem extends System {
 
   /**
    * Generate water meshes for low areas
+   * Simple v1: Just a flat plane at the fixed water threshold height
    */
   private generateWaterMeshes(tile: TerrainTile): void {
-    // Sample tile to find water areas
-    const waterLevel = 12 // Water appears below 12m elevation
-    const sampleStep = 20 // Sample every 20m
-    const waterAreas: Array<{ x: number; z: number; depth: number }> = []
+    // Create a simple flat water plane covering the entire tile at water threshold height
+    const waterGeometry = new THREE.PlaneGeometry(this.CONFIG.TILE_SIZE, this.CONFIG.TILE_SIZE)
+    waterGeometry.rotateX(-Math.PI / 2)
 
-    for (let x = -this.CONFIG.TILE_SIZE / 2; x < this.CONFIG.TILE_SIZE / 2; x += sampleStep) {
-      for (let z = -this.CONFIG.TILE_SIZE / 2; z < this.CONFIG.TILE_SIZE / 2; z += sampleStep) {
-        const worldX = tile.x * this.CONFIG.TILE_SIZE + x
-        const worldZ = tile.z * this.CONFIG.TILE_SIZE + z
-        const height = this.getHeightAt(worldX, worldZ)
+    const waterMaterial = new THREE.MeshPhongMaterial({
+      color: 0x1e6ba8, // Blue water color
+      transparent: true,
+      opacity: 0.6,
+      shininess: 100,
+      specular: 0x4080ff,
+    })
 
-        if (height < waterLevel) {
-          waterAreas.push({
-            x: x,
-            z: z,
-            depth: waterLevel - height,
-          })
-        }
-      }
+    const waterMesh = new THREE.Mesh(waterGeometry, waterMaterial)
+    waterMesh.position.y = this.CONFIG.WATER_THRESHOLD
+    waterMesh.name = `Water_${tile.key}`
+    waterMesh.userData = {
+      type: 'water',
+      walkable: false,
+      clickable: false,
     }
+    
+    // Only render on front side to avoid z-fighting when looking from below
+    waterMaterial.side = THREE.FrontSide
 
-    // Create water plane if we found water
-    if (waterAreas.length > 5) {
-      // At least 5 water samples
-      const waterGeometry = new THREE.PlaneGeometry(this.CONFIG.TILE_SIZE, this.CONFIG.TILE_SIZE)
-      waterGeometry.rotateX(-Math.PI / 2)
-
-      const waterMaterial = new THREE.MeshPhongMaterial({
-        color: 0x1e3a5f,
-        transparent: true,
-        opacity: 0.7,
-        shininess: 100,
-        specular: 0x4080ff,
-      })
-
-      const waterMesh = new THREE.Mesh(waterGeometry, waterMaterial)
-      waterMesh.position.y = waterLevel
-      waterMesh.name = `Water_${tile.key}`
-      waterMesh.userData = {
-        type: 'water',
-        walkable: false,
-        clickable: false,
-      }
-
-      if (tile.mesh) {
-        tile.mesh.add(waterMesh)
-        tile.waterMeshes.push(waterMesh)
-      }
+    if (tile.mesh) {
+      tile.mesh.add(waterMesh)
+      tile.waterMeshes.push(waterMesh)
     }
   }
 
   /**
    * Generate visual lake meshes for water bodies
+   * Note: generateWaterMeshes already handles the global water plane, 
+   * so this is now a no-op. Keeping for future enhancements.
    */
-  private generateLakeMeshes(tile: TerrainTile): void {
-    const biomeData = this.BIOMES[tile.biome]
-    if (!biomeData) return
-
-    // Only generate lake meshes for water biomes or areas below water level
-    if ((tile.biome as string) === 'lakes' || biomeData.waterLevel > 0) {
-      // Sample the tile to find water areas
-      const waterAreas = this.findWaterAreas(tile)
-
-      for (const waterArea of waterAreas) {
-        const waterGeometry = new THREE.PlaneGeometry(waterArea.width, waterArea.depth)
-
-        // Create water material with transparency and animation
-        const waterMaterial = new THREE.MeshLambertMaterial({
-          color: 0x1e6ba8, // Blue water color
-          transparent: true,
-          opacity: 0.7,
-          side: THREE.DoubleSide,
-        })
-
-        const waterMesh = new THREE.Mesh(waterGeometry, waterMaterial)
-        waterMesh.position.set(
-          waterArea.centerX,
-          biomeData.waterLevel + 0.01, // At water level
-          waterArea.centerZ
-        )
-        waterMesh.rotation.x = -Math.PI / 2 // Lay flat
-
-        // Add userData for interaction detection (water is NOT walkable)
-        waterMesh.userData = {
-          type: 'terrain',
-          walkable: false, // Water is impassable per GDD
-          clickable: true,
-          subType: 'water',
-          tileKey: tile.key,
-          biome: tile.biome,
-        }
-
-        // Add to terrain container
-        if (tile.mesh) {
-          tile.mesh.add(waterMesh)
-        }
-
-        // Store reference for potential updates
-        if (!tile.waterMeshes) tile.waterMeshes = []
-        tile.waterMeshes.push(waterMesh)
-      }
-    }
+  private generateLakeMeshes(_tile: TerrainTile): void {
+    // V1: Global water plane is handled by generateWaterMeshes
+    // Future: Could add special effects for lake biomes here (waves, ripples, etc.)
   }
 
   /**
@@ -1947,7 +1974,7 @@ export class TerrainSystem extends System {
           samples.push({
             x,
             z,
-            underwater: height < biomeData.waterLevel,
+            underwater: height < this.CONFIG.WATER_THRESHOLD,
           })
         }
       }

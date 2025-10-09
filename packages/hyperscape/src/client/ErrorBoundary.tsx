@@ -35,27 +35,12 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
       }
       
       return (
-        <div style={{
-          padding: '20px',
-          margin: '20px',
-          border: '2px solid #ff6b6b',
-          borderRadius: '8px',
-          backgroundColor: '#ffe0e0',
-          color: '#d63447'
-        }}>
-          <h2>🚨 Something went wrong</h2>
-          <p>A component error occurred and has been reported to the development team.</p>
-          <details style={{ marginTop: '10px' }}>
-            <summary>Error Details</summary>
-            <pre style={{ 
-              whiteSpace: 'pre-wrap', 
-              fontSize: '12px', 
-              marginTop: '10px',
-              padding: '10px',
-              backgroundColor: '#f8f8f8',
-              border: '1px solid #ddd',
-              borderRadius: '4px'
-            }}>
+        <div className="p-5 m-5 border-2 border-red-400 rounded-lg bg-red-100 text-red-700">
+          <h2 className="text-xl font-bold mb-2">🚨 Something went wrong</h2>
+          <p className="mb-2">A component error occurred and has been reported to the development team.</p>
+          <details className="mt-2">
+            <summary className="cursor-pointer">Error Details</summary>
+            <pre className="whitespace-pre-wrap text-xs mt-2 p-2 bg-gray-100 border border-gray-300 rounded">
               {this.state.error?.message}
               {'\n\n'}
               {this.state.error?.stack}
@@ -63,15 +48,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
           </details>
           <button 
             onClick={() => this.setState({ hasError: false, error: undefined })}
-            style={{
-              marginTop: '10px',
-              padding: '8px 16px',
-              backgroundColor: '#d63447',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
+            className="mt-2 px-4 py-2 bg-red-700 text-white border-none rounded cursor-pointer hover:bg-red-800"
           >
             Try Again
           </button>

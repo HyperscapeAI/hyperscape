@@ -1,6 +1,7 @@
 import { System } from './System';
 import type { World } from '../World';
 import * as THREE from 'three';
+import { EventType } from '../types/events';
 
 const _raycaster = new THREE.Raycaster();
 const _mouse = new THREE.Vector2();
@@ -41,6 +42,9 @@ export class InteractionSystem extends System {
     this.canvas.addEventListener('mousedown', this.onMouseDown, false);
     this.canvas.addEventListener('mouseup', this.onMouseUp, false);
     
+    // Listen for camera tap events on mobile
+    this.world.on('camera:tap', this.onCameraTap);
+    
     // Create target marker (visual indicator)
     this.createTargetMarker();
     
@@ -69,16 +73,35 @@ export class InteractionSystem extends System {
   
   private onRightClick = (event: MouseEvent): void => {
     event.preventDefault();
-    // If user dragged with RMB (orbit gesture), suppress context action
+    // If user dragged with RMB (orbit gesture for camera), suppress context action
+    // AND don't cancel movement - camera rotation should not stop movement
     if (this.isDragging) {
       this.isDragging = false;
       this.mouseDownButton = null;
       this.mouseDownClientPos = null;
       return;
     }
-    // Cancel movement on right click click
+    
+    // If the event was already marked as handled by camera system, don't cancel movement
+    if ((event as any).cameraHandled) {
+      return;
+    }
+    
+    // Only cancel movement on a clean right-click (no drag, not camera rotation)
+    // This allows right-click context menus while stopping movement
     this.clearTarget();
   };
+  
+  private onCameraTap = (event: { x: number, y: number }): void => {
+    if (!this.canvas || !this.world.camera) return;
+    
+    // Calculate mouse position
+    const rect = this.canvas.getBoundingClientRect();
+    _mouse.x = ((event.x - rect.left) / rect.width) * 2 - 1;
+    _mouse.y = -((event.y - rect.top) / rect.height) * 2 + 1;
+    
+    this.handleMoveRequest(_mouse);
+  }
   
   private clearTarget(): void {
     if (this.targetMarker) {
@@ -97,6 +120,9 @@ export class InteractionSystem extends System {
   }
   
   private onCanvasClick = (event: MouseEvent): void => {
+    // If a drag just ended, the camera system will have suppressed this click
+    if (event.defaultPrevented) return;
+    
     if (event.button !== 0) return; // Left click only
     if (!this.canvas || !this.world.camera) return;
     
@@ -110,6 +136,12 @@ export class InteractionSystem extends System {
     _mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     _mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     
+    this.handleMoveRequest(_mouse, event.shiftKey);
+  };
+
+  private handleMoveRequest(_mouse: THREE.Vector2, isShiftDown = false): void {
+    if (!this.world.camera) return;
+
     // Raycast to find click position
     _raycaster.setFromCamera(_mouse, this.world.camera);
     
@@ -161,8 +193,8 @@ export class InteractionSystem extends System {
       if (this.world.network?.send) {
         // Cancel any previous movement first to ensure server resets pathing
         try { this.world.network.send('moveRequest', { target: null, cancel: true }) } catch {}
-        // Read player's runMode toggle if available; fallback to shift key
-        let runMode = !!event.shiftKey;
+        // Read player's runMode toggle if available; otherwise, use shift key status
+        let runMode = isShiftDown;
         try {
           const player = (this.world as any).entities?.player as { runMode?: boolean };
           if (player && typeof player.runMode === 'boolean') {
@@ -231,6 +263,7 @@ export class InteractionSystem extends System {
       this.canvas.removeEventListener('mousedown', this.onMouseDown);
       this.canvas.removeEventListener('mouseup', this.onMouseUp);
     }
+    this.world.off('camera:tap', this.onCameraTap);
     const scene = this.world.stage?.scene;
     if (this.targetMarker && scene) {
       scene.remove(this.targetMarker);

@@ -5,12 +5,12 @@ The project can be run using Docker. Make sure you have Docker installed on your
 1. Build the image and run the container:
 
 ```bash
-docker build -t hyperscapedemo . && docker run -d -p 4444:4444 \
+docker build -t hyperscapedemo . && docker run -d -p 5555:5555 \
   -v "$(pwd)/src:/app/src" \
   -v "$(pwd)/world:/app/world" \
   -v "$(pwd)/.env:/app/.env" \
   -e DOMAIN=demo.hyperscape.host \
-  -e PORT=4444 \
+  -e PORT=5555 \
   -e ASSETS_DIR=/world/assets \
   -e PUBLIC_WS_URL=https://demo.hyperscape.host/ws \
   -e PUBLIC_API_URL=https://demo.hyperscape.host/api \

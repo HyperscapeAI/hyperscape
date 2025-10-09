@@ -82,7 +82,7 @@ export class ServerBot extends System {
   private async spawnBot(): Promise<void> {
     Logger.info('[ServerBot] Spawning autonomous bot (node client)...')
     try {
-      const port = process.env.PORT || '4444'
+      const port = process.env.PORT || '5555'
       const wsUrl = `ws://127.0.0.1:${port}/ws`
       const clientWorld = createNodeClientWorld()
       await clientWorld.init({ wsUrl, name: '🤖 Server Bot' })
@@ -416,14 +416,8 @@ export class ServerBot extends System {
     // Properly clean up the client world to prevent memory leak
     if (this.clientWorld) {
       try {
-        // Destroy the client world if it has a destroy method
-        if (typeof (this.clientWorld as any).destroy === 'function') {
-          (this.clientWorld as any).destroy()
-        }
-        // Stop the client world if it has a stop method
-        if (typeof (this.clientWorld as any).stop === 'function') {
-          (this.clientWorld as any).stop()
-        }
+        // ClientWorld has destroy method - call it to clean up
+        this.clientWorld.destroy()
       } catch (error) {
         Logger.error('[ServerBot] Error cleaning up client world:', error as Error)
       }

@@ -36,6 +36,7 @@ export class DataManager {
   private static instance: DataManager;
   private isInitialized = false;
   private validationResult: DataValidationResult | null = null;
+  private worldAssetsDir: string | null = null;
 
   private constructor() {
     // Private constructor for singleton pattern
@@ -52,6 +53,84 @@ export class DataManager {
   }
 
   /**
+   * Load external assets written by 3D Asset Forge (manifests under world/assets)
+   */
+  private async loadExternalAssetsFromWorld(): Promise<void> {
+    // Determine world assets dir: try server's world/assets path
+    // Server sets worldDir in src/server/index.ts and serves assets at /world-assets/
+    // Here, read relative to the server package root
+    try {
+      // Resolve from process.cwd() (packages/hyperscape during dev-final)
+      const baseDir = process.cwd()
+      const assetsDir = require('path').join(baseDir, 'world', 'assets')
+      const fs = require('fs')
+      if (!fs.existsSync(assetsDir)) return
+      this.worldAssetsDir = assetsDir
+      const manifestsDir = require('path').join(assetsDir, 'manifests')
+      if (!fs.existsSync(manifestsDir)) return
+
+      // Load items
+      const itemsPath = require('path').join(manifestsDir, 'items.json')
+      if (fs.existsSync(itemsPath)) {
+        const raw = fs.readFileSync(itemsPath, 'utf-8') as string
+        const list = JSON.parse(raw) as Array<import('../types/core').Item>
+        for (const it of list) {
+          if (!it || !it.id) continue
+          // Ensure required defaults
+          const normalized = this.normalizeItem(it)
+          ;(ITEMS as Map<string, import('../types/core').Item>).set(normalized.id, normalized)
+        }
+        console.log(`[DataManager] Loaded ${list.length} external items from manifests`)
+      }
+
+      // Load mobs
+      const mobsPath = require('path').join(manifestsDir, 'mobs.json')
+      if (fs.existsSync(mobsPath)) {
+        const raw = fs.readFileSync(mobsPath, 'utf-8') as string
+        const list = JSON.parse(raw) as Array<import('../types/core').MobData>
+        for (const mob of list) {
+          if (!mob || !mob.id) continue
+          ;(ALL_MOBS as Record<string, import('../types/core').MobData>)[mob.id] = mob
+        }
+        console.log(`[DataManager] Loaded ${list.length} external mobs from manifests`)
+      }
+    } catch (e) {
+      // Non-fatal
+      console.warn('[DataManager] Failed to load external manifests:', (e as Error).message)
+    }
+  }
+
+  private normalizeItem(item: import('../types/core').Item): import('../types/core').Item {
+    // Ensure required fields have sane defaults and enums
+    const { ItemType, WeaponType, EquipmentSlotName, AttackType } = require('../types/core')
+    const safeWeaponType = item.weaponType ?? WeaponType.NONE
+    const equipSlot = item.equipSlot ?? null
+    const attackType = item.attackType ?? null
+    const defaults = {
+      quantity: 1,
+      stackable: false,
+      maxStackSize: 1,
+      value: 0,
+      weight: 0.1,
+      equipable: !!equipSlot,
+      description: item.description || item.name || 'Item',
+      examine: item.examine || item.description || item.name || 'Item',
+      healAmount: item.healAmount ?? 0,
+      stats: item.stats || { attack: 0, defense: 0, strength: 0 },
+      bonuses: item.bonuses || { attack: 0, defense: 0, strength: 0, ranged: 0 },
+      requirements: item.requirements || { level: 1, skills: {} },
+    }
+    return {
+      ...item,
+      type: item.type,
+      weaponType: safeWeaponType,
+      equipSlot: equipSlot as import('../types/core').EquipmentSlotName | null,
+      attackType: attackType as import('../types/core').AttackType | null,
+      ...defaults,
+    }
+  }
+
+  /**
    * Initialize the data manager and validate all data
    */
   public async initialize(): Promise<DataValidationResult> {
@@ -59,7 +138,13 @@ export class DataManager {
       return this.validationResult!;
     }
 
-        
+    // Attempt to load externally generated assets (Forge) before validation
+    try {
+      await this.loadExternalAssetsFromWorld();
+    } catch (e) {
+      console.warn('[DataManager] External asset load skipped:', (e as Error).message)
+    }
+
     this.validationResult = await this.validateAllData();
     this.isInitialized = true;
 

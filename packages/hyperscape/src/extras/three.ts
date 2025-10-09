@@ -60,11 +60,14 @@ THREE_NAMESPACE.Mesh.prototype.raycast = acceleratedRaycast
 
 
 // utility to resize instanced mesh buffers
-  THREE_NAMESPACE.InstancedMesh.prototype.resize = function (size: number) {
-        const prevSize = this.instanceMatrix.array.length / 16
-        if (size <= prevSize) return
-        const array = new Float32Array(size * 16)
-        array.set(this.instanceMatrix.array)
-        this.instanceMatrix = new THREE_NAMESPACE!.InstancedBufferAttribute(array, 16)
-        this.instanceMatrix.needsUpdate = true
+;(THREE_NAMESPACE.InstancedMesh.prototype as unknown as { resize?: (size: number) => void }).resize = function (this: THREE_NAMESPACE.InstancedMesh, size: number) {
+  const prevSize = (this.instanceMatrix.array as Float32Array).length / 16
+  if (size <= prevSize) return
+  const array = new Float32Array(size * 16)
+  array.set(this.instanceMatrix.array as Float32Array)
+  // Preserve existing attribute if possible
+  const attrib = new THREE_NAMESPACE.InstancedBufferAttribute(array, 16)
+  // @ts-ignore - runtime supports assignment
+  this.instanceMatrix = attrib
+  this.instanceMatrix.needsUpdate = true
 }
