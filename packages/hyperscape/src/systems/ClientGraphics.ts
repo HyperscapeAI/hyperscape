@@ -80,7 +80,7 @@ export class ClientGraphics extends System {
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1
+    this.renderer.toneMappingExposure = 0.85
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     if (this.renderer.xr) {
       this.renderer.xr.enabled = true
@@ -100,15 +100,15 @@ export class ClientGraphics extends System {
     this.renderPass = new RenderPass(this.world.stage.scene, this.world.camera)
     this.composer.addPass(this.renderPass)
     this.bloom = new SelectiveBloomEffect(this.world.stage.scene, this.world.camera as unknown as THREE.Camera, {
-      intensity: 0.8,
-      luminanceThreshold: 0.1,
-      luminanceSmoothing: 0.1,
-      radius: 0.7,
+      intensity: 0.3,
+      luminanceThreshold: 1.0,
+      luminanceSmoothing: 0.05,
+      radius: 0.5,
       mipmapBlur: true,
       levels: 4,
     })
-    this.bloom.inverted = true
-    this.bloom.selection.layer = 14 // NO_BLOOM layer
+    this.bloom.inverted = false
+    this.bloom.selection.layer = 14 // NO_BLOOM layer (unused when inverted=false)
     this.bloomPass = new EffectPass(this.world.camera as unknown as THREE.Camera, this.bloom)
     this.bloomPass.enabled = this.world.prefs?.bloom ?? true
     this.composer.addPass(this.bloomPass)
