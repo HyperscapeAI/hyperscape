@@ -635,19 +635,14 @@ export class ResourceInteractionSystem extends SystemBase {
         clearInterval(checkInterval);
         this.startGatheringAnimation(resource);
         
-        // Emit gathering started event
-        this.emitTypedEvent(EventType.RESOURCE_GATHERING_STARTED, {
-          playerId: localPlayer.id,
-          resourceId: serverResourceId,
-          playerPosition: currentPlayer.position
-        });
-
-        // Also send RESOURCE_GATHER to server so ResourceSystem starts now
+        // Send RESOURCE_GATHER to server so ResourceSystem starts now (server will emit started/depleted)
         try {
-          this.emitTypedEvent(EventType.RESOURCE_GATHER, {
-            playerId: localPlayer.id,
-            resourceId: serverResourceId
-          });
+          // Route via network entityEvent to guarantee server receipt
+          if (this.world.network?.send) {
+            this.world.network.send('entityEvent', { id: localPlayer.id, version: 1, name: EventType.RESOURCE_GATHER, data: { playerId: localPlayer.id, resourceId: serverResourceId } })
+          } else {
+            this.emitTypedEvent(EventType.RESOURCE_GATHER, { playerId: localPlayer.id, resourceId: serverResourceId })
+          }
           this.emitTypedEvent(EventType.UI_MESSAGE, {
             playerId: localPlayer.id,
             message: 'You start chopping the tree...',

@@ -182,6 +182,18 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     }
     
     // Environment model loading is handled by ServerEnvironment.start()
+    
+    // Bridge important world events to all clients
+    try {
+      const forward = (name: string, data: unknown) => {
+        // Use generic entityEvent packet with a reserved id
+        this.send('entityEvent', { id: 'world', version: 1, name, data })
+      }
+      this.world.on(EventType.RESOURCE_DEPLETED, (...args: unknown[]) => forward(EventType.RESOURCE_DEPLETED, args[0]))
+      this.world.on(EventType.RESOURCE_RESPAWNED, (...args: unknown[]) => forward(EventType.RESOURCE_RESPAWNED, args[0]))
+      this.world.on(EventType.RESOURCE_SPAWNED, (...args: unknown[]) => forward(EventType.RESOURCE_SPAWNED, args[0]))
+      this.world.on(EventType.RESOURCE_SPAWN_POINTS_REGISTERED, (...args: unknown[]) => forward(EventType.RESOURCE_SPAWN_POINTS_REGISTERED, args[0]))
+    } catch (_err) {}
   }
 
   override destroy(): void {
@@ -957,9 +969,25 @@ export class ServerNetwork extends System implements NetworkWithSocket {
   }
 
   onEntityEvent(socket: Socket, data: unknown): void {
-    const eventData = data as EntityEventData;
-    // Handle entity event
+    // Accept both { id, version, name, data } and { id, event, payload }
+    const incoming = data as { id?: string; version?: number; name?: string; data?: unknown; event?: string; payload?: unknown }
+    const name = (incoming.name || incoming.event) as string | undefined
+    const payload = (Object.prototype.hasOwnProperty.call(incoming, 'data') ? incoming.data : incoming.payload) as unknown
+    if (!name) return
+    // Attach playerId if not provided
+    const enriched = (() => {
+      if (typeof payload === 'object' && payload !== null && !('playerId' in (payload as Record<string, unknown>)) && socket.player?.id) {
+        return { ...(payload as Record<string, unknown>), playerId: socket.player.id }
       }
+      return payload
+    })()
+    // Emit on server world so server-side systems handle it (e.g., ResourceSystem)
+    try {
+      this.world.emit(name, enriched)
+    } catch (err) {
+      console.error('[ServerNetwork] Failed to re-emit entityEvent', name, err)
+    }
+  }
 
   onEntityRemoved(socket: Socket, data: unknown): void {
     const removedData = data as EntityRemovedData;

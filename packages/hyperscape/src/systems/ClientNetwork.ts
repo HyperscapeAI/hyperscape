@@ -363,6 +363,11 @@ export class ClientNetwork extends SystemBase {
 
   onEntityEvent = (event: { id: string; version: number; name: string; data?: unknown }) => {
     const { id, version, name, data } = event
+    // If event is broadcast world event, re-emit on world so systems can react
+    if (id === 'world') {
+      this.world.emit(name, data)
+      return
+    }
     const entity = this.world.entities.get(id)
     if (!entity) return
     // Trigger entity event if method exists
