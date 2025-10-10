@@ -13,7 +13,9 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const uiRef = useRef<HTMLDivElement>(null)
   const world = useMemo(() => {
-        const world = createClientWorld()
+    console.log('[Client] Creating new world instance')
+    const world = createClientWorld()
+    console.log('[Client] World instance created')
     return world
   }, [])
   const [ui, setUI] = useState(world.ui?.state || { visible: true, active: false, app: null, pane: null })
@@ -49,13 +51,16 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
 
   useEffect(() => {
     const init = async () => {
+      console.log('[Client] Init useEffect triggered')
       const viewport = viewportRef.current
       const ui = uiRef.current
       
       if (!viewport || !ui) {
-                return
+        console.log('[Client] Waiting for viewport/ui refs...')
+        return
       }
       
+      console.log('[Client] Starting world initialization...')
             
       const baseEnvironment = {
         model: '/base-environment.glb',
@@ -80,6 +85,7 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
           `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
       }
       
+      console.log('[Client] WebSocket URL:', finalWsUrl)
       
       // Set assetsUrl from environment variable for asset:// URL resolution
       const assetsUrl =
@@ -111,7 +117,9 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
       }
       
       try {
+        console.log('[Client] Calling world.init()...')
         await world.init(config)
+        console.log('[Client] World.init() complete')
               } catch (error) {
         console.error('[Client] Failed to initialize world:', error)
       }

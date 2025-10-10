@@ -60,8 +60,28 @@ export class ClientNetwork extends SystemBase {
       return
     }
     
-    const authToken = storage?.get('authToken') || ''
+    // Try to get Privy token first, fall back to legacy auth token
+    let authToken = ''
+    let privyUserId = ''
+    
+    if (typeof localStorage !== 'undefined') {
+      const privyToken = localStorage.getItem('privy_auth_token')
+      const privyId = localStorage.getItem('privy_user_id')
+      
+      if (privyToken && privyId) {
+        authToken = privyToken
+        privyUserId = privyId
+        console.log('[ClientNetwork] Using Privy authentication')
+      } else {
+        // Fall back to legacy auth token
+        const legacyToken = storage?.get('authToken')
+        authToken = (typeof legacyToken === 'string' ? legacyToken : '') || ''
+        console.log('[ClientNetwork] Using legacy authentication')
+      }
+    }
+    
     let url = `${wsUrl}?authToken=${authToken}`
+    if (privyUserId) url += `&privyUserId=${encodeURIComponent(privyUserId)}`
     if (name) url += `&name=${encodeURIComponent(name)}`
     if (avatar) url += `&avatar=${encodeURIComponent(avatar)}`
     

@@ -10,6 +10,14 @@ import { installThreeJSExtensions } from '../physics/vector-conversions'
 import type { World } from '../types'
 import { CircularSpawnArea } from '../managers/spawning/CircularSpawnArea'
 
+// Privy Authentication
+import { PrivyAuthProvider } from './components/PrivyAuthProvider'
+import { LoginScreen } from './components/LoginScreen'
+import { privyAuthManager } from './PrivyAuthManager'
+
+// Farcaster Frame v2
+import { injectFarcasterMetaTags } from './farcaster-frame-config'
+
 // Set global environment flags
 (globalThis as typeof globalThis & { isBrowser?: boolean; isServer?: boolean }).isBrowser = true;
 (globalThis as typeof globalThis & { isBrowser?: boolean; isServer?: boolean }).isServer = false;
@@ -29,8 +37,20 @@ installThreeJSExtensions()
 // Initialize error reporting as early as possible
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = React.useState(false)
+  const [authState, setAuthState] = React.useState(privyAuthManager.getState())
     
-  // Initialize player token for persistent identity
+  // Subscribe to auth state changes
+  React.useEffect(() => {
+    const unsubscribe = privyAuthManager.subscribe(setAuthState)
+    // Restore auth from storage on mount
+    privyAuthManager.restoreFromStorage()
+    // Inject Farcaster meta tags if enabled
+    injectFarcasterMetaTags()
+    return unsubscribe
+  }, [])
+
+  // Initialize player token (legacy fallback)
   React.useEffect(() => {
     const token = playerTokenManager.getOrCreatePlayerToken('Player');
     const session = playerTokenManager.startSession();
@@ -59,37 +79,62 @@ function App() {
     if (appRef.current) {
           }
   }, [])
+
+  // Handle authentication callback
+  const handleAuthenticated = React.useCallback(() => {
+    console.log('[App] User authenticated, loading world...')
+    setIsAuthenticated(true)
+  }, [])
+
+  // Memoize the onSetup callback to prevent re-initialization
+  const handleSetup = React.useCallback((world: World, config: unknown) => {
+    console.log('[App] onSetup callback triggered')
+    // Make world accessible globally for debugging
+    if (typeof window !== 'undefined') {
+      const globalWindow = window as Window & { world?: unknown; THREE?: unknown; testChat?: () => void };
+      globalWindow.world = world;
+      globalWindow.THREE = THREE;
+      // Expose testing helpers for browser-based tests
+      const anyWin = window as unknown as { Hyperscape?: Record<string, unknown> };
+      anyWin.Hyperscape = anyWin.Hyperscape || {};
+      anyWin.Hyperscape.CircularSpawnArea = CircularSpawnArea;
+      
+      // Add chat test function
+      globalWindow.testChat = () => {
+        console.log('=== TESTING CHAT ===');
+        console.log('world.chat:', world.chat);
+        console.log('world.network:', world.network);
+        console.log('world.network.id:', (world.network as { id?: string })?.id);
+        console.log('world.network.isClient:', world.network?.isClient);
+        console.log('world.network.send:', world.network?.send);
+        
+        const testMsg = 'Test message from console at ' + new Date().toLocaleTimeString();
+        console.log('Sending test message:', testMsg);
+        world.chat.send(testMsg);
+      };
+      console.log('💬 Chat test function available: call testChat() in console');
+    }
+  }, [])
+
+  // Check if Privy is enabled with valid app ID
+  const windowEnvAppId = window.env?.PUBLIC_PRIVY_APP_ID
+  const importMetaAppId = typeof import.meta !== 'undefined' ? import.meta.env.PUBLIC_PRIVY_APP_ID : undefined
+  const appId = windowEnvAppId || importMetaAppId || ''
+  const privyEnabled = appId && appId.length > 0 && !appId.includes('your-privy-app-id')
+
+  // Show login screen if Privy is enabled and user is not authenticated
+  if (privyEnabled && !isAuthenticated && !authState.isAuthenticated) {
+    return (
+      <div ref={appRef} data-component="app-root">
+        <LoginScreen onAuthenticated={handleAuthenticated} />
+      </div>
+    )
+  }
   
   return (
     <div ref={appRef} data-component="app-root">
       <ErrorBoundary>
-        <Client wsUrl={wsUrl} onSetup={(world: World, config) => {
-                    // Make world accessible globally for debugging
-          if (typeof window !== 'undefined') {
-            const globalWindow = window as Window & { world?: unknown; THREE?: unknown; testChat?: () => void };
-            globalWindow.world = world;
-            globalWindow.THREE = THREE;
-            // Expose testing helpers for browser-based tests
-            const anyWin = window as unknown as { Hyperscape?: Record<string, unknown> };
-            anyWin.Hyperscape = anyWin.Hyperscape || {};
-            anyWin.Hyperscape.CircularSpawnArea = CircularSpawnArea;
-            
-            // Add chat test function
-            globalWindow.testChat = () => {
-              console.log('=== TESTING CHAT ===');
-              console.log('world.chat:', world.chat);
-              console.log('world.network:', world.network);
-              console.log('world.network.id:', (world.network as { id?: string })?.id);
-              console.log('world.network.isClient:', world.network?.isClient);
-              console.log('world.network.send:', world.network?.send);
-              
-              const testMsg = 'Test message from console at ' + new Date().toLocaleTimeString();
-              console.log('Sending test message:', testMsg);
-              world.chat.send(testMsg);
-            };
-            console.log('💬 Chat test function available: call testChat() in console');
-          }
-        }} />
+        <Client wsUrl={wsUrl} onSetup={handleSetup} />
       </ErrorBoundary>
     </div>
   )
@@ -110,7 +155,11 @@ function mountApp() {
       
             const root = ReactDOM.createRoot(rootElement)
       
-            root.render(<App />)
+            root.render(
+        <PrivyAuthProvider>
+          <App />
+        </PrivyAuthProvider>
+      )
       
             
       // Use React's callback to verify render completion

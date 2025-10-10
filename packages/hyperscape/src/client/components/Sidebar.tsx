@@ -14,6 +14,7 @@ import { InventoryPanel } from './panels/InventoryPanel'
 import { CombatPanel } from './panels/CombatPanel'
 import { EquipmentPanel } from './panels/EquipmentPanel'
 import { SettingsPanel } from './panels/SettingsPanel'
+import { AccountPanel } from './panels/AccountPanel'
 
 const _mainSectionPanes = ['prefs']
 
@@ -198,6 +199,12 @@ export function Sidebar({ world, ui }: SidebarProps) {
           }}
         >
           <MenuButton
+            icon="👤"
+            label="Account"
+            active={openWindows.has('account')}
+            onClick={() => toggleWindow('account')}
+          />
+          <MenuButton
             icon="⚔️"
             label="Combat"
             active={openWindows.has('combat')}
@@ -255,6 +262,17 @@ export function Sidebar({ world, ui }: SidebarProps) {
         </div>
         
         {/* Draggable windows */}
+        {openWindows.has('account') && (
+          <GameWindow
+            title="Account"
+            onClose={() => closeWindow('account')}
+            defaultX={window.innerWidth - 360}
+            defaultY={100}
+          >
+            <AccountPanel world={world} />
+          </GameWindow>
+        )}
+        
         {openWindows.has('combat') && (
           <GameWindow
             title="Combat"

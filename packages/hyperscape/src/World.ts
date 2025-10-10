@@ -68,6 +68,9 @@ export class World extends EventEmitter {
   assetsDir!: string;
   hot = new Set<HotReloadable>();
   
+  // Initialization guard
+  private _initialized = false;
+  
   // Builder/movement state
   moving?: boolean;
   
@@ -416,6 +419,14 @@ export class World extends EventEmitter {
   }
 
   async init(options: WorldOptions): Promise<void> {
+    // Guard against multiple initialization
+    if (this._initialized) {
+      console.warn('[World] init() called multiple times, skipping duplicate initialization');
+      return;
+    }
+    this._initialized = true;
+    console.log('[World] Starting initialization...');
+    
     this.storage = options.storage;
     this.assetsDir = options.assetsDir ?? '';
     this.assetsUrl = options.assetsUrl ?? '/assets/';

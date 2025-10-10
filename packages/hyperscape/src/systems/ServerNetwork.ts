@@ -18,6 +18,7 @@ import type {
 } from '../types/network-types';
 import { addRole, hasRole, removeRole, serializeRoles, uuid } from '../utils';
 import { createJWT, verifyJWT } from '../utils-server';
+import { verifyPrivyToken, isPrivyEnabled } from '../server/privy-auth';
 import { System } from './System';
 import { EventType } from '../types/events';
 import type { TerrainSystem } from './TerrainSystem';
@@ -456,10 +457,60 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       let authToken = params.authToken;
       const name = params.name;
       const avatar = params.avatar;
+      const privyUserId = (params as { privyUserId?: string }).privyUserId;
 
       // get or create user
       let user: User | undefined;
-      if (authToken) {
+      let userWithPrivy: User & { privyUserId?: string | null; farcasterFid?: string | null } | undefined;
+      
+      // Try Privy authentication first if enabled
+      if (isPrivyEnabled() && authToken && privyUserId) {
+        try {
+          console.log('[ServerNetwork] Attempting Privy authentication for user:', privyUserId);
+          const privyInfo = await verifyPrivyToken(authToken);
+          
+          if (privyInfo && privyInfo.privyUserId === privyUserId) {
+            console.log('[ServerNetwork] Privy token verified successfully');
+            
+            // Look up existing user by Privy ID
+            const dbResult = await this.db('users').where('privyUserId', privyUserId).first();
+            
+            if (dbResult) {
+              // Existing Privy user
+              userWithPrivy = dbResult as User & { privyUserId?: string | null; farcasterFid?: string | null };
+              user = userWithPrivy;
+              console.log('[ServerNetwork] Found existing Privy user:', user.id);
+            } else {
+              // New Privy user - create account
+              const newUser = {
+                id: uuid(),
+                name: name || 'Adventurer',
+                avatar: avatar || null,
+                roles: '',
+                createdAt: moment().toISOString(),
+                privyUserId: privyInfo.privyUserId,
+                farcasterFid: privyInfo.farcasterFid,
+              };
+              
+              await this.db('users').insert(newUser);
+              userWithPrivy = newUser;
+              user = newUser;
+              console.log('[ServerNetwork] Created new Privy user:', user.id);
+            }
+            
+            // Generate a Hyperscape JWT for this user
+            authToken = await createJWT({ userId: user.id });
+          } else {
+            console.warn('[ServerNetwork] Privy token verification failed or user ID mismatch');
+          }
+        } catch (err) {
+          console.error('[ServerNetwork] Privy authentication error:', err);
+          // Fall through to legacy authentication
+        }
+      }
+      
+      // Fall back to legacy JWT authentication if Privy didn't work
+      if (!user && authToken) {
         try {
           const jwtPayload = await verifyJWT(authToken);
           if (jwtPayload && typeof jwtPayload.userId === 'string') {
@@ -470,9 +521,11 @@ export class ServerNetwork extends System implements NetworkWithSocket {
             }
           }
         } catch (err) {
-          console.error('failed to read authToken:', authToken, err);
+          console.error('[ServerNetwork] Failed to read authToken:', authToken, err);
         }
       }
+      
+      // Create anonymous user if no authentication succeeded
       if (!user) {
         user = {
           id: uuid(),

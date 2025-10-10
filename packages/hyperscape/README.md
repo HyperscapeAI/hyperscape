@@ -15,9 +15,20 @@ The Hyperscape RPG is a persistent multiplayer RPG featuring:
 
 ## Quick Start
 
+### TL;DR - Get Playing Fast
+
+```bash
+cd packages/hyperscape
+bun install
+bun run dev
+# Open http://localhost:3333 and start playing!
+# (No auth setup needed for local development)
+```
+
 ### Prerequisites
 
 - Node.js 18+ or Bun 1.0+
+- Bun recommended for fastest installation
 - 4GB+ RAM (for SQLite database and 3D rendering)
 - Modern browser with WebGL support
 
@@ -31,21 +42,111 @@ cd hyperscape/packages/hyperscape
 # Install dependencies
 bun install
 
-# Check your configuration (optional)
-npm run config:check
-
-# Start the development server
+# Start the development server (Privy auth is OPTIONAL)
 bun run dev
 ```
 
 The frontend will start on `http://localhost:3333` and backend on `http://localhost:5555`
 
-### First Time Setup
+> **Note**: Authentication with Privy is **optional**. The app works perfectly fine without it for development/testing. Users will be anonymous but can still play. See "Authentication Setup" below to enable persistent accounts.
+
+### Authentication Setup (Optional)
+
+> **⚠️ OPTIONAL**: You can skip this entire section for local development. The game works without authentication!
+
+Hyperscape uses **Privy** for user authentication, supporting wallet login, email, social accounts, and Farcaster. This enables:
+- 💾 **Persistent accounts** across devices
+- 🔐 **Secure authentication** via wallet, email, or social
+- 🎭 **Farcaster integration** for Frame deployment
+- 📊 **Progress tracking** tied to user identity
+
+If you want these features, follow the steps below. Otherwise, skip to "First Time Setup".
+
+#### 1. Get Privy Credentials
+
+1. Go to [Privy Dashboard](https://dashboard.privy.io/)
+2. Create a new app or select existing app
+3. **Enable Farcaster login** in Settings → Login Methods (if using Farcaster)
+4. Copy your credentials:
+   - App ID from Settings → Basics
+   - App Secret from Settings → API Keys
+
+#### 2. Configure Environment Variables
+
+Edit your `.env` file:
+
+```bash
+# Required: Privy App ID (get from dashboard.privy.io)
+PUBLIC_PRIVY_APP_ID=your-privy-app-id-here
+PRIVY_APP_ID=your-privy-app-id-here
+PRIVY_APP_SECRET=your-privy-app-secret-here
+
+# Optional: Farcaster Frame v2 deployment
+PUBLIC_ENABLE_FARCASTER=false
+PUBLIC_APP_URL=http://localhost:5555
+```
+
+#### 3. Start the Server
+
+```bash
+bun run dev
+```
+
+#### 4. Login Flow
 
 1. Open your browser to `http://localhost:3333`
-2. Create a character - you'll spawn in a random starter town
-3. Use WASD to move, click to interact with objects
-4. Right-click to open context menus for advanced actions
+2. You'll see a login screen
+3. Click "Login to Play" 
+4. Choose your authentication method (wallet, email, Farcaster, etc.)
+5. After authentication, the game world will load
+6. Create your character and start playing!
+
+#### Development Without Authentication
+
+For local development/testing, you can skip authentication by not setting `PUBLIC_PRIVY_APP_ID`. The app will fall back to anonymous users with local tokens.
+
+```bash
+# In .env, leave these commented out or remove them:
+# PUBLIC_PRIVY_APP_ID=
+# PRIVY_APP_ID=
+# PRIVY_APP_SECRET=
+```
+
+Note: User progress will not persist across devices without authentication.
+
+#### Migrating Existing Installations
+
+If you're upgrading from a version without Privy:
+
+1. **Install new dependencies**:
+```bash
+bun install
+```
+
+2. **Add Privy credentials** to `.env` (optional):
+```bash
+PUBLIC_PRIVY_APP_ID=your-app-id
+PRIVY_APP_ID=your-app-id
+PRIVY_APP_SECRET=your-secret
+```
+
+3. **Database migration** runs automatically on next server start
+   - New columns: `privyUserId`, `farcasterFid`
+   - Existing users continue to work with legacy tokens
+
+4. **Backward Compatibility**:
+   - ✅ Existing users keep their accounts
+   - ✅ Legacy auth tokens still work
+   - ✅ No breaking changes to existing deployments
+   - ✅ Privy is optional - app works without it
+
+### First Time Setup
+
+1. **Authenticate** using Privy (wallet, email, or social login)
+2. **Create character** - choose your name in-game
+3. **Explore** - Use WASD to move, click to interact with objects
+4. **Right-click** for context menus and advanced actions
+5. **Open menus** - Use left sidebar buttons for Inventory, Skills, Equipment, etc.
 
 ### Configuration
 
@@ -79,6 +180,101 @@ npm run ios:dev      # or android:dev
 ```
 
 See [MOBILE-QUICKSTART.md](./MOBILE-QUICKSTART.md) for quick reference or [MOBILE.md](./MOBILE.md) for complete documentation.
+
+### Farcaster Frame v2 Deployment
+
+Deploy Hyperscape as a Farcaster mini-app (Frame v2):
+
+#### Prerequisites
+
+1. **Privy configured** with Farcaster login enabled
+2. **Public HTTPS URL** (required for Farcaster)
+3. **Frame metadata** configured
+
+#### Setup
+
+1. **Enable Farcaster in environment**:
+```bash
+PUBLIC_ENABLE_FARCASTER=true
+PUBLIC_APP_URL=https://your-game-domain.com
+```
+
+2. **Deploy to public URL**:
+```bash
+# Build for production
+bun run build
+
+# Deploy to your hosting platform (Vercel, Railway, etc.)
+# Make sure both frontend and backend are accessible
+```
+
+3. **Configure Privy for Farcaster**:
+- In [Privy Dashboard](https://dashboard.privy.io/)
+- Go to Settings → Login Methods
+- Enable "Farcaster" login
+- Add your app's redirect URLs
+
+4. **Test your Frame**:
+- Use [Farcaster Developer Tools](https://farcaster.xyz/~/developers/mini-apps/embed)
+- Enter your app URL
+- Preview in the embedded viewer
+- Note: localhost won't work - use ngrok/Cloudflare tunnel for testing
+
+5. **Share your Frame**:
+- Share your app URL in any Farcaster client
+- Users can launch the mini-app directly from the Frame
+- Automatic Farcaster authentication for seamless onboarding
+
+#### Frame Features
+
+- **Auto-login**: Users are automatically authenticated with their Farcaster account
+- **Wallet integration**: Farcaster wallet (Warplet) is automatically connected
+- **Identity**: Player progress is tied to Farcaster FID
+- **Cross-platform**: Works in Farcaster mobile app and Warpcast
+
+#### Local Testing with Tunnel
+
+For local development testing as a Frame:
+
+```bash
+# Install ngrok or use Cloudflare tunnel
+npx ngrok http 5555
+
+# Update .env with ngrok URL
+PUBLIC_APP_URL=https://your-ngrok-url.ngrok.io
+
+# Restart server
+bun run dev
+```
+
+## Account Management
+
+### User Authentication
+
+- **Account Creation**: Automatic on first login with Privy
+- **Identity Persistence**: Game progress tied to Privy user ID
+- **Multiple Devices**: Access your account from any device
+- **Account Linking**: Link multiple auth methods (wallet, email, social) to one account
+
+### Character Management
+
+- **Name Changes**: Update your character name in-game (Settings panel)
+- **Avatar**: Upload custom VRM avatars (future feature)
+- **Progress Tracking**: All skills, items, and progress saved to your account
+
+### Supported Login Methods
+
+- 🔐 **Wallet**: MetaMask, Coinbase Wallet, Rainbow, WalletConnect
+- 📧 **Email**: Magic link or OTP authentication
+- 🌐 **Social**: Google, Twitter, Discord (configured in Privy)
+- 🎭 **Farcaster**: Seamless login for Farcaster users
+
+### Account Security
+
+- All authentication handled by Privy (industry-standard security)
+- No passwords stored on Hyperscape servers
+- JWT tokens for secure session management
+- Automatic session refresh and token rotation
 
 ## Game Systems
 
@@ -140,22 +336,74 @@ Equipment slots:
 
 ### Core UI Elements
 
-- **Health/Stamina bars** - Top left of screen
-- **Inventory** - 28 slots, drag-and-drop items
-- **Equipment panel** - Worn items and stats
-- **Skills interface** - Level progression and XP
-- **Banking interface** - Store/retrieve items
-- **Store interface** - Purchase tools and supplies
+- **Account panel** (👤) - Login status, user info, logout, character name
+- **Combat panel** (⚔️) - Attack styles and combat stats
+- **Skills panel** (🧠) - Level progression and XP tracking
+- **Inventory** (🎒) - 28 slots, drag-and-drop items
+- **Equipment panel** (🛡️) - Worn items and stats
+- **Settings panel** (⚙️) - Graphics, audio, and display options
+- **Health/Stamina bars** - Displayed on minimap
+- **Banking interface** - Store/retrieve items (at banks)
+- **Store interface** - Purchase tools and supplies (at stores)
 
 ### Controls
 
 - **Movement**: WASD keys or click-to-move
-- **Camera**: Mouse look
+- **Camera**: Mouse look (hold right-click to rotate, scroll to zoom)
 - **Interact**: Left-click on objects/NPCs
 - **Context menu**: Right-click for advanced actions
-- **Inventory**: I key to toggle
-- **Equipment**: E key to toggle
-- **Skills**: S key to toggle
+- **UI Panels**: Click icons on left side of screen
+  - 👤 Account - Login, logout, character name
+  - ⚔️ Combat - Attack styles and combat level
+  - 🧠 Skills - View skill levels and XP
+  - 🎒 Inventory - Manage items (28 slots)
+  - 🛡️ Equipment - View/manage equipped gear
+  - ⚙️ Settings - Graphics, audio, preferences
+
+## Authentication Architecture
+
+### Privy Integration
+
+The authentication system uses Privy for secure, Web3-native user management:
+
+**Client-Side Components:**
+- `PrivyAuthManager.ts` - Authentication state management
+- `PrivyAuthProvider.tsx` - React context provider for Privy
+- `LoginScreen.tsx` - Pre-game login UI
+- `farcaster-frame-config.ts` - Farcaster Frame v2 metadata
+
+**Server-Side Components:**
+- `privy-auth.ts` - Token verification and user info extraction
+- Database migrations in `db.ts` - Adds `privyUserId` and `farcasterFid` columns
+
+**Authentication Flow:**
+
+```
+User Opens App
+     ↓
+Check Farcaster Context
+     ↓
+[Farcaster] → Auto-login    [Web/Mobile] → Show Login Screen
+     ↓                              ↓
+Privy Authentication (wallet, email, social, or Farcaster)
+     ↓
+Receive Access Token
+     ↓
+Connect to Server via WebSocket
+     ↓
+Server Verifies Token with Privy
+     ↓
+Load/Create User Account
+     ↓
+Spawn Player in World
+```
+
+**Key Features:**
+- Zero-knowledge authentication (no passwords stored)
+- Multi-device account access
+- Wallet, email, and social login support
+- Farcaster integration for seamless Frame experience
+- Backward compatible with legacy anonymous users
 
 ## Development
 
@@ -404,6 +652,25 @@ POST /api/actions/attack
 - Verify WebSocket connection (check browser dev tools)
 - Confirm server is running on correct port
 - Check firewall settings
+
+**Authentication issues**
+- Verify `PUBLIC_PRIVY_APP_ID` is set correctly in `.env`
+- Check that `PRIVY_APP_SECRET` matches your Privy dashboard
+- Ensure Privy app is configured to allow your domain in redirect URLs
+- For Farcaster: Enable Farcaster login in Privy dashboard settings
+- For mobile: Add `hyperscape://` scheme to Privy allowed redirect URIs
+
+**Farcaster Frame not working**
+- Ensure `PUBLIC_ENABLE_FARCASTER=true` in `.env`
+- Verify your app is deployed to a public HTTPS URL
+- Check that meta tags are properly injected (view page source)
+- Test with [Farcaster Dev Tools](https://farcaster.xyz/~/developers/mini-apps/embed)
+- Make sure Farcaster login is enabled in Privy dashboard
+
+**OAuth redirects fail on mobile**
+- Add `hyperscape://` to Capacitor config schemes
+- Update Privy dashboard with mobile redirect URIs: `hyperscape://oauth-callback`
+- Rebuild and resync mobile apps after config changes
 
 **Visual rendering issues**
 - Ensure WebGL is supported in browser

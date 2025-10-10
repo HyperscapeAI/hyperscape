@@ -216,9 +216,15 @@ async function startServer() {
     await fastify.register(cors, {
       origin: [
         'http://localhost:3000',
+        'http://localhost:3333',
         'http://localhost:5555',
         'http://localhost:7777',
         /^https?:\/\/localhost:\d+$/,
+        // Farcaster Frame domains
+        /^https:\/\/.+\.farcaster\.xyz$/,
+        /^https:\/\/.+\.warpcast\.com$/,
+        // Privy domains for OAuth
+        /^https:\/\/.+\.privy\.io$/,
         true, // Allow all origins in development
       ],
       credentials: true,
@@ -458,6 +464,16 @@ async function startServer() {
         publicEnvs[key] = value
       }
     }
+  }
+  
+  // Log authentication status
+  if (publicEnvs.PUBLIC_PRIVY_APP_ID) {
+    console.log('[Server] Privy authentication enabled')
+    if (publicEnvs.PUBLIC_ENABLE_FARCASTER === 'true') {
+      console.log('[Server] Farcaster Frame v2 support enabled')
+    }
+  } else {
+    console.log('[Server] Running without Privy authentication (development mode)')
   }
 
   // Expose plugin paths to client for systems loading

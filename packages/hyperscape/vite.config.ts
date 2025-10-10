@@ -35,7 +35,11 @@ export default defineConfig({
   
   define: {
     'process.env': '{}', // Replace process.env with empty object
-    'process': 'undefined' // Replace process with undefined
+    'process': 'undefined', // Replace process with undefined
+    // Ensure Privy and Farcaster env vars are exposed
+    'import.meta.env.PUBLIC_PRIVY_APP_ID': JSON.stringify(process.env.PUBLIC_PRIVY_APP_ID || ''),
+    'import.meta.env.PUBLIC_ENABLE_FARCASTER': JSON.stringify(process.env.PUBLIC_ENABLE_FARCASTER || 'false'),
+    'import.meta.env.PUBLIC_APP_URL': JSON.stringify(process.env.PUBLIC_APP_URL || ''),
   },
   server: {
     port: Number(process.env.VITE_PORT) || 3333,

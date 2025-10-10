@@ -27,6 +27,8 @@ const config: CapacitorConfig = {
     scrollEnabled: false,
     // Handle safe area for notches
     limitsNavigationsToAppBoundDomains: false,
+    // Allow Privy OAuth redirects
+    scheme: 'hyperscape',
   },
   android: {
     // Use AndroidX libraries
