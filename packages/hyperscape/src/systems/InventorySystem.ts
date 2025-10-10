@@ -643,7 +643,7 @@ export class InventorySystem extends SystemBase {
 
   private emitInventoryUpdate(playerId: PlayerID): void {
     const inventoryData = this.getInventoryData(playerId);
-    this.emitTypedEvent(EventType.INVENTORY_UPDATED, {
+    const inventoryUpdateData = {
       playerId,
       items: inventoryData.items.map(item => ({
         slot: item.slot,
@@ -659,7 +659,23 @@ export class InventorySystem extends SystemBase {
       })),
       coins: inventoryData.coins,
       maxSlots: inventoryData.maxSlots
-    });
+    };
+    
+    // Emit local event for server-side systems
+    this.emitTypedEvent(EventType.INVENTORY_UPDATED, inventoryUpdateData);
+    
+    // Broadcast to all clients if on server
+    if (this.world.isServer) {
+      const network = this.world.network as { send?: (method: string, data: unknown) => void } | undefined;
+      if (network && network.send) {
+        network.send('inventoryUpdated', {
+          playerId,
+          items: inventoryUpdateData.items,
+          coins: inventoryData.coins
+        });
+        console.log(`[InventorySystem] 📡 Broadcast inventory update to clients - ${inventoryData.items.length} items`);
+      }
+    }
   }
 
   // Public API
@@ -884,6 +900,8 @@ export class InventorySystem extends SystemBase {
     const itemId = data.item.itemId;
     const quantity = data.item.quantity;
     
+    console.log(`[InventorySystem] 📥 handleInventoryAdd called - playerId: ${playerId}, itemId: ${itemId}, quantity: ${quantity}`);
+    
     // Validate the event data before processing
     if (!playerId) {
       Logger.error('InventorySystem', 'handleInventoryAdd: playerId is missing');
@@ -900,7 +918,8 @@ export class InventorySystem extends SystemBase {
       return;
     }
     
-    this.addItem({ playerId, itemId, quantity });
+    const result = this.addItem({ playerId, itemId, quantity });
+    console.log(`[InventorySystem] addItem result: ${result ? 'SUCCESS' : 'FAILED'}`);
   }
 
   /**

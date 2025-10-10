@@ -59,8 +59,8 @@ import { ProcessingSystem } from './ProcessingSystem'
 import { ResourceSystem } from './ResourceSystem'
 import { ResourceInteractionSystem } from './ResourceInteractionSystem'
 import { ResourceVisualizationSystem } from './ResourceVisualizationSystem'
+import { MobInteractionSystem } from './MobInteractionSystem'
 import { StoreSystem } from './StoreSystem'
-import { TestPhysicsCube } from './TestPhysicsCube'
 import { WorldGenerationSystem } from './WorldGenerationSystem'
 
 // New MMO-style Systems
@@ -171,7 +171,6 @@ export interface Systems {
   testRunner?: TestRunner
   mobSpawner?: MobSpawnerSystem
   itemSpawner?: ItemSpawnerSystem
-  testPhysicsCube?: TestPhysicsCube
   testUI?: UITestSystem
   worldVerification?: unknown
 }
@@ -369,6 +368,7 @@ export async function registerSystems(world: World): Promise<void> {
     // Client-only interaction systems
     if (world.isClient) {
       world.register('rpg-inventory-interaction', InventoryInteractionSystem)
+      world.register('mob-interaction', MobInteractionSystem)
     }
 
     // New MMO-style Systems
@@ -405,7 +405,6 @@ export async function registerSystems(world: World): Promise<void> {
     // world.register('default-world', DefaultWorldSystem)
     world.register('mob-spawner', MobSpawnerSystem)
     world.register('item-spawner', ItemSpawnerSystem)
-    world.register('test-physics-cube', TestPhysicsCube)
 
     // Only register client-only systems on client side (they need DOM/canvas/browser APIs)
     const isClientEnvironment = world.isClient
@@ -524,7 +523,6 @@ export async function registerSystems(world: World): Promise<void> {
     // World verification system removed
     systems.mobSpawner = getSystem(world, 'mob-spawner') as MobSpawnerSystem
     systems.itemSpawner = getSystem(world, 'item-spawner') as ItemSpawnerSystem
-    systems.testPhysicsCube = getSystem(world, 'test-physics-cube') as TestPhysicsCube
     systems.testUI = getSystem(world, 'test-ui') as UITestSystem // Will be undefined on server, which is fine
 
     // Get test system instances with proper casting

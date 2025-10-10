@@ -120,6 +120,9 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     this.handlers['onSettings'] = this.onSettings.bind(this);
     this.handlers['onMoveRequest'] = this.onMoveRequest.bind(this);
     this.handlers['onInput'] = this.onInput.bind(this);
+    this.handlers['onGatherResource'] = this.onGatherResource.bind(this);
+    this.handlers['onAttackMob'] = this.onAttackMob.bind(this);
+    this.handlers['onPickupItem'] = this.onPickupItem.bind(this);
   }
 
   async init(options: WorldOptions): Promise<void> {
@@ -1022,6 +1025,84 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     if (payload.type === 'click' && Array.isArray(payload.target)) {
         this.onMoveRequest(socket, { target: payload.target, runMode: payload.runMode });
     }
+  }
+  
+  private onGatherResource(socket: Socket, data: unknown): void {
+    const playerEntity = socket.player;
+    if (!playerEntity) {
+      console.warn('[ServerNetwork] onGatherResource: no player entity for socket');
+      return;
+    }
+    
+    const payload = data as { resourceId?: string; playerPosition?: { x: number; y: number; z: number } };
+    if (!payload.resourceId) {
+      console.warn('[ServerNetwork] onGatherResource: no resourceId in payload');
+      return;
+    }
+    
+    const playerPosition = payload.playerPosition || {
+      x: playerEntity.position.x,
+      y: playerEntity.position.y,
+      z: playerEntity.position.z
+    };
+    
+    console.log(`[ServerNetwork] 📨 Received gather request from player ${playerEntity.id} for resource ${payload.resourceId}`);
+    
+    // Forward to ResourceSystem
+    this.world.emit(EventType.RESOURCE_GATHERING_STARTED, {
+      playerId: playerEntity.id,
+      resourceId: payload.resourceId,
+      playerPosition: playerPosition
+    });
+  }
+  
+  private onAttackMob(socket: Socket, data: unknown): void {
+    const playerEntity = socket.player;
+    if (!playerEntity) {
+      console.warn('[ServerNetwork] onAttackMob: no player entity for socket');
+      return;
+    }
+    
+    const payload = data as { mobId?: string; attackType?: string };
+    if (!payload.mobId) {
+      console.warn('[ServerNetwork] onAttackMob: no mobId in payload');
+      return;
+    }
+    
+    console.log(`[ServerNetwork] ⚔️ Received attack request from player ${playerEntity.id} for mob ${payload.mobId}, type: ${payload.attackType || 'melee'}`);
+    
+    // Forward to CombatSystem
+    this.world.emit(EventType.COMBAT_ATTACK_REQUEST, {
+      playerId: playerEntity.id,
+      targetId: payload.mobId,
+      attackerType: 'player',
+      targetType: 'mob',
+      attackType: payload.attackType || 'melee'
+    });
+  }
+  
+  private onPickupItem(socket: Socket, data: unknown): void {
+    const playerEntity = socket.player;
+    if (!playerEntity) {
+      console.warn('[ServerNetwork] onPickupItem: no player entity for socket');
+      return;
+    }
+    
+    const payload = data as { itemId?: string; entityId?: string };
+    const itemId = payload.itemId || payload.entityId;
+    
+    if (!itemId) {
+      console.warn('[ServerNetwork] onPickupItem: no itemId in payload');
+      return;
+    }
+    
+    console.log(`[ServerNetwork] 📦 Received pickup request from player ${playerEntity.id} for item ${itemId}`);
+    
+    // Forward to ItemPickupSystem
+    this.world.emit(EventType.ITEM_PICKUP_REQUEST, {
+      playerId: playerEntity.id,
+      itemId: itemId
+    });
   }
 
   onEntityEvent(socket: Socket, data: unknown): void {

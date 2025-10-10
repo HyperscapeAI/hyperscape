@@ -211,6 +211,9 @@ export class Entity implements IEntity {
     // Add to world scene
     if (this.world.stage.scene) {
       this.world.stage.scene.add(this.node)
+      console.log(`[Entity] Added ${this.type} entity ${this.id} to scene at position:`, this.node.position.toArray());
+    } else {
+      console.warn(`[Entity] No scene available to add ${this.type} entity ${this.id}`);
     }
 
     // Automatically add transform component for ECS architecture
@@ -909,21 +912,42 @@ export class Entity implements IEntity {
       // Load the model
       const safeLoader = new SafeLoaderWrapper(this.world.loader)
       const model = await safeLoader.loadModel(this.config.model)
-      // Convert the loaded model into a THREE.Object3D via toNodes
-      const nodes = (model as unknown as { toNodes: () => Map<string, THREE.Object3D> }).toNodes()
-      // Strong type assumption - node is THREE.Object3D
-      const modelObject = (nodes.get('root') || nodes.get('model') || nodes.get(this.name)) as THREE.Object3D | null
-      // Fallback: if no nodes map provided, skip assignment
-      if (!modelObject) {
-        throw new Error('Loaded model did not provide a THREE.Object3D node')
-      }
-
-      // Clear existing mesh
+      
+      // Clear existing mesh first
       if (this.mesh) {
         this.node.remove(this.mesh)
       }
-
-      this.mesh = modelObject
+      
+      console.log(`[Entity] Loaded model for ${this.name}:`, {
+        type: typeof model,
+        hasToNodes: typeof (model as { toNodes?: unknown }).toNodes,
+        keys: model && typeof model === 'object' ? Object.keys(model).slice(0, 10) : []
+      });
+      
+      // Check if model has toNodes method
+      if (model && typeof model === 'object' && 'toNodes' in model && typeof (model as { toNodes: unknown }).toNodes === 'function') {
+        // Convert the loaded model into nodes via toNodes
+        // toNodes returns Map<string, Node> where Node has a 'base' property that is THREE.Object3D
+        const nodes = (model as unknown as { toNodes: () => Map<string, { base?: THREE.Object3D; id?: string }> }).toNodes()
+        console.log(`[Entity] toNodes() returned map with keys:`, Array.from(nodes.keys()));
+        
+        // Get the first available node's base (THREE.Object3D)
+        const nodeEntry = (nodes.get('root') || nodes.get('model') || nodes.get(this.name) || nodes.values().next().value) as { base?: THREE.Object3D } | null
+        
+        if (!nodeEntry || !nodeEntry.base) {
+          console.warn(`[Entity] No valid THREE.Object3D found in model nodes for ${this.name}`);
+          return;
+        }
+        
+        this.mesh = nodeEntry.base;
+      } else if (model instanceof THREE.Object3D) {
+        // Model is already a THREE.Object3D
+        this.mesh = model;
+      } else {
+        console.warn(`[Entity] Model for ${this.name} is not in expected format (no toNodes, not Object3D)`);
+        return;
+      }
+      
       if (this.mesh) {
         this.mesh.name = `${this.name}_Model`
       }

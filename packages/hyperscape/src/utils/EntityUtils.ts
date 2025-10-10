@@ -309,7 +309,7 @@ export function groundToTerrain(
   maxHeightDifference: number = 2.0
 ): Position3D {
   // Get terrain system
-  const terrainSystem = world.getSystem<{ getHeightAt: (x: number, z: number) => number | null }>('terrain');
+  const terrainSystem = world.getSystem('terrain') as { getHeightAt: (x: number, z: number) => number | null } | undefined;
   
   if (!terrainSystem) {
     console.error(
@@ -373,7 +373,7 @@ export function tryGroundToTerrain(
   position: Position3D,
   yOffset: number = 0.2
 ): Position3D | null {
-  const terrainSystem = world.getSystem<{ getHeightAt: (x: number, z: number) => number | null }>('terrain');
+  const terrainSystem = world.getSystem('terrain') as { getHeightAt: (x: number, z: number) => number | null } | undefined;
   
   if (!terrainSystem) {
     return null;

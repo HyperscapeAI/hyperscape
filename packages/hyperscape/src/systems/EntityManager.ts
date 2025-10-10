@@ -28,6 +28,7 @@ import type {
   ResourceSpawnData as _ResourceSpawnData 
 } from '../types/entities';
 import { EntityType, InteractionType, ItemRarity, MobAIState, MobType, NPCType, ResourceType } from '../types/entities';
+import { NPCBehavior, NPCState } from '../types/core';
 import { EventType } from '../types/events';
 import type { EntitySpawnedEvent } from '../types/systems';
 import { Logger } from '../utils/Logger';
@@ -76,7 +77,7 @@ export class EntityManager extends SystemBase {
       customId: `mob_${Date.now()}`,
       name: data.mobType
     }));
-    this.subscribe(EventType.NPC_SPAWN_REQUEST, (data) => this.handleNPCSpawnRequest(data));
+    this.subscribe<{ npcId: string; name: string; type: string; position: { x: number; y: number; z: number }; services?: string[]; modelPath?: string }>(EventType.NPC_SPAWN_REQUEST, (data) => this.handleNPCSpawnRequest(data));
     this.subscribe(EventType.MOB_ATTACKED, (data) => this.handleMobAttacked({ entityId: data.mobId, damage: data.damage, attackerId: data.attackerId }));
         this.subscribe(EventType.COMBAT_MOB_ATTACK, (data) => this.handleMobAttack({ mobId: data.mobId, targetId: data.targetId, damage: 0 }));
     // RESOURCE_GATHERED has different structure in EventMap
@@ -290,7 +291,7 @@ export class EntityManager extends SystemBase {
       interactionType: InteractionType.PICKUP,
       interactionDistance: 2,
       description: data.name || 'Item',
-      model: data.model,
+      model: data.model || null,
       properties: {
         movementComponent: null,
         combatComponent: null,
@@ -375,6 +376,11 @@ export class EntityManager extends SystemBase {
       // If terrain not available, keep provided Y
     }
     
+    // Get mob data to access modelPath
+    const { getMobById } = await import('../data/mobs');
+    const mobDataFromDB = getMobById(mobType);
+    const modelPath = mobDataFromDB?.modelPath || `/assets/models/mobs/${mobType}.glb`;
+    
     const config: MobEntityConfig = {
       id: data.customId || `mob_${this.nextEntityId++}`,
       name: `Mob: ${data.name || mobType || 'Unknown'} (Lv${level})`,
@@ -387,7 +393,7 @@ export class EntityManager extends SystemBase {
       interactionType: InteractionType.ATTACK,
       interactionDistance: 5,
       description: `${mobType} (Level ${level})`,
-      model: null,
+      model: modelPath,
       // MobEntity specific fields
       mobType: mobType as MobType,
       level: level,
@@ -850,6 +856,18 @@ export class EntityManager extends SystemBase {
       typePrefix = 'Quest';
     }
     
+    // Try to get model path from external NPCs if not provided
+    let modelPath: string | null = null;
+    if (data.modelPath) {
+      modelPath = data.modelPath;
+    } else {
+      const { getExternalNPC } = await import('../utils/ExternalAssetUtils');
+      const externalNPC = getExternalNPC(data.npcId);
+      if (externalNPC && externalNPC.modelPath) {
+        modelPath = externalNPC.modelPath as string;
+      }
+    }
+    
     const config: NPCEntityConfig = {
       id: `npc_${data.npcId}_${this.nextEntityId++}`,
       name: `${typePrefix}: ${data.name}`,
@@ -859,22 +877,41 @@ export class EntityManager extends SystemBase {
       scale: { x: 1, y: 1, z: 1 },
       visible: true,
       interactable: true,
-      interactionType: InteractionType.DIALOGUE,
+      interactionType: InteractionType.TALK,
       interactionDistance: 3,
       description: data.name,
-      model: data.modelPath || null,
+      model: modelPath,
       npcType: this.mapTypeToNPCType(data.type),
-      dialogues: [],
-      questGiver: data.type === 'quest_giver',
-      shopkeeper: data.type === 'general_store',
-      bankTeller: data.type === 'bank',
+      npcId: data.npcId,
+      dialogueLines: [],
+      services: data.services || [],
+      inventory: [],
+      skillsOffered: [],
+      questsAvailable: [],
       properties: {
         movementComponent: null,
         combatComponent: null,
         healthComponent: null,
         visualComponent: null,
         health: { current: 100, max: 100 },
-        level: 1
+        level: 1,
+        npcComponent: {
+          behavior: NPCBehavior.FRIENDLY,
+          state: NPCState.IDLE,
+          currentTarget: null,
+          spawnPoint: data.position,
+          wanderRadius: 0,
+          aggroRange: 0,
+          isHostile: false,
+          combatLevel: 1,
+          aggressionLevel: 0,
+          dialogueLines: [],
+          dialogue: null,
+          services: data.services || []
+        },
+        dialogue: [],
+        shopInventory: [],
+        questGiver: data.type === 'quest_giver'
       }
     };
     
@@ -882,9 +919,24 @@ export class EntityManager extends SystemBase {
     
     // If it's a store, register it with the store system
     if (data.type === 'general_store' || data.services?.includes('buy_items')) {
+      // Map NPC ID to store ID based on position
+      // NPCs are named like "lumbridge_shopkeeper", stores are like "store_town_0"
+      let storeId = 'store_town_0'; // Default to central
+      if (data.npcId.includes('lumbridge') || (data.position.x < 50 && data.position.x > -50 && data.position.z < 50 && data.position.z > -50)) {
+        storeId = 'store_town_0'; // Central
+      } else if (data.position.x > 50) {
+        storeId = 'store_town_1'; // Eastern
+      } else if (data.position.x < -50) {
+        storeId = 'store_town_2'; // Western
+      } else if (data.position.z > 50) {
+        storeId = 'store_town_3'; // Northern
+      } else if (data.position.z < -50) {
+        storeId = 'store_town_4'; // Southern
+      }
+      
       this.emitTypedEvent(EventType.STORE_REGISTER_NPC, {
         npcId: data.npcId,
-        storeId: `store_${data.type}`, 
+        storeId: storeId, 
         position: data.position,
         name: data.name,
         area: 'town'
@@ -894,9 +946,9 @@ export class EntityManager extends SystemBase {
   
   private mapTypeToNPCType(type: string): NPCType {
     switch (type) {
-      case 'bank': return NPCType.BANKER;
-      case 'general_store': return NPCType.SHOPKEEPER;
-      case 'skill_trainer': return NPCType.SKILL_MASTER;
+      case 'bank': return NPCType.BANK;
+      case 'general_store': return NPCType.STORE;
+      case 'skill_trainer': return NPCType.TRAINER;
       case 'quest_giver': return NPCType.QUEST_GIVER;
       default: return NPCType.QUEST_GIVER;
     }

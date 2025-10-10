@@ -542,6 +542,9 @@ function Toast({ world }: { world: World }) {
           opacity: 0;
           transform: translateY(0.625rem) scale(0.9);
           transition: all 0.1s ease-in-out;
+          color: white;
+          font-size: 0.9375rem;
+          font-weight: 500;
         }
         .toast-msg.visible {
           opacity: 1;
@@ -557,7 +560,7 @@ function Toast({ world }: { world: World }) {
 function ToastMsg({ text }: { text: string }) {
   const [visible, setVisible] = useState(true)
   useEffect(() => {
-    setTimeout(() => setVisible(false), 1000)
+    setTimeout(() => setVisible(false), 3000) // Show for 3 seconds
   }, [])
   return <div className={cls('toast-msg', { visible })}>{text}</div>
 }

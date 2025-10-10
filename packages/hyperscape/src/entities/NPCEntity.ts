@@ -110,7 +110,22 @@ export class NPCEntity extends Entity {
   }
 
   protected async createMesh(): Promise<void> {
-    // Create basic NPC mesh
+    // Try to load actual 3D model if available
+    if (this.config.model && this.world.loader && !this.world.isServer) {
+      try {
+        await this.loadModel();
+        // If model loaded successfully, we're done
+        if (this.mesh) {
+          this.mesh.name = `NPC_${this.config.npcType}_${this.id}`;
+          return;
+        }
+      } catch (error) {
+        console.warn(`[NPCEntity] Failed to load model for ${this.config.npcType}:`, error);
+        // Fall through to create fallback mesh
+      }
+    }
+    
+    // Fallback: Create basic NPC mesh as placeholder
     const geometry = new THREE.BoxGeometry(0.6, 1.8, 0.6);
     const material = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
     this.mesh = new THREE.Mesh(geometry, material);

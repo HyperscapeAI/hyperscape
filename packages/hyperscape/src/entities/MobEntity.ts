@@ -61,7 +61,22 @@ export class MobEntity extends Entity {
   }
 
   protected async createMesh(): Promise<void> {
-    // Create mob geometry based on type
+    // Try to load actual 3D model if available
+    if (this.config.model && this.world.loader && !this.world.isServer) {
+      try {
+        await this.loadModel();
+        // If model loaded successfully, we're done
+        if (this.mesh) {
+          this.mesh.name = `Mob_${this.config.mobType}_${this.id}`;
+          return;
+        }
+      } catch (error) {
+        console.warn(`[MobEntity] Failed to load model for ${this.config.mobType}:`, error);
+        // Fall through to create fallback mesh
+      }
+    }
+    
+    // Fallback: Create colored capsule based on mob type as placeholder
     let geometry: THREE.BufferGeometry;
     let material: THREE.Material;
 

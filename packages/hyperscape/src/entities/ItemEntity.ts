@@ -36,7 +36,32 @@ export class ItemEntity extends InteractableEntity {
   }
 
   protected async createMesh(): Promise<void> {
-    // Create a simple cube for now - replace with actual item models later
+    // Try to load actual 3D model if available
+    if (this.config.model && this.world.loader && !this.world.isServer) {
+      console.log(`[ItemEntity] Loading 3D model for ${this.config.itemId}: ${this.config.model}`);
+      try {
+        await this.loadModel();
+        // If model loaded successfully, we're done
+        if (this.mesh) {
+          this.mesh.name = `Item_${this.config.itemId}`;
+          console.log(`[ItemEntity] ✅ 3D model loaded for ${this.config.itemId}`, {
+            meshType: this.mesh.type,
+            meshName: this.mesh.name,
+            visible: this.mesh.visible,
+            position: this.node.position.toArray(),
+            scale: this.mesh.scale.toArray()
+          });
+          return;
+        }
+      } catch (error) {
+        console.warn(`[ItemEntity] ❌ Failed to load model for ${this.config.itemId}:`, error);
+        // Fall through to create fallback mesh
+      }
+    } else if (!this.config.model) {
+      console.log(`[ItemEntity] No model path for ${this.config.itemId}, using fallback cube`);
+    }
+    
+    // Fallback: Create a simple cube as placeholder
     const geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
     const material = new THREE.MeshLambertMaterial({
       color: this.getItemColor(),
@@ -82,6 +107,8 @@ export class ItemEntity extends InteractableEntity {
     // Add mesh to the entity's node so it appears in the scene
     if (this.mesh && this.node) {
       this.node.add(this.mesh);
+      
+      console.log(`[ItemEntity] 📦 Fallback cube added for ${this.config.itemId} at world position:`, this.node.position.toArray());
       
       // Also set userData on the node itself for easier detection
       this.node.userData.type = 'item';

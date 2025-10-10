@@ -7,6 +7,7 @@ import type { ChatMessage, EntityData, SnapshotData, World, WorldOptions } from 
 import { uuid } from '../utils'
 import { SystemBase } from './SystemBase'
 import { PlayerLocal } from '../entities/PlayerLocal'
+import { EventType } from '../types/events'
 
 const _v3_1 = new THREE.Vector3()
 const _quat_1 = new THREE.Quaternion()
@@ -392,6 +393,67 @@ export class ClientNetwork extends SystemBase {
   onEntityRemoved = (id: string) => {
     // Strong type assumption - entities system has remove method
     this.world.entities.remove(id)
+  }
+  
+  onGatheringComplete = (data: { playerId: string; resourceId: string; successful: boolean }) => {
+    console.log(`[ClientNetwork] 📬 Received gatheringComplete from server:`, data);
+    
+    // Forward to local event system for UI updates (progress bar, animation)
+    this.world.emit(EventType.RESOURCE_GATHERING_COMPLETED, {
+      playerId: data.playerId,
+      resourceId: data.resourceId,
+      successful: data.successful,
+      skill: 'woodcutting' // Will be refined later
+    });
+  }
+  
+  onResourceDepleted = (data: { resourceId: string }) => {
+    console.log(`[ClientNetwork] 🌲→🪵 Resource depleted:`, data.resourceId);
+    
+    // Forward to local event system for visual transformation
+    this.world.emit(EventType.RESOURCE_DEPLETED, {
+      resourceId: data.resourceId
+    });
+  }
+  
+  onResourceRespawned = (data: { resourceId: string; position: { x: number; y: number; z: number } }) => {
+    console.log(`[ClientNetwork] 🌲 Resource respawned:`, data.resourceId);
+    
+    // Forward to local event system for visual restoration
+    this.world.emit(EventType.RESOURCE_RESPAWNED, {
+      resourceId: data.resourceId,
+      position: data.position
+    });
+  }
+  
+  onInventoryUpdated = (data: { playerId: string; items: unknown[]; coins: number }) => {
+    console.log(`[ClientNetwork] 📦 Inventory updated for player ${data.playerId}:`, data.items.length, 'items');
+    
+    // Forward to local event system for UI updates
+    this.world.emit(EventType.INVENTORY_UPDATED, {
+      playerId: data.playerId,
+      items: data.items
+    });
+    
+    // Also emit coins update
+    this.world.emit(EventType.INVENTORY_UPDATE_COINS, {
+      playerId: data.playerId,
+      coins: data.coins
+    });
+  }
+  
+  onShowToast = (data: { playerId: string; message: string; type: string }) => {
+    console.log(`[ClientNetwork] 💬 Toast from server:`, data.message);
+    
+    // Only show toast for local player
+    const localPlayer = this.world.getPlayer();
+    if (localPlayer && localPlayer.id === data.playerId) {
+      // Forward to local event system for toast display
+      this.world.emit(EventType.UI_TOAST, {
+        message: data.message,
+        type: data.type
+      });
+    }
   }
 
   applyPendingModifications = (entityId: string) => {

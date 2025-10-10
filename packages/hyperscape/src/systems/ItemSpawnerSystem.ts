@@ -55,9 +55,13 @@ export class ItemSpawnerSystem extends SystemBase {
   }
 
   start(): void {
+    console.log(`[ItemSpawnerSystem] start() called on ${this.world.isClient ? 'CLIENT' : 'SERVER'}`);
+    
     // Spawn items after terrain is ready
     // Only spawn items with 3D models on client-side to avoid server file system access
     if (this.world.isClient) {
+      console.log('[ItemSpawnerSystem] Client-side spawn enabled, waiting for terrain...');
+      
       // Wait for terrain to be ready before spawning items
       const checkTerrainAndSpawn = async () => {
         const terrainSystem = this.world.getSystem('terrain') as { getHeightAt: (x: number, z: number) => number | null } | undefined;
@@ -75,25 +79,33 @@ export class ItemSpawnerSystem extends SystemBase {
           return;
         }
         
-        console.log(`[ItemSpawnerSystem] Terrain ready (height at origin: ${testHeight}), spawning items...`);
+        console.log(`[ItemSpawnerSystem] ✅ Terrain ready (height at origin: ${testHeight}), spawning items...`);
         
         // Spawn shop items at all towns (General Store inventory)
+        console.log('[ItemSpawnerSystem] Spawning shop items...');
         await this.spawnShopItems();
+        console.log(`[ItemSpawnerSystem] Shop items spawned: ${this.shopItems.size} stores`);
         
         // Spawn world treasure items (equipment and resources)
+        console.log('[ItemSpawnerSystem] Spawning treasure items...');
         await this.spawnTreasureItems();
         
         // Spawn chest loot items (valuable equipment)
+        console.log('[ItemSpawnerSystem] Spawning chest items...');
         await this.spawnChestLootItems();
+        console.log(`[ItemSpawnerSystem] Chest items spawned: ${this.chestItems.size} chests`);
         
         // Spawn resource items
+        console.log('[ItemSpawnerSystem] Spawning resource items...');
         await this.spawnResourceItems();
         
-        console.log('[ItemSpawnerSystem] All items spawned successfully');
+        console.log(`[ItemSpawnerSystem] ✅ All items spawned successfully! Total: ${this.spawnedItems.size} items`);
       };
       
       // Start checking after a small initial delay
       setTimeout(checkTerrainAndSpawn, 1000);
+    } else {
+      console.log('[ItemSpawnerSystem] Server-side - item spawning disabled');
     }
   }
 
@@ -256,7 +268,7 @@ export class ItemSpawnerSystem extends SystemBase {
       interactionType: InteractionType.PICKUP,
       interactionDistance: 2,
       description: itemData.description || '',
-      model: null,
+      model: itemData.modelPath || null,
       properties: {
         // Base entity properties
         movementComponent: null,
@@ -284,6 +296,8 @@ export class ItemSpawnerSystem extends SystemBase {
     if (!itemEntity) {
       throw new Error(`Failed to spawn item: ${itemData.name}`);
     }
+    
+    console.log(`[ItemSpawnerSystem] ✅ Spawned ${itemData.name} at (${groundedPosition.x.toFixed(1)}, ${groundedPosition.y.toFixed(1)}, ${groundedPosition.z.toFixed(1)}) - Model: ${itemData.modelPath || 'none'}`);
     
     // Register with systems - use grounded position, not original
     this.emitTypedEvent(EventType.ITEM_SPAWNED, {

@@ -232,13 +232,13 @@ export function Interface({ world }: { world: World }) {
         position?: { x: number; y: number }
         actions?: Array<{ id: string; label: string; icon?: string; enabled: boolean; onClick: () => void }>
         targetId?: string
-        targetType?: 'resource'
+        targetType?: 'resource' | 'mob'
       }
       
       if (data.playerId !== localPlayer.id) return
       
-      // Check if this is a resource context menu
-      if (data.type === 'context' && data.targetType === 'resource' && data.actions && data.position) {
+      // Check if this is a resource or mob context menu
+      if (data.type === 'context' && (data.targetType === 'resource' || data.targetType === 'mob') && data.actions && data.position) {
         setResourceContextMenu({
           visible: true,
           position: data.position,
@@ -510,12 +510,33 @@ export function Interface({ world }: { world: World }) {
         targetId={resourceContextMenu.targetId}
         targetType={resourceContextMenu.targetType}
         onActionClick={(actionId) => {
-          // Emit event to ResourceInteractionSystem
-          world.emit(EventType.RESOURCE_ACTION, {
-            playerId: world.getPlayer()?.id || '',
-            resourceId: resourceContextMenu.targetId,
-            action: actionId
-          });
+          const player = world.getPlayer();
+          if (!player) return;
+          
+          // Emit appropriate event based on target type
+          if (resourceContextMenu.targetType === 'resource') {
+            // Resource action (chop, mine, fish, etc.)
+            world.emit(EventType.RESOURCE_ACTION, {
+              playerId: player.id,
+              resourceId: resourceContextMenu.targetId,
+              action: actionId
+            });
+          } else if (resourceContextMenu.targetType === 'mob') {
+            // Mob action (attack, examine)
+            if (actionId === 'attack') {
+              world.emit(EventType.COMBAT_ATTACK_REQUEST, {
+                playerId: player.id,
+                targetId: resourceContextMenu.targetId,
+                attackerType: 'player',
+                targetType: 'mob'
+              });
+            } else if (actionId === 'examine') {
+              world.emit(EventType.UI_TOAST, {
+                message: `Level ${(resourceContextMenu.actions.find(a => a.id === 'examine')?.label || 'Unknown')} mob`,
+                type: 'info'
+              });
+            }
+          }
         }}
         onClose={() => setResourceContextMenu({
           visible: false,

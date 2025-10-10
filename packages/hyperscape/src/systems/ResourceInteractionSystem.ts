@@ -47,6 +47,11 @@ export class ResourceInteractionSystem extends SystemBase {
   private _tempVec3 = new THREE.Vector3();
   private _tempVec2 = new THREE.Vector2();
   
+  // Mobile long-press support
+  private touchStart: { x: number; y: number; time: number } | null = null;
+  private longPressTimer: NodeJS.Timeout | null = null;
+  private readonly LONG_PRESS_DURATION = 500; // 500ms for long-press
+  
   constructor(world: World) {
     super(world, { 
       name: 'resource-interaction', 
@@ -149,9 +154,15 @@ export class ResourceInteractionSystem extends SystemBase {
       this.onContextMenu = this.onContextMenu.bind(this)
       this.onMouseDown = this.onMouseDown.bind(this)
       this.onLeftClick = this.onLeftClick.bind(this)
+      this.onTouchStart = this.onTouchStart.bind(this)
+      this.onTouchEnd = this.onTouchEnd.bind(this)
+      
       this.canvas.addEventListener('contextmenu', this.onContextMenu, true)
       this.canvas.addEventListener('mousedown', this.onMouseDown, true)
       this.canvas.addEventListener('click', this.onLeftClick, true)
+      // Mobile: long-press for context menu
+      this.canvas.addEventListener('touchstart', this.onTouchStart, true)
+      this.canvas.addEventListener('touchend', this.onTouchEnd, true)
     }
   }
 
@@ -183,35 +194,51 @@ export class ResourceInteractionSystem extends SystemBase {
   }
 
   private onLeftClick(event: MouseEvent): void {
-    // RuneScape-style: left-click performs default action
-    const resource = this.getResourceAtPosition(event.clientX, event.clientY);
+    // Left-click on resources is handled by InteractionSystem for movement
+    // We only handle right-click context menus, not left-click auto-actions
+    // This allows click-to-move to work normally
+  }
+  
+  private onTouchStart(event: TouchEvent): void {
+    const touch = event.touches[0];
+    if (!touch) return;
     
-    if (resource) {
-      // Only prevent default and stop propagation if we're actually clicking on a resource
-      // This allows click-to-move to work when not clicking on resources
-      event.preventDefault();
-      event.stopPropagation();
-      // Don't use stopImmediatePropagation - let other handlers in the same phase run
-      
-      // Get local player
-      const localPlayer = this.getLocalPlayer();
-      if (!localPlayer) {
-        console.warn('[ResourceInteractionSystem] No local player found');
-        return;
+    this.touchStart = {
+      x: touch.clientX,
+      y: touch.clientY,
+      time: Date.now()
+    };
+    
+    // Set up long-press timer
+    this.longPressTimer = setTimeout(() => {
+      if (this.touchStart) {
+        console.log('[ResourceInteraction] Long-press detected');
+        const resource = this.getResourceAtPosition(this.touchStart.x, this.touchStart.y);
+        if (resource) {
+          // Prevent default and show context menu
+          event.preventDefault();
+          event.stopPropagation();
+          this.showResourceContextMenu(resource, this.touchStart.x, this.touchStart.y);
+        }
+        this.touchStart = null;
       }
-      
-      // Perform default action based on resource type
-      const defaultAction = this.getDefaultAction(resource.type);
-      if (defaultAction) {
-        this.handleActionExecute({
-          resourceId: resource.id,
-          resourceType: resource.type,
-          position: resource.position,
-          action: defaultAction,
-          playerId: localPlayer
-        });
-      }
+    }, this.LONG_PRESS_DURATION);
+  }
+  
+  private onTouchEnd(event: TouchEvent): void {
+    // Clear long-press timer
+    if (this.longPressTimer) {
+      clearTimeout(this.longPressTimer);
+      this.longPressTimer = null;
     }
+    
+    // Check if this was a quick tap (not a long-press)
+    if (this.touchStart && Date.now() - this.touchStart.time < this.LONG_PRESS_DURATION) {
+      // Quick tap - treat as left-click (allow movement)
+      // Don't show context menu
+    }
+    
+    this.touchStart = null;
   }
 
   private getLocalPlayer(): Entity | null {
@@ -392,11 +419,28 @@ export class ResourceInteractionSystem extends SystemBase {
     const localPlayer = this.world.getPlayer();
     if (!localPlayer) return;
     
+    console.log(`[ResourceInteraction] 🚶 Starting to chop tree at (${resource.position.x.toFixed(1)}, ${resource.position.z.toFixed(1)})`);
         
     // Calculate position near tree (1.5 units away)
     const playerPos = localPlayer.position;
     const treePos = resource.position;
     
+    // Check current distance
+    const currentDistance = Math.sqrt(
+      Math.pow(playerPos.x - treePos.x, 2) +
+      Math.pow(playerPos.z - treePos.z, 2)
+    );
+    
+    console.log(`[ResourceInteraction] Current distance to tree: ${currentDistance.toFixed(2)}m`);
+    
+    // If already close enough, start gathering immediately
+    if (currentDistance < 2.5) {
+      console.log(`[ResourceInteraction] ✅ Already close enough, starting gathering immediately`);
+      this.startGatheringImmediately(resource, localPlayer);
+      return;
+    }
+    
+    // Calculate position near tree (1.5 units away)
     const direction = this._tempVec3.set(
       playerPos.x - treePos.x,
       0,
@@ -409,13 +453,21 @@ export class ResourceInteractionSystem extends SystemBase {
       z: treePos.z + direction.z * 1.5
     };
     
-    // Move player to tree
-    this.emitTypedEvent(EventType.MOVEMENT_CLICK_TO_MOVE, {
-      playerId: localPlayer.id,
-      targetPosition: targetPos,
-      currentPosition: playerPos,
-      isRunning: false
-    });
+    console.log(`[ResourceInteraction] 🚶 Moving player to tree, target: (${targetPos.x.toFixed(1)}, ${targetPos.z.toFixed(1)})`);
+    
+    // Get player's current run mode
+    const playerRunMode = (localPlayer as { runMode?: boolean }).runMode !== false; // Default to run
+    
+    // Send move request to server (server-authoritative movement)
+    if (this.world.network?.send) {
+      this.world.network.send('moveRequest', {
+        target: [targetPos.x, targetPos.y, targetPos.z],
+        runMode: playerRunMode,
+        cancel: false
+      });
+      
+      console.log(`[ResourceInteraction] Move request sent with runMode: ${playerRunMode ? 'RUN' : 'WALK'}`);
+    }
     
     // Set up proximity checking
     this.activeGathering = {
@@ -445,30 +497,51 @@ export class ResourceInteractionSystem extends SystemBase {
       
       if (distance < 2.5) {
         // Player is close enough, start gathering
+        console.log(`[ResourceInteraction] ✅ Reached tree! Distance: ${distance.toFixed(2)}m`);
         clearInterval(checkInterval);
-        this.startGatheringAnimation(resource);
-        
-        // Calculate gathering duration (3-5 seconds based on skill)
-        const gatheringDuration = 5000; // Will be refined by ResourceSystem based on skill
-        
-        // Emit gathering started event with duration for progress bar
-        this.emitTypedEvent(EventType.RESOURCE_GATHERING_STARTED, {
-          playerId: localPlayer.id,
-          resourceId: resource.id,
-          playerPosition: currentPlayer.position,
-          action: resource.type.includes('tree') ? 'Chopping' : 'Gathering',
-          duration: gatheringDuration
-        });
-        
-              }
+        this.startGatheringImmediately(resource, currentPlayer);
+      }
       
       // Timeout after 10 seconds
       if (Date.now() - this.activeGathering.startTime > 10000) {
         clearInterval(checkInterval);
         this.activeGathering = null;
-        Logger.systemWarn('ResourceInteractionSystem', 'Timeout waiting for player to reach tree');
+        console.warn('[ResourceInteraction] ⏱️ Timeout waiting for player to reach tree');
       }
     }, 100);
+  }
+  
+  private startGatheringImmediately(resource: ResourceInteractable, player: Entity): void {
+    this.startGatheringAnimation(resource);
+    
+    // Calculate gathering duration (3-5 seconds based on skill)
+    const gatheringDuration = 5000; // Will be refined by ResourceSystem based on skill
+    
+    console.log(`[ResourceInteraction] 🪓 Sending gather request to server for resource ${resource.id}`);
+    
+    // Send gather request to SERVER via network
+    if (this.world.network?.send) {
+      this.world.network.send('gatherResource', {
+        resourceId: resource.id,
+        playerPosition: {
+          x: player.position.x,
+          y: player.position.y,
+          z: player.position.z
+        }
+      });
+      console.log(`[ResourceInteraction] ✉️ Gather request sent to server`);
+    } else {
+      console.error('[ResourceInteraction] ❌ No network connection to send gather request!');
+    }
+    
+    // Also emit local event for progress bar UI (client-side only)
+    this.emitTypedEvent(EventType.RESOURCE_GATHERING_STARTED, {
+      playerId: player.id,
+      resourceId: resource.id,
+      playerPosition: player.position,
+      action: resource.type.includes('tree') ? 'Chopping' : 'Gathering',
+      duration: gatheringDuration
+    });
   }
 
   private startGatheringAnimation(resource: ResourceInteractable): void {
@@ -594,10 +667,17 @@ export class ResourceInteractionSystem extends SystemBase {
       this.canvas.removeEventListener('contextmenu', this.onContextMenu as EventListener);
       this.canvas.removeEventListener('mousedown', this.onMouseDown as EventListener);
       this.canvas.removeEventListener('click', this.onLeftClick as EventListener);
+      this.canvas.removeEventListener('touchstart', this.onTouchStart as EventListener);
+      this.canvas.removeEventListener('touchend', this.onTouchEnd as EventListener);
     }
     
     if (this.activeGathering?.animationInterval) {
       clearInterval(this.activeGathering.animationInterval);
+    }
+    
+    if (this.longPressTimer) {
+      clearTimeout(this.longPressTimer);
+      this.longPressTimer = null;
     }
     
     this.resources.clear();

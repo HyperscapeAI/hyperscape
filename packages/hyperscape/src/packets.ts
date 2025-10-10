@@ -30,6 +30,19 @@ const names = [
   'serverStateUpdate',
   'deltaUpdate',
   'compressedUpdate',
+  // Resource gathering packets
+  'gatherResource',
+  'gatheringComplete',
+  'resourceDepleted',
+  'resourceRespawned',
+  // Combat packets
+  'attackMob',
+  // Item pickup packets
+  'pickupItem',
+  // Inventory sync packets
+  'inventoryUpdated',
+  // UI feedback packets
+  'showToast',
 ]
 
 const byName: Record<string, PacketInfo> = {}

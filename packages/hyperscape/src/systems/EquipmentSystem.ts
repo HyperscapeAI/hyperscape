@@ -204,6 +204,8 @@ export class EquipmentSystem extends SystemBase {
       
       // Load equipped items from database
       for (const dbItem of dbEquipment) {
+        if (!dbItem.itemId) continue; // Skip null items
+        
         const itemData = this.getItemData(dbItem.itemId);
         if (itemData && dbItem.slotType) {
           const slot = equipment[dbItem.slotType as keyof PlayerEquipment];

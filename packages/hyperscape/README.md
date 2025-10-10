@@ -1,10 +1,6 @@
 # Hyperscape RPG Engine
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template)
-
 A comprehensive RPG system built on the Hyperscape 3D multiplayer game engine, featuring RuneScape-inspired mechanics with AI-generated content.
-
-**🚀 [Deploy to Railway in 5 minutes](./DEPLOYMENT.md)** | **📖 [Complete Deployment Guide](./DEPLOYMENT.md)**
 
 ## Overview
 
@@ -578,133 +574,17 @@ Available actions for AI agents:
 
 ## Production Deployment
 
-### 🚂 Railway Deployment (Recommended)
-
-Deploy Hyperscape to Railway with automatic CI/CD in minutes.
-
-#### Quick Deploy to Railway
-
-1. **Sign up at [Railway](https://railway.app)**
-
-2. **Fork this repository** to your GitHub account
-
-3. **Create new Railway project** from GitHub repo
-
-4. **Set environment variables** in Railway dashboard:
-   ```bash
-   NODE_ENV=production
-   PORT=${{PORT}}
-   PUBLIC_WS_URL=wss://your-app.railway.app/ws
-   PUBLIC_ASSETS_URL=https://your-app.railway.app/world-assets/
-   PUBLIC_APP_URL=https://your-app.railway.app
-   JWT_SECRET=your-super-secret-jwt-key-change-this
-   ```
-
-5. **Create volume** for persistent data:
-   - Name: `hyperscape-world-data`
-   - Mount path: `/app/world`
-   - Size: 5GB+
-
-6. **Deploy automatically** - Railway deploys on push to main branch
-
-#### Detailed Setup Guide
-
-For complete Railway deployment instructions including:
-- GitHub Actions CI/CD setup
-- Environment variable configuration
-- Volume management for SQLite persistence
-- Health checks and monitoring
-- Custom domain setup
-- Troubleshooting guide
-
-See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for the comprehensive deployment guide.
-
-#### Railway CLI Commands
-
-```bash
-# Install Railway CLI
-npm install -g @railway/cli
-
-# Login
-railway login
-
-# Link to project (in packages/hyperscape)
-railway link
-
-# Deploy manually
-npm run railway:deploy
-
-# View logs
-npm run railway:logs
-
-# Check status
-npm run railway:status
-```
-
-#### Automatic Deployments
-
-The project includes GitHub Actions workflow that automatically:
-1. ✅ Runs tests on push to main
-2. ✅ Builds the application
-3. ✅ Deploys to Railway
-4. ✅ Verifies health checks
-5. ✅ Rolls back on failure
-
-### 🐳 Docker Deployment
-
-Use the included Dockerfile for custom deployments:
-
-```bash
-# Build the image
-docker build -f railway.Dockerfile -t hyperscape .
-
-# Run the container
-docker run -d -p 5555:5555 \
-  -v $(pwd)/world:/app/world \
-  -e NODE_ENV=production \
-  -e PUBLIC_WS_URL=wss://your-domain.com/ws \
-  -e PUBLIC_ASSETS_URL=https://your-domain.com/world-assets/ \
-  -e JWT_SECRET=your-secret \
-  hyperscape
-```
-
 ### Environment Variables
 
-#### Required Variables
-
 ```bash
-# Server
-NODE_ENV=production
-PORT=5555
-WORLD=/app/world
+# Required
+DATABASE_URL=sqlite:./world/db.sqlite
+WORLD_PATH=./world
 
-# Public URLs (update with your domain)
-PUBLIC_WS_URL=wss://your-domain.com/ws
-PUBLIC_ASSETS_URL=https://your-domain.com/world-assets/
-PUBLIC_APP_URL=https://your-domain.com
-
-# Security
-JWT_SECRET=your-super-secret-jwt-key-change-in-production
-```
-
-#### Optional Variables
-
-```bash
-# Authentication (Privy)
-PRIVY_APP_ID=your-privy-app-id
-PRIVY_APP_SECRET=your-privy-app-secret
-PUBLIC_PRIVY_APP_ID=your-privy-app-id
-
-# Farcaster
-PUBLIC_ENABLE_FARCASTER=false
-
-# LiveKit (Voice Chat)
+# Optional
+PUBLIC_ASSETS_URL=https://your-cdn.com/assets/
 LIVEKIT_API_KEY=your-livekit-key
 LIVEKIT_API_SECRET=your-livekit-secret
-LIVEKIT_URL=wss://your-livekit-url
-
-# Performance
-PLAYER_LIMIT=100
 ```
 
 ### Database Setup
@@ -712,79 +592,19 @@ PLAYER_LIMIT=100
 The RPG uses SQLite for persistence:
 
 ```bash
-# Database auto-initializes on first run
-# Location: /app/world/db.sqlite (in production)
-# Location: ./world/db.sqlite (in development)
+# Initialize database
+bun run db:init
 
 # Reset world state (WARNING: Deletes all player data)
-# Only available in development
 bun run db:reset
 ```
 
-#### Database Persistence
-
-**Railway Deployment:**
-- Volume mounted at `/app/world` persists across deployments
-- Database survives container restarts and updates
-- Automatic backups via Railway volume snapshots
-
-**Docker Deployment:**
-- Mount volume: `-v /path/to/world:/app/world`
-- Ensures database persistence across container recreations
-
 ### Performance Optimization
 
-- **Instance Limits**: Recommended 50-100 concurrent players per instance
-- **Memory Usage**: ~2-4GB RAM for full world with all systems
+- **Instance Limits**: Recommended 50-100 concurrent players
+- **Memory Usage**: ~4GB RAM for full world with all systems
 - **CPU Usage**: Scales with player count and active combat
 - **Database**: SQLite handles thousands of players efficiently
-- **Scaling**: For 100+ concurrent users, consider:
-  - Increasing Railway instance resources
-  - Implementing PostgreSQL for multi-instance deployments
-  - Adding read replicas for database scaling
-
-### Production Checklist
-
-Before going live, ensure:
-
-- [x] Environment variables are set in production
-- [x] JWT_SECRET is changed from default
-- [x] DATABASE volume is mounted and persistent
-- [x] PUBLIC_WS_URL uses `wss://` (secure WebSocket)
-- [x] PUBLIC_ASSETS_URL matches your domain
-- [x] Health check endpoint (`/status`) is accessible
-- [x] Privy authentication is configured (if using)
-- [x] Custom domain is configured (optional)
-- [x] Monitoring and alerts are set up
-- [x] Backup strategy is in place
-
-### Monitoring
-
-**Health Check Endpoint:**
-```bash
-curl https://your-app.railway.app/status
-```
-
-Returns:
-```json
-{
-  "status": "ok",
-  "version": "0.13.0",
-  "uptime": 123.456,
-  "players": 5,
-  "memory": {
-    "used": "245MB",
-    "total": "2GB"
-  }
-}
-```
-
-**Railway Dashboard:**
-- Real-time logs
-- CPU/Memory metrics
-- Network usage
-- Deployment history
-- Automatic restarts on crashes
 
 ## API Reference
 

@@ -94,6 +94,117 @@ export class DataManager {
         }
         console.log(`[DataManager] Loaded ${list.length} external mobs from manifests`)
       }
+
+      // Load NPCs
+      const npcsPath = require('path').join(manifestsDir, 'npcs.json')
+      if (fs.existsSync(npcsPath)) {
+        const raw = fs.readFileSync(npcsPath, 'utf-8') as string
+        const list = JSON.parse(raw) as Array<{
+          id: string;
+          name: string;
+          description: string;
+          type: string;
+          modelPath: string;
+          animations?: { idle?: string; talk?: string };
+          services: string[];
+        }>
+        
+        // NPCs can be added to world areas dynamically
+        // For now, just log that they're available
+        console.log(`[DataManager] Loaded ${list.length} external NPCs from manifests`)
+        
+        // Store NPCs for later use by NPC spawning systems
+        this.worldAssetsDir
+        for (const npc of list) {
+          if (!npc || !npc.id) continue
+          // Store in a global NPCs map for systems to access
+          if (!(globalThis as { EXTERNAL_NPCS?: Map<string, unknown> }).EXTERNAL_NPCS) {
+            (globalThis as { EXTERNAL_NPCS?: Map<string, unknown> }).EXTERNAL_NPCS = new Map()
+          }
+          (globalThis as unknown as { EXTERNAL_NPCS: Map<string, unknown> }).EXTERNAL_NPCS.set(npc.id, npc)
+        }
+      }
+
+      // Load resources
+      const resourcesPath = require('path').join(manifestsDir, 'resources.json')
+      if (fs.existsSync(resourcesPath)) {
+        const raw = fs.readFileSync(resourcesPath, 'utf-8') as string
+        const list = JSON.parse(raw) as Array<{
+          id: string;
+          name: string;
+          type: string;
+          modelPath: string;
+          iconPath?: string;
+          harvestSkill: string;
+          requiredLevel: number;
+          harvestTime: number;
+          respawnTime: number;
+          yields: Array<{ itemId: string; quantity: number; chance: number }>;
+        }>
+        
+        console.log(`[DataManager] Loaded ${list.length} external resources from manifests`)
+        
+        // Store resources for terrain system and resource system to access
+        if (!(globalThis as { EXTERNAL_RESOURCES?: Map<string, unknown> }).EXTERNAL_RESOURCES) {
+          (globalThis as { EXTERNAL_RESOURCES?: Map<string, unknown> }).EXTERNAL_RESOURCES = new Map()
+        }
+        for (const resource of list) {
+          if (!resource || !resource.id) continue
+          (globalThis as unknown as { EXTERNAL_RESOURCES: Map<string, unknown> }).EXTERNAL_RESOURCES.set(resource.id, resource)
+        }
+      }
+
+      // Load buildings
+      const buildingsPath = require('path').join(manifestsDir, 'buildings.json')
+      if (fs.existsSync(buildingsPath)) {
+        const raw = fs.readFileSync(buildingsPath, 'utf-8') as string
+        const list = JSON.parse(raw) as Array<{
+          id: string;
+          name: string;
+          type: string;
+          modelPath: string;
+          iconPath?: string;
+          description: string;
+        }>
+        
+        console.log(`[DataManager] Loaded ${list.length} external buildings from manifests`)
+        
+        // Store buildings for world building systems
+        if (!(globalThis as { EXTERNAL_BUILDINGS?: Map<string, unknown> }).EXTERNAL_BUILDINGS) {
+          (globalThis as { EXTERNAL_BUILDINGS?: Map<string, unknown> }).EXTERNAL_BUILDINGS = new Map()
+        }
+        for (const building of list) {
+          if (!building || !building.id) continue
+          (globalThis as unknown as { EXTERNAL_BUILDINGS: Map<string, unknown> }).EXTERNAL_BUILDINGS.set(building.id, building)
+        }
+      }
+
+      // Load avatars
+      const avatarsPath = require('path').join(manifestsDir, 'avatars.json')
+      if (fs.existsSync(avatarsPath)) {
+        const raw = fs.readFileSync(avatarsPath, 'utf-8') as string
+        const list = JSON.parse(raw) as Array<{
+          id: string;
+          name: string;
+          description: string;
+          type: string;
+          isRigged: boolean;
+          characterHeight: number;
+          modelPath: string;
+          animations?: { idle?: string; walk?: string; run?: string };
+        }>
+        
+        console.log(`[DataManager] Loaded ${list.length} external avatars from manifests`)
+        
+        // Store avatars for player system
+        if (!(globalThis as { EXTERNAL_AVATARS?: Map<string, unknown> }).EXTERNAL_AVATARS) {
+          (globalThis as { EXTERNAL_AVATARS?: Map<string, unknown> }).EXTERNAL_AVATARS = new Map()
+        }
+        for (const avatar of list) {
+          if (!avatar || !avatar.id) continue
+          (globalThis as unknown as { EXTERNAL_AVATARS: Map<string, unknown> }).EXTERNAL_AVATARS.set(avatar.id, avatar)
+        }
+      }
     } catch (e) {
       // Non-fatal
       console.warn('[DataManager] Failed to load external manifests:', (e as Error).message)
