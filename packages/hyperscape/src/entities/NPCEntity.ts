@@ -112,17 +112,29 @@ export class NPCEntity extends Entity {
   protected async createMesh(): Promise<void> {
     // Try to load actual 3D model if available
     if (this.config.model && this.world.loader && !this.world.isServer) {
+      console.log(`[NPCEntity] 🔄 Attempting to load 3D model for ${this.config.npcType}: ${this.config.model}`);
+      
       try {
         await this.loadModel();
-        // If model loaded successfully, we're done
+        
+        // Success - model loaded
         if (this.mesh) {
           this.mesh.name = `NPC_${this.config.npcType}_${this.id}`;
+          console.log(`[NPCEntity] ✅ 3D model successfully loaded for ${this.config.npcType}`);
           return;
         }
       } catch (error) {
-        console.warn(`[NPCEntity] Failed to load model for ${this.config.npcType}:`, error);
-        // Fall through to create fallback mesh
+        // Model loading failed - gracefully fall back to colored box
+        console.warn(`[NPCEntity] ⚠️  3D model failed to load for ${this.config.npcType}, using fallback box:`, (error as Error).message);
       }
+      
+    } else if (!this.config.model) {
+      console.log(`[NPCEntity] No model path for ${this.config.npcType}, using fallback box`);
+    } else if (this.world.isServer) {
+      console.log(`[NPCEntity] Server-side ${this.config.npcType}, skipping model`);
+      return; // Don't create fallback mesh on server
+    } else {
+      console.log(`[NPCEntity] Loader not available for ${this.config.npcType}, using fallback box`);
     }
     
     // Fallback: Create basic NPC mesh as placeholder

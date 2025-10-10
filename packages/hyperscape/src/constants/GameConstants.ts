@@ -88,12 +88,13 @@ export const MOB_CONSTANTS = {
 
 // === UI AND VISUAL ===
 export const UI_CONSTANTS = {
-  HEALTH_BAR_WIDTH: 100,
-  HEALTH_BAR_HEIGHT: 12,
+  HEALTH_BAR_WIDTH: 50,
+  HEALTH_BAR_HEIGHT: 5,
   NAME_TAG_WIDTH: 200,
-  NAME_TAG_HEIGHT: 30,
-  UI_SCALE: 0.01, // Canvas to world scale
-  SPRITE_SCALE: 1.0,
+  NAME_TAG_HEIGHT: 25,
+  UI_SCALE: 0.1, // Canvas to world scale
+  SPRITE_SCALE: 0.1,
+  HEALTH_SPRITE_SCALE: 0.05,
   HUD_UPDATE_RATE: 100, // 10 FPS for UI updates
   CHAT_MESSAGE_TIMEOUT: 5000 // 5 seconds
 } as const;

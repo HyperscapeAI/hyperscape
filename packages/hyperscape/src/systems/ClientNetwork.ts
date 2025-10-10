@@ -384,10 +384,40 @@ export class ClientNetwork extends SystemBase {
 
   onEntityEvent = (event: { id: string; version: number; name: string; data?: unknown }) => {
     const { id, version, name, data } = event
+    // If event is broadcast world event, re-emit on world so systems can react
+    if (id === 'world') {
+      this.world.emit(name, data)
+      return
+    }
     const entity = this.world.entities.get(id)
     if (!entity) return
     // Trigger entity event if method exists
     entity.onEvent(version, name, data, this.id || '');
+  }
+
+  // Dedicated resource packet handlers
+  onResourceSnapshot = (data: { resources: Array<{ id: string; type: string; position: { x: number; y: number; z: number }; isAvailable: boolean; respawnAt?: number }> }) => {
+    for (const r of data.resources) {
+      this.world.emit('rpg:resource:spawned', { id: r.id, type: r.type, position: r.position })
+      if (!r.isAvailable) this.world.emit('rpg:resource:depleted', { resourceId: r.id, position: r.position })
+    }
+  }
+  onResourceSpawnPoints = (data: { spawnPoints: Array<{ id: string; type: string; position: { x: number; y: number; z: number } }> }) => {
+    this.world.emit('rpg:resource:spawn_points:registered', data)
+  }
+  onResourceSpawned = (data: { id: string; type: string; position: { x: number; y: number; z: number } }) => {
+    this.world.emit('rpg:resource:spawned', data)
+  }
+  onResourceDepleted = (data: { resourceId: string; position?: { x: number; y: number; z: number } }) => {
+    this.world.emit('rpg:resource:depleted', data)
+  }
+  onResourceRespawned = (data: { resourceId: string; position?: { x: number; y: number; z: number } }) => {
+    this.world.emit('rpg:resource:respawned', data)
+  }
+
+  onInventoryUpdated = (data: { playerId: string; items: Array<{ slot: number; itemId: string; quantity: number }>; coins: number; maxSlots: number }) => {
+    // Re-emit with typed event so UI updates without waiting for local add
+    this.world.emit('rpg:inventory:updated', data)
   }
 
   onEntityRemoved = (id: string) => {
@@ -428,6 +458,21 @@ export class ClientNetwork extends SystemBase {
   
   onInventoryUpdated = (data: { playerId: string; items: unknown[]; coins: number }) => {
     console.log(`[ClientNetwork] 📦 Inventory updated for player ${data.playerId}:`, data.items.length, 'items');
+    console.log('[ClientNetwork] Item details:', data.items);
+    
+    // Only update if this is the local player
+    const localPlayer = this.world.getPlayer();
+    if (!localPlayer) {
+      console.warn('[ClientNetwork] No local player, skipping inventory update');
+      return;
+    }
+    
+    if (localPlayer.id !== data.playerId) {
+      console.log(`[ClientNetwork] Update is for different player (${data.playerId}), local is ${localPlayer.id}`);
+      return;
+    }
+    
+    console.log('[ClientNetwork] ✅ Emitting local INVENTORY_UPDATED event for UI');
     
     // Forward to local event system for UI updates
     this.world.emit(EventType.INVENTORY_UPDATED, {

@@ -655,31 +655,22 @@ function SkillsPanel({ stats, onClose }: { stats: PlayerStats & {
         })}
       </div>
 
-      <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#9ca3af', textAlign: 'right' }}>
+      <div className="mt-2 text-[0.85rem] text-gray-400 text-right">
         Total level: {totalLevel}
       </div>
 
       {hoverInfo && (
         <div
+          className="fixed bg-[rgba(20,20,28,0.98)] border border-white/15 rounded-md p-2 px-2.5 text-white pointer-events-none text-[0.8rem] z-[200] max-w-64"
           style={{
-            position: 'fixed',
             left: mouse.x + 12,
             top: mouse.y + 12,
-            background: 'rgba(20,20,28,0.98)',
-            border: '1px solid rgba(255,255,255,0.15)',
-            borderRadius: '0.375rem',
-            padding: '0.5rem 0.6rem',
-            color: '#fff',
-            pointerEvents: 'none',
-            fontSize: '0.8rem',
-            zIndex: 200,
-            maxWidth: '16rem'
           }}
         >
-          <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>{hoverInfo.label}</div>
-          <div style={{ opacity: 0.9 }}>XP: {Math.floor(hoverInfo.xp).toLocaleString()}</div>
-          <div style={{ opacity: 0.9 }}>Next level at: {getXpForLevel(Math.min(120, hoverInfo.level + 1)).toLocaleString()} xp</div>
-          <div style={{ opacity: 0.9 }}>Remaining: {(getXpForLevel(Math.min(120, hoverInfo.level + 1)) - Math.floor(hoverInfo.xp)).toLocaleString()} xp</div>
+          <div className="font-semibold mb-1">{hoverInfo.label}</div>
+          <div className="opacity-90">XP: {Math.floor(hoverInfo.xp).toLocaleString()}</div>
+          <div className="opacity-90">Next level at: {getXpForLevel(Math.min(120, hoverInfo.level + 1)).toLocaleString()} xp</div>
+          <div className="opacity-90">Remaining: {(getXpForLevel(Math.min(120, hoverInfo.level + 1)) - Math.floor(hoverInfo.xp)).toLocaleString()} xp</div>
         </div>
       )}
     </div>
@@ -933,49 +924,33 @@ function UnifiedInventoryEquipment({
         }}
       >
         {/* Equipment Section (Left) */}
-        <div style={{ width: '14rem' }}>
-          <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem' }}>Equipment</h3>
+        <div className="w-56">
+          <h3 className="m-0 mb-4 text-[1.1rem]">Equipment</h3>
           
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
+          <div className="flex flex-col gap-2 mb-4">
             {equipmentSlots.map(({ key, label, icon }) => {
               const item = equipment?.[key]
               return (
                 <div
                   key={key}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    padding: '0.5rem',
-                    background: 'rgba(0, 0, 0, 0.3)',
-                    borderRadius: '0.25rem',
-                    border: item ? '1px solid #3b82f6' : '1px solid transparent',
-                  }}
+                  className={`flex items-center gap-2 p-2 bg-black/30 rounded ${item ? 'border border-blue-500' : 'border border-transparent'}`}
                 >
-                  <div style={{ fontSize: '1.2rem', width: '2rem', textAlign: 'center' }}>{icon}</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{label}</div>
+                  <div className="text-xl w-8 text-center">{icon}</div>
+                  <div className="flex-1">
+                    <div className="text-xs text-gray-400">{label}</div>
                     {item ? (
-                      <div style={{ fontSize: '0.875rem', fontWeight: 'bold' }}>
+                      <div className="text-sm font-bold">
                         {item.name || `Item ${item.itemId}`}
                         {key === 'arrows' && item?.quantity && ` (${item.quantity})`}
                       </div>
                     ) : (
-                      <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>(empty)</div>
+                      <div className="text-sm text-gray-500">(empty)</div>
                     )}
                   </div>
                   {item && (
                     <button
                       onClick={() => handleUnequip(key)}
-                      style={{
-                        background: '#6b7280',
-                        border: 'none',
-                        borderRadius: '0.25rem',
-                        color: 'white',
-                        padding: '0.125rem 0.375rem',
-                        cursor: 'pointer',
-                        fontSize: '0.75rem',
-                      }}
+                      className="bg-gray-500 border-none rounded text-white py-0.5 px-1.5 cursor-pointer text-xs"
                       title="Unequip"
                     >
                       ✕
@@ -988,15 +963,9 @@ function UnifiedInventoryEquipment({
 
           {/* Combat Stats */}
           {stats && (
-            <div
-              style={{
-                padding: '0.75rem',
-                background: 'rgba(0, 0, 0, 0.3)',
-                borderRadius: '0.25rem',
-              }}
-            >
-              <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem' }}>Combat Stats</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem', fontSize: '0.8rem' }}>
+            <div className="p-3 bg-black/30 rounded">
+              <h4 className="m-0 mb-2 text-[0.9rem]">Combat Stats</h4>
+              <div className="grid grid-cols-2 gap-1 text-[0.8rem]">
                 <div>⚔️ ATK: {stats.skills?.attack?.level || 0}</div>
                 <div>💪 STR: {stats.skills?.strength?.level || 0}</div>
                 <div>🛡️ DEF: {stats.skills?.defense?.level || 0}</div>
@@ -1007,45 +976,23 @@ function UnifiedInventoryEquipment({
         </div>
 
         {/* Inventory Section (Right) */}
-        <div style={{ flex: 1 }}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '1rem',
-            }}
-          >
-            <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Inventory</h3>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.875rem', color: '#9ca3af' }}>
+        <div className="flex-1">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="m-0 text-[1.1rem]">Inventory</h3>
+            <div className="flex gap-2 items-center">
+              <span className="text-sm text-gray-400">
                 {items.length}/28 slots
               </span>
               <button
                 onClick={onClose}
-                style={{
-                  background: '#ef4444',
-                  border: 'none',
-                  borderRadius: '0.25rem',
-                  color: 'white',
-                  padding: '0.25rem 0.5rem',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                }}
+                className="bg-red-500 border-none rounded text-white py-1 px-2 cursor-pointer text-sm"
               >
                 Close (I)
               </button>
             </div>
           </div>
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(7, 1fr)',
-              gap: '0.25rem',
-              marginBottom: '1rem',
-            }}
-          >
+          <div className="grid grid-cols-7 gap-1 mb-4">
             {slots.map((item, index) => (
               <div
                 key={index}
@@ -1104,72 +1051,38 @@ function UnifiedInventoryEquipment({
           </div>
 
           {selectedSlot !== null && slots[selectedSlot] && (
-            <div style={{ 
-              padding: '0.75rem', 
-              background: 'rgba(0, 0, 0, 0.3)', 
-              borderRadius: '0.25rem',
-              border: `1px solid ${getItemTypeColor(slots[selectedSlot].type)}` 
-            }}>
-              <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
+            <div 
+              className="p-3 bg-black/30 rounded"
+              style={{ border: `1px solid ${getItemTypeColor(slots[selectedSlot].type)}` }}
+            >
+              <div className="font-bold mb-1">
                 {slots[selectedSlot].name}
               </div>
-              <div style={{ fontSize: '0.875rem', color: '#9ca3af', marginBottom: '0.5rem' }}>
+              <div className="text-sm text-gray-400 mb-2">
                 Type: {slots[selectedSlot].type} • Quantity: {slots[selectedSlot].quantity}
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <div className="flex gap-2 flex-wrap">
                 <button
                   onClick={() => handleContextMenuAction('use')}
-                  style={{
-                    background: '#10b981',
-                    border: 'none',
-                    borderRadius: '0.25rem',
-                    color: 'white',
-                    padding: '0.375rem 0.75rem',
-                    cursor: 'pointer',
-                    fontSize: '0.875rem',
-                  }}
+                  className="bg-emerald-500 border-none rounded text-white py-1.5 px-3 cursor-pointer text-sm"
                 >
                   Use
                 </button>
                 <button
                   onClick={() => handleContextMenuAction('equip')}
-                  style={{
-                    background: '#3b82f6',
-                    border: 'none',
-                    borderRadius: '0.25rem',
-                    color: 'white',
-                    padding: '0.375rem 0.75rem',
-                    cursor: 'pointer',
-                    fontSize: '0.875rem',
-                  }}
+                  className="bg-blue-500 border-none rounded text-white py-1.5 px-3 cursor-pointer text-sm"
                 >
                   Equip
                 </button>
                 <button
                   onClick={() => handleContextMenuAction('drop')}
-                  style={{
-                    background: '#ef4444',
-                    border: 'none',
-                    borderRadius: '0.25rem',
-                    color: 'white',
-                    padding: '0.375rem 0.75rem',
-                    cursor: 'pointer',
-                    fontSize: '0.875rem',
-                  }}
+                  className="bg-red-500 border-none rounded text-white py-1.5 px-3 cursor-pointer text-sm"
                 >
                   Drop
                 </button>
                 <button
                   onClick={() => handleContextMenuAction('examine')}
-                  style={{
-                    background: '#6b7280',
-                    border: 'none',
-                    borderRadius: '0.25rem',
-                    color: 'white',
-                    padding: '0.375rem 0.75rem',
-                    cursor: 'pointer',
-                    fontSize: '0.875rem',
-                  }}
+                  className="bg-gray-500 border-none rounded text-white py-1.5 px-3 cursor-pointer text-sm"
                 >
                   Examine
                 </button>
@@ -1182,18 +1095,10 @@ function UnifiedInventoryEquipment({
       {/* Context Menu */}
       {contextMenu && (
         <div
+          className="fixed bg-[rgba(11,10,21,0.95)] border border-[#2a2b39] rounded p-1 pointer-events-auto backdrop-blur-[5px] min-w-32 z-[1000]"
           style={{
-            position: 'fixed',
             left: `${contextMenu.x}px`,
             top: `${contextMenu.y}px`,
-            background: 'rgba(11, 10, 21, 0.95)',
-            border: '0.0625rem solid #2a2b39',
-            borderRadius: '0.25rem',
-            padding: '0.25rem',
-            pointerEvents: 'auto',
-            backdropFilter: 'blur(5px)',
-            minWidth: '8rem',
-            zIndex: 1000,
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -1201,19 +1106,7 @@ function UnifiedInventoryEquipment({
             <div
               key={action}
               onClick={() => handleContextMenuAction(action)}
-              style={{
-                padding: '0.5rem 0.75rem',
-                cursor: 'pointer',
-                borderRadius: '0.25rem',
-                transition: 'background 0.1s',
-                textTransform: 'capitalize',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent'
-              }}
+              className="py-2 px-3 cursor-pointer rounded transition-colors duration-100 capitalize hover:bg-white/10"
             >
               {action}
             </div>
@@ -1511,83 +1404,41 @@ function _EquipmentPanel({
 
   return (
     <div
-      className="rpg-equipment"
-      style={{
-        position: 'absolute',
-        top: '50%',
-        left: '35%',
-        transform: 'translate(-50%, -50%)',
-        width: '20rem',
-        background: 'rgba(11, 10, 21, 0.95)',
-        border: '0.0625rem solid #2a2b39',
-        borderRadius: '0.5rem',
-        padding: '1rem',
-        pointerEvents: 'auto',
-        backdropFilter: 'blur(5px)',
-      }}
+      className="absolute top-1/2 left-[35%] -translate-x-1/2 -translate-y-1/2 w-80 bg-[rgba(11,10,21,0.95)] border border-[#2a2b39] rounded-lg p-4 pointer-events-auto backdrop-blur-[5px]"
     >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '1rem',
-        }}
-      >
-        <h3 style={{ margin: 0 }}>Equipment</h3>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="m-0">Equipment</h3>
         <button
           onClick={onClose}
-          style={{
-            background: '#ef4444',
-            border: 'none',
-            borderRadius: '0.25rem',
-            color: 'white',
-            padding: '0.25rem 0.5rem',
-            cursor: 'pointer',
-          }}
+          className="bg-red-500 border-none rounded text-white py-1 px-2 cursor-pointer"
         >
           Close
         </button>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      <div className="flex flex-col gap-2">
         {equipmentSlots.map(({ key, label }) => {
           const item = equipment[key]
           return (
             <div
               key={key}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                padding: '0.5rem',
-                background: 'rgba(0, 0, 0, 0.3)',
-                borderRadius: '0.25rem',
-              }}
+              className="flex items-center gap-2 p-2 bg-black/30 rounded"
             >
-              <div style={{ width: '5rem' }}>{label}:</div>
-              <div style={{ flex: 1 }}>
+              <div className="w-20">{label}:</div>
+              <div className="flex-1">
                 {item ? (
                   <span>
                     {item.name || `Item ${item.itemId}`}
                     {key === 'arrows' && item?.quantity && ` (${item.quantity})`}
                   </span>
                 ) : (
-                  <span style={{ color: '#6b7280' }}>(empty)</span>
+                  <span className="text-gray-500">(empty)</span>
                 )}
               </div>
               {item && (
                 <button
                   onClick={() => handleUnequip(key)}
-                  style={{
-                    background: '#6b7280',
-                    border: 'none',
-                    borderRadius: '0.25rem',
-                    color: 'white',
-                    padding: '0.125rem 0.5rem',
-                    cursor: 'pointer',
-                    fontSize: '0.875rem',
-                  }}
+                  className="bg-gray-500 border-none rounded text-white py-0.5 px-2 cursor-pointer text-sm"
                 >
                   Unequip
                 </button>
@@ -1598,16 +1449,9 @@ function _EquipmentPanel({
       </div>
 
       {stats && (
-        <div
-          style={{
-            marginTop: '1rem',
-            padding: '0.5rem',
-            background: 'rgba(0, 0, 0, 0.3)',
-            borderRadius: '0.25rem',
-          }}
-        >
-          <h4 style={{ margin: '0 0 0.5rem 0' }}>Combat Stats</h4>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem', fontSize: '0.875rem' }}>
+        <div className="mt-4 p-2 bg-black/30 rounded">
+          <h4 className="m-0 mb-2">Combat Stats</h4>
+          <div className="grid grid-cols-2 gap-1 text-sm">
             <div>Attack: {stats.skills?.attack?.level || 0}</div>
             <div>Strength: {stats.skills?.strength?.level || 0}</div>
             <div>Defense: {stats.skills?.defense?.level || 0}</div>

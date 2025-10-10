@@ -45,8 +45,8 @@ export class UIRenderer {
     options: BarOptions = {}
   ): HTMLCanvasElement {
     const {
-      width = 100,
-      height = 12,
+      width = 50,  // Reduced 2x (was 100)
+      height = 3,  // Reduced 4x (was 12)
       backgroundColor = 'rgba(0, 0, 0, 0.8)',
       fillColor = '#4CAF50',
       borderColor = '#ffffff',
@@ -177,9 +177,9 @@ export class UIRenderer {
    */
   static createNameTag(name: string, options: NameTagOptions = {}): HTMLCanvasElement {
     const {
-      width = 200,
-      height = 30,
-      fontSize = 16,
+      width = 160,  // Reduced 20% from 200
+      height = 20,  // Reduced to fix Y-axis stretch (was 30)
+      fontSize = 14, // Slightly smaller to fit better (was 16)
       fontFamily = 'Arial, sans-serif',
       textColor = '#ffffff',
       backgroundColor = 'rgba(0, 0, 0, 0.7)',

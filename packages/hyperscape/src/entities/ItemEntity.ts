@@ -36,48 +36,64 @@ export class ItemEntity extends InteractableEntity {
   }
 
   protected async createMesh(): Promise<void> {
+    console.log(`[ItemEntity] createMesh() called for ${this.config.itemId}`, {
+      hasModelPath: !!this.config.model,
+      modelPath: this.config.model,
+      hasLoader: !!this.world.loader,
+      isServer: this.world.isServer,
+      isClient: this.world.isClient
+    });
+    
     // Try to load actual 3D model if available
     if (this.config.model && this.world.loader && !this.world.isServer) {
-      console.log(`[ItemEntity] Loading 3D model for ${this.config.itemId}: ${this.config.model}`);
+      console.log(`[ItemEntity] ✅ Conditions met - attempting to load 3D model for ${this.config.itemId}: ${this.config.model}`);
+      
       try {
         await this.loadModel();
-        // If model loaded successfully, we're done
+        
+        // Success - model loaded
         if (this.mesh) {
           this.mesh.name = `Item_${this.config.itemId}`;
-          console.log(`[ItemEntity] ✅ 3D model loaded for ${this.config.itemId}`, {
-            meshType: this.mesh.type,
-            meshName: this.mesh.name,
-            visible: this.mesh.visible,
-            position: this.node.position.toArray(),
-            scale: this.mesh.scale.toArray()
-          });
+          console.log(`[ItemEntity] 🎉 3D model successfully loaded for ${this.config.itemId}`);
           return;
+        } else {
+          console.error(`[ItemEntity] ❌ loadModel() completed but this.mesh is still null for ${this.config.itemId}`);
         }
       } catch (error) {
-        console.warn(`[ItemEntity] ❌ Failed to load model for ${this.config.itemId}:`, error);
-        // Fall through to create fallback mesh
+        // Model loading failed - gracefully fall back to cube
+        console.warn(`[ItemEntity] ⚠️  3D model failed to load for ${this.config.itemId}, using fallback cube. Error:`, error);
       }
-    } else if (!this.config.model) {
-      console.log(`[ItemEntity] No model path for ${this.config.itemId}, using fallback cube`);
+      
+    } else {
+      console.warn(`[ItemEntity] ⚠️  Skipping 3D model load for ${this.config.itemId}:`, {
+        hasModel: !!this.config.model,
+        hasLoader: !!this.world.loader,
+        isServer: this.world.isServer,
+        reason: !this.config.model ? 'No model path' : 
+                !this.world.loader ? 'No loader system' :
+                this.world.isServer ? 'Server-side' : 'Unknown'
+      });
+      
+      if (this.world.isServer) {
+        return; // Don't create fallback mesh on server
+      }
     }
     
-    // Fallback: Create a simple cube as placeholder
-    const geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+    // Fallback: Create a simple cube as placeholder (scale it up to be visible!)
+    const geometry = new THREE.BoxGeometry(2, 2, 2); // Make bigger - 2x2x2 meters
     const material = new THREE.MeshLambertMaterial({
       color: this.getItemColor(),
-      transparent: true,
-      opacity: 0.8
+      transparent: false, // Make solid
+      opacity: 1.0
     });
 
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.name = `Item_${this.config.itemId}`;
+    mesh.name = `Item_${this.config.itemId}_Fallback`;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     this.mesh = mesh;
 
-    // Mesh position is relative to node, not world
-    // Don't add offset here - the node is already at the correct world position
-    // If we want floating animation, it should be done in update() with time-based offset
+    console.log(`[ItemEntity] 📦 Creating LARGE fallback cube for ${this.config.itemId} - color:`, this.getItemColor().toString(16));
 
     // Set up userData with proper typing for item
     const userData: MeshUserData = {
@@ -95,7 +111,6 @@ export class ItemEntity extends InteractableEntity {
       }
     };
     if (this.mesh) {
-      // Spread userData to match THREE.js userData type
       this.mesh.userData = { ...userData };
     }
 
@@ -108,7 +123,13 @@ export class ItemEntity extends InteractableEntity {
     if (this.mesh && this.node) {
       this.node.add(this.mesh);
       
-      console.log(`[ItemEntity] 📦 Fallback cube added for ${this.config.itemId} at world position:`, this.node.position.toArray());
+      console.log(`[ItemEntity] 📦 Fallback cube (2m) added for ${this.config.itemId}:`, {
+        worldPosition: this.node.position.toArray(),
+        meshScale: this.mesh.scale.toArray(),
+        meshVisible: this.mesh.visible,
+        nodeVisible: this.node.visible,
+        color: this.getItemColor()
+      });
       
       // Also set userData on the node itself for easier detection
       this.node.userData.type = 'item';

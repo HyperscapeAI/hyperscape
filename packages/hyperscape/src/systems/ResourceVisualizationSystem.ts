@@ -22,6 +22,23 @@ export class ResourceVisualizationSystem extends SystemBase {
   private resources = new Map<string, VisualResource>();
   private resourceModels: Record<string, THREE.BufferGeometry> = {};
   private materials: Record<string, THREE.Material> = {};
+  private stumps = new Map<string, THREE.Mesh>();
+  private detachedTrees = new Map<string, { obj: THREE.Object3D; parent: THREE.Object3D | null }>();
+  private detachedNearby = new Map<string, Array<{ obj: THREE.Object3D; parent: THREE.Object3D | null }>>();
+
+  private findObjectByResourceId(id: string): THREE.Object3D | null {
+    const scene = this.world.stage?.scene;
+    if (!scene) return null;
+    let found: THREE.Object3D | null = scene.getObjectByName(`resource_${id}`) || null;
+    if (found) return found;
+    scene.traverse(obj => {
+      if (found) return;
+      if ((obj as any).userData && (obj as any).userData.resourceId === id) {
+        found = obj;
+      }
+    });
+    return found;
+  }
   
   constructor(world: World) {
     super(world, { 
@@ -60,14 +77,91 @@ export class ResourceVisualizationSystem extends SystemBase {
       this.createTreeMesh(data);
     });
 
+    // Listen for server resource spawn (canonical IDs) and remap/create visuals to server ids
+    this.subscribe(EventType.RESOURCE_SPAWNED, (data: {
+      id: string;
+      type: string;
+      position: Position3D;
+    }) => {
+      const serverId = data.id;
+      const pos = data.position;
+      const isTree = data.type.includes('tree');
+      const isHerb = data.type.includes('herb');
+      // If already mapped, just ensure tagging
+      if (this.resources.has(serverId)) {
+        const vr = this.resources.get(serverId)!;
+        if (vr.mesh) {
+          vr.mesh.userData.resourceId = serverId;
+          vr.mesh.userData.resourceType = data.type;
+        }
+        return;
+      }
+      // Find nearest existing visual resource to remap
+      let bestId: string | null = null;
+      let bestDist = Infinity;
+      for (const [rid, vr] of this.resources.entries()) {
+        // Only consider visuals of matching type to avoid remapping trees to herbs
+        const vrIsTree = vr.type.includes('tree');
+        const vrIsHerb = vr.type.includes('herb');
+        if ((isTree && !vrIsTree) || (isHerb && !vrIsHerb)) continue;
+        const dx = (vr.position.x - (pos.x || 0));
+        const dz = (vr.position.z - (pos.z || 0));
+        const d2 = dx * dx + dz * dz;
+        if (d2 < bestDist) { bestDist = d2; bestId = rid; }
+      }
+      // If it's close enough (within ~25 units squared ≈ 5m), remap key and tag mesh
+      if (bestId && bestDist < 25) {
+        const vr = this.resources.get(bestId)!;
+        this.resources.delete(bestId);
+        this.resources.set(serverId, { id: serverId, type: data.type, position: pos, mesh: vr.mesh });
+        if (vr.mesh) {
+          vr.mesh.userData.resourceId = serverId;
+          vr.mesh.userData.resourceType = data.type;
+          vr.mesh.name = `resource_${serverId}`;
+        }
+        // Also remap stump if it exists
+        const stump = this.stumps.get(bestId);
+        if (stump) {
+          this.stumps.delete(bestId);
+          this.stumps.set(serverId, stump);
+        }
+        Logger.system?.('ResourceVisualizationSystem', `Remapped visual resource ${bestId} -> ${serverId}`);
+      } else {
+        // Create a new visual if no nearby visual existed
+        if (isTree) {
+          const mesh = this.createTreeMeshInternal('normal_tree', pos);
+          mesh.userData.resourceId = serverId;
+          mesh.userData.resourceType = data.type;
+          mesh.name = `resource_${serverId}`;
+          // Ensure all descendants are tagged for reliable raycasts and lookups
+          mesh.traverse((child) => {
+            (child as any).userData = (child as any).userData || {};
+            (child as any).userData.resourceId = serverId;
+            (child as any).userData.resourceType = data.type;
+            (child as any).userData.clickable = true;
+          });
+          if (this.world.stage?.scene) this.world.stage.scene.add(mesh);
+          this.resources.set(serverId, { id: serverId, type: data.type, position: pos, mesh });
+        } else if (isHerb) {
+          // Herbs have no dedicated visual here; create a tiny stump-like marker
+          const stump = this.getOrCreateStump(serverId, pos);
+          stump.visible = true;
+          this.resources.set(serverId, { id: serverId, type: data.type, position: pos, mesh: stump });
+        }
+      }
+    });
+
     // Listen for resource depletion
-    this.subscribe(EventType.RESOURCE_DEPLETED, (data: { resourceId: string }) => {
-      this.hideResource(data.resourceId);
+    this.subscribe(EventType.RESOURCE_DEPLETED, (data: { resourceId: string; position?: Position3D }) => {
+      this.hideResource(data.resourceId, data.position);
     });
 
     // Listen for resource respawn
-    this.subscribe(EventType.RESOURCE_RESPAWNED, (data: { resourceId: string }) => {
-      this.showResource(data.resourceId);
+    this.subscribe(EventType.RESOURCE_RESPAWNED, (data: { resourceId: string; position?: Position3D }) => {
+      this.showResource(data.resourceId, data.position);
+      // Ensure stump is hidden and tree visible after respawn even if ids remapped
+      const stump = this.stumps.get(data.resourceId);
+      if (stump) stump.visible = false;
     });
 
     // Listen for test tree removal
@@ -141,9 +235,16 @@ export class ResourceVisualizationSystem extends SystemBase {
     }
     
     mesh.userData.resourceId = spawnPoint.id;
-    mesh.userData.resourceType = spawnPoint.type;
+    mesh.userData.resourceType = spawnPoint.subType || spawnPoint.type;
     mesh.userData.clickable = true; // Mark as clickable for interaction
     mesh.name = `resource_${spawnPoint.id}`;
+
+    // Ensure raycasts on any child hit resolve to this resource
+    mesh.traverse((obj) => {
+      obj.userData.resourceId = spawnPoint.id;
+      obj.userData.resourceType = spawnPoint.subType || spawnPoint.type;
+      obj.userData.clickable = true;
+    });
     
     // Add to scene
     if (this.world.stage?.scene) {
@@ -171,6 +272,7 @@ export class ResourceVisualizationSystem extends SystemBase {
     trunk.position.y = 2; // Half height of trunk
     trunk.castShadow = true;
     trunk.receiveShadow = true;
+    trunk.name = 'tree_trunk';
     
     // Create leaves based on tree type
     const leavesMaterial = treeType === 'oak_tree' 
@@ -184,9 +286,11 @@ export class ResourceVisualizationSystem extends SystemBase {
     leaves.position.y = 5; // Above trunk
     leaves.castShadow = true;
     leaves.receiveShadow = true;
+    leaves.name = 'tree_leaves';
     
     treeGroup.add(trunk);
     treeGroup.add(leaves);
+    treeGroup.name = 'tree_group';
     
     // Convert group to single mesh for simplicity
     const combinedGeometry = new THREE.BoxGeometry(3, 6, 3); // Simplified bounding box
@@ -195,6 +299,7 @@ export class ResourceVisualizationSystem extends SystemBase {
     // Actually, let's just use the group directly by wrapping it
     const wrapperMesh = new THREE.Mesh();
     wrapperMesh.add(treeGroup);
+    wrapperMesh.name = 'tree_wrapper';
     
     wrapperMesh.position.set(
       position.x,
@@ -229,9 +334,16 @@ export class ResourceVisualizationSystem extends SystemBase {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.userData.resourceId = data.id;
-    mesh.userData.resourceType = 'tree';
+    mesh.userData.resourceType = data.type || 'tree';
     mesh.userData.clickable = true; // Mark as clickable for interaction system
     mesh.name = `test_tree_${data.id}`;
+
+    // Safety: tag children as well (box has none, but future-proof)
+    mesh.traverse((obj) => {
+      obj.userData.resourceId = data.id;
+      obj.userData.resourceType = data.type || 'tree';
+      obj.userData.clickable = true;
+    });
     
     // Add to scene
     if (this.world.stage?.scene) {
@@ -286,71 +398,193 @@ export class ResourceVisualizationSystem extends SystemBase {
     return mesh;
   }
 
-  private hideResource(resourceId: string): void {
-    const resource = this.resources.get(resourceId);
-    if (resource && resource.mesh) {
-      // Transform tree into stump instead of hiding
-      if (resource.type === 'tree' || resource.type.includes('tree')) {
-        this.transformTreeToStump(resource.mesh);
-      } else {
-        // For non-tree resources, just hide
-        resource.mesh.visible = false;
+  private hideResource(resourceId: string, eventPosition?: Position3D): void {
+    let resource = this.resources.get(resourceId);
+    
+    // Fallback 0: find in scene by name or userData.resourceId
+    if (!resource) {
+      const obj = this.findObjectByResourceId(resourceId) as THREE.Mesh | null;
+      if (obj) {
+        resource = { 
+          id: resourceId, 
+          type: 'tree', 
+          position: eventPosition || { x: obj.position.x, y: obj.position.y, z: obj.position.z }, 
+          mesh: obj 
+        };
+        this.resources.set(resourceId, resource);
       }
+    }
+    
+    // Fallback: find nearest by provided event position if available
+    if (!resource && eventPosition) {
+      let bestId: string | null = null;
+      let bestDist = Infinity;
+      for (const [rid, vr] of this.resources.entries()) {
+        const refX = eventPosition.x;
+        const refZ = eventPosition.z;
+        const dx = (vr.mesh?.position.x || vr.position.x) - refX;
+        const dz = (vr.mesh?.position.z || vr.position.z) - refZ;
+        const d2 = dx * dx + dz * dz;
+        if (d2 < bestDist) { 
+          bestDist = d2; 
+          bestId = rid; 
+        }
+      }
+      if (bestId) resource = this.resources.get(bestId)!;
+    }
+    
+    let obj = resource?.mesh || this.findObjectByResourceId(resourceId);
+    if (!resource || !obj) return;
+    
+    // Climb to the top-most object that represents this resource to ensure complete hide
+    const ascendToResourceRoot = (o: THREE.Object3D): THREE.Object3D => {
+      let current: THREE.Object3D = o;
+      while (current.parent) {
+        const parent = current.parent as THREE.Object3D & { userData?: any };
+        const parentName = (parent.name || '').toLowerCase();
+        const sameId = !!(parent as any).userData && ((parent as any).userData.resourceId === resourceId);
+        const isResourceRootName = parentName === `resource_${resourceId}` || parentName.includes('tree_wrapper') || parentName.includes('tree_group');
+        if (sameId || isResourceRootName) {
+          current = parent;
+          continue;
+        }
+        break;
+      }
+      return current;
+    };
+    
+    obj = ascendToResourceRoot(obj);
+    const px = (resource.mesh && resource.mesh.position ? resource.mesh.position.x : resource.position.x);
+    const pz = (resource.mesh && resource.mesh.position ? resource.mesh.position.z : resource.position.z);
+    Logger.system?.('ResourceVisualizationSystem', `Hide resource ${resourceId} at (${Number(px).toFixed(0)}, ${Number(pz).toFixed(0)})`);
+    
+    // Compute world pos before removal for sibling cleanup
+    const worldPos = new THREE.Vector3();
+    obj.getWorldPosition(worldPos);
+    
+    // Remove the tree from its current parent (could be a group/chunk, not the scene)
+    const parent = obj.parent || null;
+    if (parent) {
+      parent.remove(obj);
+      this.detachedTrees.set(resourceId, { obj, parent });
+      
+      // Limited duplicate cleanup: only siblings in the same parent within 3m
+      const siblings = [...parent.children];
+      for (const sib of siblings) {
+        if (sib === obj) continue;
+        const name = (sib.name || '').toLowerCase();
+        const isTreeName = name.includes('tree');
+        const typeTag = ((sib as any).userData?.resourceType || '').toLowerCase();
+        const looksLikeTree = isTreeName || typeTag === 'tree';
+        if (!looksLikeTree) continue;
+        
+        const sp = new THREE.Vector3();
+        (sib as THREE.Object3D).getWorldPosition(sp);
+        if (sp.distanceToSquared(worldPos) <= 9) {
+          parent.remove(sib);
+          this.detachedNearby.set(resourceId, [
+            ...(this.detachedNearby.get(resourceId) || []),
+            { obj: sib, parent }
+          ]);
+        }
+      }
+    } else {
+      // No parent to remove from; at least hide it and mark as detached for later reattach
+      obj.visible = false;
+      this.detachedTrees.set(resourceId, { obj, parent: null });
+    }
+    
+    // Place stump at the tree's world position for tree-type resources
+    if (resource.type.includes('tree')) {
+      const stump = this.getOrCreateStump(resourceId, { x: worldPos.x, y: worldPos.y, z: worldPos.z });
+      stump.visible = true;
     }
   }
 
-  private showResource(resourceId: string): void {
-    const resource = this.resources.get(resourceId);
-    if (resource && resource.mesh) {
-      // Restore tree from stump
-      if (resource.type === 'tree' || resource.type.includes('tree')) {
-        this.restoreTreeFromStump(resource.mesh);
-      } else {
-        resource.mesh.visible = true;
+  private showResource(resourceId: string, eventPosition?: Position3D): void {
+    let resource = this.resources.get(resourceId);
+    
+    // Fallback 0: find in scene by name or userData.resourceId
+    if (!resource) {
+      const obj = this.findObjectByResourceId(resourceId) as THREE.Mesh | null;
+      if (obj) {
+        resource = { 
+          id: resourceId, 
+          type: 'tree', 
+          position: eventPosition || { x: obj.position.x, y: obj.position.y, z: obj.position.z }, 
+          mesh: obj 
+        };
+        this.resources.set(resourceId, resource);
       }
     }
-  }
-  
-  private transformTreeToStump(treeMesh: THREE.Mesh | THREE.Object3D): void {
-    // Hide leaves, keep only trunk, and make it shorter
-    treeMesh.traverse((child) => {
-      if (child.name === 'leaves') {
-        child.visible = false; // Hide leaves
-      } else if (child.name === 'trunk' && child instanceof THREE.Mesh) {
-        // Make trunk shorter (stump height)
-        child.scale.y = 0.3; // Reduce to 30% height (stump)
-        child.position.y = 0.6; // Adjust position since it's shorter
-        
-        // Change color to darker brown (dead wood)
-        if (child.material instanceof THREE.Material) {
-          const material = child.material as THREE.MeshLambertMaterial;
-          material.color.setHex(0x654321); // Darker brown for stump
+    
+    // Fallback: find nearest to provided position if available
+    if (!resource && eventPosition) {
+      let bestId: string | null = null;
+      let bestDist = Infinity;
+      for (const [rid, vr] of this.resources.entries()) {
+        const refX = eventPosition.x;
+        const refZ = eventPosition.z;
+        const dx = (vr.mesh?.position.x || vr.position.x) - refX;
+        const dz = (vr.mesh?.position.z || vr.position.z) - refZ;
+        const d2 = dx * dx + dz * dz;
+        if (d2 < bestDist) { 
+          bestDist = d2; 
+          bestId = rid; 
         }
       }
-    });
+      if (bestId) resource = this.resources.get(bestId)!;
+    }
     
-    console.log(`[ResourceVisualization] Transformed tree to stump: ${treeMesh.name}`);
-  }
-  
-  private restoreTreeFromStump(treeMesh: THREE.Mesh | THREE.Object3D): void {
-    // Restore leaves and trunk to full size
-    treeMesh.traverse((child) => {
-      if (child.name === 'leaves') {
-        child.visible = true; // Show leaves again
-      } else if (child.name === 'trunk' && child instanceof THREE.Mesh) {
-        // Restore full trunk height
-        child.scale.y = 1.0;
-        child.position.y = 2.0; // Restore original position
-        
-        // Restore original brown color
-        if (child.material instanceof THREE.Material) {
-          const material = child.material as THREE.MeshLambertMaterial;
-          material.color.setHex(0x8B4513); // Original brown
+    if (!resource) return;
+    
+    const stored = this.detachedTrees.get(resourceId);
+    const tree = stored?.obj || resource.mesh || this.findObjectByResourceId(resourceId);
+    if (!tree) return;
+    
+    const parent = stored?.parent || this.world.stage?.scene || null;
+    if (parent && tree.parent !== parent) {
+      parent.add(tree);
+    }
+    
+    Logger.system?.('ResourceVisualizationSystem', `Show resource ${resourceId} at (${(tree.position.x||resource.position.x).toFixed(0)}, ${(tree.position.z||resource.position.z).toFixed(0)})`);
+    tree.visible = true;
+    
+    const stump = this.stumps.get(resourceId);
+    if (stump) stump.visible = false;
+    
+    this.detachedTrees.delete(resourceId);
+    
+    // Reattach nearby trees that were removed during depletion
+    const nearby = this.detachedNearby.get(resourceId);
+    if (nearby) {
+      for (const { obj: nearbyObj, parent: nearbyParent } of nearby) {
+        if (nearbyParent && nearbyObj.parent !== nearbyParent) {
+          nearbyParent.add(nearbyObj);
         }
+        nearbyObj.visible = true;
       }
-    });
-    
-    console.log(`[ResourceVisualization] Restored tree from stump: ${treeMesh.name}`);
+      this.detachedNearby.delete(resourceId);
+    }
+  }
+
+  private getOrCreateStump(resourceId: string, position: Position3D): THREE.Mesh {
+    let stump = this.stumps.get(resourceId);
+    if (stump) return stump;
+    // Use a small green box as the depletion marker (visual confirmation like elsewhere)
+    const geo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+    const greenMaterial = this.materials.leaves as THREE.Material; // bright green already defined
+    const stumpMesh = new THREE.Mesh(geo, greenMaterial);
+    stumpMesh.position.set(position.x, (position.y || 0) + 0.3, position.z);
+    stumpMesh.castShadow = true;
+    stumpMesh.receiveShadow = true;
+    stumpMesh.visible = false;
+    stumpMesh.name = `stump_${resourceId}`;
+    if (this.world.stage?.scene) {
+      this.world.stage.scene.add(stumpMesh);
+    }
+    this.stumps.set(resourceId, stumpMesh);
+    return stumpMesh;
   }
 
   private removeResource(resourceId: string): void {

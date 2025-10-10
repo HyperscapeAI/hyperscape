@@ -211,9 +211,6 @@ export class Entity implements IEntity {
     // Add to world scene
     if (this.world.stage.scene) {
       this.world.stage.scene.add(this.node)
-      console.log(`[Entity] Added ${this.type} entity ${this.id} to scene at position:`, this.node.position.toArray());
-    } else {
-      console.warn(`[Entity] No scene available to add ${this.type} entity ${this.id}`);
     }
 
     // Automatically add transform component for ECS architecture
@@ -633,7 +630,7 @@ export class Entity implements IEntity {
 
     this.nameSprite = UIRenderer.createSpriteFromCanvas(nameCanvas, GAME_CONSTANTS.UI.SPRITE_SCALE)
     if (this.nameSprite) {
-      this.nameSprite.position.set(0, 2.5, 0) // Position above the entity
+      this.nameSprite.position.set(0, 2.15, 0) // Position above the entity
       // Add to entity node so it follows the entity
       if (this.node) {
         this.node.add(this.nameSprite)
@@ -650,7 +647,7 @@ export class Entity implements IEntity {
       height: GAME_CONSTANTS.UI.HEALTH_BAR_HEIGHT,
     })
 
-    this.healthSprite = UIRenderer.createSpriteFromCanvas(healthCanvas, GAME_CONSTANTS.UI.SPRITE_SCALE)
+    this.healthSprite = UIRenderer.createSpriteFromCanvas(healthCanvas, GAME_CONSTANTS.UI.HEALTH_SPRITE_SCALE)
     if (this.healthSprite) {
       this.healthSprite.position.set(0, 2.0, 0) // Position above the entity, below name tag
       // Add to entity node so it follows the entity
@@ -846,9 +843,25 @@ export class Entity implements IEntity {
   }
 
   async init(): Promise<void> {
+    console.log(`[Entity] 🔄 Initializing ${this.type} entity: ${this.name} (${this.id})`);
+    
     try {
-      // Create the visual representation
+      // Create the visual representation (mesh)
+      // Note: createMesh() in subclasses may call loadModel() internally
+      console.log(`[Entity] Creating mesh for ${this.name}...`);
       await this.createMesh()
+      
+      // VALIDATE: After createMesh, we should have a mesh (either loaded or fallback)
+      // Note: Server-side entities don't create meshes
+      if (!this.mesh && !this.world.isServer) {
+        throw new Error(`CRITICAL: createMesh() completed but this.mesh is still null for ${this.name}. This should never happen on client.`);
+      }
+      
+      console.log(`[Entity] ✅ Mesh created for ${this.name}:`, {
+        meshType: this.mesh.type,
+        meshName: this.mesh.name,
+        childCount: this.mesh.children.length
+      });
 
       // Initialize UI elements (name tag, health bar) - only on client
       // Check if we're in a real browser environment with full Canvas API support
@@ -863,17 +876,7 @@ export class Entity implements IEntity {
         }
       }
 
-      // Load model if specified
-      if (this.config.model) {
-        try {
-          await this.loadModel()
-        } catch (err) {
-          console.error(`[Entity ${this.id}] loadModel failed:`, err);
-          throw err;
-        }
-      }
-
-      // Note: Entity constructor already adds node to scene
+      // Note: loadModel() is now called inside createMesh() for subclasses
 
       // Set up interaction system
       try {
@@ -890,87 +893,250 @@ export class Entity implements IEntity {
         console.error(`[Entity ${this.id}] onInit failed:`, err);
         throw err;
       }
+      
+      // FINAL VALIDATION (only on client where we have meshes)
+      if (!this.world.isServer) {
+        this.validateEntityState();
+      }
+      
+      console.log(`[Entity] ✅ ${this.type} entity ${this.name} fully initialized`);
+      
     } catch (error) {
-      console.error(`Failed to initialize Entity ${this.id}:`, error)
+      console.error(`[Entity] ❌ FAILED to initialize ${this.type} entity ${this.id}:`, error)
+      console.error(`[Entity] Failed entity state:`, {
+        id: this.id,
+        name: this.name,
+        type: this.type,
+        hasNode: !!this.node,
+        hasMesh: !!this.mesh,
+        nodeInScene: !!this.node.parent,
+        position: this.node.position.toArray(),
+        modelPath: this.config.model
+      });
       throw error
     }
   }
+  
+  /**
+   * Validate entity is in valid state
+   */
+  private validateEntityState(): void {
+    // Check node is in scene
+    if (!this.node.parent) {
+      console.error(`[Entity] ⚠️  WARNING: Entity ${this.name} node has no parent (not in scene)`);
+      // Don't throw - might be intentional
+    }
+    
+    // Check mesh exists
+    if (!this.mesh) {
+      console.error(`[Entity] ⚠️  WARNING: Entity ${this.name} has no mesh after initialization`);
+      // Don't throw - fallback mesh might not have been created
+    }
+    
+    // Check mesh is added to node
+    if (this.mesh && !this.node.children.includes(this.mesh)) {
+      console.error(`[Entity] ⚠️  WARNING: Entity ${this.name} mesh is not a child of node`);
+    }
+    
+    // Check position is reasonable
+    const pos = this.node.position;
+    if (!Number.isFinite(pos.x) || !Number.isFinite(pos.y) || !Number.isFinite(pos.z)) {
+      console.error(`[Entity] ❌ CRITICAL: Entity ${this.name} has invalid position: ${pos.toArray()}`);
+      throw new Error(`Entity ${this.name} has NaN/Infinity position`);
+    }
+    
+    if (pos.y < -200) {
+      console.error(`[Entity] ❌ CRITICAL: Entity ${this.name} is below the world: Y=${pos.y.toFixed(2)}`);
+      throw new Error(`Entity ${this.name} spawned below world (Y=${pos.y.toFixed(2)})`);
+    }
+    
+    if (pos.y > 2000) {
+      console.error(`[Entity] ❌ CRITICAL: Entity ${this.name} is way above the world: Y=${pos.y.toFixed(2)}`);
+      throw new Error(`Entity ${this.name} spawned way above world (Y=${pos.y.toFixed(2)})`);
+    }
+    
+    console.log(`[Entity] ✅ Entity state validated for ${this.name}:`, {
+      hasNode: !!this.node,
+      inScene: !!this.node.parent,
+      hasMesh: !!this.mesh,
+      meshInNode: this.mesh ? this.node.children.includes(this.mesh) : false,
+      position: pos.toArray(),
+      visible: this.node.visible && (this.mesh?.visible ?? true)
+    });
+  }
 
   protected async loadModel(): Promise<void> {
-    if (!this.config.model) return
-    
-    // Check if loader system exists and is ready
-    if (!this.world.loader) {
-      console.warn(`[Entity ${this.id}] Loader system not available, skipping model load`);
+    if (!this.config.model) {
+      console.log(`[Entity] ${this.name} has no model path, skipping 3D model load`);
       return
+    }
+    
+    console.log(`[Entity] 🔄 START Loading model for ${this.name}:`, {
+      modelPath: this.config.model,
+      entityId: this.id,
+      entityType: this.type,
+      position: this.node.position.toArray()
+    });
+    
+    // CRITICAL: Check if loader system exists
+    if (!this.world.loader) {
+      const error = new Error(`CRITICAL: Loader system not available for entity ${this.id}`);
+      console.error('[Entity]', error);
+      throw error;
     }
 
     // Skip model loading on server side - models are only needed for client rendering
-    if (this.world.isServer) return
+    if (this.world.isServer) {
+      console.log(`[Entity] Server-side entity ${this.name}, skipping model load`);
+      return
+    }
 
+    // CRITICAL: Check if GLTFLoader is available
+    const loaderSystem = this.world.loader as { gltfLoader?: { loadAsync: (url: string) => Promise<{ scene: THREE.Object3D; animations: THREE.AnimationClip[] }> } };
+    if (!loaderSystem.gltfLoader) {
+      const error = new Error(`CRITICAL: GLTFLoader not available in loader system for entity ${this.id}`);
+      console.error('[Entity]', error);
+      throw error;
+    }
+    
     try {
-      // Load the model
-      const safeLoader = new SafeLoaderWrapper(this.world.loader)
-      const model = await safeLoader.loadModel(this.config.model)
+      // Load GLB file directly to get raw THREE.Object3D scene
+      console.log(`[Entity] 📥 Fetching GLB file: ${this.config.model}`);
+      const gltf = await loaderSystem.gltfLoader.loadAsync(this.config.model);
+      
+      // VALIDATE: Check GLTF loaded successfully
+      if (!gltf) {
+        throw new Error(`GLTFLoader returned null/undefined for ${this.config.model}`);
+      }
+      
+      if (!gltf.scene) {
+        throw new Error(`GLTF has no scene for ${this.config.model}`);
+      }
+      
+      console.log(`[Entity] ✅ GLB Loaded:`, {
+        modelPath: this.config.model,
+        sceneType: gltf.scene.type,
+        sceneChildren: gltf.scene.children.length,
+        animations: gltf.animations?.length || 0,
+        hasGeometry: this.validateSceneHasGeometry(gltf.scene)
+      });
       
       // Clear existing mesh first
       if (this.mesh) {
+        console.log(`[Entity] Removing existing mesh before adding new one`);
         this.node.remove(this.mesh)
       }
       
-      console.log(`[Entity] Loaded model for ${this.name}:`, {
-        type: typeof model,
-        hasToNodes: typeof (model as { toNodes?: unknown }).toNodes,
-        keys: model && typeof model === 'object' ? Object.keys(model).slice(0, 10) : []
-      });
+      // Use the GLTF scene directly - it's a THREE.Group containing all meshes
+      this.mesh = gltf.scene;
+      this.mesh.name = `${this.name}_Model`
       
-      // Check if model has toNodes method
-      if (model && typeof model === 'object' && 'toNodes' in model && typeof (model as { toNodes: unknown }).toNodes === 'function') {
-        // Convert the loaded model into nodes via toNodes
-        // toNodes returns Map<string, Node> where Node has a 'base' property that is THREE.Object3D
-        const nodes = (model as unknown as { toNodes: () => Map<string, { base?: THREE.Object3D; id?: string }> }).toNodes()
-        console.log(`[Entity] toNodes() returned map with keys:`, Array.from(nodes.keys()));
-        
-        // Get the first available node's base (THREE.Object3D)
-        const nodeEntry = (nodes.get('root') || nodes.get('model') || nodes.get(this.name) || nodes.values().next().value) as { base?: THREE.Object3D } | null
-        
-        if (!nodeEntry || !nodeEntry.base) {
-          console.warn(`[Entity] No valid THREE.Object3D found in model nodes for ${this.name}`);
-          return;
-        }
-        
-        this.mesh = nodeEntry.base;
-      } else if (model instanceof THREE.Object3D) {
-        // Model is already a THREE.Object3D
-        this.mesh = model;
-      } else {
-        console.warn(`[Entity] Model for ${this.name} is not in expected format (no toNodes, not Object3D)`);
-        return;
-      }
-      
-      if (this.mesh) {
-        this.mesh.name = `${this.name}_Model`
-      }
-
-      // Set up userData with proper typing
+      // Set up userData
       const userData: MeshUserData = {
-        ...(this.node.userData as MeshUserData),
         type: this.config.type,
         entityId: this.id,
+        name: this.config.name,
         interactable: this.config.interactable,
+        mobData: null,
       }
-      if (this.mesh) {
-        this.mesh.userData = userData
+      this.mesh.userData = userData
 
-        // Collect all child nodes
-        this.collectNodes(this.mesh)
+      // Collect all child nodes
+      this.collectNodes(this.mesh)
 
-        // Add to node
-        this.node.add(this.mesh)
+      // Add to node (which is already in the scene)
+      this.node.add(this.mesh)
+      
+      // VALIDATE: Ensure mesh was actually added
+      if (this.node.children.length === 0) {
+        throw new Error(`Mesh was not added to node! Node has ${this.node.children.length} children`);
       }
+      
+      // VALIDATE: Check position is reasonable
+      const pos = this.node.position;
+      if (pos.y < -100 || pos.y > 1000) {
+        console.error(`[Entity] ⚠️  WARNING: Entity ${this.name} has extreme Y position: ${pos.y.toFixed(2)}`, {
+          position: pos.toArray(),
+          expectedRange: '0-100 meters'
+        });
+      }
+      
+      // Check if entity is in the scene
+      let inScene = false;
+      let currentParent = this.node.parent;
+      let depth = 0;
+      while (currentParent && depth < 10) {
+        if (currentParent === this.world.stage.scene) {
+          inScene = true;
+          break;
+        }
+        currentParent = currentParent.parent;
+        depth++;
+      }
+      
+      if (!inScene) {
+        throw new Error(`Entity node is not in scene graph! Parent chain depth: ${depth}`);
+      }
+      
+      // Calculate bounding box to verify model size
+      const bbox = new THREE.Box3().setFromObject(this.mesh);
+      const size = bbox.getSize(new THREE.Vector3());
+      
+      console.log(`[Entity] ✅ 3D MODEL SUCCESSFULLY LOADED for ${this.name}:`, {
+        meshType: this.mesh.type,
+        meshChildren: this.mesh.children.length,
+        meshVisible: this.mesh.visible,
+        nodePosition: pos.toArray(),
+        modelSize: `${size.x.toFixed(2)}x${size.y.toFixed(2)}x${size.z.toFixed(2)}m`,
+        inScene: inScene,
+        sceneDepth: depth
+      });
+      
+      // CRITICAL: Throw error if model is invisible
+      if (!this.mesh.visible) {
+        throw new Error(`Loaded model is not visible! Mesh.visible = false`);
+      }
+      
+      // CRITICAL: Throw error if model is tiny
+      if (size.x < 0.01 && size.y < 0.01 && size.z < 0.01) {
+        throw new Error(`Loaded model is too small to see! Size: ${size.x}x${size.y}x${size.z}m`);
+      }
+      
+      // SUCCESS!
+      console.log(`[Entity] 🎉 Model ${this.config.model} successfully loaded and validated for ${this.name}`);
+      
     } catch (error) {
-      console.error(`Failed to load model for entity ${this.id}:`, error)
+      // CRITICAL ERROR - Log everything we know
+      console.error(`[Entity] ❌ CRITICAL: Failed to load model for entity ${this.id}`);
+      console.error(`[Entity] Entity details:`, {
+        id: this.id,
+        name: this.name,
+        type: this.type,
+        modelPath: this.config.model,
+        position: this.node.position.toArray(),
+        hasNode: !!this.node,
+        nodeInScene: !!this.node.parent,
+        hasLoader: !!this.world.loader,
+        hasGLTFLoader: !!(this.world.loader as { gltfLoader?: unknown })?.gltfLoader
+      });
+      console.error(`[Entity] Error:`, error);
+      
+      // Re-throw so we know something is wrong
+      throw new Error(`Model loading failed for ${this.name}: ${(error as Error).message}`);
     }
+  }
+  
+  /**
+   * Validate that a scene has actual geometry (not just empty groups)
+   */
+  private validateSceneHasGeometry(scene: THREE.Object3D): boolean {
+    let hasMesh = false;
+    scene.traverse((child) => {
+      if (child instanceof THREE.Mesh || child instanceof THREE.SkinnedMesh) {
+        hasMesh = true;
+      }
+    });
+    return hasMesh;
   }
 
   protected collectNodes(node: THREE.Object3D): void {

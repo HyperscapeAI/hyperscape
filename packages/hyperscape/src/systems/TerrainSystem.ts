@@ -135,6 +135,27 @@ export class TerrainSystem extends System {
   }
 
   /**
+   * Create a deterministic PRNG for a given tile and salt.
+   * Ensures identical resource placement across clients and worlds for the same seed.
+   */
+  private createTileRng(tileX: number, tileZ: number, salt: string): () => number {
+    // Mix world seed, tile coords, and salt into a 32-bit state
+    const baseSeed = this.computeSeedFromWorldId() >>> 0
+    // Simple string hash (djb2 variant) for salt
+    let saltHash = 5381 >>> 0
+    for (let i = 0; i < salt.length; i++) {
+      saltHash = (((saltHash << 5) + saltHash) ^ salt.charCodeAt(i)) >>> 0
+    }
+    let state = (baseSeed ^ ((tileX * 73856093) >>> 0) ^ ((tileZ * 19349663) >>> 0) ^ saltHash) >>> 0
+
+    return () => {
+      // LCG parameters (Numerical Recipes)
+      state = (1664525 * state + 1013904223) >>> 0
+      return state / 0xffffffff
+    }
+  }
+
+  /**
    * Queue a tile for generation if not already queued or present
    */
   private enqueueTileForGeneration(tileX: number, tileZ: number, _generateContent = true): void {
@@ -860,47 +881,60 @@ export class TerrainSystem extends System {
     }
 
     if (generateContent) {
-      // Generate resources for this tile
-      this.generateTileResources(tile)
+      const isServer = this.world.network?.isServer || false
+      const isClient = this.world.network?.isClient || false
 
-      // Generate visual features (roads, lakes)
-      this.generateVisualFeatures(tile)
+      // Server generates authoritative resources
+      if (isServer) {
+        this.generateTileResources(tile)
+      }
 
+      // Client visual path
+      if (isClient) {
+      // If no server-generated resources are present (e.g., single-player/dev), generate locally for visuals only
+      if (!isServer && tile.resources.length === 0) {
+        this.generateTileResources(tile)
+      }
+      
       // Add water meshes for low areas (client-side only - purely visual)
       if (this.world.network?.isClient) {
         this.generateWaterMeshes(tile)
       }
 
-      // Add visible resource meshes (simple proxies)
-      if (tile.resources.length > 0 && tile.mesh && this.world.network?.isClient) {
-        for (const resource of tile.resources) {
-          if (resource.instanceId != null) continue
+        this.generateVisualFeatures(tile)
+        this.generateWaterMeshes(tile)
 
-          const worldPosition = new THREE.Vector3(
-            tile.x * this.CONFIG.TILE_SIZE + resource.position.x,
-            resource.position.y,
-            tile.z * this.CONFIG.TILE_SIZE + resource.position.z
-          )
+        // Add visible resource meshes (instanced proxies) on client
+        if (tile.resources.length > 0 && tile.mesh) {
+          for (const resource of tile.resources) {
+            if (resource.instanceId != null) continue
 
-          const instanceId = this.instancedMeshManager.addInstance(resource.type, resource.id, worldPosition)
+            const worldPosition = new THREE.Vector3(
+              tile.x * this.CONFIG.TILE_SIZE + resource.position.x,
+              resource.position.y,
+              tile.z * this.CONFIG.TILE_SIZE + resource.position.z
+            )
 
-          if (instanceId !== null) {
-            resource.instanceId = instanceId
-            resource.meshType = resource.type
+            const instanceId = this.instancedMeshManager.addInstance(resource.type, resource.id, worldPosition)
 
-            // Emit resource created event for InteractionSystem registration
-            // For instanced resources, we pass the instanceId instead of a mesh
-            this.world.emit('resource:mesh:created', {
-              mesh: undefined, // No individual mesh for instanced resources
-              instanceId: instanceId,
-              resourceId: resource.id,
-              resourceType: resource.type,
-              worldPosition: {
-                x: worldPosition.x,
-                y: worldPosition.y,
-                z: worldPosition.z,
-              },
-            })
+            if (instanceId !== null) {
+              resource.instanceId = instanceId
+              resource.meshType = resource.type
+
+              // Emit resource created event for InteractionSystem registration
+              // For instanced resources, we pass the instanceId instead of a mesh
+              this.world.emit('resource:mesh:created', {
+                mesh: undefined,
+                instanceId: instanceId,
+                resourceId: resource.id,
+                resourceType: resource.type,
+                worldPosition: {
+                  x: worldPosition.x,
+                  y: worldPosition.y,
+                  z: worldPosition.z,
+                },
+              })
+            }
           }
         }
       }
@@ -923,8 +957,21 @@ export class TerrainSystem extends System {
         resources: resourcesPayload,
       })
 
-      // Also emit resource spawn points for ResourceSystem
-      if (tile.resources.length > 0) {
+      // Also emit resource spawn points for ResourceSystem (server-only authoritative)
+      if (tile.resources.length > 0 && this.world.network?.isServer) {
+        this.world.emit(EventType.RESOURCE_SPAWN_POINTS_REGISTERED, {
+          spawnPoints: tile.resources.map(r => {
+            const worldPos = { x: originX + r.position.x, y: r.position.y, z: originZ + r.position.z }
+            return {
+              id: r.id,
+              type: r.type,
+              subType: r.type === 'tree' ? 'normal_tree' : r.type,
+              position: worldPos,
+            }
+          }),
+        })
+      } else if (tile.resources.length > 0 && this.world.network?.isClient && !this.world.network?.isServer) {
+        // Client-only fallback: emit local spawn points so ResourceVisualizationSystem renders trees
         this.world.emit(EventType.RESOURCE_SPAWN_POINTS_REGISTERED, {
           spawnPoints: tile.resources.map(r => {
             const worldPos = { x: originX + r.position.x, y: r.position.y, z: originZ + r.position.z }
@@ -1394,9 +1441,11 @@ export class TerrainSystem extends System {
 
     const treeCount = Math.floor((this.CONFIG.TILE_SIZE / 10) ** 2 * treeDensity)
 
+    const rng = this.createTileRng(tile.x, tile.z, 'trees')
+
     for (let i = 0; i < treeCount; i++) {
-      const worldX = tile.x * this.CONFIG.TILE_SIZE + (Math.random() - 0.5) * this.CONFIG.TILE_SIZE
-      const worldZ = tile.z * this.CONFIG.TILE_SIZE + (Math.random() - 0.5) * this.CONFIG.TILE_SIZE
+      const worldX = tile.x * this.CONFIG.TILE_SIZE + (rng() - 0.5) * this.CONFIG.TILE_SIZE
+      const worldZ = tile.z * this.CONFIG.TILE_SIZE + (rng() - 0.5) * this.CONFIG.TILE_SIZE
 
       const height = this.getHeightAt(worldX, worldZ)
       
@@ -1440,6 +1489,7 @@ export class TerrainSystem extends System {
     const otherResources = biomeData.resources.filter(r => r !== 'tree')
 
     for (const resourceType of otherResources) {
+      const rng = this.createTileRng(tile.x, tile.z, `res:${resourceType}`)
       let resourceCount = 0
 
       // Determine count based on resource type and biome
@@ -1449,22 +1499,22 @@ export class TerrainSystem extends System {
           break
         case 'ore':
         case 'rare_ore':
-          resourceCount = Math.random() < 0.3 ? 1 : 0
+          resourceCount = rng() < 0.3 ? 1 : 0
           break
         case 'herb':
-          resourceCount = Math.floor(Math.random() * 3)
+          resourceCount = Math.floor(rng() * 3)
           break
         case 'rock':
-          resourceCount = Math.floor(Math.random() * 2)
+          resourceCount = Math.floor(rng() * 2)
           break
         case 'gem':
-          resourceCount = Math.random() < 0.1 ? 1 : 0 // Rare
+          resourceCount = rng() < 0.1 ? 1 : 0 // Rare
           break
       }
 
       for (let i = 0; i < resourceCount; i++) {
-        const worldX = tile.x * this.CONFIG.TILE_SIZE + (Math.random() - 0.5) * this.CONFIG.TILE_SIZE
-        const worldZ = tile.z * this.CONFIG.TILE_SIZE + (Math.random() - 0.5) * this.CONFIG.TILE_SIZE
+        const worldX = tile.x * this.CONFIG.TILE_SIZE + (rng() - 0.5) * this.CONFIG.TILE_SIZE
+        const worldZ = tile.z * this.CONFIG.TILE_SIZE + (rng() - 0.5) * this.CONFIG.TILE_SIZE
 
         // For fishing spots, place in water only
         if (resourceType === 'fish') {

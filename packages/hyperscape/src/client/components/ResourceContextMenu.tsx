@@ -69,12 +69,6 @@ export function ResourceContextMenu({
               transform: scale(1) translateY(0);
             }
           }
-
-          .resource-menu-item:hover {
-            background: linear-gradient(90deg, 
-              rgba(0, 255, 127, 0.15) 0%, 
-              rgba(0, 255, 127, 0.05) 100%);
-          }
         `}
       </style>
       <div 
@@ -108,8 +102,8 @@ export function ResourceContextMenu({
                 onClose();
               }
             }}
-            className={`resource-menu-item w-full py-2.5 px-4 border-none bg-transparent text-left text-sm flex items-center gap-3 transition-all duration-200 font-sans outline-none ${
-            action.enabled ? 'text-white/90 cursor-pointer' : 'text-white/40 cursor-not-allowed'
+            className={`w-full py-2.5 px-4 border-none bg-transparent text-left text-sm flex items-center gap-3 transition-all duration-200 font-sans outline-none ${
+            action.enabled ? 'text-white/90 cursor-pointer hover:bg-gradient-to-r hover:from-[rgba(0,255,127,0.15)] hover:to-[rgba(0,255,127,0.05)]' : 'text-white/40 cursor-not-allowed'
           }`}
             onMouseDown={(e) => {
               e.stopPropagation();

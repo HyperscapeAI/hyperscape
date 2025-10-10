@@ -36,6 +36,11 @@ function DraggableInventorySlot({ item, index, size }: DraggableItemProps) {
     transition,
     opacity: isDragging ? 0.5 : 1,
   }
+  
+  // Debug: log what we're trying to render
+  if (item) {
+    console.log(`[InventorySlot ${index}] Rendering item:`, item.itemId, 'qty:', item.quantity);
+  }
 
   return (
     <div
@@ -43,14 +48,22 @@ function DraggableInventorySlot({ item, index, size }: DraggableItemProps) {
       style={style}
       {...attributes}
       {...listeners}
-      className={`bg-black/35 border border-white/[0.08] rounded flex items-center justify-center text-[10px] ${item ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
+      className={`bg-black/35 border border-white/[0.08] rounded flex flex-col items-center justify-center text-[10px] text-white ${item ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
+      title={item ? `${item.itemId} (${item.quantity})` : 'Empty slot'}
     >
-      {item ? item.itemId.substring(0, 3) : ''}
+      {item ? (
+        <>
+          <div className="text-[10px]">{item.itemId.substring(0, 3)}</div>
+          {item.quantity > 1 && <div className="text-[8px] text-yellow-400">{item.quantity}</div>}
+        </>
+      ) : ''}
     </div>
   )
 }
 
 export function InventoryPanel({ items, coins, onItemMove, onItemUse, onItemEquip }: InventoryPanelProps) {
+  console.log('[InventoryPanel] Rendered with', items?.length || 0, 'items, coins:', coins);
+  
   const slots = Array(28).fill(null)
   items.forEach((item, i) => { if (i < 28) slots[i] = item })
   
@@ -60,8 +73,14 @@ export function InventoryPanel({ items, coins, onItemMove, onItemUse, onItemEqui
   const [slotItems, setSlotItems] = useState(slots)
 
   useEffect(() => {
+    console.log('[InventoryPanel] items prop changed, updating slots. New item count:', items?.length || 0);
     const newSlots = Array(28).fill(null)
-    items.forEach((item, i) => { if (i < 28) newSlots[i] = item })
+    items.forEach((item, i) => { 
+      if (i < 28) {
+        newSlots[i] = item;
+        console.log(`[InventoryPanel] Slot ${i}:`, item?.itemId || 'empty');
+      }
+    })
     setSlotItems(newSlots)
   }, [items])
 

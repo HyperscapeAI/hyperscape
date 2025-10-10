@@ -30,11 +30,14 @@ const names = [
   'serverStateUpdate',
   'deltaUpdate',
   'compressedUpdate',
-  // Resource gathering packets
-  'gatherResource',
-  'gatheringComplete',
+  // Resource system packets
+  'resourceSnapshot',
+  'resourceSpawnPoints',
+  'resourceSpawned',
   'resourceDepleted',
   'resourceRespawned',
+  'resourceGather',
+  'gatheringComplete',
   // Combat packets
   'attackMob',
   // Item pickup packets

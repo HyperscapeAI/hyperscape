@@ -121,24 +121,8 @@ export function InteractionHandler({ world }: InteractionHandlerProps) {
       }
 
       case 'resource': {
-        const player = world.getPlayer()
-        if (!player) break
-        const hasRequiredTool = checkRequiredTool(target, player)
-        
-        actions.push({
-          id: 'gather',
-          label: (target.name && target.name.toLowerCase().includes('tree')) ? 'Chop Tree' : `Gather ${target.name}`,
-          icon: getResourceIcon(target.name),
-          enabled: hasRequiredTool,
-          onClick: () => {
-            world.emit(EventType.RESOURCE_GATHER, {
-              playerId: player.id,
-              resourceId: target.id,
-              resourceType: target.name.toLowerCase()
-            })
-          }
-        })
-        break
+        // Let ResourceInteractionSystem + UISystem own resource context menus entirely
+        return
       }
 
       case 'item': {
@@ -187,12 +171,15 @@ export function InteractionHandler({ world }: InteractionHandlerProps) {
         type: string;
         target: { id: string; type: string; name: string; position?: { x: number; y: number; z: number } };
         position?: { x: number; y: number };
+        mousePosition?: { x: number; y: number };
       }>;
-      if (customEvent.type === 'contextmenu' && customEvent.detail?.target) {
+      // Accept both native and custom contextmenu events
+      const isContext = customEvent.type === 'contextmenu' || customEvent.type === 'rpg:contextmenu';
+      if (isContext && customEvent.detail?.target) {
         handleInteraction({
           detail: {
             target: customEvent.detail.target as Omit<InteractionTarget, 'actions'> & { requiredTool?: string },
-            mousePosition: customEvent.detail.position || { x: 0, y: 0 }
+            mousePosition: customEvent.detail.position || customEvent.detail.mousePosition || { x: 0, y: 0 }
           }
         } as CustomEvent<{ target: Omit<InteractionTarget, 'actions'> & { requiredTool?: string }; mousePosition: { x: number; y: number } }>)
       }

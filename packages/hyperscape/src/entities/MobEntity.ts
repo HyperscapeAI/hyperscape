@@ -63,17 +63,29 @@ export class MobEntity extends Entity {
   protected async createMesh(): Promise<void> {
     // Try to load actual 3D model if available
     if (this.config.model && this.world.loader && !this.world.isServer) {
+      console.log(`[MobEntity] 🔄 Attempting to load 3D model for ${this.config.mobType}: ${this.config.model}`);
+      
       try {
         await this.loadModel();
-        // If model loaded successfully, we're done
+        
+        // Success - model loaded
         if (this.mesh) {
           this.mesh.name = `Mob_${this.config.mobType}_${this.id}`;
+          console.log(`[MobEntity] ✅ 3D model successfully loaded for ${this.config.mobType}`);
           return;
         }
       } catch (error) {
-        console.warn(`[MobEntity] Failed to load model for ${this.config.mobType}:`, error);
-        // Fall through to create fallback mesh
+        // Model loading failed - gracefully fall back to capsule
+        console.warn(`[MobEntity] ⚠️  3D model failed to load for ${this.config.mobType}, using fallback capsule:`, (error as Error).message);
       }
+      
+    } else if (!this.config.model) {
+      console.log(`[MobEntity] No model path for ${this.config.mobType}, using fallback capsule`);
+    } else if (this.world.isServer) {
+      console.log(`[MobEntity] Server-side ${this.config.mobType}, skipping model`);
+      return; // Don't create fallback mesh on server
+    } else {
+      console.log(`[MobEntity] Loader not available for ${this.config.mobType}, using fallback capsule`);
     }
     
     // Fallback: Create colored capsule based on mob type as placeholder

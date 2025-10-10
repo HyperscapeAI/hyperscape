@@ -82,8 +82,16 @@ export class UISystem extends SystemBase {
       this.updateCombatUI({ attackerId: data.winnerId || undefined });
     });
     this.subscribe(EventType.PLAYER_REGISTERED, (data) => {
-      const mockPlayer = { id: data.playerId } as Player;
-      this.initializePlayerUI(mockPlayer);
+      const base: Player = {
+        id: data.playerId,
+        name: data.playerId,
+        health: { current: 100, max: 100 },
+        combat: { combatLevel: 1 },
+        equipment: {} as unknown as PlayerEquipmentItems,
+        position: { x: 0, y: 0, z: 0 },
+        alive: true
+      } as unknown as Player;
+      this.initializePlayerUI(base);
     });
     this.subscribe(EventType.PLAYER_UNREGISTERED, (data) => {
       this.cleanupPlayerUI(data.playerId);
@@ -115,6 +123,94 @@ export class UISystem extends SystemBase {
         }
       }
     });
+    // Context menu bridge: when ResourceInteractionSystem dispatches rpg:contextmenu,
+    // create a simple overlay menu and re-dispatch selection via rpg:contextmenu:select
+    if (typeof window !== 'undefined') {
+      window.addEventListener('rpg:contextmenu', (e: Event) => {
+        const ce = e as CustomEvent<{ target: { id: string; name: string; position: { x: number; y: number; z: number } }; mousePosition: { x: number; y: number }; items?: Array<{ id: string; label: string; enabled: boolean }> }>
+        if (!ce?.detail) return;
+        const items = ce.detail.items || [
+          { id: 'chop', label: 'Chop', enabled: true },
+          { id: 'walk_here', label: 'Walk here', enabled: true },
+        ];
+
+        // Remove existing menu
+        const old = document.getElementById('rpg-context-menu');
+        if (old && old.parentElement) old.parentElement.removeChild(old);
+
+        const menu = document.createElement('div');
+        menu.id = 'rpg-context-menu';
+        menu.style.position = 'fixed';
+        menu.style.left = `${ce.detail.mousePosition.x}px`;
+        menu.style.top = `${ce.detail.mousePosition.y}px`;
+        menu.style.background = 'rgba(20,20,20,0.95)';
+        menu.style.border = '1px solid #555';
+        menu.style.padding = '6px 0';
+        menu.style.color = '#fff';
+        menu.style.fontFamily = 'sans-serif';
+        menu.style.fontSize = '14px';
+        menu.style.zIndex = '99999';
+        menu.style.minWidth = '160px';
+
+        items.forEach(item => {
+          const row = document.createElement('div');
+          row.textContent = item.label;
+          row.style.padding = '6px 12px';
+          row.style.cursor = item.enabled ? 'pointer' : 'not-allowed';
+          row.style.opacity = item.enabled ? '1' : '0.5';
+          row.addEventListener('mouseenter', () => { row.style.background = '#2a2a2a'; });
+          row.addEventListener('mouseleave', () => { row.style.background = 'transparent'; });
+          if (item.enabled) {
+            row.addEventListener('click', () => {
+              const select = new CustomEvent('rpg:contextmenu:select', { detail: { actionId: item.id, targetId: ce.detail.target.id } });
+              window.dispatchEvent(select);
+              // Also emit UI_CLOSE_MENU for systems that listen for it
+              const closeEvt = new CustomEvent('rpg:ui:close_menu');
+              window.dispatchEvent(closeEvt);
+              if (menu.parentElement) menu.parentElement.removeChild(menu);
+            });
+            // Allow right-click to select as well (intuitive RS feel)
+            row.addEventListener('contextmenu', (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              const select = new CustomEvent('rpg:contextmenu:select', { detail: { actionId: item.id, targetId: ce.detail.target.id } });
+              window.dispatchEvent(select);
+              const closeEvt = new CustomEvent('rpg:ui:close_menu');
+              window.dispatchEvent(closeEvt);
+              if (menu.parentElement) menu.parentElement.removeChild(menu);
+            });
+            row.addEventListener('mousedown', (ev) => {
+              // If user right-clicks the row, treat it as selection
+              if (ev.button === 2) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                const select = new CustomEvent('rpg:contextmenu:select', { detail: { actionId: item.id, targetId: ce.detail.target.id } });
+                window.dispatchEvent(select);
+                const closeEvt = new CustomEvent('rpg:ui:close_menu');
+                window.dispatchEvent(closeEvt);
+                if (menu.parentElement) menu.parentElement.removeChild(menu);
+              }
+            }, { capture: false });
+          }
+          menu.appendChild(row);
+        });
+
+        document.body.appendChild(menu);
+
+        const dismiss = (evt: MouseEvent | KeyboardEvent) => {
+          const el = document.getElementById('rpg-context-menu');
+          if (el && el.parentElement) el.parentElement.removeChild(el);
+          window.removeEventListener('mousedown', dismiss as EventListener);
+          window.removeEventListener('scroll', dismiss as EventListener, true);
+          window.removeEventListener('keydown', dismiss as EventListener);
+        };
+        setTimeout(() => {
+          window.addEventListener('mousedown', dismiss as EventListener, { once: true, capture: true });
+          window.addEventListener('scroll', dismiss as EventListener, { once: true, capture: true });
+          window.addEventListener('keydown', dismiss as EventListener, { once: true, capture: true });
+        }, 0);
+      });
+    }
   }
 
   private convertPlayerEquipmentToEquipment(playerEquipment: PlayerEquipmentItems): Equipment {
@@ -182,7 +278,9 @@ export class UISystem extends SystemBase {
         cooking: { level: 1, xp: 0 } as SkillData
       },
       inventory: { items: [], capacity: 28, coins: 0 },
-      equipment: this.convertPlayerEquipmentToEquipment(playerData.equipment),
+      equipment: playerData.equipment ? this.convertPlayerEquipmentToEquipment(playerData.equipment) : {
+        weapon: null, shield: null, helmet: null, body: null, legs: null, arrows: null
+      },
       combatLevel: playerData.combat.combatLevel,
       inCombat: false,
       minimapData: { position: playerData.position }
@@ -236,7 +334,8 @@ export class UISystem extends SystemBase {
   }
 
   private updateInventoryUI(data: { playerId: string; inventory: InventoryData }): void {
-    const uiState = this.playerUIStates.get(data.playerId)!;
+    const uiState = this.playerUIStates.get(data.playerId);
+    if (!uiState) return; // Guard if UI not initialized yet
 
     const inventoryData = {
       items: data.inventory.items.map(item => ({

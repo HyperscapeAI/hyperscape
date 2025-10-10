@@ -30,7 +30,7 @@ import {
 import { EntityManager } from './EntityManager';
 import { SystemBase } from './SystemBase';
 import { logger as Logger } from '../logger';
-import { PlayerIdMapper } from './PlayerIdMapper';
+import type { DatabaseSystem } from './DatabaseSystem';
 
 
 
@@ -39,7 +39,7 @@ import { PlayerIdMapper } from './PlayerIdMapper';
 export class InventorySystem extends SystemBase {
   protected playerInventories = new Map<PlayerID, PlayerInventory>();
   private readonly MAX_INVENTORY_SLOTS = 28;
-  private databaseSystem?: import('./DatabaseSystem').DatabaseSystem;
+  private persistTimers = new Map<string, NodeJS.Timeout>();
   private saveInterval?: NodeJS.Timeout;
   private readonly AUTO_SAVE_INTERVAL = 30000; // 30 seconds
 
@@ -54,38 +54,15 @@ export class InventorySystem extends SystemBase {
     });
   }
   
-  /**
-   * Extract userId from player entity if available and register mapping
-   */
-  private extractUserIdFromEntity(playerId: string): void {
-    const entity = this.world.entities.get(playerId);
-    if (entity && entity.data?.userId) {
-      PlayerIdMapper.register(playerId, entity.data.userId as string);
-    }
-  }
-
   async init(): Promise<void> {
-    // Get DatabaseSystem for persistence
-    this.databaseSystem = this.world.getSystem('rpg-database') as import('./DatabaseSystem').DatabaseSystem | undefined;
-    
-    if (!this.databaseSystem && this.world.isServer) {
-      console.warn('[InventorySystem] DatabaseSystem not found - inventory will not persist!');
-    }
-    
     // Subscribe to inventory events
     this.subscribe(EventType.PLAYER_REGISTERED, (data) => {
-      this.initializeInventory({ id: data.playerId });
-    });
-    this.subscribe(EventType.PLAYER_JOINED, (data) => {
-      // Load inventory from database when player joins
-      this.loadInventoryFromDatabase(data.playerId);
+      if (!this.loadPersistedInventory(data.playerId)) {
+        this.initializeInventory({ id: data.playerId });
+      }
     });
     this.subscribe(EventType.PLAYER_CLEANUP, (data) => {
       this.cleanupInventory({ id: data.playerId });
-    });
-    this.subscribe(EventType.PLAYER_LEFT, async (data) => {
-      // Save inventory before player leaves
-      await this.saveInventoryToDatabase(data.playerId);
     });
     this.subscribe(EventType.INVENTORY_ITEM_REMOVED, (data) => {
       this.removeItem(data);
@@ -128,7 +105,7 @@ export class InventorySystem extends SystemBase {
   
   start(): void {
     // Start periodic auto-save on server only
-    if (this.world.isServer && this.databaseSystem) {
+    if (this.world.isServer) {
       this.startAutoSave();
     }
   }
@@ -141,79 +118,19 @@ export class InventorySystem extends SystemBase {
   }
   
   private async performAutoSave(): Promise<void> {
-    if (!this.databaseSystem) return;
+    const db = this.getDatabase();
+    if (!db) return;
     
     console.log(`[InventorySystem] Auto-saving ${this.playerInventories.size} player inventories...`);
     for (const playerId of this.playerInventories.keys()) {
       try {
-        await this.saveInventoryToDatabase(playerId);
+        const inv = this.getOrCreateInventory(playerId);
+        const saveItems = inv.items.map(i => ({ itemId: i.itemId, quantity: i.quantity, slotIndex: i.slot, metadata: null as null }));
+        db.savePlayerInventory(playerId, saveItems);
+        db.savePlayer(playerId, { coins: inv.coins });
       } catch (error) {
         Logger.error('InventorySystem', `Error during auto-save for player ${playerId}`, error);
       }
-    }
-  }
-  
-  private async loadInventoryFromDatabase(playerId: string): Promise<void> {
-    if (!this.databaseSystem) return;
-    
-    // Use userId for database lookup
-    const databaseId = PlayerIdMapper.getDatabaseId(playerId);
-    console.log(`[InventorySystem] Loading inventory from database - playerId: ${playerId}, userId: ${databaseId}`);
-    
-    const dbInventory = this.databaseSystem.getPlayerInventory(databaseId);
-    
-    if (dbInventory && dbInventory.length > 0) {
-      const playerIdKey = toPlayerID(playerId);
-      if (!playerIdKey) return;
-      
-      // Clear current inventory
-      const inventory = this.getOrCreateInventory(playerId);
-      inventory.items = [];
-      
-      // Load items from database
-      for (const dbItem of dbInventory) {
-        const itemData = getItem(dbItem.itemId);
-        if (itemData) {
-          inventory.items.push({
-            slot: dbItem.slotIndex,
-            itemId: dbItem.itemId,
-            quantity: dbItem.quantity,
-            item: itemData
-          });
-        }
-      }
-      
-      console.log(`[InventorySystem] Loaded ${inventory.items.length} items from database for player ${playerId}`);
-      this.emitInventoryUpdate(playerIdKey);
-    } else {
-      console.log(`[InventorySystem] No saved inventory found for userId ${databaseId}, using defaults`);
-    }
-  }
-  
-  private async saveInventoryToDatabase(playerId: string): Promise<void> {
-    if (!this.databaseSystem) return;
-    
-    const playerIdKey = toPlayerID(playerId);
-    if (!playerIdKey) return;
-    
-    const inventory = this.playerInventories.get(playerIdKey);
-    if (!inventory) return;
-    
-    // Use userId for database save
-    const databaseId = PlayerIdMapper.getDatabaseId(playerId);
-    
-    // Convert to database format
-    const dbInventory = inventory.items.map(item => ({
-      itemId: item.itemId,
-      quantity: item.quantity,
-      slotIndex: item.slot,
-      metadata: null
-    }));
-    
-    this.databaseSystem.savePlayerInventory(databaseId, dbInventory);
-    
-    if (databaseId !== playerId) {
-      console.log(`[InventorySystem] Saved inventory to database - playerId: ${playerId}, userId: ${databaseId}, items: ${dbInventory.length}`);
     }
   }
 
@@ -223,9 +140,6 @@ export class InventorySystem extends SystemBase {
       Logger.error('InventorySystem', `Invalid player ID: "${playerData.id}"`);
       return;
     }
-    
-    // Extract userId from entity for persistence
-    this.extractUserIdFromEntity(playerData.id);
     
     const playerId = createPlayerID(playerData.id);
     
@@ -237,8 +151,9 @@ export class InventorySystem extends SystemBase {
     
     this.playerInventories.set(playerId, inventory);
     
-    // Give starter equipment - per GDD, players start with bronze gear
-    this.addStarterEquipment(playerId);
+    // Starter equipment optional via env flag
+    const enableStarter = (typeof process !== 'undefined' && process.env && process.env.PUBLIC_STARTER_ITEMS === '1');
+    if (enableStarter) this.addStarterEquipment(playerId);
     
     const inventoryData = this.getInventoryData(playerData.id);
     this.emitTypedEvent(EventType.INVENTORY_INITIALIZED, {
@@ -325,6 +240,7 @@ export class InventorySystem extends SystemBase {
         playerId: playerId,
         coins: inventory.coins
       });
+      this.scheduleInventoryPersist(playerId);
       return true;
     }
     
@@ -337,8 +253,7 @@ export class InventorySystem extends SystemBase {
         const playerIdKey = toPlayerID(playerId);
         if (playerIdKey) {
           this.emitInventoryUpdate(playerIdKey);
-          // Save to database after inventory change
-          this.saveInventoryToDatabase(playerId);
+          this.scheduleInventoryPersist(playerId);
         }
         return true;
       }
@@ -362,8 +277,7 @@ export class InventorySystem extends SystemBase {
     const playerIdKey = toPlayerID(playerId);
     if (playerIdKey) {
       this.emitInventoryUpdate(playerIdKey);
-      // Save to database after inventory change
-      this.saveInventoryToDatabase(playerId);
+      this.scheduleInventoryPersist(playerId);
     }
     return true;
   }
@@ -398,6 +312,7 @@ export class InventorySystem extends SystemBase {
           playerId: data.playerId,
           coins: inventory.coins
         });
+        this.scheduleInventoryPersist(data.playerId);
         return true;
       }
       return false;
@@ -421,8 +336,7 @@ export class InventorySystem extends SystemBase {
     const playerIdKey = toPlayerID(playerId);
     if (playerIdKey) {
       this.emitInventoryUpdate(playerIdKey);
-      // Save to database after inventory change
-      this.saveInventoryToDatabase(playerId);
+      this.scheduleInventoryPersist(data.playerId);
     }
     return true;
   }
@@ -588,9 +502,7 @@ export class InventorySystem extends SystemBase {
       playerId: data.playerId,
       coins: inventory.coins
     });
-    
-    // Save to database after coin change
-    this.saveInventoryToDatabase(data.playerId);
+    this.scheduleInventoryPersist(data.playerId);
   }
 
   private moveItem(data: { playerId: string; fromSlot?: number; toSlot?: number; sourceSlot?: number; targetSlot?: number }): void {
@@ -624,8 +536,7 @@ export class InventorySystem extends SystemBase {
     const playerIdKey = toPlayerID(data.playerId);
     if (playerIdKey) {
       this.emitInventoryUpdate(playerIdKey);
-      // Save to database after item movement
-      this.saveInventoryToDatabase(data.playerId);
+      this.scheduleInventoryPersist(data.playerId);
     }
   }
 
@@ -809,10 +720,72 @@ export class InventorySystem extends SystemBase {
       };
       this.playerInventories.set(playerIdKey, inventory);
       
-      // Add starter equipment for auto-initialized players
-      this.addStarterEquipment(playerIdKey);
+      // Add starter equipment for auto-initialized players if enabled
+      const enableStarter = (typeof process !== 'undefined' && process.env && process.env.PUBLIC_STARTER_ITEMS === '1');
+      if (enableStarter) this.addStarterEquipment(playerIdKey);
     }
     return inventory;
+  }
+
+  // === Persistence helpers ===
+  private getDatabase(): DatabaseSystem | null {
+    try {
+      return (this.world.getSystem('rpg-database') as unknown as DatabaseSystem) || null
+    } catch { return null }
+  }
+
+  private loadPersistedInventory(playerId: string): boolean {
+    const db = this.getDatabase();
+    if (!db) return false;
+    try {
+      const rows = db.getPlayerInventory(playerId);
+      const playerRow = db.getPlayer(playerId);
+      const hasState = (rows && rows.length > 0) || !!playerRow;
+      if (!hasState) return false;
+      const pid = createPlayerID(playerId);
+      const inv: PlayerInventory = { playerId: pid, items: [], coins: playerRow?.coins ?? 0 };
+      this.playerInventories.set(pid, inv);
+      for (const row of rows) {
+        const slot = typeof row.slotIndex === 'number' ? row.slotIndex : undefined;
+        this.addItem({ playerId, itemId: createItemID(String(row.itemId)), quantity: row.quantity || 1, slot });
+      }
+      const data = this.getInventoryData(playerId);
+      this.emitTypedEvent(EventType.INVENTORY_INITIALIZED, {
+        playerId,
+        inventory: {
+          items: data.items.map(item => ({
+            slot: item.slot,
+            itemId: item.itemId,
+            quantity: item.quantity,
+            item: { id: item.item.id, name: item.item.name, type: item.item.type, stackable: item.item.stackable, weight: item.item.weight }
+          })),
+          coins: data.coins,
+          maxSlots: data.maxSlots,
+        }
+      });
+      return true;
+    } catch (e) {
+      Logger.error('InventorySystem', `Failed loading persisted inventory for ${playerId}`, e as Error);
+      return false;
+    }
+  }
+
+  private scheduleInventoryPersist(playerId: string): void {
+    const db = this.getDatabase();
+    if (!db) return;
+    const existing = this.persistTimers.get(playerId);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      try {
+        const inv = this.getOrCreateInventory(playerId);
+        const saveItems = inv.items.map(i => ({ itemId: i.itemId, quantity: i.quantity, slotIndex: i.slot, metadata: null as null }));
+        db.savePlayerInventory(playerId, saveItems);
+        db.savePlayer(playerId, { coins: inv.coins });
+      } catch (e) {
+        Logger.error('InventorySystem', `Persist failed for ${playerId}`, e as Error);
+      }
+    }, 300);
+    this.persistTimers.set(playerId, timer);
   }
 
   private handleCanAdd(data: InventoryCanAddEvent): void {
@@ -956,11 +929,27 @@ export class InventorySystem extends SystemBase {
       this.saveInterval = undefined;
     }
     
+    // Clear all pending persist timers
+    for (const timer of this.persistTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.persistTimers.clear();
+    
     // Final save before shutdown
-    if (this.world.isServer && this.databaseSystem) {
-      console.log('[InventorySystem] Final save before shutdown...');
-      for (const playerId of this.playerInventories.keys()) {
-        this.saveInventoryToDatabase(playerId);
+    if (this.world.isServer) {
+      const db = this.getDatabase();
+      if (db) {
+        console.log('[InventorySystem] Final save before shutdown...');
+        for (const playerId of this.playerInventories.keys()) {
+          try {
+            const inv = this.getOrCreateInventory(playerId);
+            const saveItems = inv.items.map(i => ({ itemId: i.itemId, quantity: i.quantity, slotIndex: i.slot, metadata: null as null }));
+            db.savePlayerInventory(playerId, saveItems);
+            db.savePlayer(playerId, { coins: inv.coins });
+          } catch (error) {
+            Logger.error('InventorySystem', `Error during final save for player ${playerId}`, error);
+          }
+        }
       }
     }
     

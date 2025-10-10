@@ -120,17 +120,29 @@ export class ResourceEntity extends InteractableEntity {
   protected async createMesh(): Promise<void> {
     // Try to load actual 3D model if available
     if (this.config.model && this.world.loader && !this.world.isServer) {
+      console.log(`[ResourceEntity] 🔄 Attempting to load 3D model for ${this.config.resourceType}: ${this.config.model}`);
+      
       try {
         await this.loadModel();
-        // If model loaded successfully, we're done
+        
+        // Success - model loaded
         if (this.mesh) {
           this.mesh.name = `Resource_${this.config.resourceType}`;
+          console.log(`[ResourceEntity] ✅ 3D model successfully loaded for ${this.config.resourceType}`);
           return;
         }
       } catch (error) {
-        console.warn(`[ResourceEntity] Failed to load model for ${this.config.resourceType}:`, error);
-        // Fall through to create fallback mesh
+        // Model loading failed - gracefully fall back to primitive
+        console.warn(`[ResourceEntity] ⚠️  3D model failed to load for ${this.config.resourceType}, using fallback primitive:`, (error as Error).message);
       }
+      
+    } else if (!this.config.model) {
+      console.log(`[ResourceEntity] No model path for ${this.config.resourceType}, using fallback primitive`);
+    } else if (this.world.isServer) {
+      console.log(`[ResourceEntity] Server-side ${this.config.resourceType}, skipping model`);
+      return; // Don't create fallback mesh on server
+    } else {
+      console.log(`[ResourceEntity] Loader not available for ${this.config.resourceType}, using fallback primitive`);
     }
     
     // Fallback: Create basic resource mesh based on type as placeholder

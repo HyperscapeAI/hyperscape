@@ -147,6 +147,21 @@ export class EntityManager extends SystemBase {
       config.id = `entity_${this.nextEntityId++}`;
     }
     
+    console.log(`[EntityManager] 🔄 Spawning ${config.type} entity: ${config.name} (${config.id})`, {
+      position: config.position,
+      hasModel: !!config.model,
+      modelPath: config.model
+    });
+    
+    // VALIDATE config before creating entity
+    if (!config.position || !Number.isFinite(config.position.x) || !Number.isFinite(config.position.y) || !Number.isFinite(config.position.z)) {
+      throw new Error(`Invalid position for entity ${config.id}: ${JSON.stringify(config.position)}`);
+    }
+    
+    if (config.position.y < -200 || config.position.y > 2000) {
+      console.error(`[EntityManager] ⚠️  Entity ${config.name} has extreme Y position: ${config.position.y}`);
+      throw new Error(`Entity spawn position out of range: Y=${config.position.y} (expected 0-100)`);
+    }
     
     let entity: Entity;
     
@@ -168,15 +183,21 @@ export class EntityManager extends SystemBase {
         throw new Error(`[EntityManager] Unknown entity type: ${config.type}`);
     }
     
-    // Initialize entity
-    await entity.init();
+    // Initialize entity (this will throw if it fails)
+    console.log(`[EntityManager] Initializing entity ${config.id}...`);
+    try {
+      await entity.init();
+    } catch (error) {
+      console.error(`[EntityManager] ❌ Entity initialization failed for ${config.id}:`, error);
+      throw new Error(`Failed to initialize ${config.type} entity ${config.name}: ${(error as Error).message}`);
+    }
     
     // Store entity
     this.entities.set(config.id, entity);
     this.entitiesNeedingUpdate.add(config.id);
     
     // Register with world entities system so other systems can find it
-        this.world.entities.set(config.id, entity);
+    this.world.entities.set(config.id, entity);
         
     // Mark for network sync
     if (this.world.isServer) {
@@ -190,6 +211,8 @@ export class EntityManager extends SystemBase {
       position: config.position,
       entityData: entity.getNetworkData()
     } as EntitySpawnedEvent);
+    
+    console.log(`[EntityManager] ✅ Successfully spawned and registered ${config.type} entity: ${config.name}`);
     
     return entity;
   }
