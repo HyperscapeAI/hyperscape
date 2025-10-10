@@ -312,11 +312,13 @@ export interface Entities extends System {
   has?(id: string): boolean;
   create?(type: string, data: EntityData): Entity | null;
   destroyEntity?(id: string): boolean;
+  getAll(): Entity[];
   
   // Player-specific methods
   getPlayer?(id: string): PlayerEntity | null;
   getLocalPlayer?(): PlayerEntity | null;
   getPlayers?(): PlayerEntity[];
+  getAllPlayers(): PlayerEntity[];
 }
 
 // Chat message interface - unified ChatMessage with all required properties
@@ -896,6 +898,7 @@ export type PlayerEntity = Entity & {
   respawn(): void;
   damage(amount: number, source?: Entity): void;
   heal(amount: number): void;
+  chat(text: string): void;
 }
 
 export interface PlayerInput {

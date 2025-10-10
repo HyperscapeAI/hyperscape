@@ -22,24 +22,7 @@ export function AvatarPane({ world, info }: AvatarPaneProps) {
   }, [world, info.file, info.url])
   return (
     <div
-      className='vpane'
-      style={{
-        position: 'absolute',
-        top: '50%',
-        left: '50%',
-        transform: 'translate(-50%, -50%)',
-        width: '16rem',
-        height: '24rem',
-        background: 'rgba(11, 10, 21, 0.85)',
-        border: '0.0625rem solid #2a2b39',
-        backdropFilter: 'blur(5px)',
-        borderRadius: '1rem',
-        pointerEvents: 'auto',
-        display: 'flex',
-        flexDirection: 'column',
-        fontSize: '1rem',
-        overflow: 'hidden',
-      }}
+      className='vpane absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-96 bg-dark-bg border border-dark-border backdrop-blur-md rounded-2xl pointer-events-auto flex flex-col text-base overflow-hidden'
     >
       <style>{`
         .vpane-head {

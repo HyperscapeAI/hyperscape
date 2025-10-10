@@ -27,35 +27,47 @@ export class TransformComponent extends Component {
   }
   
   get position(): THREE.Vector3 {
-    return this.get<THREE.Vector3>('position');
+    return this.get<THREE.Vector3>('position')!;
   }
   
   set position(value: THREE.Vector3 | { x: number; y: number; z: number }) {
     const currentPosition = this.get<THREE.Vector3>('position');
     // Both types have x, y, z properties - use them directly
-    currentPosition.set(value.x, value.y, value.z);
+    if (currentPosition) {
+      currentPosition.set(value.x, value.y, value.z);
+    } else {
+      this.set('position', new THREE.Vector3(value.x, value.y, value.z));
+    }
     this.syncToNode();
   }
   
   get rotation(): THREE.Quaternion {
-    return this.get<THREE.Quaternion>('rotation');
+    return this.get<THREE.Quaternion>('rotation')!;
   }
   
   set rotation(value: THREE.Quaternion | { x: number; y: number; z: number; w: number }) {
     const currentRotation = this.get<THREE.Quaternion>('rotation');
     // Both types have x, y, z, w properties - use them directly
-    currentRotation.set(value.x, value.y, value.z, value.w);
+    if (currentRotation) {
+      currentRotation.set(value.x, value.y, value.z, value.w);
+    } else {
+      this.set('rotation', new THREE.Quaternion(value.x, value.y, value.z, value.w));
+    }
     this.syncToNode();
   }
   
   get scale(): THREE.Vector3 {
-    return this.get<THREE.Vector3>('scale');
+    return this.get<THREE.Vector3>('scale')!;
   }
   
   set scale(value: THREE.Vector3 | { x: number; y: number; z: number }) {
     const currentScale = this.get<THREE.Vector3>('scale');
     // Both types have x, y, z properties - use them directly
-    currentScale.set(value.x, value.y, value.z);
+    if (currentScale) {
+      currentScale.set(value.x, value.y, value.z);
+    } else {
+      this.set('scale', new THREE.Vector3(value.x, value.y, value.z));
+    }
     this.syncToNode();
   }
   

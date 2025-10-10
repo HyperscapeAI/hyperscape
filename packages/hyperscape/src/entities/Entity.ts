@@ -850,21 +850,41 @@ export class Entity implements IEntity {
       const isClientEnvironment = this.isClientEnvironment()
       
       if (isClientEnvironment) {
-        this.initializeVisuals()
+        try {
+          this.initializeVisuals()
+        } catch (err) {
+          console.error(`[Entity ${this.id}] initializeVisuals failed:`, err);
+          throw err;
+        }
       }
 
       // Load model if specified
       if (this.config.model) {
-        await this.loadModel()
+        try {
+          await this.loadModel()
+        } catch (err) {
+          console.error(`[Entity ${this.id}] loadModel failed:`, err);
+          throw err;
+        }
       }
 
       // Note: Entity constructor already adds node to scene
 
       // Set up interaction system
-      this.setupInteraction()
+      try {
+        this.setupInteraction()
+      } catch (err) {
+        console.error(`[Entity ${this.id}] setupInteraction failed:`, err);
+        throw err;
+      }
 
       // Call custom initialization
-      await this.onInit()
+      try {
+        await this.onInit()
+      } catch (err) {
+        console.error(`[Entity ${this.id}] onInit failed:`, err);
+        throw err;
+      }
     } catch (error) {
       console.error(`Failed to initialize Entity ${this.id}:`, error)
       throw error
@@ -872,7 +892,13 @@ export class Entity implements IEntity {
   }
 
   protected async loadModel(): Promise<void> {
-    if (!this.config.model || !this.world.loader) return
+    if (!this.config.model) return
+    
+    // Check if loader system exists and is ready
+    if (!this.world.loader) {
+      console.warn(`[Entity ${this.id}] Loader system not available, skipping model load`);
+      return
+    }
 
     // Skip model loading on server side - models are only needed for client rendering
     if (this.world.isServer) return
@@ -882,7 +908,7 @@ export class Entity implements IEntity {
       const safeLoader = new SafeLoaderWrapper(this.world.loader)
       const model = await safeLoader.loadModel(this.config.model)
       // Convert the loaded model into a THREE.Object3D via toNodes
-      const nodes = model.toNodes()
+      const nodes = (model as unknown as { toNodes: () => Map<string, THREE.Object3D> }).toNodes()
       // Strong type assumption - node is THREE.Object3D
       const modelObject = (nodes.get('root') || nodes.get('model') || nodes.get(this.name)) as THREE.Object3D | null
       // Fallback: if no nodes map provided, skip assignment

@@ -162,6 +162,11 @@ export class ClientGraphics extends System {
   }
 
   resize(width: number, height: number) {
+    // Guard: ensure graphics system is fully initialized
+    if (!this.renderer || !this.composer) {
+      return
+    }
+    
     // Prevent unnecessary resize operations
     if (width === this.width && height === this.height) {
       return

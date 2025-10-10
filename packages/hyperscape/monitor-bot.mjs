@@ -10,7 +10,7 @@
 import WebSocket from 'ws';
 import { readPacket, writePacket } from './build/packets.js';
 
-const PORT = process.env.PORT || 4444;
+const PORT = process.env.PORT || 5555;
 const WS_URL = `ws://localhost:${PORT}/ws`;
 
 console.log('🔍 Bot Movement Monitor');

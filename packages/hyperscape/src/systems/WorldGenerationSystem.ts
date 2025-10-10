@@ -107,11 +107,16 @@ export class WorldGenerationSystem extends SystemBase {
         const npcTileZ = Math.floor(npc.position.z / TILE_SIZE);
 
         if (npcTileX === tileData.tileX && npcTileZ === tileData.tileZ) {
+            // Ground NPC to terrain height
+            let npcY = npc.position.y;
+            const th = this.terrainSystem.getHeightAt(npc.position.x, npc.position.z);
+            if (Number.isFinite(th)) npcY = (th as number) + 0.1;
+            
             this.emitTypedEvent(EventType.NPC_SPAWN_REQUEST, {
                 npcId: npc.id,
                 name: npc.name,
                 type: npc.type,
-                position: npc.position,
+                position: { x: npc.position.x, y: npcY, z: npc.position.z },
                 services: npc.services,
                 modelPath: npc.modelPath,
             });
@@ -126,12 +131,17 @@ export class WorldGenerationSystem extends SystemBase {
         const spawnTileZ = Math.floor(spawnPoint.position.z / TILE_SIZE);
 
         if (spawnTileX === tileData.tileX && spawnTileZ === tileData.tileZ) {
+            // Ground mob spawn to terrain height
+            let mobY = spawnPoint.position.y;
+            const th = this.terrainSystem.getHeightAt(spawnPoint.position.x, spawnPoint.position.z);
+            if (Number.isFinite(th)) mobY = (th as number) + 0.1;
+            
             this.emitTypedEvent(EventType.MOB_SPAWN_POINTS_REGISTERED, {
                 spawnPoints: [{
                     id: `${spawnPoint.mobId}_${Math.random()}`,
                     type: spawnPoint.mobId,
                     subType: spawnPoint.mobId,
-                    position: spawnPoint.position,
+                    position: { x: spawnPoint.position.x, y: mobY, z: spawnPoint.position.z },
                 }]
             });
         }

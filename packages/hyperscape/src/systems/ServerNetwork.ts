@@ -18,6 +18,7 @@ import type {
 } from '../types/network-types';
 import { addRole, hasRole, removeRole, serializeRoles, uuid } from '../utils';
 import { createJWT, verifyJWT } from '../utils-server';
+import { verifyPrivyToken, isPrivyEnabled } from '../server/privy-auth';
 import { System } from './System';
 import { EventType } from '../types/events';
 import type { TerrainSystem } from './TerrainSystem';
@@ -342,12 +343,17 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     const packet = writePacket(name, data);
     // Only log non-entityModified packets to reduce spam
     // Keep logs quiet in production unless debugging a specific packet
+    let sentCount = 0;
     this.sockets.forEach(socket => {
       if (socket.id === ignoreSocketId) {
         return;
       }
       socket.sendPacket(packet);
+      sentCount++;
     });
+    if (name === 'chatAdded') {
+      console.log(`[ServerNetwork] Broadcast '${name}' to ${sentCount} clients (ignored: ${ignoreSocketId || 'none'})`);
+    }
   }
 
   sendTo<T = unknown>(socketId: string, name: string, data: T): void {
@@ -369,6 +375,9 @@ export class ServerNetwork extends System implements NetworkWithSocket {
   }
 
   enqueue(socket: Socket, method: string, data: unknown): void {
+    if (method === 'onChatAdded') {
+      console.log('[ServerNetwork] Enqueueing onChatAdded from socket:', socket.id);
+    }
     this.queue.push([socket, method, data]);
   }
 
@@ -409,6 +418,9 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       try {
         const [socket, method, data] = this.queue.shift()!;
         const handler = this.handlers[method];
+        if (method === 'onChatAdded') {
+          console.log('[ServerNetwork] Processing onChatAdded handler from socket:', socket.id);
+        }
         if (handler) {
           handler.call(this, socket, data);
         } else {
@@ -460,10 +472,60 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       let authToken = params.authToken;
       const name = params.name;
       const avatar = params.avatar;
+      const privyUserId = (params as { privyUserId?: string }).privyUserId;
 
       // get or create user
       let user: User | undefined;
-      if (authToken) {
+      let userWithPrivy: User & { privyUserId?: string | null; farcasterFid?: string | null } | undefined;
+      
+      // Try Privy authentication first if enabled
+      if (isPrivyEnabled() && authToken && privyUserId) {
+        try {
+          console.log('[ServerNetwork] Attempting Privy authentication for user:', privyUserId);
+          const privyInfo = await verifyPrivyToken(authToken);
+          
+          if (privyInfo && privyInfo.privyUserId === privyUserId) {
+            console.log('[ServerNetwork] Privy token verified successfully');
+            
+            // Look up existing user by Privy ID
+            const dbResult = await this.db('users').where('privyUserId', privyUserId).first();
+            
+            if (dbResult) {
+              // Existing Privy user
+              userWithPrivy = dbResult as User & { privyUserId?: string | null; farcasterFid?: string | null };
+              user = userWithPrivy;
+              console.log('[ServerNetwork] Found existing Privy user:', user.id);
+            } else {
+              // New Privy user - create account
+              const newUser = {
+                id: uuid(),
+                name: name || 'Adventurer',
+                avatar: avatar || null,
+                roles: '',
+                createdAt: moment().toISOString(),
+                privyUserId: privyInfo.privyUserId,
+                farcasterFid: privyInfo.farcasterFid,
+              };
+              
+              await this.db('users').insert(newUser);
+              userWithPrivy = newUser;
+              user = newUser;
+              console.log('[ServerNetwork] Created new Privy user:', user.id);
+            }
+            
+            // Generate a Hyperscape JWT for this user
+            authToken = await createJWT({ userId: user.id });
+          } else {
+            console.warn('[ServerNetwork] Privy token verification failed or user ID mismatch');
+          }
+        } catch (err) {
+          console.error('[ServerNetwork] Privy authentication error:', err);
+          // Fall through to legacy authentication
+        }
+      }
+      
+      // Fall back to legacy JWT authentication if Privy didn't work
+      if (!user && authToken) {
         try {
           const jwtPayload = await verifyJWT(authToken);
           if (jwtPayload && typeof jwtPayload.userId === 'string') {
@@ -474,9 +536,11 @@ export class ServerNetwork extends System implements NetworkWithSocket {
             }
           }
         } catch (err) {
-          console.error('failed to read authToken:', authToken, err);
+          console.error('[ServerNetwork] Failed to read authToken:', authToken, err);
         }
       }
+      
+      // Create anonymous user if no authentication succeeded
       if (!user) {
         user = {
           id: uuid(),
@@ -726,10 +790,12 @@ export class ServerNetwork extends System implements NetworkWithSocket {
 
   onChatAdded = (socket: Socket, data: unknown): void => {
     const msg = data as ChatMessage;
+    console.log('[ServerNetwork] Received chatAdded from socket:', socket.id, 'message:', msg);
     // Add message to chat if method exists
     if (this.world.chat.add) {
       this.world.chat.add(msg, false);
     }
+    console.log('[ServerNetwork] Broadcasting chatAdded to all clients except:', socket.id);
     this.send('chatAdded', msg, socket.id);
   };
 

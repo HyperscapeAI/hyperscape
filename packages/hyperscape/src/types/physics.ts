@@ -667,6 +667,7 @@ export interface CameraSystem {
   target?: unknown;
   setTarget(player: unknown): void;
   removeTarget(player: unknown): void;
+  resetCamera(): void;
   getCamera(): THREE.PerspectiveCamera;
   update(delta: number): void;
 }

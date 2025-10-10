@@ -62,11 +62,11 @@ export function getGroundPosition(
     // No terrain system available, continue to next method
   }
 
-  // Method 2: Use world raycast (PhysX) with environment layer mask
+  // Method 2: Use world raycast (PhysX) with terrain+environment layer mask
   if (world.raycast) {
     const origin = _tempVec3_1.set(x, 1000, z); // Start high above
     const direction = _tempVec3_2.set(0, -1, 0); // Ray down
-    const mask = (world as unknown as { createLayerMask: (...names: string[]) => number }).createLayerMask?.('environment') ?? 0xFFFFFFFF;
+    const mask = (world as unknown as { createLayerMask: (...names: string[]) => number }).createLayerMask?.('terrain', 'environment') ?? 0xFFFFFFFF;
     const hit = world.raycast(origin, direction, 2000, mask as number);
     if (hit && hit.point) {
       const position = _tempVec3_1.set(x, hit.point.y + yOffset, z);

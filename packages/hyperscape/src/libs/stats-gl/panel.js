@@ -6,4 +6,3 @@ export default class Panel {
     }
     update(value, maxValue, max, maxGraph, decimals) { }
 }
-//# sourceMappingURL=panel.js.map

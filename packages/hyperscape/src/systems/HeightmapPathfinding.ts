@@ -193,7 +193,7 @@ export class HeightmapPathfinding extends SystemBase {
     // Fallback: raycast down
     const origin = new THREE.Vector3(x, 100, z);
     const direction = new THREE.Vector3(0, -1, 0);
-    const mask = this.world.createLayerMask('environment');
+    const mask = this.world.createLayerMask('terrain', 'environment');
     const hit = this.world.raycast(origin, direction, 200, mask);
     
     return hit ? hit.point.y : 0;

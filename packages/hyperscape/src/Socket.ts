@@ -38,6 +38,8 @@ export class Socket {
     this.ws.on('message', (arg?: unknown) => {
       // Strong type assumption - message is always ArrayBuffer or Uint8Array
       const data = arg as ArrayBuffer | Uint8Array
+      const size = data instanceof Uint8Array ? data.length : data.byteLength
+      console.log('[Socket] Raw message received on socket:', this.id, 'size:', size);
       this.onMessage(data)
     })
     this.ws.on('pong', () => {
@@ -78,6 +80,9 @@ export class Socket {
     const result = readPacket(packet)
     if (result.length === 2) {
       const [method, data] = result
+      if (method === 'onChatAdded') {
+        console.log('[Socket] Received onChatAdded, enqueueing for socket:', this.id);
+      }
       this.network.enqueue(this, method, data)
     }
   }

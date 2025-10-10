@@ -53,7 +53,7 @@ async function startServer() {
 
   // Set default values for required environment variables
   const WORLD = process.env['WORLD'] || 'world'
-  const PORT = parseInt(process.env['PORT'] || '4444', 10)
+  const PORT = parseInt(process.env['PORT'] || '5555', 10)
 
   // ES module equivalent of __dirname
   const __filename = fileURLToPath(import.meta.url)
@@ -74,7 +74,7 @@ async function startServer() {
 
   // Only copy built-in assets if assets directory is empty
   const assetFiles = await fs.readdir(assetsDir).catch(() => [])
-  if (assetFiles.length === 0 && (await fs.exists(builtInAssetsDir))) {
+  if (assetFiles.length === 0 && (await fs.pathExists(builtInAssetsDir))) {
     await fs.copy(builtInAssetsDir, assetsDir)
   }
 
@@ -163,8 +163,8 @@ async function startServer() {
     await worldWithInit.init({ db, storage, assetsDir })
   }
   
-  // Actually start the world
-  world.start()
+  // Note: world.start() is called automatically by world.init()
+  // Don't call it again here or systems will initialize twice
 
   // Entities spawn automatically from world.json if present
   await loadWorldEntities()
@@ -172,7 +172,7 @@ async function startServer() {
   async function loadWorldEntities() {
     const worldConfigPath = path.join(worldDir, 'world.json')
 
-    if (await fs.exists(worldConfigPath)) {
+    if (await fs.pathExists(worldConfigPath)) {
       const worldConfig = await fs.readJson(worldConfigPath)
 
       for (const entityData of worldConfig.entities) {
@@ -216,9 +216,15 @@ async function startServer() {
     await fastify.register(cors, {
       origin: [
         'http://localhost:3000',
+        'http://localhost:3333',
         'http://localhost:5555',
         'http://localhost:7777',
         /^https?:\/\/localhost:\d+$/,
+        // Farcaster Frame domains
+        /^https:\/\/.+\.farcaster\.xyz$/,
+        /^https:\/\/.+\.warpcast\.com$/,
+        // Privy domains for OAuth
+        /^https:\/\/.+\.privy\.io$/,
         true, // Allow all origins in development
       ],
       credentials: true,
@@ -459,6 +465,16 @@ async function startServer() {
       }
     }
   }
+  
+  // Log authentication status
+  if (publicEnvs.PUBLIC_PRIVY_APP_ID) {
+    console.log('[Server] Privy authentication enabled')
+    if (publicEnvs.PUBLIC_ENABLE_FARCASTER === 'true') {
+      console.log('[Server] Farcaster Frame v2 support enabled')
+    }
+  } else {
+    console.log('[Server] Running without Privy authentication (development mode)')
+  }
 
   // Expose plugin paths to client for systems loading
   if (process.env.SYSTEMS_PATH) {
@@ -497,7 +513,7 @@ async function startServer() {
     const filename = `${hash}.${ext}`
     // save to fs
     const filePath = path.join(assetsDir, filename)
-    const exists = await fs.exists(filePath)
+    const exists = await fs.pathExists(filePath)
     if (!exists) {
       await fs.writeFile(filePath, buffer)
     }
@@ -506,7 +522,7 @@ async function startServer() {
   fastify.get('/api/upload-check', async (req: FastifyRequest, _reply) => {
     const filename = (req.query as { filename: string }).filename
     const filePath = path.join(assetsDir, filename)
-    const exists = await fs.exists(filePath)
+    const exists = await fs.pathExists(filePath)
     return { exists }
   })
 
@@ -717,11 +733,6 @@ async function startServer() {
     console.log(`\n[Server] Received ${signal}, shutting down gracefully...`)
     
     try {
-      // Stop the world ticker first to prevent new operations
-      if (world && typeof world.destroy === 'function') {
-        world.destroy()
-      }
-      
       // Close Fastify server
       console.log('[Server] Closing HTTP server...')
       await fastify.close()

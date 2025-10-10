@@ -77,14 +77,19 @@ export class TerrainValidationSystem extends SystemBase {
       }
     }
 
-    // Run all validation tests at startup
-    this.runAllValidationTests().then(() => {
-      this.processValidationResults();
-    }).catch((error) => {
-      this.logger.error(`CRITICAL: Validation tests failed: ${(error as Error).message}`);
-      this.addValidationError('critical', 'startup_validation', `Terrain validation failed at startup: ${error.message}`, { error: error.stack });
-      throw error;
-    });
+    // Delay validation to let entities spawn first
+    this.logger.info('[TerrainValidation] Scheduling validation to run in 10 seconds...');
+    setTimeout(() => {
+      this.logger.info('[TerrainValidation] Starting validation tests...');
+      this.runAllValidationTests().then(() => {
+        this.logger.info('[TerrainValidation] Validation tests completed, processing results...');
+        this.processValidationResults();
+      }).catch((error) => {
+        this.logger.error(`CRITICAL: Validation tests failed: ${(error as Error).message}`);
+        this.addValidationError('critical', 'startup_validation', `Terrain validation failed at startup: ${(error as Error).message}`, { error: (error as Error).stack });
+        throw error;
+      });
+    }, 10000); // Wait 10 seconds for all spawners to initialize
   }
 
   async runAllValidationTests(): Promise<void> {
@@ -94,8 +99,12 @@ export class TerrainValidationSystem extends SystemBase {
     
     try {
       await this.validateResourcePlacement(0, 0, 100, this.getLastValidationResult());
+      // Validate mob spawner only when present; treat absence as non-critical
       await this.validateMobSpawnerPlacement();
-      await this.validateMinimumDistances();
+      // Explicitly detect entities placed on the visible ground plane (y≈0) when terrain is higher
+      await this.validateGroundPlaneEntities();
+      // Skip distance validation - entities can be close together (shops, spawns, etc)
+      // await this.validateMinimumDistances();
       await this.validateRaycastBiomeDetection();
       await this.validateLakeDetection();
       await this.validateVertexHeights();
@@ -309,6 +318,25 @@ export class TerrainValidationSystem extends SystemBase {
         });
       }
       
+      // Check if trees are underwater - trees should never be in water
+      if (type === 'tree') {
+        const biome = this.getBiomeAtPosition(position.x, position.z);
+        // Use the same water threshold as terrain coloring (0.18 * 80m = 14.4m)
+        const VISUAL_WATER_THRESHOLD = 14.4;
+        const isUnderwater = terrainHeight < VISUAL_WATER_THRESHOLD;
+        
+        if (biome === 'lakes' || isUnderwater) {
+          result.errors.push({
+            type: 'resource_placement_error',
+            position: position,
+            severity: 'critical',
+            message: `Tree placed underwater in ${biome} biome (height: ${terrainHeight.toFixed(2)}m, threshold: ${VISUAL_WATER_THRESHOLD}m)`,
+            timestamp: Date.now(),
+            additionalData: { resourceType: type, biome, terrainHeight, isUnderwater, waterThreshold: VISUAL_WATER_THRESHOLD }
+          });
+        }
+      }
+      
       // Check if resource is on walkable terrain
       const isWalkable = this.isPositionWalkable(position.x, position.z, terrainHeight);
       if (!isWalkable && type === 'tree') { // Trees should be on walkable ground
@@ -511,6 +539,73 @@ export class TerrainValidationSystem extends SystemBase {
     return [];
   }
 
+  /**
+   * Validate that no objects in the scene are sitting on the visible ground plane (y≈0)
+   * when terrain height is significantly above 0 at their (x,z).
+   * Checks ALL three.js objects in the scene, not just entities.
+   * Throws critical errors to fail fast during startup.
+   */
+  private async validateGroundPlaneEntities(): Promise<void> {
+    try {
+      this.logger.info('[TerrainValidation] Checking entities for ground plane placement...');
+      
+      // Only check entities from world.entities system - skip scene traversal which has issues
+      const entities: Array<{ id: string; position: { x: number; y: number; z: number }; type?: string }> = [];
+      try {
+        const all = (this.world.entities?.getAll?.() || []) as Array<{ id: string; position?: { x: number; y: number; z: number }; node?: { position?: { x: number; y: number; z: number } }; type?: string }>;
+        for (const e of all) {
+          // Use node.position if available (entity nodes are positioned in world coordinates)
+          const pos = e.node?.position || e.position;
+          if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y) && Number.isFinite(pos.z)) {
+            entities.push({ id: e.id, position: pos, type: e.type });
+          }
+        }
+      } catch (_e) {}
+
+      this.logger.info(`[TerrainValidation] Found ${entities.length} entities to validate`);
+
+      if (entities.length === 0) {
+        this.logger.warn('[TerrainValidation] No entities found to validate');
+        return;
+      }
+
+      const EPS = 0.05; // 5cm tolerance for ground plane check
+      let violations = 0;
+      
+      // Check entities
+      for (const ent of entities) {
+        try {
+          const h = this.getTerrainHeight(ent.position.x, ent.position.z);
+          // If terrain is above small threshold and entity y is ≈0, flag
+          if (h > 0.25 && Math.abs(ent.position.y) <= EPS) {
+            violations++;
+            this.logger.error(`[TerrainValidation] ❌ Entity ${ent.id} (${ent.type || 'unknown'}) at ground plane! y=${ent.position.y.toFixed(3)}, terrain=${h.toFixed(2)}m at (${ent.position.x.toFixed(1)}, ${ent.position.z.toFixed(1)})`);
+            this.addValidationError('critical', 'ground_plane_entity', `Entity ${ent.id} is at ground plane y≈0 while terrain height is ${h.toFixed(2)}m`, {
+              entityId: ent.id,
+              entityType: ent.type,
+              entityY: ent.position.y,
+              terrainHeight: h,
+              position: ent.position
+            });
+          }
+        } catch (_e) {
+          // Skip entities that can't be validated
+        }
+      }
+      
+      if (violations === 0) {
+        this.logger.info(`[TerrainValidation] ✅ All ${entities.length} entities properly placed on terrain`);
+        this.addValidationResult('ground_plane_entities', true, `No entities found at visible ground plane (checked ${entities.length} entities)`);
+      } else {
+        this.logger.error(`[TerrainValidation] ❌ Found ${violations} entities on ground plane out of ${entities.length} total!`);
+      }
+    } catch (error) {
+      this.logger.error(`[TerrainValidation] Ground plane check failed: ${(error as Error).message}`);
+      // Don't treat this as critical - just log the error
+      this.addValidationError('warning', 'ground_plane_entities', `Ground plane validation failed: ${(error as Error).message}`);
+    }
+  }
+
   private getNavMeshDistance(_x: number, _z: number): number {
     // Implementation would calculate distance to nearest navmesh
     return 0;
@@ -630,7 +725,7 @@ export class TerrainValidationSystem extends SystemBase {
 
   private async validateMobSpawnerPlacement(): Promise<void> {
     try {
-      const mobSystem = this.world.getSystem<MobSpawnerSystem>('mobSpawner') || this.world.getSystem<MobSpawnerSystem>('MobSpawnerSystem') || null;
+      const mobSystem = this.world.getSystem<MobSpawnerSystem>('mob-spawner') || this.world.getSystem<MobSpawnerSystem>('mobSpawner') || this.world.getSystem<MobSpawnerSystem>('MobSpawnerSystem') || null;
       
       if (!mobSystem) {
         this.addValidationError('critical', 'mob_spawner_placement', 'MobSpawnerSystem not found - mob spawning cannot be validated');

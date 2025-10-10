@@ -94,11 +94,11 @@ export class RaycastTestSystem extends System {
     const lookDistance = 10; // How far in front of camera to expect hits
     
     const testPoints = [
-      { screenX: 640, screenY: 360, name: 'center', expectedWorld: { x: camPos.x, y: 0, z: camPos.z - lookDistance } },
-      { screenX: 320, screenY: 360, name: 'left', expectedWorld: { x: camPos.x - 5, y: 0, z: camPos.z - lookDistance } },
-      { screenX: 960, screenY: 360, name: 'right', expectedWorld: { x: camPos.x + 5, y: 0, z: camPos.z - lookDistance } },
-      { screenX: 640, screenY: 500, name: 'bottom-center', expectedWorld: { x: camPos.x, y: 0, z: camPos.z - 5 } },
-      { screenX: 640, screenY: 200, name: 'top-center', expectedWorld: { x: camPos.x, y: 0, z: camPos.z - 15 } },
+      { screenX: 640, screenY: 360, name: 'center', expectedWorld: new THREE.Vector3(camPos.x, 0, camPos.z - lookDistance) },
+      { screenX: 320, screenY: 360, name: 'left', expectedWorld: new THREE.Vector3(camPos.x - 5, 0, camPos.z - lookDistance) },
+      { screenX: 960, screenY: 360, name: 'right', expectedWorld: new THREE.Vector3(camPos.x + 5, 0, camPos.z - lookDistance) },
+      { screenX: 640, screenY: 500, name: 'bottom-center', expectedWorld: new THREE.Vector3(camPos.x, 0, camPos.z - 5) },
+      { screenX: 640, screenY: 200, name: 'top-center', expectedWorld: new THREE.Vector3(camPos.x, 0, camPos.z - 15) },
     ];
     
     // Test each point

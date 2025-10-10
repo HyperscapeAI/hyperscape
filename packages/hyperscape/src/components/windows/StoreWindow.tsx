@@ -105,101 +105,41 @@ export function StoreWindow({ world, visible, onClose, storeId = 'general_store'
     <DraggableWindow
       initialPosition={{ x: 350, y: 180 }}
       dragHandle={
-        <div style={{
-          padding: '0.75rem 1rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: 'rgba(11, 10, 21, 0.95)',
-          borderTopLeftRadius: '1rem',
-          borderTopRightRadius: '1rem',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontSize: '1rem' }}>🛒</span>
-            <span style={{ fontSize: '0.875rem', fontWeight: '500' }}>General Store</span>
+        <div className="py-3 px-4 flex items-center justify-between bg-[rgba(11,10,21,0.95)] rounded-t-2xl border-b border-white/10">
+          <div className="flex items-center gap-2">
+            <span className="text-base">🛒</span>
+            <span className="text-sm font-medium">General Store</span>
           </div>
           <button
             onClick={onClose}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'rgba(255, 255, 255, 0.7)',
-              cursor: 'pointer',
-              padding: '0.25rem',
-              borderRadius: '4px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
+            className="bg-transparent border-none text-white/70 cursor-pointer p-1 rounded flex items-center justify-center hover:text-white"
           >
-            <span style={{ fontSize: '1rem' }}>×</span>
+            <span className="text-base">×</span>
           </button>
         </div>
       }
-      style={{
-        position: 'fixed',
-        zIndex: 1300
-      }}
+      className="fixed z-[1300]"
     >
-      <div style={{
-        width: '500px',
-        height: '450px',
-        background: 'rgba(11, 10, 21, 0.95)',
-        border: '0.0625rem solid #2a2b39',
-        backdropFilter: 'blur(5px)',
-        borderRadius: '1rem',
-        borderTopLeftRadius: 0,
-        borderTopRightRadius: 0,
-        padding: '1rem',
-        display: 'flex',
-        flexDirection: 'column'
-      }}>
+      <div className="w-[500px] h-[450px] bg-[rgba(11,10,21,0.95)] border border-dark-border backdrop-blur-md rounded-2xl rounded-t-none p-4 flex flex-col">
         {/* Player Coins */}
-        <div style={{
-          marginBottom: '1rem',
-          padding: '0.5rem',
-          background: 'rgba(255, 215, 0, 0.1)',
-          borderRadius: '0.5rem',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-          fontSize: '0.875rem',
-          fontWeight: '500'
-        }}>
-          <span style={{ fontSize: '1rem', color: '#ffd700' }}>💰</span>
-          <span style={{ color: 'rgba(255, 255, 255, 0.9)' }}>
+        <div className="mb-4 p-2 bg-yellow-600/10 rounded-lg flex items-center gap-2 text-sm font-medium">
+          <span className="text-base text-yellow-400">💰</span>
+          <span className="text-white/90">
             Your coins: {playerCoins.toLocaleString()}
           </span>
         </div>
 
         {/* Category Filter */}
-        <div style={{
-          display: 'flex',
-          gap: '0.5rem',
-          marginBottom: '1rem',
-          flexWrap: 'wrap'
-        }}>
+        <div className="flex gap-2 mb-4 flex-wrap">
           {categories.map(category => (
             <button
               key={category}
               onClick={() => setSelectedCategory(category)}
-              style={{
-                background: selectedCategory === category 
-                  ? 'rgba(59, 130, 246, 0.3)' 
-                  : 'rgba(255, 255, 255, 0.1)',
-                border: selectedCategory === category 
-                  ? '1px solid rgba(59, 130, 246, 0.5)' 
-                  : '1px solid rgba(255, 255, 255, 0.2)',
-                color: selectedCategory === category 
-                  ? '#60a5fa' 
-                  : 'rgba(255, 255, 255, 0.8)',
-                padding: '0.25rem 0.75rem',
-                borderRadius: '1rem',
-                fontSize: '0.75rem',
-                cursor: 'pointer',
-                textTransform: 'capitalize'
-              }}
+              className={`py-1 px-3 rounded-full text-xs cursor-pointer capitalize ${
+                selectedCategory === category
+                  ? 'bg-blue-500/30 border border-blue-500/50 text-blue-400'
+                  : 'bg-white/10 border border-white/20 text-white/80'
+              }`}
             >
               {category}
             </button>
@@ -207,85 +147,34 @@ export function StoreWindow({ world, visible, onClose, storeId = 'general_store'
         </div>
 
         {/* Items List */}
-        <div style={{
-          flex: 1,
-          overflowY: 'auto',
-          background: 'rgba(0, 0, 0, 0.2)',
-          borderRadius: '0.5rem',
-          padding: '0.5rem'
-        }}>
+        <div className="flex-1 overflow-y-auto bg-black/20 rounded-lg p-2">
           {filteredItems.map((item) => (
             <div
               key={item.itemId}
-              style={{
-                background: selectedItem === item 
-                  ? 'rgba(255, 255, 255, 0.15)' 
-                  : 'rgba(255, 255, 255, 0.05)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                borderRadius: '0.5rem',
-                padding: '0.75rem',
-                marginBottom: '0.5rem',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease'
-              }}
+              className={`${selectedItem === item ? 'bg-white/15' : 'bg-white/5 hover:bg-white/10'} border border-white/10 rounded-lg p-3 mb-2 cursor-pointer transition-all duration-200`}
               onClick={() => setSelectedItem(item)}
-              onMouseEnter={(e) => {
-                if (selectedItem !== item) {
-                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (selectedItem !== item) {
-                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'
-                }
-              }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <div style={{
-                  fontSize: '1.5rem',
-                  minWidth: '2rem',
-                  textAlign: 'center'
-                }}>
+              <div className="flex items-center gap-3">
+                <div className="text-2xl min-w-[2rem] text-center">
                   {getStoreItemIcon(item)}
                 </div>
                 
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h4 style={{
-                      margin: 0,
-                      fontSize: '0.875rem',
-                      fontWeight: '500',
-                      color: 'rgba(255, 255, 255, 0.9)'
-                    }}>
+                <div className="flex-1">
+                  <div className="flex justify-between items-center">
+                    <h4 className="m-0 text-sm font-medium text-white/90">
                       {item.name}
                     </h4>
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      color: '#ffd700',
-                      fontSize: '0.875rem',
-                      fontWeight: '500'
-                    }}>
-                      <span style={{ fontSize: '0.75rem' }}>💰</span>
+                    <div className="flex items-center gap-1 text-yellow-500 text-sm font-medium">
+                      <span className="text-xs">💰</span>
                       {item.price}
                     </div>
                   </div>
                   
-                  <p style={{
-                    margin: '0.25rem 0 0 0',
-                    fontSize: '0.75rem',
-                    color: 'rgba(255, 255, 255, 0.7)',
-                    lineHeight: '1.2'
-                  }}>
+                  <p className="mt-1 mb-0 text-xs text-white/70 leading-tight">
                     {item.description}
                   </p>
                   
-                  <div style={{
-                    marginTop: '0.25rem',
-                    fontSize: '0.75rem',
-                    color: 'rgba(255, 255, 255, 0.6)'
-                  }}>
+                  <div className="mt-1 text-xs text-white/60">
                     Stock: {item.stockQuantity > 0 ? item.stockQuantity : 'Unlimited'}
                   </div>
                 </div>
@@ -296,24 +185,11 @@ export function StoreWindow({ world, visible, onClose, storeId = 'general_store'
                     handleBuyItem(item, 1)
                   }}
                   disabled={playerCoins < item.price || item.stockQuantity === 0}
-                  style={{
-                    background: (playerCoins >= item.price && item.stockQuantity > 0) 
-                      ? 'rgba(34, 197, 94, 0.2)' 
-                      : 'rgba(255, 255, 255, 0.1)',
-                    border: (playerCoins >= item.price && item.stockQuantity > 0) 
-                      ? '1px solid rgba(34, 197, 94, 0.4)' 
-                      : '1px solid rgba(255, 255, 255, 0.2)',
-                    color: (playerCoins >= item.price && item.stockQuantity > 0) 
-                      ? '#22c55e' 
-                      : 'rgba(255, 255, 255, 0.5)',
-                    padding: '0.5rem 1rem',
-                    borderRadius: '0.25rem',
-                    fontSize: '0.75rem',
-                    cursor: (playerCoins >= item.price && item.stockQuantity > 0) 
-                      ? 'pointer' 
-                      : 'not-allowed',
-                    fontWeight: '500'
-                  }}
+                  className={`py-2 px-4 rounded text-xs font-medium ${
+                    (playerCoins >= item.price && item.stockQuantity > 0)
+                      ? 'bg-green-500/20 border border-green-500/40 text-green-500 cursor-pointer'
+                      : 'bg-white/10 border border-white/20 text-white/50 cursor-not-allowed'
+                  }`}
                 >
                   Buy
                 </button>
@@ -322,24 +198,14 @@ export function StoreWindow({ world, visible, onClose, storeId = 'general_store'
           ))}
           
           {filteredItems.length === 0 && (
-            <div style={{
-              textAlign: 'center',
-              color: 'rgba(255, 255, 255, 0.6)',
-              fontSize: '0.875rem',
-              padding: '2rem'
-            }}>
+            <div className="text-center text-white/60 text-sm p-8">
               No items in this category
             </div>
           )}
         </div>
 
         {/* Instructions */}
-        <div style={{
-          marginTop: '0.5rem',
-          fontSize: '0.75rem',
-          color: 'rgba(255, 255, 255, 0.6)',
-          textAlign: 'center'
-        }}>
+        <div className="mt-2 text-xs text-white/60 text-center">
           Click an item to select • Click "Buy" to purchase
         </div>
       </div>

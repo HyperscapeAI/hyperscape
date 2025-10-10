@@ -53,12 +53,12 @@ globalWithPolyfills.window = globalWithPolyfills
 
 // Add location object needed by PhysX loader
 globalWithPolyfills.window.location = {
-  origin: 'http://localhost:4444',
-  href: 'http://localhost:4444',
+  origin: 'http://localhost:5555',
+  href: 'http://localhost:5555',
   protocol: 'http:',
-  host: 'localhost:4444',
+  host: 'localhost:5555',
   hostname: 'localhost',
-  port: '4444',
+  port: '5555',
   pathname: '/',
   search: '',
   hash: ''
@@ -155,7 +155,7 @@ globalWithPolyfills.document = {
   },
   // Add URL for document base URL resolution
   URL: URL,
-  baseURI: 'http://localhost:4444'
+  baseURI: 'http://localhost:5555'
 };
 
 // Add performance API if not available

@@ -14,33 +14,6 @@ export class ReactiveVector3 extends THREE.Vector3 {
     super(x, y, z)
   }
 
-  set x(value: number) {
-    super.x = value
-    this._onChange?.()
-  }
-
-  get x(): number {
-    return super.x
-  }
-
-  set y(value: number) {
-    super.y = value
-    this._onChange?.()
-  }
-
-  get y(): number {
-    return super.y
-  }
-
-  set z(value: number) {
-    super.z = value
-    this._onChange?.()
-  }
-
-  get z(): number {
-    return super.z
-  }
-
   set(x: number, y: number, z: number): this {
     super.set(x, y, z)
     this._onChange?.()
@@ -66,12 +39,12 @@ export class ReactiveVector3 extends THREE.Vector3 {
   }
 
   // PhysX conversion methods (delegated to vector-conversions)
-  toPxVec3(pxVec3?: PxVec3): PhysX.PxVec3 | undefined {
-    return vector3ToPxVec3(this, pxVec3) as PhysX.PxVec3 | undefined
+  toPxVec3(pxVec3?: PxVec3): PhysX.PxVec3 | null {
+    return (vector3ToPxVec3(this, pxVec3) as unknown as PhysX.PxVec3) || null
   }
 
-  toPxExtVec3(pxExtVec3?: PxVec3): PhysX.PxVec3 | undefined {
-    return vector3ToPxVec3(this, pxExtVec3) || undefined
+  toPxExtVec3(pxExtVec3?: PxVec3): PhysX.PxVec3 | null {
+    return (vector3ToPxVec3(this, pxExtVec3) as unknown as PhysX.PxVec3) || null
   }
 
   toPxTransform(pxTransform: PxTransform): void {

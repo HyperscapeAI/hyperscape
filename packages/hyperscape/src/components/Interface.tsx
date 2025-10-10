@@ -509,54 +509,24 @@ function SkillsPanel({ stats, onClose }: { stats: PlayerStats & {
 
   return (
     <div
-      className="rpg-skills"
+      className="rpg-skills fixed w-[17rem] bg-[rgba(11,10,21,0.94)] border border-dark-border rounded-lg p-3 pointer-events-auto backdrop-blur-md z-[90]"
       style={{
-        position: 'fixed',
         top: panelPos.top,
         right: panelPos.right,
-        width: '17rem',
-        background: 'rgba(11, 10, 21, 0.94)',
-        border: '0.0625rem solid #2a2b39',
-        borderRadius: '0.5rem',
-        padding: '0.75rem',
-        pointerEvents: 'auto',
-        backdropFilter: 'blur(5px)',
-        zIndex: 90,
       }}
       onMouseMove={(e) => setMouse({ x: e.clientX, y: e.clientY })}
     >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '0.5rem',
-        }}
-      >
-        <h3 style={{ margin: 0, fontSize: '1rem' }}>Skills</h3>
+      <div className="flex justify-between items-center mb-2">
+        <h3 className="m-0 text-base">Skills</h3>
         <button
           onClick={onClose}
-          style={{
-            background: '#ef4444',
-            border: 'none',
-            borderRadius: '0.25rem',
-            color: 'white',
-            padding: '0.25rem 0.5rem',
-            cursor: 'pointer',
-            fontSize: '0.75rem',
-          }}
+          className="bg-red-500 border-none rounded text-white py-1 px-2 cursor-pointer text-xs"
         >
           Close
         </button>
       </div>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '0.35rem',
-        }}
-      >
+      <div className="grid grid-cols-2 gap-1.5">
         {skills.map(({ key, label, icon }) => {
           const level = stats.skills?.[key as keyof typeof stats.skills]?.level ?? 1
           const xp = stats.skills?.[key as keyof typeof stats.skills]?.xp ?? 0
@@ -567,21 +537,12 @@ function SkillsPanel({ stats, onClose }: { stats: PlayerStats & {
           return (
             <div
               key={key}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                background: 'rgba(0,0,0,0.35)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: '0.375rem',
-                padding: '0.35rem 0.5rem',
-                cursor: 'default',
-              }}
+              className="flex items-center gap-2 bg-black/35 border border-white/[0.08] rounded-md py-1.5 px-2 cursor-default"
               onMouseEnter={() => setHoverInfo({ label, xp, level })}
               onMouseLeave={() => setHoverInfo(null)}
             >
-              <div style={{ fontSize: '1rem', width: '1.5rem', textAlign: 'center' }}>{icon}</div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '0.85rem' }}>
+              <div className="text-base w-6 text-center">{icon}</div>
+              <div className="flex justify-between w-full text-[0.85rem]">
                 <span>{label}</span>
                 <span>{level}/{level}</span>
               </div>
@@ -652,54 +613,39 @@ function Hud({ stats }: { stats: PlayerStats & {
 
   return (
     <div
-      className="rpg-hud"
+      className="rpg-hud absolute w-80 bg-dark-bg border border-dark-border rounded-lg p-3 pointer-events-none backdrop-blur-md"
       style={{
-        position: 'absolute',
         top: 'calc(1rem + env(safe-area-inset-top))',
         left: 'calc(1rem + env(safe-area-inset-left))',
-        width: '20rem',
-        background: 'rgba(11, 10, 21, 0.85)',
-        border: '0.0625rem solid #2a2b39',
-        borderRadius: '0.5rem',
-        padding: '0.75rem',
-        pointerEvents: 'none',
-        backdropFilter: 'blur(5px)',
       }}
     >
       {/* Top Info */}
-      <div style={{ marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="mb-3 flex justify-between items-center">
         <div>
-          <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>Level {stats.level}</div>
-          <div style={{ fontSize: '0.875rem', color: '#9ca3af' }}>Combat Lv. {Math.floor(((stats.skills?.attack?.level || 0) + (stats.skills?.strength?.level || 0) + (stats.skills?.defense?.level || 0) + (stats.skills?.ranged?.level || 0)) / 4)}</div>
+          <div className="font-bold text-lg">Level {stats.level}</div>
+          <div className="text-sm text-gray-400">Combat Lv. {Math.floor(((stats.skills?.attack?.level || 0) + (stats.skills?.strength?.level || 0) + (stats.skills?.defense?.level || 0) + (stats.skills?.ranged?.level || 0)) / 4)}</div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ color: '#fbbf24', fontWeight: 'bold' }}>{stats.coins.toLocaleString()} gp</div>
-          <div style={{ fontSize: '0.875rem', color: combatLevelColors[stats.combatStyle] }}>Style: {stats.combatStyle}</div>
+        <div className="text-right">
+          <div className="text-yellow-400 font-bold">{stats.coins.toLocaleString()} gp</div>
+          <div 
+            className="text-sm"
+            style={{ color: combatLevelColors[stats.combatStyle] }}
+          >Style: {stats.combatStyle}</div>
         </div>
       </div>
       
       {/* Health Bar */}
-      <div style={{ marginBottom: '0.5rem' }}>
-        <div style={{ fontSize: '0.875rem', marginBottom: '0.125rem', display: 'flex', justifyContent: 'space-between' }}>
+      <div className="mb-2">
+        <div className="text-sm mb-0.5 flex justify-between">
           <span>Health</span>
           <span>{stats.health.current}/{stats.health.max}</span>
         </div>
-        <div
-          style={{
-            width: '100%',
-            height: '1rem',
-            background: 'rgba(0, 0, 0, 0.5)',
-            borderRadius: '0.25rem',
-            overflow: 'hidden',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-          }}
-        >
+        <div className="w-full h-4 bg-black/50 rounded border border-white/10 overflow-hidden">
           <div
+            className="h-full transition-[width] duration-300 ease-out"
             style={{
               width: `${healthPercent}%`,
-              height: '100%',
               background: `linear-gradient(90deg, ${healthColor}, ${healthColor}dd)`,
-              transition: 'width 0.3s ease-out',
             }}
           />
         </div>
@@ -708,27 +654,17 @@ function Hud({ stats }: { stats: PlayerStats & {
       {/* Stamina Bar removed - now shown on minimap */}
       
       {/* XP Bar */}
-      <div style={{ marginBottom: '0.5rem' }}>
-        <div style={{ fontSize: '0.875rem', marginBottom: '0.125rem', display: 'flex', justifyContent: 'space-between' }}>
+      <div className="mb-2">
+        <div className="text-sm mb-0.5 flex justify-between">
           <span>Experience</span>
           <span>{stats.xp}/{stats.maxXp} ({xpPercent.toFixed(1)}%)</span>
         </div>
-        <div
-          style={{
-            width: '100%',
-            height: '0.75rem',
-            background: 'rgba(0, 0, 0, 0.5)',
-            borderRadius: '0.25rem',
-            overflow: 'hidden',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-          }}
-        >
+        <div className="w-full h-3 bg-black/50 rounded border border-white/10 overflow-hidden">
           <div
+            className="h-full transition-[width] duration-300 ease-out"
             style={{
               width: `${xpPercent}%`,
-              height: '100%',
               background: `linear-gradient(90deg, ${xpColor}, ${xpColor}dd)`,
-              transition: 'width 0.3s ease-out',
             }}
           />
         </div>
@@ -1283,20 +1219,7 @@ function _Inventory({
   return (
     <>
       <div
-        className="rpg-inventory"
-        style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: '26rem',
-          background: 'rgba(11, 10, 21, 0.95)',
-          border: '0.0625rem solid #2a2b39',
-          borderRadius: '0.5rem',
-          padding: '1rem',
-          pointerEvents: 'auto',
-          backdropFilter: 'blur(5px)',
-        }}
+        className="rpg-inventory absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[26rem] bg-[rgba(11,10,21,0.95)] border border-dark-border rounded-lg p-4 pointer-events-auto backdrop-blur-md"
         onClick={(e) => {
           // Only close context menu if clicking the background, not child elements
           if (e.target === e.currentTarget) {
@@ -1304,44 +1227,22 @@ function _Inventory({
           }
         }}
       >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '1rem',
-          }}
-        >
-          <h3 style={{ margin: 0, fontSize: '1.2rem' }}>Inventory</h3>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.875rem', color: '#9ca3af' }}>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="m-0 text-xl">Inventory</h3>
+          <div className="flex gap-2 items-center">
+            <span className="text-sm text-gray-400">
               {items.length}/28 slots
             </span>
             <button
               onClick={onClose}
-              style={{
-                background: '#ef4444',
-                border: 'none',
-                borderRadius: '0.25rem',
-                color: 'white',
-                padding: '0.25rem 0.5rem',
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-              }}
+              className="bg-red-500 border-none rounded text-white py-1 px-2 cursor-pointer text-sm"
             >
               Close
             </button>
           </div>
         </div>
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(7, 1fr)',
-            gap: '0.25rem',
-            marginBottom: '1rem',
-          }}
-        >
+        <div className="grid grid-cols-7 gap-1 mb-4">
           {slots.map((item, index) => (
             <div
               key={index}
@@ -1349,47 +1250,24 @@ function _Inventory({
               onContextMenu={(e) => handleItemRightClick(e, index, item)}
               onMouseEnter={() => setHoveredSlot(index)}
               onMouseLeave={() => setHoveredSlot(null)}
+              className={`w-[3.25rem] h-[3.25rem] rounded flex flex-col items-center justify-center text-[0.7rem] relative transition-all duration-200 ${
+                selectedSlot === index 
+                  ? 'bg-blue-500' 
+                  : hoveredSlot === index 
+                    ? 'bg-white/10 scale-105' 
+                    : 'bg-black/50 scale-100'
+              } ${item ? 'cursor-pointer' : 'cursor-default'}`}
               style={{
-                width: '3.25rem',
-                height: '3.25rem',
-                background: selectedSlot === index ? '#3b82f6' : hoveredSlot === index ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.5)',
                 border: `0.0625rem solid ${item ? getItemTypeColor(getItemDisplayProps(item).type) : '#1f2937'}`,
-                borderRadius: '0.25rem',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: item ? 'pointer' : 'default',
-                fontSize: '0.7rem',
-                position: 'relative',
-                transition: 'all 0.2s ease',
-                transform: hoveredSlot === index ? 'scale(1.05)' : 'scale(1)',
               }}
             >
               {item && (
                 <>
-                  <div style={{ 
-                    textAlign: 'center', 
-                    lineHeight: '1',
-                    fontWeight: 'bold',
-                    textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)' 
-                  }}>
+                  <div className="text-center leading-none font-bold shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
                     {getItemDisplayProps(item).name.substring(0, 8)}
                   </div>
                   {item.quantity > 1 && (
-                    <div
-                      style={{
-                        position: 'absolute',
-                        bottom: '0.125rem',
-                        right: '0.125rem',
-                        color: '#fbbf24',
-                        fontWeight: 'bold',
-                        fontSize: '0.6rem',
-                        background: 'rgba(0, 0, 0, 0.7)',
-                        borderRadius: '0.125rem',
-                        padding: '0.125rem 0.25rem',
-                      }}
-                    >
+                    <div className="absolute bottom-0.5 right-0.5 text-yellow-400 font-bold text-[0.6rem] bg-black/70 rounded-sm py-0.5 px-1">
                       {item.quantity}
                     </div>
                   )}
@@ -1400,72 +1278,40 @@ function _Inventory({
         </div>
 
         {selectedSlot !== null && slots[selectedSlot] && (
-          <div style={{ 
-            padding: '0.75rem', 
-            background: 'rgba(0, 0, 0, 0.3)', 
-            borderRadius: '0.25rem',
-            border: `1px solid ${getItemTypeColor(slots[selectedSlot].type)}` 
-          }}>
-            <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
+          <div 
+            className="p-3 bg-black/30 rounded"
+            style={{
+              border: `1px solid ${getItemTypeColor(slots[selectedSlot].type)}` 
+            }}
+          >
+            <div className="font-bold mb-1">
               {slots[selectedSlot].name}
             </div>
-            <div style={{ fontSize: '0.875rem', color: '#9ca3af', marginBottom: '0.5rem' }}>
+            <div className="text-sm text-gray-400 mb-2">
               Type: {slots[selectedSlot].type} • Quantity: {slots[selectedSlot].quantity}
             </div>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <div className="flex gap-2 flex-wrap">
               <button
                 onClick={() => handleContextMenuAction('use')}
-                style={{
-                  background: '#10b981',
-                  border: 'none',
-                  borderRadius: '0.25rem',
-                  color: 'white',
-                  padding: '0.375rem 0.75rem',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                }}
+                className="bg-emerald-500 border-none rounded text-white py-1.5 px-3 cursor-pointer text-sm"
               >
                 Use
               </button>
               <button
                 onClick={() => handleContextMenuAction('equip')}
-                style={{
-                  background: '#3b82f6',
-                  border: 'none',
-                  borderRadius: '0.25rem',
-                  color: 'white',
-                  padding: '0.375rem 0.75rem',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                }}
+                className="bg-blue-500 border-none rounded text-white py-1.5 px-3 cursor-pointer text-sm"
               >
                 Equip
               </button>
               <button
                 onClick={() => handleContextMenuAction('drop')}
-                style={{
-                  background: '#ef4444',
-                  border: 'none',
-                  borderRadius: '0.25rem',
-                  color: 'white',
-                  padding: '0.375rem 0.75rem',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                }}
+                className="bg-red-500 border-none rounded text-white py-1.5 px-3 cursor-pointer text-sm"
               >
                 Drop
               </button>
               <button
                 onClick={() => handleContextMenuAction('examine')}
-                style={{
-                  background: '#6b7280',
-                  border: 'none',
-                  borderRadius: '0.25rem',
-                  color: 'white',
-                  padding: '0.375rem 0.75rem',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                }}
+                className="bg-gray-500 border-none rounded text-white py-1.5 px-3 cursor-pointer text-sm"
               >
                 Examine
               </button>
@@ -1697,91 +1543,40 @@ function Bank({ data, onClose, world }: { data: BankEntityData & { items: BankIt
 
   return (
     <div
-      className="rpg-bank"
-      style={{
-        position: 'absolute',
-        top: '50%',
-        left: '50%',
-        transform: 'translate(-50%, -50%)',
-        width: '30rem',
-        background: 'rgba(11, 10, 21, 0.95)',
-        border: '0.0625rem solid #2a2b39',
-        borderRadius: '0.5rem',
-        padding: '1rem',
-        pointerEvents: 'auto',
-        backdropFilter: 'blur(5px)',
-      }}
+      className="rpg-bank absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[30rem] bg-[rgba(11,10,21,0.95)] border border-dark-border rounded-lg p-4 pointer-events-auto backdrop-blur-md"
     >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '1rem',
-        }}
-      >
-        <h3 style={{ margin: 0 }}>{bankName}</h3>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <span style={{ color: '#6b7280' }}>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="m-0">{bankName}</h3>
+        <div className="flex items-center gap-4">
+          <span className="text-gray-500">
             {usedSlots}/{maxSlots} slots
           </span>
           <button
             onClick={onClose}
-            style={{
-              background: '#ef4444',
-              border: 'none',
-              borderRadius: '0.25rem',
-              color: 'white',
-              padding: '0.25rem 0.5rem',
-              cursor: 'pointer',
-            }}
+            className="bg-red-500 border-none rounded text-white py-1 px-2 cursor-pointer"
           >
             Close
           </button>
         </div>
       </div>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(8, 1fr)',
-          gap: '0.25rem',
-          maxHeight: '20rem',
-          overflowY: 'auto',
-        }}
-      >
+      <div className="grid grid-cols-8 gap-1 max-h-80 overflow-y-auto">
         {slots.map((item, index) => (
           <div
             key={index}
             onClick={() => item && handleWithdraw(index)}
+            className={`w-14 h-14 rounded flex flex-col items-center justify-center text-xs relative ${
+              item ? 'bg-black/70 border-gray-600 cursor-pointer' : 'bg-black/30 border-gray-800 cursor-default'
+            }`}
             style={{
-              width: '3.5rem',
-              height: '3.5rem',
-              background: item ? 'rgba(0, 0, 0, 0.7)' : 'rgba(0, 0, 0, 0.3)',
               border: `0.0625rem solid ${item ? '#4b5563' : '#1f2937'}`,
-              borderRadius: '0.25rem',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: item ? 'pointer' : 'default',
-              fontSize: '0.75rem',
-              position: 'relative',
             }}
           >
             {item && (
               <>
                 <div>{item.name.substring(0, 8)}</div>
                 {item.quantity > 1 && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      bottom: '0.125rem',
-                      right: '0.125rem',
-                      color: '#fbbf24',
-                      fontWeight: 'bold',
-                    }}
-                  >
+                  <div className="absolute bottom-0.5 right-0.5 text-yellow-400 font-bold">
                     {item.quantity}
                   </div>
                 )}
@@ -1831,101 +1626,49 @@ function StorePanel({ data, onClose, world }: { data: StoreData; onClose: () => 
 
   return (
     <div
-      className="rpg-store"
-      style={{
-        position: 'absolute',
-        top: '50%',
-        left: '50%',
-        transform: 'translate(-50%, -50%)',
-        width: '35rem',
-        background: 'rgba(11, 10, 21, 0.95)',
-        border: '0.0625rem solid #2a2b39',
-        borderRadius: '0.5rem',
-        padding: '1rem',
-        pointerEvents: 'auto',
-        backdropFilter: 'blur(5px)',
-      }}
+      className="rpg-store absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[35rem] bg-[rgba(11,10,21,0.95)] border border-dark-border rounded-lg p-4 pointer-events-auto backdrop-blur-md"
     >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '1rem',
-        }}
-      >
+      <div className="flex justify-between items-center mb-4">
         <div>
-          <h3 style={{ margin: 0 }}>{storeName}</h3>
-          {npcName && <div style={{ color: '#6b7280', fontSize: '0.875rem' }}>Shopkeeper: {npcName}</div>}
+          <h3 className="m-0">{storeName}</h3>
+          {npcName && <div className="text-gray-500 text-sm">Shopkeeper: {npcName}</div>}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div
-            style={{
-              background: 'rgba(251, 191, 36, 0.2)',
-              padding: '0.5rem 1rem',
-              borderRadius: '0.25rem',
-            }}
-          >
-            <span style={{ color: '#fbbf24' }}>Coins: {playerCoins} gp</span>
+        <div className="flex items-center gap-4">
+          <div className="bg-yellow-600/20 py-2 px-4 rounded">
+            <span className="text-yellow-400">Coins: {playerCoins} gp</span>
           </div>
           <button
             onClick={onClose}
-            style={{
-              background: '#ef4444',
-              border: 'none',
-              borderRadius: '0.25rem',
-              color: 'white',
-              padding: '0.25rem 0.5rem',
-              cursor: 'pointer',
-            }}
+            className="bg-red-500 border-none rounded text-white py-1 px-2 cursor-pointer"
           >
             Close
           </button>
         </div>
       </div>
 
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.5rem',
-          maxHeight: '20rem',
-          overflowY: 'auto',
-        }}
-      >
+      <div className="flex flex-col gap-2 max-h-80 overflow-y-auto">
         {items.map((item, index) => (
           <div
             key={index}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              padding: '0.75rem',
-              background: 'rgba(0, 0, 0, 0.3)',
-              borderRadius: '0.25rem',
-              gap: '1rem',
-            }}
+            className="flex items-center p-3 bg-black/30 rounded gap-4"
           >
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 'bold' }}>{item.name}</div>
+            <div className="flex-1">
+              <div className="font-bold">{item.name}</div>
             </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ color: '#fbbf24', fontWeight: 'bold' }}>{item.price} gp</div>
-              <div style={{ fontSize: '0.875rem', color: item.stockQuantity > 0 || item.stockQuantity === -1 ? '#4ade80' : '#ef4444' }}>
+            <div className="text-right">
+              <div className="text-yellow-400 font-bold">{item.price} gp</div>
+              <div className={`text-sm ${item.stockQuantity > 0 || item.stockQuantity === -1 ? 'text-green-400' : 'text-red-500'}`}>
                 Stock: {item.stockQuantity === -1 ? '∞' : item.stockQuantity}
               </div>
             </div>
             <button
               onClick={() => handleBuy(item.itemId)}
               disabled={item.stockQuantity === 0}
-              style={{
-                background: item.stockQuantity === 0 ? '#4b5563' : '#10b981',
-                border: 'none',
-                borderRadius: '0.25rem',
-                color: 'white',
-                padding: '0.5rem 1rem',
-                cursor: item.stockQuantity === 0 ? 'not-allowed' : 'pointer',
-                opacity: item.stockQuantity === 0 ? 0.5 : 1,
-              }}
+              className={`border-none rounded text-white py-2 px-4 ${
+                item.stockQuantity === 0 
+                  ? 'bg-gray-600 cursor-not-allowed opacity-50' 
+                  : 'bg-emerald-500 cursor-pointer opacity-100'
+              }`}
             >
               Buy
             </button>
@@ -1970,18 +1713,10 @@ function ContextMenuPanel({
 
   return (
     <div
-      className="rpg-context-menu"
+      className="rpg-context-menu absolute bg-[rgba(11,10,21,0.95)] border border-dark-border rounded p-1 pointer-events-auto backdrop-blur-md min-w-40"
       style={{
-        position: 'absolute',
         left: `${x}px`,
         top: `${y}px`,
-        background: 'rgba(11, 10, 21, 0.95)',
-        border: '0.0625rem solid #2a2b39',
-        borderRadius: '0.25rem',
-        padding: '0.25rem',
-        pointerEvents: 'auto',
-        backdropFilter: 'blur(5px)',
-        minWidth: '10rem',
       }}
       onMouseLeave={onClose}
     >
@@ -1989,18 +1724,7 @@ function ContextMenuPanel({
         <div
           key={index}
           onClick={() => handleOption(option)}
-          style={{
-            padding: '0.5rem 0.75rem',
-            cursor: 'pointer',
-            borderRadius: '0.25rem',
-            transition: 'background 0.1s',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'transparent'
-          }}
+          className="py-2 px-3 cursor-pointer rounded transition-colors duration-100 hover:bg-white/10"
         >
           {option.label}
         </div>
@@ -2095,21 +1819,9 @@ function Hotbar({ stats: _stats, inventory, world }: { stats: PlayerStats & {
 
   return (
     <div
-      className="rpg-hotbar"
+      className="rpg-hotbar fixed left-1/2 -translate-x-1/2 flex gap-1 bg-[rgba(11,10,21,0.9)] border border-dark-border rounded-lg p-2 pointer-events-auto backdrop-blur-md z-50"
       style={{
-        position: 'fixed',
         bottom: 'calc(1rem + env(safe-area-inset-bottom))',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        display: 'flex',
-        gap: '0.25rem',
-        background: 'rgba(11, 10, 21, 0.9)',
-        border: '0.0625rem solid #2a2b39',
-        borderRadius: '0.5rem',
-        padding: '0.5rem',
-        pointerEvents: 'auto',
-        backdropFilter: 'blur(5px)',
-        zIndex: 50,
       }}
     >
       {selectedSlots.map((item, index) => {
@@ -2120,74 +1832,26 @@ function Hotbar({ stats: _stats, inventory, world }: { stats: PlayerStats & {
           <div
             key={index}
             onClick={() => handleSlotClick(index)}
-            style={{
-              width: '2.5rem',
-              height: '2.5rem',
-              background: isActive ? 'rgba(59, 130, 246, 0.3)' : 'rgba(0, 0, 0, 0.5)',
-              border: isActive ? '2px solid #3b82f6' : '1px solid rgba(255, 255, 255, 0.2)',
-              borderRadius: '0.25rem',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: item ? 'pointer' : 'default',
-              position: 'relative',
-              transition: 'all 0.2s ease',
-            }}
-            onMouseEnter={(e) => {
-              if (item) {
-                e.currentTarget.style.transform = 'scale(1.05)'
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'scale(1)'
-            }}
+            className={`w-10 h-10 rounded flex flex-col items-center justify-center relative transition-all duration-200 ${
+              isActive 
+                ? 'bg-blue-500/30 border-2 border-blue-500' 
+                : 'bg-black/50 border border-white/20'
+            } ${item ? 'cursor-pointer hover:scale-105' : 'cursor-default'}`}
           >
             {item && (
               <>
-                <div style={{
-                  fontSize: '0.7rem',
-                  fontWeight: 'bold',
-                  textAlign: 'center',
-                  lineHeight: '1',
-                  color: '#ffffff',
-                  textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)'
-                }}>
+                <div className="text-[0.7rem] font-bold text-center leading-none text-white shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
                   {getItemIcon(item)}
                 </div>
                 {item.quantity > 1 && (
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '0.125rem',
-                    right: '0.125rem',
-                    background: 'rgba(251, 191, 36, 0.9)',
-                    color: '#000',
-                    fontSize: '0.5rem',
-                    fontWeight: 'bold',
-                    borderRadius: '0.125rem',
-                    padding: '0.125rem 0.25rem',
-                    minWidth: '0.75rem',
-                    textAlign: 'center'
-                  }}>
+                  <div className="absolute bottom-0.5 right-0.5 bg-yellow-400/90 text-black text-[0.5rem] font-bold rounded-sm py-0.5 px-1 min-w-3 text-center">
                     {item.quantity}
                   </div>
                 )}
               </>
             )}
             {/* Key label */}
-            <div style={{
-              position: 'absolute',
-              top: '-0.125rem',
-              left: '-0.125rem',
-              background: 'rgba(0, 0, 0, 0.8)',
-              color: '#9ca3af',
-              fontSize: '0.5rem',
-              borderRadius: '0.125rem',
-              padding: '0.125rem 0.25rem',
-              minWidth: '0.75rem',
-              textAlign: 'center',
-              border: '1px solid rgba(255, 255, 255, 0.1)'
-            }}>
+            <div className="absolute -top-0.5 -left-0.5 bg-black/80 text-gray-400 text-[0.5rem] rounded-sm py-0.5 px-1 min-w-3 text-center border border-white/10">
               {keyLabel}
             </div>
           </div>
@@ -2248,20 +1912,14 @@ function DamageNumbers({ damageNumbers }: { damageNumbers: DamageNumber[] }) {
         return (
           <div
             key={damage.id}
+            className="fixed font-bold shadow-[2px_2px_4px_rgba(0,0,0,0.8)] pointer-events-none z-[1000] select-none transition-none"
             style={{
-              position: 'fixed',
               left: `${damage.position.x}px`,
-              top: `${damage.position.y - progress * 100}px`, // Float upward
+              top: `${damage.position.y - progress * 100}px`,
               color: getColor(damage.type),
               fontSize: damage.type === 'miss' ? '1.2rem' : '1.5rem',
-              fontWeight: 'bold',
-              textShadow: '2px 2px 4px rgba(0, 0, 0, 0.8)',
-              opacity: 1 - progress, // Fade out
-              transform: `scale(${1 + progress * 0.5})`, // Scale up slightly
-              pointerEvents: 'none',
-              zIndex: 1000,
-              userSelect: 'none',
-              transition: 'none',
+              opacity: 1 - progress,
+              transform: `scale(${1 + progress * 0.5})`,
             }}
           >
             {getText(damage)}

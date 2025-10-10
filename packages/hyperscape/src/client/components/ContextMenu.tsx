@@ -30,34 +30,17 @@ export function ContextMenu({ visible, position, actions, onClose, title }: Cont
 
   if (!visible) return null
 
-  const menuStyle: React.CSSProperties = {
-    position: 'fixed',
-    left: position.x,
-    top: position.y,
-    background: 'rgba(11, 10, 21, 0.95)',
-    border: '0.0625rem solid #2a2b39',
-    backdropFilter: 'blur(5px)',
-    borderRadius: '0.5rem',
-    padding: '0.5rem 0',
-    minWidth: '150px',
-    zIndex: 2000,
-    fontSize: '0.875rem',
-    color: 'rgba(255, 255, 255, 0.9)',
-    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
-    pointerEvents: 'auto'
-  }
-
   return (
-    <div ref={menuRef} style={menuStyle}>
+    <div 
+      ref={menuRef} 
+      className="fixed bg-dark-bg border border-dark-border backdrop-blur-md rounded-lg py-2 min-w-[150px] z-[2000] text-sm text-white/90 shadow-lg pointer-events-auto"
+      style={{
+        left: position.x,
+        top: position.y,
+      }}
+    >
       {title && (
-        <div style={{
-          padding: '0.5rem 1rem',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-          marginBottom: '0.25rem',
-          fontWeight: '500',
-          fontSize: '0.8125rem',
-          color: 'rgba(255, 255, 255, 0.7)'
-        }}>
+        <div className="py-2 px-4 border-b border-white/10 mb-1 font-medium text-[0.8125rem] text-white/70">
           {title}
         </div>
       )}
@@ -73,35 +56,18 @@ export function ContextMenu({ visible, position, actions, onClose, title }: Cont
               onClose()
             }
           }}
-          style={{
-            width: '100%',
-            padding: '0.5rem 1rem',
-            border: 'none',
-            background: 'transparent',
-            color: action.enabled ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.4)',
-            textAlign: 'left',
-            cursor: action.enabled ? 'pointer' : 'not-allowed',
-            fontSize: '0.875rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            transition: 'background-color 0.2s ease'
-          }}
-          onMouseEnter={(e) => {
-            if (action.enabled) {
-              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
-            }
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent'
-          }}
+          className={`w-full py-2 px-4 border-none bg-transparent text-sm flex items-center gap-2 transition-colors duration-200 ${
+            action.enabled 
+              ? 'text-white/90 cursor-pointer hover:bg-white/10' 
+              : 'text-white/40 cursor-not-allowed'
+          }`}
           onMouseDown={(e) => {
             // Prevent this click from bubbling to the canvas/document and triggering movement
             e.stopPropagation()
           }}
         >
           {action.icon && (
-            <span style={{ fontSize: '1rem' }}>{action.icon}</span>
+            <span className="text-base">{action.icon}</span>
           )}
           {action.label}
         </button>

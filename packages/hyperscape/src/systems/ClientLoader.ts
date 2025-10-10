@@ -175,7 +175,7 @@ export class ClientLoader extends SystemBase {
       if (!file) throw new Error(`Failed to load file: ${url}`)
       if (type === 'hdr') {
         const buffer = await file.arrayBuffer()
-        const result = this.rgbeLoader.parse(buffer)
+        const result = this.rgbeLoader.parse(buffer as ArrayBuffer)
         // we just mimicing what rgbeLoader.load() does behind the scenes
         const texture = new THREE.DataTexture(result.data, result.width, result.height)
         texture.colorSpace = THREE.LinearSRGBColorSpace

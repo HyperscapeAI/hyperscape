@@ -258,6 +258,31 @@ async function migrateRaw(raw: RawDB, systemDb: SystemDatabase): Promise<void> {
         updatedAt TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
       )`)
     },
+    async db => {
+      // Migration #7: Add Privy authentication columns
+      try {
+        const cols = db.prepare(`PRAGMA table_info(users)`).all() as Array<{ name: string }>
+        const hasPrivyUserId = cols.some(c => c.name === 'privyUserId')
+        const hasFarcasterFid = cols.some(c => c.name === 'farcasterFid')
+        
+        if (!hasPrivyUserId) {
+          db.exec(`ALTER TABLE users ADD COLUMN privyUserId TEXT UNIQUE`)
+          console.log('[DB] Migration #7: Added privyUserId column')
+        }
+        if (!hasFarcasterFid) {
+          db.exec(`ALTER TABLE users ADD COLUMN farcasterFid TEXT`)
+          console.log('[DB] Migration #7: Added farcasterFid column')
+        }
+        
+        // Create index for faster lookups
+        try {
+          db.exec(`CREATE INDEX IF NOT EXISTS idx_users_privy ON users(privyUserId)`)
+          db.exec(`CREATE INDEX IF NOT EXISTS idx_users_farcaster ON users(farcasterFid)`)
+        } catch {}
+      } catch (err) {
+        console.error('[DB] Migration #7 failed:', err)
+      }
+    },
   ]
 
   for (let i = version; i < migrations.length; i++) {

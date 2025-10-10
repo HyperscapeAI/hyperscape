@@ -33,59 +33,22 @@ export function FieldText({ label, hint, placeholder, value, onChange }: FieldTe
   const setHint = hintContext.setHint
   return (
     <label
-      className='field field-text'
-      style={{
-        display: 'block',
-        margin: '0 0 0.5rem',
-        position: 'relative',
-      }}
+      className='field field-text block mb-2 relative'
       onPointerEnter={() => hint && setHint(hint)}
       onPointerLeave={() => hint && setHint(null)}
     >
-      <div className='field-label' style={{
-        fontSize: '0.8125rem',
-        margin: '0 0 0.375rem',
-        opacity: 0.7,
-        fontWeight: 500,
-      }}>{label}</div>
+      <div className='field-label text-[0.8125rem] mb-1.5 opacity-70 font-medium'>{label}</div>
       <input
         type='text'
         placeholder={placeholder}
         value={value}
         onChange={e => onChange(e.target.value)}
-        style={{
-          width: '100%',
-          fontSize: '0.875rem',
-          padding: '0.375rem 0.5rem',
-          background: 'rgba(255, 255, 255, 0.05)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          borderRadius: '0.25rem',
-          color: 'white',
-        }}
+        className="w-full text-sm py-1.5 px-2 bg-white/5 border border-white/10 rounded text-white hover:bg-white/10 hover:border-white/20 focus:bg-white/10 focus:border-white/30 focus:outline-none"
         onKeyDown={e => {
           if (e.code === 'Escape') {
             const target = e.target as HTMLInputElement
             target.blur()
           }
-        }}
-        onMouseEnter={(e) => {
-          (e.target as HTMLInputElement).style.background = 'rgba(255, 255, 255, 0.1)'
-          ;(e.target as HTMLInputElement).style.borderColor = 'rgba(255, 255, 255, 0.2)'
-        }}
-        onMouseLeave={(e) => {
-          if (document.activeElement !== e.target) {
-            (e.target as HTMLInputElement).style.background = 'rgba(255, 255, 255, 0.05)'
-            ;(e.target as HTMLInputElement).style.borderColor = 'rgba(255, 255, 255, 0.1)'
-          }
-        }}
-        onFocus={(e) => {
-          (e.target as HTMLInputElement).style.background = 'rgba(255, 255, 255, 0.1)'
-          ;(e.target as HTMLInputElement).style.borderColor = 'rgba(255, 255, 255, 0.3)'
-        }}
-        onBlur={(e) => {
-          (e.target as HTMLInputElement).style.background = 'rgba(255, 255, 255, 0.05)'
-          ;(e.target as HTMLInputElement).style.borderColor = 'rgba(255, 255, 255, 0.1)'
-          // ...
         }}
       />
     </label>
@@ -117,61 +80,22 @@ export function FieldTextarea({ label, hint, placeholder, value, onChange }: Fie
   }, [])
   return (
     <label
-      className='field field-textarea'
-      style={{
-        display: 'block',
-        margin: '0 0 0.5rem',
-        position: 'relative',
-      }}
+      className='field field-textarea block mb-2 relative'
       onPointerEnter={() => hint && setHint(hint)}
       onPointerLeave={() => hint && setHint(null)}
     >
-      <div className='field-label' style={{
-        fontSize: '0.8125rem',
-        margin: '0 0 0.375rem',
-        opacity: 0.7,
-        fontWeight: 500,
-      }}>{label}</div>
+      <div className='field-label text-[0.8125rem] mb-1.5 opacity-70 font-medium'>{label}</div>
       <textarea
         ref={textareaRef}
         placeholder={placeholder}
         value={value}
         onChange={e => onChange(e.target.value)}
-        style={{
-          width: '100%',
-          fontSize: '0.875rem',
-          padding: '0.375rem 0.5rem',
-          background: 'rgba(255, 255, 255, 0.05)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          borderRadius: '0.25rem',
-          resize: 'none',
-          minHeight: '3rem',
-          color: 'white',
-        }}
+        className="w-full text-sm py-1.5 px-2 bg-white/5 border border-white/10 rounded resize-none min-h-12 text-white hover:bg-white/10 hover:border-white/20 focus:bg-white/10 focus:border-white/30 focus:outline-none"
         onKeyDown={e => {
           if (e.code === 'Escape') {
             const target = e.target as HTMLTextAreaElement
             target.blur()
           }
-        }}
-        onMouseEnter={(e) => {
-          (e.target as HTMLTextAreaElement).style.background = 'rgba(255, 255, 255, 0.1)'
-          ;(e.target as HTMLTextAreaElement).style.borderColor = 'rgba(255, 255, 255, 0.2)'
-        }}
-        onMouseLeave={(e) => {
-          if (document.activeElement !== e.target) {
-            (e.target as HTMLTextAreaElement).style.background = 'rgba(255, 255, 255, 0.05)'
-            ;(e.target as HTMLTextAreaElement).style.borderColor = 'rgba(255, 255, 255, 0.1)'
-          }
-        }}
-        onFocus={(e) => {
-          (e.target as HTMLTextAreaElement).style.background = 'rgba(255, 255, 255, 0.1)'
-          ;(e.target as HTMLTextAreaElement).style.borderColor = 'rgba(255, 255, 255, 0.3)'
-        }}
-        onBlur={(e) => {
-          (e.target as HTMLTextAreaElement).style.background = 'rgba(255, 255, 255, 0.05)'
-          ;(e.target as HTMLTextAreaElement).style.borderColor = 'rgba(255, 255, 255, 0.1)'
-          // ...
         }}
       />
     </label>
@@ -205,76 +129,22 @@ export function FieldSwitch({ label, hint, options, value, onChange }: FieldSwit
   }
   return (
     <div
-      className='field field-switch'
-      style={{
-        margin: '0 0 0.5rem',
-      }}
+      className='field field-switch mb-2'
       onPointerEnter={() => hint && setHint(hint)}
       onPointerLeave={() => hint && setHint(null)}
     >
-      <div className='field-label' style={{
-        fontSize: '0.8125rem',
-        margin: '0 0 0.375rem',
-        opacity: 0.7,
-        fontWeight: 500,
-      }}>{label}</div>
-      <div className='field-switch-control' style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.5rem',
-        fontSize: '0.875rem',
-      }}>
+      <div className='field-label text-[0.8125rem] mb-1.5 opacity-70 font-medium'>{label}</div>
+      <div className='field-switch-control flex items-center gap-2 text-sm'>
         <div
-          className='field-switch-btn'
-          style={{
-            width: '1.5rem',
-            height: '1.5rem',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'rgba(255, 255, 255, 0.05)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            borderRadius: '0.25rem',
-            cursor: 'pointer',
-          }}
+          className='field-switch-btn w-6 h-6 flex items-center justify-center bg-white/5 border border-white/10 rounded cursor-pointer hover:bg-white/10 hover:border-white/20'
           onClick={prev}
-          onMouseEnter={(e) => {
-            (e.target as HTMLDivElement).style.background = 'rgba(255, 255, 255, 0.1)'
-            ;(e.target as HTMLDivElement).style.borderColor = 'rgba(255, 255, 255, 0.2)'
-          }}
-          onMouseLeave={(e) => {
-            (e.target as HTMLDivElement).style.background = 'rgba(255, 255, 255, 0.05)'
-            ;(e.target as HTMLDivElement).style.borderColor = 'rgba(255, 255, 255, 0.1)'
-          }}
         >
           ‹
         </div>
-        <div className='field-switch-value' style={{
-          flex: 1,
-          textAlign: 'center',
-        }}>{options[idx]?.label || ''}</div>
+        <div className='field-switch-value flex-1 text-center'>{options[idx]?.label || ''}</div>
         <div
-          className='field-switch-btn'
-          style={{
-            width: '1.5rem',
-            height: '1.5rem',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'rgba(255, 255, 255, 0.05)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            borderRadius: '0.25rem',
-            cursor: 'pointer',
-          }}
+          className='field-switch-btn w-6 h-6 flex items-center justify-center bg-white/5 border border-white/10 rounded cursor-pointer hover:bg-white/10 hover:border-white/20'
           onClick={next}
-          onMouseEnter={(e) => {
-            (e.target as HTMLDivElement).style.background = 'rgba(255, 255, 255, 0.1)'
-            ;(e.target as HTMLDivElement).style.borderColor = 'rgba(255, 255, 255, 0.2)'
-          }}
-          onMouseLeave={(e) => {
-            (e.target as HTMLDivElement).style.background = 'rgba(255, 255, 255, 0.05)'
-            ;(e.target as HTMLDivElement).style.borderColor = 'rgba(255, 255, 255, 0.1)'
-          }}
         >
           ›
         </div>
@@ -375,14 +245,7 @@ export function FieldRange({ label, hint, min = 0, max = 1, step = 0.05, instant
   
   return (
     <div
-      className='fieldrange'
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        height: '2.5rem',
-        padding: '0 1rem',
-        backgroundColor: isHovered ? 'rgba(255, 255, 255, 0.03)' : 'transparent',
-      }}
+      className={`fieldrange flex items-center h-10 px-4 ${isHovered ? 'bg-white/[0.03]' : 'bg-transparent'}`}
       onPointerEnter={() => {
         hint && setHint(hint)
         setIsHovered(true)
@@ -392,37 +255,13 @@ export function FieldRange({ label, hint, min = 0, max = 1, step = 0.05, instant
         setIsHovered(false)
       }}
     >
-      <div className='fieldrange-label' style={{
-        flex: 1,
-        whiteSpace: 'nowrap',
-        textOverflow: 'ellipsis',
-        overflow: 'hidden',
-        fontSize: '0.9375rem',
-        color: 'rgba(255, 255, 255, 0.6)',
-        paddingRight: '1rem',
-      }}>{label}</div>
-      <div className='fieldrange-text' style={{
-        fontSize: '0.7rem',
-        fontWeight: 500,
-        color: 'rgba(255, 255, 255, 0.6)',
-        marginRight: '0.5rem',
-        opacity: isHovered ? 1 : 0,
-      }}>{text}</div>
-      <div className='fieldrange-track' ref={trackRef} style={{
-        width: '7rem',
-        flexShrink: 0,
-        height: '0.5rem',
-        borderRadius: '0.1rem',
-        display: 'flex',
-        alignItems: 'stretch',
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-        cursor: 'pointer',
-      }}>
-        <div className='fieldrange-bar' style={{
-          backgroundColor: 'white',
-          borderRadius: '0.1rem',
-          width: `${barWidthPercentage}%`,
-        }} />
+      <div className='fieldrange-label flex-1 whitespace-nowrap overflow-hidden text-ellipsis text-[0.9375rem] text-white/60 pr-4'>{label}</div>
+      <div className={`fieldrange-text text-[0.7rem] font-medium text-white/60 mr-2 ${isHovered ? 'opacity-100' : 'opacity-0'}`}>{text}</div>
+      <div className='fieldrange-track w-28 shrink-0 h-2 rounded-sm flex items-stretch bg-white/10 cursor-pointer' ref={trackRef}>
+        <div 
+          className='fieldrange-bar bg-white rounded-sm'
+          style={{ width: `${barWidthPercentage}%` }}
+        />
       </div>
     </div>
   )
@@ -554,64 +393,24 @@ export function FieldFile({ world, label, hint, kind: kindName, value, onChange 
   const name = loading?.name || fileValue?.name
   return (
     <label
-      className='fieldfile'
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        height: '2.5rem',
-        padding: '0 1rem',
-        overflow: 'hidden',
-      }}
+      className='fieldfile flex items-center h-10 px-4 overflow-hidden'
       onPointerEnter={() => hint && setHint(hint)}
       onPointerLeave={() => hint && setHint(null)}
       onClick={handleDownload}
     >
-      <div className='fieldfile-label' style={{
-        flex: 1,
-        whiteSpace: 'nowrap',
-        textOverflow: 'ellipsis',
-        overflow: 'hidden',
-        paddingRight: '1rem',
-        fontSize: '0.9375rem',
-        color: 'rgba(255, 255, 255, 0.6)',
-      }}>{label}</div>
-      {!value && !loading && <div className='fieldfile-placeholder' style={{
-        color: 'rgba(255, 255, 255, 0.3)',
-      }}>{kind.placeholder}</div>}
-      {name && <div className='fieldfile-name' style={{
-        fontSize: '0.9375rem',
-        textAlign: 'right',
-        whiteSpace: 'nowrap',
-        textOverflow: 'ellipsis',
-        overflow: 'hidden',
-        maxWidth: '9rem',
-      }}>{name}</div>}
+      <div className='fieldfile-label flex-1 whitespace-nowrap overflow-hidden text-ellipsis pr-4 text-[0.9375rem] text-white/60'>{label}</div>
+      {!value && !loading && <div className='fieldfile-placeholder text-white/30'>{kind.placeholder}</div>}
+      {name && <div className='fieldfile-name text-[0.9375rem] text-right whitespace-nowrap overflow-hidden text-ellipsis max-w-36'>{name}</div>}
       {!!value && !loading && (
-                 <div 
-           className='fieldfile-x' 
-           style={{
-             lineHeight: 0,
-             margin: '0 -0.2rem 0 0.3rem',
-             color: 'rgba(255, 255, 255, 0.3)',
-           }} 
-           onClick={remove}
-           onMouseEnter={(e) => {
-             (e.target as HTMLDivElement).style.color = 'white'
-           }}
-           onMouseLeave={(e) => {
-             (e.target as HTMLDivElement).style.color = 'rgba(255, 255, 255, 0.3)'
-           }}
-         >
+        <div 
+          className='fieldfile-x leading-none -mr-0.5 ml-1 text-white/30 hover:text-white cursor-pointer' 
+          onClick={remove}
+        >
           ×
         </div>
       )}
       {loading && (
-        <div className='fieldfile-loading' style={{
-          margin: '0 -0.1rem 0 0.3rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}>
+        <div className='fieldfile-loading -mr-px ml-1 flex items-center justify-center'>
           ⟳
         </div>
       )}
@@ -668,15 +467,7 @@ export function FieldNumber({
   
   return (
     <label
-      className='fieldnumber'
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        height: '2.5rem',
-        padding: '0 1rem',
-        cursor: 'text',
-        backgroundColor: isHovered ? 'rgba(255, 255, 255, 0.03)' : 'transparent',
-      }}
+      className={`fieldnumber flex items-center h-10 px-4 cursor-text ${isHovered ? 'bg-white/[0.03]' : 'bg-transparent'}`}
       onPointerEnter={() => {
         hint && setHint(hint)
         setIsHovered(true)
@@ -686,33 +477,13 @@ export function FieldNumber({
         setIsHovered(false)
       }}
     >
-      <div className='fieldnumber-label' style={{
-        width: '9.4rem',
-        flexShrink: 0,
-        whiteSpace: 'nowrap',
-        textOverflow: 'ellipsis',
-        overflow: 'hidden',
-        fontSize: '0.9375rem',
-        color: 'rgba(255, 255, 255, 0.6)',
-      }}>{label}</div>
-      <div className='fieldnumber-field' style={{
-        flex: 1,
-      }}>
+      <div className='fieldnumber-label w-[9.4rem] shrink-0 whitespace-nowrap overflow-hidden text-ellipsis text-[0.9375rem] text-white/60'>{label}</div>
+      <div className='fieldnumber-field flex-1'>
         <input
           type='text'
           value={local}
           onChange={e => setLocal(e.target.value)}
-          style={{
-            fontSize: '0.9375rem',
-            height: '1rem',
-            textAlign: 'right',
-            overflow: 'hidden',
-            cursor: 'inherit',
-            background: 'transparent',
-            border: 'none',
-            color: 'white',
-            width: '100%',
-          }}
+          className="text-[0.9375rem] h-4 text-right overflow-hidden cursor-inherit bg-transparent border-none text-white w-full focus:outline-none"
           onKeyDown={e => {
             if (e.code === 'Enter') {
               e.preventDefault()
@@ -800,15 +571,7 @@ export function FieldVec3({
   
   return (
     <label
-      className='fieldvec3'
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        height: '2.5rem',
-        padding: '0 1rem',
-        cursor: 'text',
-        backgroundColor: isHovered ? 'rgba(255, 255, 255, 0.03)' : 'transparent',
-      }}
+      className={`fieldvec3 flex items-center h-10 px-4 cursor-text ${isHovered ? 'bg-white/[0.03]' : 'bg-transparent'}`}
       onPointerEnter={() => {
         hint && setHint(hint)
         setIsHovered(true)
@@ -818,36 +581,13 @@ export function FieldVec3({
         setIsHovered(false)
       }}
     >
-      <div className='fieldvec3-label' style={{
-        width: '9.4rem',
-        flexShrink: 0,
-        whiteSpace: 'nowrap',
-        textOverflow: 'ellipsis',
-        overflow: 'hidden',
-        fontSize: '0.9375rem',
-        color: 'rgba(255, 255, 255, 0.6)',
-      }}>{label}</div>
-      <div className='fieldvec3-field' style={{
-        flex: 1,
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.5rem',
-      }}>
+      <div className='fieldvec3-label w-[9.4rem] shrink-0 whitespace-nowrap overflow-hidden text-ellipsis text-[0.9375rem] text-white/60'>{label}</div>
+      <div className='fieldvec3-field flex-1 flex items-center gap-2'>
         <input
           type='text'
           value={localX}
           onChange={e => setLocalX(e.target.value)}
-          style={{
-            fontSize: '0.9375rem',
-            height: '1rem',
-            textAlign: 'right',
-            overflow: 'hidden',
-            cursor: 'inherit',
-            background: 'transparent',
-            border: 'none',
-            color: 'white',
-            flex: 1,
-          }}
+          className="text-[0.9375rem] h-4 text-right overflow-hidden cursor-inherit bg-transparent border-none text-white flex-1 focus:outline-none"
           onKeyDown={e => {
             if (e.code === 'Enter') {
               e.preventDefault()
@@ -887,17 +627,7 @@ export function FieldVec3({
           type='text'
           value={localY}
           onChange={e => setLocalY(e.target.value)}
-          style={{
-            fontSize: '0.9375rem',
-            height: '1rem',
-            textAlign: 'right',
-            overflow: 'hidden',
-            cursor: 'inherit',
-            background: 'transparent',
-            border: 'none',
-            color: 'white',
-            flex: 1,
-          }}
+          className="text-[0.9375rem] h-4 text-right overflow-hidden cursor-inherit bg-transparent border-none text-white flex-1 focus:outline-none"
           onKeyDown={e => {
             if (e.code === 'Enter') {
               e.preventDefault()
@@ -937,17 +667,7 @@ export function FieldVec3({
           type='text'
           value={localZ}
           onChange={e => setLocalZ(e.target.value)}
-          style={{
-            fontSize: '0.9375rem',
-            height: '1rem',
-            textAlign: 'right',
-            overflow: 'hidden',
-            cursor: 'inherit',
-            background: 'transparent',
-            border: 'none',
-            color: 'white',
-            flex: 1,
-          }}
+          className="text-[0.9375rem] h-4 text-right overflow-hidden cursor-inherit bg-transparent border-none text-white flex-1 focus:outline-none"
           onKeyDown={e => {
             if (e.code === 'Enter') {
               e.preventDefault()
@@ -1002,20 +722,10 @@ export function FieldCurve({ label, hint, x, xRange, y, yMin, yMax, value, onCha
   
   return (
     <div
-      className='fieldcurve'
-      style={{
-        cursor: 'pointer',
-        backgroundColor: isHovered ? 'rgba(255, 255, 255, 0.03)' : 'transparent',
-      }}
+      className={`fieldcurve cursor-pointer ${isHovered ? 'bg-white/[0.03]' : 'bg-transparent'}`}
     >
       <div
-        className='fieldcurve-control'
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          height: '2.5rem',
-          padding: '0 1rem',
-        }}
+        className='fieldcurve-control flex items-center h-10 px-4'
         onClick={() => {
           if (edit) {
             setEdit(false)
@@ -1032,20 +742,8 @@ export function FieldCurve({ label, hint, x, xRange, y, yMin, yMax, value, onCha
           setIsHovered(false)
         }}
       >
-        <div className='fieldcurve-label' style={{
-          flex: 1,
-          whiteSpace: 'nowrap',
-          textOverflow: 'ellipsis',
-          overflow: 'hidden',
-          paddingRight: '1rem',
-          fontSize: '0.9375rem',
-          color: 'rgba(255, 255, 255, 0.6)',
-        }}>{label}</div>
-        <div className='fieldcurve-curve' style={{
-          width: '6rem',
-          height: '1.2rem',
-          position: 'relative',
-        }}>
+        <div className='fieldcurve-label flex-1 whitespace-nowrap overflow-hidden text-ellipsis pr-4 text-[0.9375rem] text-white/60'>{label}</div>
+        <div className='fieldcurve-curve w-24 h-5 relative'>
           <CurvePreview curve={curve} yMin={yMin} yMax={yMax} />
         </div>
       </div>
@@ -1084,15 +782,7 @@ export function FieldBtn({ label, note, hint, nav, onClick }: FieldBtnProps) {
   
   return (
     <div
-      className='fieldbtn'
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        height: '2.5rem',
-        padding: '0 1rem',
-        cursor: 'pointer',
-        backgroundColor: isHovered ? 'rgba(255, 255, 255, 0.03)' : 'transparent',
-      }}
+      className={`fieldbtn flex items-center h-10 px-4 cursor-pointer ${isHovered ? 'bg-white/[0.03]' : 'bg-transparent'}`}
       onPointerEnter={() => {
         hint && setHint(hint)
         setIsHovered(true)
@@ -1103,19 +793,9 @@ export function FieldBtn({ label, note, hint, nav, onClick }: FieldBtnProps) {
       }}
       onClick={onClick}
     >
-      <div className='fieldbtn-label' style={{
-        flex: 1,
-        whiteSpace: 'nowrap',
-        textOverflow: 'ellipsis',
-        overflow: 'hidden',
-        fontSize: '0.9375rem',
-        color: 'rgba(255, 255, 255, 0.6)',
-      }}>{label}</div>
-      {note && <div className='fieldbtn-note' style={{
-        fontSize: '0.9375rem',
-        color: 'rgba(255, 255, 255, 0.4)',
-      }}>{note}</div>}
-      {nav && <span style={{ fontSize: '1.5rem' }}>›</span>}
+      <div className='fieldbtn-label flex-1 whitespace-nowrap overflow-hidden text-ellipsis text-[0.9375rem] text-white/60'>{label}</div>
+      {note && <div className='fieldbtn-note text-[0.9375rem] text-white/40'>{note}</div>}
+      {nav && <span className="text-2xl">›</span>}
     </div>
   )
 }

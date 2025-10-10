@@ -11,4 +11,3 @@ export default class StatsGL {
     end() { }
     update() { }
 }
-//# sourceMappingURL=index.js.map

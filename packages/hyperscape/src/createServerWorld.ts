@@ -16,6 +16,7 @@ import { EntityInterpolationSystem } from './systems/EntityInterpolationSystem'
 import { registerSystems } from './systems/SystemLoader'
 // Test systems removed - consolidated into MovementValidationSystem
 import { ServerBot } from './systems/ServerBot'
+import { TerrainValidationSystem } from './systems/TerrainValidationSystem'
 
 export async function createServerWorld() {
   console.log('[Server World] Creating server world...');
@@ -32,6 +33,7 @@ export async function createServerWorld() {
   
   // Register core terrain system
   world.register('terrain', TerrainSystem);
+  // Defer validation registration until after RPG systems are registered
   
   // Position validation is now integrated into ServerNetwork
   
@@ -59,6 +61,11 @@ export async function createServerWorld() {
       console.log('[Server World] Server bot disabled (MAX_BOT_COUNT=0 or DISABLE_BOTS=true)')
     }
     console.log('[Server World] All test systems registered');
+    
+    // After RPG systems are registered, run terrain validation so dependencies are present
+    console.log('[Server World] Registering terrain validation system...');
+    world.register('terrain-validation', TerrainValidationSystem);
+    console.log('[Server World] Terrain validation system registered');
   } catch (error) {
     console.error('[Server World] Failed to register RPG game systems:', error);
     if (error instanceof Error) {

@@ -110,7 +110,7 @@ export class ServerLoader extends System {
       promise = this.fetchArrayBuffer(url).then(arrayBuffer => {
         return new Promise<unknown>((resolve, reject) => {
           try {
-            this.gltfLoader.parse(arrayBuffer, '', (glb) => {
+            this.gltfLoader.parse(arrayBuffer as ArrayBuffer, '', (glb) => {
               const node = glbToNodes(glb as GLBData, this.world)
               const model = {
                 toNodes() {
@@ -137,7 +137,7 @@ export class ServerLoader extends System {
       promise = this.fetchArrayBuffer(url).then(arrayBuffer => {
         return new Promise<unknown>((resolve, reject) => {
           try {
-            this.gltfLoader.parse(arrayBuffer, '', (glb: unknown) => {
+            this.gltfLoader.parse(arrayBuffer as ArrayBuffer, '', (glb: unknown) => {
               const factory = createEmoteFactory(glb as GLBData, url)
               const emote = {
                 toClip(options) {

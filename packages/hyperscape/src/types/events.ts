@@ -324,6 +324,7 @@ export enum EventType {
   CAMERA_CLICK_WORLD = 'camera:click:world',
   CAMERA_SET_MODE = 'camera:set:mode',
   CAMERA_RESET = 'camera:reset',
+  CAMERA_TAP = 'camera:tap',
   CAMERA_TARGET_CHANGED = 'camera:target:changed',
 
   // Movement System

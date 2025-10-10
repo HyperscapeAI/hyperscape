@@ -23,7 +23,10 @@ export default defineConfig({
     sourcemap: true, // Enable source maps for better debugging
     rollupOptions: {
       input: path.resolve(__dirname, 'src/client/index.html')
-    }
+    },
+    // Mobile optimization
+    chunkSizeWarningLimit: 2000, // Increase for large 3D assets
+    cssCodeSplit: true, // Split CSS for better caching
   },
   
   esbuild: {
@@ -32,7 +35,11 @@ export default defineConfig({
   
   define: {
     'process.env': '{}', // Replace process.env with empty object
-    'process': 'undefined' // Replace process with undefined
+    'process': 'undefined', // Replace process with undefined
+    // Ensure Privy and Farcaster env vars are exposed
+    'import.meta.env.PUBLIC_PRIVY_APP_ID': JSON.stringify(process.env.PUBLIC_PRIVY_APP_ID || ''),
+    'import.meta.env.PUBLIC_ENABLE_FARCASTER': JSON.stringify(process.env.PUBLIC_ENABLE_FARCASTER || 'false'),
+    'import.meta.env.PUBLIC_APP_URL': JSON.stringify(process.env.PUBLIC_APP_URL || ''),
   },
   server: {
     port: Number(process.env.VITE_PORT) || 3333,
@@ -45,17 +52,22 @@ export default defineConfig({
     proxy: {
       // Forward asset requests to Fastify server so asset:// resolves during Vite dev
       '/world-assets': {
-        target: process.env.SERVER_ORIGIN || 'http://localhost:4444',
+        target: process.env.SERVER_ORIGIN || `http://localhost:${process.env.PORT || 5555}`,
         changeOrigin: true,
       },
       // Expose server-provided public envs in dev
       '/env.js': {
-        target: process.env.SERVER_ORIGIN || 'http://localhost:4444',
+        target: process.env.SERVER_ORIGIN || `http://localhost:${process.env.PORT || 5555}`,
         changeOrigin: true,
       },
-      // Optional: forward WS to server if needed
+      // Forward API endpoints to game server
+      '/api': {
+        target: process.env.SERVER_ORIGIN || `http://localhost:${process.env.PORT || 5555}`,
+        changeOrigin: true,
+      },
+      // Forward WebSocket to game server
       '/ws': {
-        target: process.env.SERVER_ORIGIN?.replace('http', 'ws') || 'ws://localhost:4444',
+        target: (process.env.SERVER_ORIGIN?.replace('http', 'ws') || `ws://localhost:${process.env.PORT || 5555}`),
         ws: true,
         changeOrigin: true,
       },

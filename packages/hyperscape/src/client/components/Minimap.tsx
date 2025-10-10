@@ -3,6 +3,7 @@ import { Entity } from '../../entities/Entity';
 import THREE from '../../extras/three';
 import type { EntityPip, MinimapProps } from '../../types/ui-types';
 import type { PlayerLocal } from '../../entities/PlayerLocal';
+import type { CameraSystem } from '../../types/physics';
 import { EventType } from '../../types/events';
 
 export function Minimap({ 
@@ -11,7 +12,9 @@ export function Minimap({
   height = 200, 
   zoom = 50,
   className = '',
-  style = {}
+  style = {},
+  onCompassClick,
+  showStaminaBar = false
 }: MinimapProps) {
   const webglCanvasRef = useRef<HTMLCanvasElement>(null)
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -19,6 +22,7 @@ export function Minimap({
   const cameraRef = useRef<THREE.OrthographicCamera | null>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
   const [entityPips, setEntityPips] = useState<EntityPip[]>([])
+  const [isTouchDevice, setIsTouchDevice] = useState<boolean>(false)
   
   // Minimap zoom state (orthographic half-extent in world units)
   const [extent, setExtent] = useState<number>(zoom)
@@ -39,6 +43,14 @@ export function Minimap({
   // Red click indicator state
   const [clickIndicator, setClickIndicator] = useState<{ x: number; y: number; opacity: number } | null>(null)
   const clickFadeRef = useRef<number | null>(null)
+
+  // Detect touch device
+  useEffect(() => {
+    const checkTouch = () => {
+      setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0)
+    }
+    checkTouch()
+  }, [])
 
   // Initialize minimap renderer and camera
   useEffect(() => {
@@ -185,7 +197,7 @@ export function Minimap({
       }
 
       // Add other players using entities system for reliable positions
-      if (world.entities && typeof world.entities.getAllPlayers === 'function') {
+      if (world.entities) {
         const players = world.entities.getAllPlayers()
         players.forEach((otherPlayer) => {
           if (!player || otherPlayer.id !== player.id) {
@@ -527,21 +539,16 @@ export function Minimap({
     setExtent(next)
   }, [extent])
 
-  const containerStyle: React.CSSProperties = {
-    width: width,
-    height: height,
-    border: '2px solid rgba(255, 255, 255, 0.3)',
-    borderRadius: '8px',
-    overflow: 'hidden',
-    background: 'rgba(0, 0, 0, 0.8)',
-    position: 'relative',
-    ...style
-  }
-
   return (
     <div
-      className={`minimap ${className}`}
-      style={containerStyle}
+      className={`minimap border-2 border-white/30 rounded-lg overflow-visible bg-black/80 relative touch-none select-none ${className}`}
+      style={{
+        width,
+        height,
+        WebkitUserSelect: 'none',
+        WebkitTouchCallout: 'none',
+        ...style
+      }}
       onWheel={onMinimapWheel}
       onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
@@ -551,157 +558,118 @@ export function Minimap({
         ref={webglCanvasRef}
         width={width}
         height={height}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          display: 'block',
-          width: '100%',
-          height: '100%',
-          zIndex: 0
-        }}
+        className="absolute inset-0 block w-full h-full z-0 rounded-lg overflow-hidden"
       />
       {/* 2D overlay for pips */}
       <canvas
         ref={overlayCanvasRef}
         width={width}
         height={height}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          display: 'block',
-          width: '100%',
-          height: '100%',
-          // Capture pointer events so clicks/wheel don't hit the 3D canvas behind
-          pointerEvents: 'auto',
-          cursor: 'crosshair',
-          zIndex: 1
-        }}
+        className="absolute inset-0 block w-full h-full pointer-events-auto cursor-crosshair z-[1] rounded-lg overflow-hidden"
         onClick={onOverlayClick}
         onWheel={onOverlayWheel}
         onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
         onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
       />
-      {/* Compass control (RS3-like): full compass rotates with camera yaw; click recenters facing North */}
-      <div
-        title={'Click to face North'}
-        onClick={(e) => {
-          e.preventDefault(); e.stopPropagation();
-          const cam = cameraRef.current
-          if (cam) { cam.up.set(0, 0, -1) }
-          // Reorient main camera to face North (RS3-style) using camera system directly
-          try {
-            const camSys = (world as any).getSystem?.('client-camera-system') || (world as any)['client-camera-system']
-            if (camSys && typeof camSys.resetCamera === 'function') { camSys.resetCamera() } else { (world as any).emit?.(EventType.CAMERA_RESET) }
-          } catch {}
-        }}
-        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-        onWheel={(e) => { e.preventDefault(); e.stopPropagation(); }}
-        style={{
-          position: 'absolute',
-          top: 6,
-          left: 6,
-          width: 40,
-          height: 40,
-          borderRadius: '50%',
-          border: '1px solid rgba(255,255,255,0.6)',
-          background: 'rgba(0,0,0,0.6)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
-          zIndex: 10,
-          pointerEvents: 'auto'
-        }}
-      >
-        <div style={{
-          position: 'relative',
-          width: 28,
-          height: 28,
-          transform: `rotate(${yawDeg}deg)`
-        }}>
-          {/* Rotating ring */}
-          <div style={{
-            position: 'absolute', left: 0, top: 0, right: 0, bottom: 0,
-            borderRadius: '50%', border: '1px solid rgba(255,255,255,0.5)'
-          }} />
-          {/* N marker at top of compass (rotates with ring) */}
-          <div style={{
-            position: 'absolute', left: '50%', top: 3, transform: 'translateX(-50%)',
-            fontSize: 11, color: '#ff4444', fontWeight: 600, textShadow: '0 1px 1px rgba(0,0,0,0.8)'
-          }}>N</div>
-          {/* S/E/W faint labels */}
-          <div style={{ position: 'absolute', left: '50%', bottom: 3, transform: 'translateX(-50%)', fontSize: 9, color: 'rgba(255,255,255,0.7)' }}>S</div>
-          <div style={{ position: 'absolute', top: '50%', left: 3, transform: 'translateY(-50%)', fontSize: 9, color: 'rgba(255,255,255,0.7)' }}>W</div>
-          <div style={{ position: 'absolute', top: '50%', right: 3, transform: 'translateY(-50%)', fontSize: 9, color: 'rgba(255,255,255,0.7)' }}>E</div>
+      {/* Compass control - only shown when not being managed externally */}
+      {!onCompassClick && (
+        <div
+          title="Click to face North"
+          onClick={(e) => {
+            e.preventDefault(); e.stopPropagation();
+            const cam = cameraRef.current
+            if (cam) { cam.up.set(0, 0, -1) }
+            // Reorient main camera to face North (RS3-like) using camera system directly
+            try {
+              const camSys = world.getSystem('client-camera-system') as unknown as CameraSystem | null
+              if (camSys) {
+                camSys.resetCamera()
+              } else {
+                world.emit(EventType.CAMERA_RESET)
+              }
+            } catch {}
+          }}
+          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onTouchStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onWheel={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          className="absolute rounded-full border border-white/60 bg-black/60 flex items-center justify-center cursor-pointer z-10 pointer-events-auto touch-manipulation"
+          style={{
+            top: isTouchDevice ? 4 : 6,
+            left: isTouchDevice ? 4 : 6,
+            width: isTouchDevice ? 44 : 40,
+            height: isTouchDevice ? 44 : 40,
+          }}
+        >
+          <div 
+            className="relative w-7 h-7 pointer-events-none"
+            style={{ transform: `rotate(${yawDeg}deg)` }}
+          >
+            {/* Rotating ring */}
+            <div className="absolute inset-0 rounded-full border border-white/50 pointer-events-none" />
+            {/* N marker at top of compass (rotates with ring) */}
+            <div className="absolute left-1/2 top-0.5 -translate-x-1/2 text-[11px] text-red-500 font-semibold shadow-[0_1px_1px_rgba(0,0,0,0.8)] pointer-events-none">N</div>
+            {/* S/E/W faint labels */}
+            <div className="absolute left-1/2 bottom-0.5 -translate-x-1/2 text-[9px] text-white/70 pointer-events-none">S</div>
+            <div className="absolute top-1/2 left-0.5 -translate-y-1/2 text-[9px] text-white/70 pointer-events-none">W</div>
+            <div className="absolute top-1/2 right-0.5 -translate-y-1/2 text-[9px] text-white/70 pointer-events-none">E</div>
+          </div>
         </div>
-      </div>
-      {/* Run toggle (RS3-like) */}
-      <div
-        title={runMode ? 'Running (click to walk)' : 'Walking (click to run)'}
-        onClick={(e) => {
-          e.preventDefault(); e.stopPropagation();
-          const pl = ((world as any).getPlayer?.() || (world as any).entities?.player) as PlayerLocal | undefined
-          if (!pl) return
-          if (typeof pl.toggleRunMode === 'function') {
-            pl.toggleRunMode()
-          } else {
-            ;(pl as any).runMode = !(pl as any).runMode
-          }
-          setRunMode((pl as any).runMode === true)
-          // Also inform server immediately to update current path speed
-          try {
-            ;(world as any).network?.send?.('moveRequest', { runMode: (pl as any).runMode })
-          } catch {}
-        }}
-        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation() }}
-        onContextMenu={(e) => { e.preventDefault(); e.stopPropagation() }}
-        onWheel={(e) => { e.preventDefault(); e.stopPropagation() }}
-        style={{
-        position: 'absolute',
-          top: 6,
-          right: 6,
-          width: 40,
-          height: 40,
-          borderRadius: '50%',
-          border: '1px solid rgba(255,255,255,0.6)',
-          background: 'rgba(0,0,0,0.6)',
-          color: '#fff',
-          fontSize: 12,
-          lineHeight: '14px',
-          cursor: 'pointer',
-          zIndex: 10,
-          pointerEvents: 'auto',
-          userSelect: 'none'
-        }}
-      >
-        {/* Circular stamina bar */}
-        <svg width={40} height={40} style={{ display: 'block', pointerEvents: 'none' }}>
-          <circle cx={20} cy={20} r={16} stroke="rgba(255,255,255,0.3)" strokeWidth={2} fill="none" />
-          {
-            (() => {
-              const pl = world.entities.player as unknown as PlayerLocal | undefined
-              const energy = pl && typeof pl.stamina === 'number' ? pl.stamina : (runMode ? 100 : 100)
-              const pct = Math.max(0, Math.min(100, energy)) / 100
-              const radius = 16
-              const circumference = 2 * Math.PI * radius
-              const dash = pct * circumference
-              const gap = circumference - dash
-              return (
-                <circle cx={20} cy={20} r={radius} stroke={runMode ? '#00ff88' : '#ffa500'} strokeWidth={3}
-                  fill="none" strokeDasharray={`${dash} ${gap}`} transform="rotate(-90 20 20)" />
-              )
-            })()
-          }
-          {
-            (() => {
+      )}
+      {/* Stamina/Run bar below minimap - only shown when showStaminaBar is true */}
+      {showStaminaBar && (
+        <div
+          title={runMode ? 'Running (click to walk)' : 'Walking (click to run)'}
+          onClick={(e) => {
+            e.preventDefault(); e.stopPropagation();
+            const pl = ((world as any).getPlayer?.() || (world as any).entities?.player) as PlayerLocal | undefined
+            if (!pl) return
+            if (typeof pl.toggleRunMode === 'function') {
+              pl.toggleRunMode()
+            } else {
+              ;(pl as any).runMode = !(pl as any).runMode
+            }
+            setRunMode((pl as any).runMode === true)
+            // Also inform server immediately to update current path speed
+            try {
+              ;(world as any).network?.send?.('moveRequest', { runMode: (pl as any).runMode })
+            } catch {}
+          }}
+          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation() }}
+          onTouchStart={(e) => { e.preventDefault(); e.stopPropagation() }}
+          onContextMenu={(e) => { e.preventDefault(); e.stopPropagation() }}
+          onWheel={(e) => { e.preventDefault(); e.stopPropagation() }}
+          className="absolute left-0 w-full h-[22px] rounded-lg border-2 border-white/30 bg-black/80 cursor-pointer z-10 pointer-events-auto select-none touch-manipulation overflow-hidden flex items-center"
+          style={{ bottom: -28 }}
+        >
+          {/* Stamina fill bar */}
+          {(() => {
+            const pl = world.entities.player as unknown as PlayerLocal | undefined
+            const energy = pl && typeof pl.stamina === 'number' ? pl.stamina : 100
+            const pct = Math.max(0, Math.min(100, energy))
+            return (
+              <div
+                className="absolute left-0 top-0 bottom-0 transition-[width] duration-300 ease-out pointer-events-none"
+                style={{
+                  width: `${pct}%`,
+                  background: runMode 
+                    ? 'linear-gradient(90deg, #00ff88, #00cc66)' 
+                    : 'linear-gradient(90deg, #ffa500, #ff8800)',
+                }}
+              />
+            )
+          })()}
+          {/* Text overlay */}
+          <div
+            className="relative z-[1] w-full text-center text-white text-[11px] font-semibold shadow-[0_1px_2px_rgba(0,0,0,0.8)] pointer-events-none"
+          >
+            {(() => {
               const pl = world.entities.player as unknown as PlayerLocal | undefined
               const energy = pl && typeof pl.stamina === 'number' ? Math.round(pl.stamina) : 100
-              return <text x={20} y={23} textAnchor="middle" fontSize={12} fill="#fff">{`${energy}%`}</text>
-            })()
-          }
-        </svg>
-      </div>
-      {/* Removed label text */}
+              return `${runMode ? '🏃' : '🚶'} ${energy}%`
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

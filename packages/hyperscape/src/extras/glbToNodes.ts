@@ -64,9 +64,9 @@ export function glbToNodes(glb: GLBData, world: World) {
           castShadow: props.castShadow,
           receiveShadow: props.receiveShadow,
           active: props.active,
-          position: object3d.position.toArray(),
-          quaternion: object3d.quaternion.toArray(),
-          scale: object3d.scale.toArray(),
+          position: object3d.position.toArray() as [number, number, number],
+          quaternion: [object3d.quaternion.x, object3d.quaternion.y, object3d.quaternion.z, object3d.quaternion.w] as [number, number, number, number],
+          scale: object3d.scale.toArray() as [number, number, number],
         })
         if (parentNode.name === 'lod' && props.maxDistance) {
           parentNode.insert(node, props.maxDistance)
@@ -79,9 +79,9 @@ export function glbToNodes(glb: GLBData, world: World) {
       else if (props.node === 'lod') {
         const node = registerNode('lod', {
           id: object3d.name,
-          position: object3d.position.toArray(),
-          quaternion: object3d.quaternion.toArray(),
-          scale: object3d.scale.toArray(),
+          position: object3d.position.toArray() as [number, number, number],
+          quaternion: [object3d.quaternion.x, object3d.quaternion.y, object3d.quaternion.z, object3d.quaternion.w] as [number, number, number, number],
+          scale: object3d.scale.toArray() as [number, number, number],
           scaleAware: props.scaleAware,
         })
         parentNode.add(node)
@@ -94,9 +94,9 @@ export function glbToNodes(glb: GLBData, world: World) {
           id: object3d.name,
           type: props.type,
           mass: props.mass,
-          position: object3d.position.toArray(),
-          quaternion: object3d.quaternion.toArray(),
-          scale: object3d.scale.toArray(),
+          position: object3d.position.toArray() as [number, number, number],
+          quaternion: [object3d.quaternion.x, object3d.quaternion.y, object3d.quaternion.z, object3d.quaternion.w] as [number, number, number, number],
+          scale: object3d.scale.toArray() as [number, number, number],
         })
         parentNode.add(node)
         // object3d.children is already typed as THREE.Object3D[]
@@ -115,9 +115,9 @@ export function glbToNodes(glb: GLBData, world: World) {
           geometry: mesh.geometry,
           convex: props.convex,
           trigger: props.trigger,
-          position: mesh.position.toArray(),
-          quaternion: mesh.quaternion.toArray(),
-          scale: mesh.scale.toArray(),
+          position: mesh.position.toArray() as [number, number, number],
+          quaternion: [mesh.quaternion.x, mesh.quaternion.y, mesh.quaternion.z, mesh.quaternion.w] as [number, number, number, number],
+          scale: mesh.scale.toArray() as [number, number, number],
         })
         parentNode.add(node)
                   // mesh.children is already typed as THREE.Object3D[]
@@ -149,9 +149,9 @@ export function glbToNodes(glb: GLBData, world: World) {
           receiveShadow: props.receiveShadow,
           visible: props.visible, // DEPRECATED: use Node.active
           active: props.active,
-          position: mesh.position.toArray(),
-          quaternion: mesh.quaternion.toArray(),
-          scale: mesh.scale.toArray(),
+          position: mesh.position.toArray() as [number, number, number],
+          quaternion: [mesh.quaternion.x, mesh.quaternion.y, mesh.quaternion.z, mesh.quaternion.w] as [number, number, number, number],
+          scale: mesh.scale.toArray() as [number, number, number],
         })
         if (parentNode.name === 'lod' && props.maxDistance) {
           parentNode.insert(node, props.maxDistance)
@@ -170,7 +170,7 @@ export function glbToNodes(glb: GLBData, world: World) {
         const node = registerNode('group', {
           id: object3d.name,
           position: object3d.position.toArray() as [number, number, number],
-          quaternion: object3d.quaternion.toArray() as [number, number, number, number],
+          quaternion: [object3d.quaternion.x, object3d.quaternion.y, object3d.quaternion.z, object3d.quaternion.w] as [number, number, number, number],
           scale: object3d.scale.toArray() as [number, number, number],
         })
         parentNode.add(node)

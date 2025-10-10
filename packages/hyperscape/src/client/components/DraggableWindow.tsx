@@ -45,18 +45,55 @@ export function DraggableWindow({
       onPositionChange?.(newPosition)
     }
 
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isDragging) return
+      
+      const touch = e.touches[0]
+      if (!touch) return
+      
+      const newPosition = {
+        x: touch.clientX - dragOffset.x,
+        y: touch.clientY - dragOffset.y
+      }
+      
+      // Clamp to viewport bounds
+      const viewport = {
+        width: window.innerWidth,
+        height: window.innerHeight
+      }
+      
+      const windowElement = windowRef.current
+      if (windowElement) {
+        const rect = windowElement.getBoundingClientRect()
+        
+        newPosition.x = Math.max(0, Math.min(newPosition.x, viewport.width - rect.width))
+        newPosition.y = Math.max(0, Math.min(newPosition.y, viewport.height - rect.height))
+      }
+      
+      setPosition(newPosition)
+      onPositionChange?.(newPosition)
+    }
+
     const handleMouseUp = () => {
+      setIsDragging(false)
+    }
+    
+    const handleTouchEnd = () => {
       setIsDragging(false)
     }
 
     if (isDragging) {
       document.addEventListener('mousemove', handleMouseMove)
       document.addEventListener('mouseup', handleMouseUp)
+      document.addEventListener('touchmove', handleTouchMove)
+      document.addEventListener('touchend', handleTouchEnd)
     }
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
+      document.removeEventListener('touchmove', handleTouchMove)
+      document.removeEventListener('touchend', handleTouchEnd)
     }
   }, [isDragging, dragOffset, onPositionChange, enabled])
 
@@ -77,50 +114,49 @@ export function DraggableWindow({
       setIsDragging(true)
     }
   }
-
-  const windowStyle: React.CSSProperties = {
-    position: 'absolute',
-    left: position.x,
-    top: position.y,
-    userSelect: isDragging ? 'none' : 'auto',
-    cursor: isDragging ? 'grabbing' : 'auto',
-    ...style
-  }
-
-  const dragHandleStyle: React.CSSProperties = {
-    cursor: enabled ? 'grab' : 'auto',
-    userSelect: 'none'
+  
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (!enabled) return
+    
+    const touch = e.touches[0]
+    if (!touch) return
+    
+    const windowElement = windowRef.current
+    if (windowElement) {
+      const rect = windowElement.getBoundingClientRect()
+      setDragOffset({
+        x: touch.clientX - rect.left,
+        y: touch.clientY - rect.top
+      })
+      setIsDragging(true)
+    }
   }
 
   return (
     <div
       ref={windowRef}
-      className={`draggable-window ${className}`}
-      style={windowStyle}
+      className={`draggable-window absolute ${isDragging ? 'select-none cursor-grabbing' : 'select-auto cursor-auto'} ${className}`}
+      style={{
+        left: position.x,
+        top: position.y,
+        ...style
+      }}
     >
       {dragHandle ? (
         <div
           ref={dragHandleRef}
-          className="drag-handle"
-          style={dragHandleStyle}
+          className={`drag-handle select-none ${enabled ? 'cursor-grab' : 'cursor-auto'}`}
           onMouseDown={handleMouseDown}
+          onTouchStart={handleTouchStart}
         >
           {dragHandle}
         </div>
       ) : (
         <div
           ref={dragHandleRef}
-          className="drag-handle-overlay"
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: '3rem',
-            zIndex: 1,
-            ...dragHandleStyle
-          }}
+          className={`drag-handle-overlay absolute top-0 left-0 right-0 h-12 z-[1] select-none ${enabled ? 'cursor-grab' : 'cursor-auto'}`}
           onMouseDown={handleMouseDown}
+          onTouchStart={handleTouchStart}
         />
       )}
       {children}

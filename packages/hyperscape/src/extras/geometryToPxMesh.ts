@@ -84,15 +84,33 @@ export function geometryToPxMesh(world: World, geometry: THREE.BufferGeometry, c
 
   if ('isInterleavedBufferAttribute' in position && position.isInterleavedBufferAttribute) {
     // deinterleave!
+    interface InterleavedAttributeWithGetComponent extends THREE.InterleavedBufferAttribute {
+      getComponent(index: number, component: number): number;
+    }
+    
     const interleavedAttribute = position as THREE.InterleavedBufferAttribute
     const itemSize = interleavedAttribute.itemSize
     const count = interleavedAttribute.count
     const array = new Float32Array(count * itemSize)
     
     // Manually extract the deinterleaved data
-    for (let i = 0; i < count; i++) {
-      for (let j = 0; j < itemSize; j++) {
-        array[i * itemSize + j] = interleavedAttribute.getComponent(i, j)
+    // Try using getComponent method if available (newer Three.js versions)
+    const attrWithGetComponent = interleavedAttribute as InterleavedAttributeWithGetComponent
+    if (attrWithGetComponent.getComponent) {
+      for (let i = 0; i < count; i++) {
+        for (let j = 0; j < itemSize; j++) {
+          array[i * itemSize + j] = attrWithGetComponent.getComponent(i, j)
+        }
+      }
+    } else {
+      // Fallback: manually read from underlying array
+      const src = interleavedAttribute.data.array as Float32Array | number[]
+      const stride = interleavedAttribute.data.stride
+      const offset = interleavedAttribute.offset
+      for (let i = 0; i < count; i++) {
+        for (let j = 0; j < itemSize; j++) {
+          array[i * itemSize + j] = src[i * stride + offset + j] as number
+        }
       }
     }
     

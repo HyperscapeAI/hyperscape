@@ -184,7 +184,7 @@ export class PrecisionPhysicsTestSystem extends SystemBase {
     const planeTransform = new PHYSX.PxTransform(PHYSX.PxIDENTITYEnum.PxIdentity);
     // Rotation of 90 degrees around Z axis: quaternion (0, 0, 0.707, 0.707)
     const quat = this._tempQuat.set(0, 0, 0.707, 0.707);
-    planeTransform.q = quat;
+    planeTransform.q = quat as unknown as typeof planeTransform.q;
     planeTransform.p.y = 0; // Position at y = 0
     
     // Create static actor

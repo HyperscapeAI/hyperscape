@@ -122,11 +122,13 @@ export class Entities extends SystemBase implements IEntities {
       if (isServerWorld) {
         // On server, always use the base player entity type
         EntityClass = EntityTypes['player'] || EntityTypes.entity;
+        console.log(`[Entities] Creating server player entity: ${data.id}`);
       } else {
         // On client, determine if local or remote
         const networkId = this.world.network?.id || (this.world.getSystem('network') as any)?.id;
         const isLocal = data.owner === networkId;
         EntityClass = EntityTypes[isLocal ? 'playerLocal' : 'playerRemote'];
+        console.log(`[Entities] Creating ${isLocal ? 'LOCAL' : 'REMOTE'} player entity: ${data.id}, owner: ${data.owner}, networkId: ${networkId}`);
       }
     } else if (data.type in EntityTypes) {
       EntityClass = EntityTypes[data.type];
@@ -158,6 +160,10 @@ export class Entities extends SystemBase implements IEntities {
     // Strong type assumption - world has network system when dealing with owned entities
     const currentNetworkId = this.world.network?.id || (this.world.getSystem('network') as any)?.id;
     if (data.owner === currentNetworkId) {
+      console.log(`[Entities] Setting LOCAL PLAYER: ${entity.id} (was: ${this.player?.id || 'none'})`);
+      if (this.player) {
+        console.warn(`[Entities] WARNING: Replacing existing local player ${this.player.id} with ${entity.id}!`);
+      }
       this.player = entity as Player;
       this.emitTypedEvent('PLAYER_REGISTERED', { playerId: entity.id });
     }

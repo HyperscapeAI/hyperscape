@@ -53,32 +53,6 @@ export function ResourceContextMenu({
 
   if (!visible || actions.length === 0) return null;
 
-  const menuStyle: React.CSSProperties = {
-    position: 'fixed',
-    left: `${position.x}px`,
-    top: `${position.y}px`,
-    zIndex: 10000,
-    backgroundColor: 'rgba(11, 10, 21, 0.95)',
-    border: '1px solid rgba(255, 255, 255, 0.2)',
-    borderRadius: '8px',
-    padding: '0.5rem 0',
-    minWidth: '160px',
-    backdropFilter: 'blur(12px)',
-    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6), 0 0 16px rgba(0, 255, 127, 0.1)',
-    pointerEvents: 'auto',
-    animation: 'fadeIn 0.15s ease-out'
-  };
-
-  const titleStyle: React.CSSProperties = {
-    padding: '0.5rem 1rem',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-    marginBottom: '0.25rem',
-    fontWeight: '500',
-    fontSize: '0.8125rem',
-    color: 'rgba(0, 255, 127, 0.9)',
-    textTransform: 'capitalize'
-  };
-
   return (
     <>
       <style>
@@ -101,9 +75,17 @@ export function ResourceContextMenu({
           }
         `}
       </style>
-      <div ref={menuRef} style={menuStyle}>
+      <div 
+        ref={menuRef} 
+        className="fixed z-[10000] bg-[rgba(11,10,21,0.95)] border border-white/20 rounded-lg py-2 min-w-[160px] backdrop-blur-xl pointer-events-auto animate-[fadeIn_0.15s_ease-out]"
+        style={{
+          left: `${position.x}px`,
+          top: `${position.y}px`,
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6), 0 0 16px rgba(0, 255, 127, 0.1)',
+        }}
+      >
         {targetType && (
-          <div style={titleStyle}>
+          <div className="py-2 px-4 border-b border-white/10 mb-1 font-medium text-[0.8125rem] text-[rgba(0,255,127,0.9)] capitalize">
             {targetType.replace(/_/g, ' ')}
           </div>
         )}
@@ -119,45 +101,21 @@ export function ResourceContextMenu({
                 onClose();
               }
             }}
-            className="resource-menu-item"
-            style={{
-              width: '100%',
-              padding: '0.625rem 1rem',
-              border: 'none',
-              background: 'transparent',
-              color: action.enabled ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.4)',
-              textAlign: 'left',
-              cursor: action.enabled ? 'pointer' : 'not-allowed',
-              fontSize: '0.875rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              transition: 'all 0.2s ease',
-              fontFamily: 'system-ui, -apple-system, sans-serif',
-              outline: 'none'
-            }}
+            className={`resource-menu-item w-full py-2.5 px-4 border-none bg-transparent text-left text-sm flex items-center gap-3 transition-all duration-200 font-sans outline-none ${
+            action.enabled ? 'text-white/90 cursor-pointer' : 'text-white/40 cursor-not-allowed'
+          }`}
             onMouseDown={(e) => {
               e.stopPropagation();
             }}
           >
             {action.icon && (
-              <span style={{ 
-                fontSize: '1.25rem',
-                filter: action.enabled ? 'none' : 'grayscale(100%)'
-              }}>{action.icon}</span>
+              <span className={`text-xl ${action.enabled ? '' : 'grayscale'}`}>{action.icon}</span>
             )}
             <span>{action.label}</span>
           </button>
         ))}
         {targetId && (
-          <div style={{
-            padding: '0.25rem 1rem',
-            borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-            marginTop: '0.25rem',
-            fontSize: '0.75rem',
-            color: 'rgba(255, 255, 255, 0.5)',
-            fontStyle: 'italic'
-          }}>
+          <div className="py-1 px-4 border-t border-white/10 mt-1 text-xs text-white/50 italic">
             ID: {targetId}
           </div>
         )}
