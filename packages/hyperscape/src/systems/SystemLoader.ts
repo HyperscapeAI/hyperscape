@@ -281,12 +281,13 @@ export async function registerSystems(world: World): Promise<void> {
 
   if (world.isClient) {
     world.register('rpg-interaction', InteractionSystem)
+    world.register('rpg-ui', UISystem)
     // CameraSystem moved to core ClientCameraSystem
     // Removed UIComponents - replaced with React components
     systems.interaction = getSystem(world, 'rpg-interaction') as InteractionSystem
+    systems.ui = getSystem(world, 'rpg-ui') as UISystem
     systems.cameraSystem = getSystem(world, 'client-camera-system') as unknown as CameraSystemInterface
     systems.movementSystem = getSystem(world, 'client-movement-system') as unknown
-    
     // Register movement validation system for runtime testing
     // world.register('movement-validation', MovementValidationSystem) // This line is removed
   }

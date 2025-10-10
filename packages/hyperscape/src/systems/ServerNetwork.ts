@@ -118,6 +118,12 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     this.handlers['onEntityEvent'] = this.onEntityEvent.bind(this);
     this.handlers['onEntityRemoved'] = this.onEntityRemoved.bind(this);
     this.handlers['onSettings'] = this.onSettings.bind(this);
+    // Dedicated resource packet handlers
+    this.handlers['onResourceGather'] = (socket, data) => {
+      const { playerId, resourceId } = (data as { playerId: string; resourceId: string }) || { playerId: socket.player?.id, resourceId: undefined }
+      if (!playerId || !resourceId) return
+      this.world.emit(EventType.RESOURCE_GATHER, { playerId, resourceId })
+    }
     this.handlers['onMoveRequest'] = this.onMoveRequest.bind(this);
     this.handlers['onInput'] = this.onInput.bind(this);
   }
@@ -183,6 +189,15 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     }
     
     // Environment model loading is handled by ServerEnvironment.start()
+    
+    // Bridge important resource events to all clients using dedicated packets and snapshot on connect
+    try {
+      this.world.on(EventType.RESOURCE_DEPLETED, (...args: unknown[]) => this.send('resourceDepleted', args[0]))
+      this.world.on(EventType.RESOURCE_RESPAWNED, (...args: unknown[]) => this.send('resourceRespawned', args[0]))
+      this.world.on(EventType.RESOURCE_SPAWNED, (...args: unknown[]) => this.send('resourceSpawned', args[0]))
+      this.world.on(EventType.RESOURCE_SPAWN_POINTS_REGISTERED, (...args: unknown[]) => this.send('resourceSpawnPoints', args[0]))
+      this.world.on(EventType.INVENTORY_UPDATED, (...args: unknown[]) => this.send('inventoryUpdated', args[0]))
+    } catch (_err) {}
   }
 
   override destroy(): void {
@@ -735,6 +750,22 @@ export class ServerNetwork extends System implements NetworkWithSocket {
         authToken,
       });
 
+      // After core snapshot, send authoritative resource snapshot
+      try {
+        const resourceSystem = this.world.getSystem?.('rpg-resource') as unknown as { getAllResources?: () => Array<{ id: string; type: string; position: { x: number; y: number; z: number }; isAvailable: boolean; lastDepleted?: number; respawnTime?: number }> } | undefined
+        const resources = resourceSystem?.getAllResources?.() || []
+        const payload = {
+          resources: resources.map(r => ({
+            id: r.id,
+            type: r.type,
+            position: r.position,
+            isAvailable: r.isAvailable,
+            respawnAt: !r.isAvailable && r.lastDepleted && r.respawnTime ? (r.lastDepleted + r.respawnTime) : undefined,
+          }))
+        }
+        this.sendTo(socket.id, 'resourceSnapshot', payload)
+      } catch (_err) {}
+
       this.sockets.set(socket.id, socket);
       console.log(`[ServerNetwork] Socket added. Total sockets: ${this.sockets.size}`);
 
@@ -1023,9 +1054,25 @@ export class ServerNetwork extends System implements NetworkWithSocket {
   }
 
   onEntityEvent(socket: Socket, data: unknown): void {
-    const eventData = data as EntityEventData;
-    // Handle entity event
+    // Accept both { id, version, name, data } and { id, event, payload }
+    const incoming = data as { id?: string; version?: number; name?: string; data?: unknown; event?: string; payload?: unknown }
+    const name = (incoming.name || incoming.event) as string | undefined
+    const payload = (Object.prototype.hasOwnProperty.call(incoming, 'data') ? incoming.data : incoming.payload) as unknown
+    if (!name) return
+    // Attach playerId if not provided
+    const enriched = (() => {
+      if (typeof payload === 'object' && payload !== null && !('playerId' in (payload as Record<string, unknown>)) && socket.player?.id) {
+        return { ...(payload as Record<string, unknown>), playerId: socket.player.id }
       }
+      return payload
+    })()
+    // Emit on server world so server-side systems handle it (e.g., ResourceSystem)
+    try {
+      this.world.emit(name, enriched)
+    } catch (err) {
+      console.error('[ServerNetwork] Failed to re-emit entityEvent', name, err)
+    }
+  }
 
   onEntityRemoved(socket: Socket, data: unknown): void {
     const removedData = data as EntityRemovedData;
