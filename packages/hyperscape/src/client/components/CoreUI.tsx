@@ -15,6 +15,7 @@ import { MouseRightIcon } from './MouseRightIcon'
 import { MouseWheelIcon } from './MouseWheelIcon'
 import { Sidebar } from './Sidebar'
 import { LoadingScreen } from './LoadingScreen'
+import { ActionProgressBar } from './ActionProgressBar'
 
 // Type for icon components
 type IconComponent = React.ComponentType<{ size?: number | string }>
@@ -94,6 +95,7 @@ export function CoreUI({ world }: { world: World }) {
       {ready && <Sidebar world={world} ui={ui || { active: false, pane: null }} />}
       {ready && <Chat world={world} />}
       {ready && <Interface world={world} />}
+      {ready && <ActionProgressBar world={world} />}
       {avatar && <AvatarPane key={avatar?.hash} world={world} info={avatar} />}
       {!ready && <LoadingScreen world={world} />}
       {kicked && <KickedOverlay code={kicked} />}

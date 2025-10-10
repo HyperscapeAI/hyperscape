@@ -290,3 +290,104 @@ export function isPosition2D(value: unknown): value is Position2D {
     typeof (value as { x: unknown; y: unknown }).y === 'number'
   )
 }
+
+/**
+ * Ground position to terrain with strict validation
+ * Throws error if terrain height cannot be determined or if position is not on terrain
+ * 
+ * @param world - The game world
+ * @param position - Position to ground (x, z are used, y is replaced with terrain height)
+ * @param yOffset - Optional offset above terrain (default 0.2m)
+ * @param maxHeightDifference - Maximum allowed difference from terrain (default 2m)
+ * @returns Position grounded to terrain
+ * @throws Error if terrain system not available or position too far from terrain
+ */
+export function groundToTerrain(
+  world: World,
+  position: Position3D,
+  yOffset: number = 0.2,
+  maxHeightDifference: number = 2.0
+): Position3D {
+  // Get terrain system
+  const terrainSystem = world.getSystem<{ getHeightAt: (x: number, z: number) => number | null }>('terrain');
+  
+  if (!terrainSystem) {
+    console.error(
+      `[EntityUtils] CRITICAL: Cannot ground entity - terrain system not available! ` +
+      `Position: (${position.x.toFixed(1)}, ${position.y.toFixed(1)}, ${position.z.toFixed(1)})`
+    );
+    throw new Error(
+      `[EntityUtils] Cannot ground entity - terrain system not available. ` +
+      `Position: (${position.x.toFixed(1)}, ${position.y.toFixed(1)}, ${position.z.toFixed(1)})`
+    );
+  }
+  
+  // Get terrain height
+  const terrainHeight = terrainSystem.getHeightAt(position.x, position.z);
+  
+  if (!Number.isFinite(terrainHeight) || terrainHeight === null) {
+    console.error(
+      `[EntityUtils] CRITICAL: Cannot ground entity - terrain height unavailable! ` +
+      `Position: (${position.x.toFixed(1)}, ${position.z.toFixed(1)}), ` +
+      `Terrain height: ${terrainHeight}`
+    );
+    throw new Error(
+      `[EntityUtils] Cannot ground entity - terrain height unavailable at position. ` +
+      `Position: (${position.x.toFixed(1)}, ${position.z.toFixed(1)})`
+    );
+  }
+  
+  // Check if current position is too far from terrain
+  // Only warn if maxHeightDifference is not Infinity (strict mode)
+  const heightDifference = Math.abs(position.y - terrainHeight);
+  if (heightDifference > maxHeightDifference && maxHeightDifference !== Infinity) {
+    console.warn(
+      `[EntityUtils] Entity position far from terrain - auto-grounding. ` +
+      `Position Y: ${position.y.toFixed(1)}, Terrain Y: ${terrainHeight.toFixed(1)}, ` +
+      `Difference: ${heightDifference.toFixed(1)}m (max: ${maxHeightDifference}m). ` +
+      `Position: (${position.x.toFixed(1)}, ${position.y.toFixed(1)}, ${position.z.toFixed(1)})`
+    );
+  }
+  
+  const groundedY = terrainHeight + yOffset;
+  
+  // Return grounded position
+  return {
+    x: position.x,
+    y: groundedY,
+    z: position.z
+  };
+}
+
+/**
+ * Attempt to ground position to terrain without throwing errors
+ * Returns null if terrain system unavailable or height cannot be determined
+ * 
+ * @param world - The game world
+ * @param position - Position to ground
+ * @param yOffset - Optional offset above terrain (default 0.2m)
+ * @returns Grounded position or null if grounding failed
+ */
+export function tryGroundToTerrain(
+  world: World,
+  position: Position3D,
+  yOffset: number = 0.2
+): Position3D | null {
+  const terrainSystem = world.getSystem<{ getHeightAt: (x: number, z: number) => number | null }>('terrain');
+  
+  if (!terrainSystem) {
+    return null;
+  }
+  
+  const terrainHeight = terrainSystem.getHeightAt(position.x, position.z);
+  
+  if (!Number.isFinite(terrainHeight) || terrainHeight === null) {
+    return null;
+  }
+  
+  return {
+    x: position.x,
+    y: terrainHeight + yOffset,
+    z: position.z
+  };
+}

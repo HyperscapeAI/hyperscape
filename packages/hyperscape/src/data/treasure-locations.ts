@@ -10,9 +10,10 @@ import type { TreasureLocation } from '../types/core'
  */
 export const TREASURE_LOCATIONS: Record<string, TreasureLocation> = {
   // Level 1 - Beginner treasure locations
+  // Y=0 for all positions - will be grounded to terrain
   'lumbridge_chest_1': {
     id: 'lumbridge_chest_1',
-    position: { x: 6, y: 2, z: 6 },
+    position: { x: 6, y: 0, z: 6 },
     difficulty: 1,
     areaId: 'lumbridge',
     description: 'Hidden chest near Lumbridge castle',
@@ -21,7 +22,7 @@ export const TREASURE_LOCATIONS: Record<string, TreasureLocation> = {
   },
   'lumbridge_chest_2': {
     id: 'lumbridge_chest_2',
-    position: { x: -6, y: 2, z: 6 },
+    position: { x: -6, y: 0, z: 6 },
     difficulty: 1,
     areaId: 'lumbridge',
     description: 'Buried treasure by the river',
@@ -30,7 +31,7 @@ export const TREASURE_LOCATIONS: Record<string, TreasureLocation> = {
   },
   'lumbridge_chest_3': {
     id: 'lumbridge_chest_3',
-    position: { x: 6, y: 2, z: -6 },
+    position: { x: 6, y: 0, z: -6 },
     difficulty: 1,
     areaId: 'lumbridge',
     description: 'Ancient cache in the woods',
@@ -39,7 +40,7 @@ export const TREASURE_LOCATIONS: Record<string, TreasureLocation> = {
   },
   'lumbridge_chest_4': {
     id: 'lumbridge_chest_4',
-    position: { x: -6, y: 2, z: -6 },
+    position: { x: -6, y: 0, z: -6 },
     difficulty: 1,
     areaId: 'lumbridge',
     description: 'Forgotten stash near the bridge',
@@ -50,7 +51,7 @@ export const TREASURE_LOCATIONS: Record<string, TreasureLocation> = {
   // Level 2 - Intermediate treasure locations
   'mistwood_hoard_1': {
     id: 'mistwood_hoard_1',
-    position: { x: 12, y: 2, z: 12 },
+    position: { x: 12, y: 0, z: 12 },
     difficulty: 2,
     areaId: 'mistwood_valley',
     description: 'Bandit treasure cache',
@@ -59,7 +60,7 @@ export const TREASURE_LOCATIONS: Record<string, TreasureLocation> = {
   },
   'mistwood_hoard_2': {
     id: 'mistwood_hoard_2',
-    position: { x: -12, y: 2, z: 12 },
+    position: { x: -12, y: 0, z: 12 },
     difficulty: 2,
     areaId: 'mistwood_valley',
     description: 'Hidden goblin treasure',
@@ -68,7 +69,7 @@ export const TREASURE_LOCATIONS: Record<string, TreasureLocation> = {
   },
   'mistwood_hoard_3': {
     id: 'mistwood_hoard_3',
-    position: { x: 12, y: 2, z: -12 },
+    position: { x: 12, y: 0, z: -12 },
     difficulty: 2,
     areaId: 'mistwood_valley',
     description: 'Ancient warrior burial site',
@@ -77,7 +78,7 @@ export const TREASURE_LOCATIONS: Record<string, TreasureLocation> = {
   },
   'mistwood_hoard_4': {
     id: 'mistwood_hoard_4',
-    position: { x: -12, y: 2, z: -12 },
+    position: { x: -12, y: 0, z: -12 },
     difficulty: 2,
     areaId: 'mistwood_valley',
     description: 'Mysterious shrine offering',
@@ -88,7 +89,7 @@ export const TREASURE_LOCATIONS: Record<string, TreasureLocation> = {
   // Level 3 - Advanced treasure locations
   'shadowlands_vault_1': {
     id: 'shadowlands_vault_1',
-    position: { x: 16, y: 2, z: 16 },
+    position: { x: 16, y: 0, z: 16 },
     difficulty: 3,
     areaId: 'shadowlands',
     description: 'Dark knight treasure vault',
@@ -97,7 +98,7 @@ export const TREASURE_LOCATIONS: Record<string, TreasureLocation> = {
   },
   'shadowlands_vault_2': {
     id: 'shadowlands_vault_2',
-    position: { x: -16, y: 2, z: 16 },
+    position: { x: -16, y: 0, z: 16 },
     difficulty: 3,
     areaId: 'shadowlands',
     description: 'Frozen warrior tomb',
@@ -106,7 +107,7 @@ export const TREASURE_LOCATIONS: Record<string, TreasureLocation> = {
   },
   'shadowlands_vault_3': {
     id: 'shadowlands_vault_3',
-    position: { x: 16, y: 2, z: -16 },
+    position: { x: 16, y: 0, z: -16 },
     difficulty: 3,
     areaId: 'shadowlands',
     description: 'Dark ranger secret stash',

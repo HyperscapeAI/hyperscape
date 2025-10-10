@@ -30,7 +30,7 @@ export class StoreSystem extends SystemBase {
     {
       id: 'store_town_0',
       name: 'Central General Store',
-      position: { x: 5, y: 2, z: 0 },
+      position: { x: 5, y: 0, z: 0 }, // Y will be grounded to terrain
       npcName: 'Shopkeeper Alice',
       items: [
         getStoreItem('bronze_hatchet'),
@@ -45,7 +45,7 @@ export class StoreSystem extends SystemBase {
     {
       id: 'store_town_1',
       name: 'Eastern General Store',
-      position: { x: 105, y: 2, z: 0 },
+      position: { x: 105, y: 0, z: 0 }, // Y will be grounded to terrain
       npcName: 'Shopkeeper Bob',
       items: [
         getStoreItem('bronze_hatchet'),
@@ -59,7 +59,7 @@ export class StoreSystem extends SystemBase {
     {
       id: 'store_town_2',
       name: 'Western General Store',
-      position: { x: -105, y: 2, z: 0 },
+      position: { x: -105, y: 0, z: 0 }, // Y will be grounded to terrain
       npcName: 'Shopkeeper Charlie',
       items: [
         getStoreItem('bronze_hatchet'),
@@ -73,7 +73,7 @@ export class StoreSystem extends SystemBase {
     {
       id: 'store_town_3',
       name: 'Northern General Store', 
-      position: { x: 0, y: 2, z: 110 },
+      position: { x: 0, y: 0, z: 110 }, // Y will be grounded to terrain
       npcName: 'Shopkeeper Diana',
       items: [
         getStoreItem('bronze_hatchet'),
@@ -87,7 +87,7 @@ export class StoreSystem extends SystemBase {
     {
       id: 'store_town_4',
       name: 'Southern General Store',
-      position: { x: 0, y: 2, z: -105 },
+      position: { x: 0, y: 0, z: -105 }, // Y will be grounded to terrain
       npcName: 'Shopkeeper Eve',
       items: [
         getStoreItem('bronze_hatchet'),

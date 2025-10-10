@@ -50,10 +50,9 @@ export class ItemEntity extends InteractableEntity {
     mesh.receiveShadow = true;
     this.mesh = mesh;
 
-    // Add floating animation
-    if (this.mesh) {
-      this.mesh.position.y += 0.5; // Lift off ground slightly
-    }
+    // Mesh position is relative to node, not world
+    // Don't add offset here - the node is already at the correct world position
+    // If we want floating animation, it should be done in update() with time-based offset
 
     // Set up userData with proper typing for item
     const userData: MeshUserData = {
@@ -110,10 +109,11 @@ export class ItemEntity extends InteractableEntity {
   protected serverUpdate(deltaTime: number): void {
     super.serverUpdate(deltaTime);
 
-    // Floating animation
+    // Floating animation - mesh position is RELATIVE to node, not absolute world position
+    // Node is already positioned at terrain height, so just offset from that
     if (this.mesh && this.mesh.position && this.mesh.rotation) {
       const time = this.world.getTime() * 0.001;
-      this.mesh.position.y = this.config.position.y + 0.5 + Math.sin(time * 2) * 0.1;
+      this.mesh.position.y = 0.5 + Math.sin(time * 2) * 0.1; // Float above node position
       this.mesh.rotation.y += deltaTime * 0.5;
     }
 
@@ -124,10 +124,10 @@ export class ItemEntity extends InteractableEntity {
   protected clientUpdate(deltaTime: number): void {
     super.clientUpdate(deltaTime);
 
-    // Same floating animation on client
+    // Same floating animation on client - mesh position is RELATIVE to node
     if (this.mesh && this.mesh.position && this.mesh.rotation) {
       const time = this.world.getTime() * 0.001;
-      this.mesh.position.y = this.config.position.y + 0.5 + Math.sin(time * 2) * 0.1;
+      this.mesh.position.y = 0.5 + Math.sin(time * 2) * 0.1; // Float above node position
       this.mesh.rotation.y += deltaTime * 0.5;
     }
   }

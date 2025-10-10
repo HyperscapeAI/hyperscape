@@ -1,0 +1,95 @@
+# Railway Ignore File
+# Files and directories that should not be uploaded to Railway
+
+# Development files
+node_modules/
+.git/
+.gitignore
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Development directories
+src/
+scripts/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test files
+test/
+tests/
+__tests__/
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+screenshots/
+
+# Documentation (not needed in production)
+*.md
+!DEPLOYMENT.md
+CONTRIBUTING.md
+DOCKER.md
+LICENSE
+
+# Build artifacts we don't need
+*.tsbuildinfo
+.tscache/
+tsconfig.json
+tsconfig.build.json
+vite.config.ts
+vitest.config.ts
+playwright.config.js
+
+# Environment files (use Railway env vars instead)
+.env
+.env.*
+!.env.example
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+.dev-server.pid
+
+# Mobile development files
+ios/
+android/
+capacitor.config.ts
+capacitor.config.json
+
+# Linter and formatter
+.eslintcache
+.prettiercache
+.eslintrc
+.prettierrc
+eslint.config.js
+
+# Visual testing
+visual-test-results.log
+visual-test-summary.json
+
+# Local SQLite databases (use Railway volume instead)
+*.sqlite
+*.sqlite-*
+world/
+
+# API Extractor
+api-extractor.json
+
+# Other
+.dockerignore
+Dockerfile
+monitor-bot.mjs
+verify-avatar.mjs
+

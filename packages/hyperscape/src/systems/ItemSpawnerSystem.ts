@@ -9,7 +9,7 @@ import { ItemRarity, EntityType, InteractionType } from '../types/entities';
 import type { World } from '../types/index';
 import type { Item } from '../types/core';
 import type { EntityManager } from './EntityManager';
-import { TerrainSystem } from './TerrainSystem';
+import { groundToTerrain } from '../utils/EntityUtils';
 import type { LootItem, ItemSpawnerStats } from '../types/game-types';
 
 /**
@@ -47,26 +47,54 @@ export class ItemSpawnerSystem extends SystemBase {
   }
 
   async init(): Promise<void> {
-    // Only spawn items with 3D models on client-side to avoid server file system access
-    if (this.world.isClient) {
-      // Spawn shop items at all towns (General Store inventory)
-      await this.spawnShopItems();
-      
-      // Spawn world treasure items (equipment and resources)
-      await this.spawnTreasureItems();
-      
-      // Spawn chest loot items (valuable equipment)
-      await this.spawnChestLootItems();
-      
-      // Spawn resource items
-      await this.spawnResourceItems();
-    }
-    
     // Set up type-safe event subscriptions for item spawning (4 listeners!)
     this.subscribe<{ itemId: string; position: { x: number; y: number; z: number }; quantity?: number }>(EventType.ITEM_SPAWN_REQUEST, async (data) => await this.spawnItemAtLocation(data));
     this.subscribe<{ itemId: string }>(EventType.ITEM_DESPAWN, (data) => this.despawnItem(data.itemId));
     this.subscribe<{}>(EventType.ITEM_RESPAWN_SHOPS, async (_data) => await this.respawnShopItems());
     this.subscribe<{ position: { x: number; y: number; z: number }; lootTable: string[] }>(EventType.ITEM_SPAWN_LOOT, async (data) => await this.spawnLootItems(data));
+  }
+
+  start(): void {
+    // Spawn items after terrain is ready
+    // Only spawn items with 3D models on client-side to avoid server file system access
+    if (this.world.isClient) {
+      // Wait for terrain to be ready before spawning items
+      const checkTerrainAndSpawn = async () => {
+        const terrainSystem = this.world.getSystem('terrain') as { getHeightAt: (x: number, z: number) => number | null } | undefined;
+        if (!terrainSystem) {
+          console.warn('[ItemSpawnerSystem] Terrain system not ready, waiting...');
+          setTimeout(checkTerrainAndSpawn, 500);
+          return;
+        }
+        
+        // Test if terrain has tiles loaded
+        const testHeight = terrainSystem.getHeightAt(0, 0);
+        if (!Number.isFinite(testHeight) || testHeight === null) {
+          console.warn('[ItemSpawnerSystem] Terrain tiles not generated yet, waiting...');
+          setTimeout(checkTerrainAndSpawn, 500);
+          return;
+        }
+        
+        console.log(`[ItemSpawnerSystem] Terrain ready (height at origin: ${testHeight}), spawning items...`);
+        
+        // Spawn shop items at all towns (General Store inventory)
+        await this.spawnShopItems();
+        
+        // Spawn world treasure items (equipment and resources)
+        await this.spawnTreasureItems();
+        
+        // Spawn chest loot items (valuable equipment)
+        await this.spawnChestLootItems();
+        
+        // Spawn resource items
+        await this.spawnResourceItems();
+        
+        console.log('[ItemSpawnerSystem] All items spawned successfully');
+      };
+      
+      // Start checking after a small initial delay
+      setTimeout(checkTerrainAndSpawn, 1000);
+    }
   }
 
   private async spawnAllItemTypes(): Promise<void> {
@@ -97,9 +125,10 @@ export class ItemSpawnerSystem extends SystemBase {
           // Spread items around the treasure location
           const angle = (itemIndex / maxItems) * Math.PI * 2;
           const radius = 1.5; // Small radius around the treasure location
+          // Start with reasonable initial height - will be grounded in spawnItemFromData
           const position = {
             x: location.position.x + Math.cos(angle) * radius,
-            y: location.position.y,
+            y: location.position.y || 2,
             z: location.position.z + Math.sin(angle) * radius
           };
           
@@ -121,21 +150,15 @@ export class ItemSpawnerSystem extends SystemBase {
         const itemData = getItem(shopItem.itemId);
         
         if (itemData) {
-          // Create shop display positions
+          // Create shop display positions - Y will be grounded to terrain
           const offsetX = (itemIndex % 3) * 1.5 - 1.5; // 3 items per row
           const offsetZ = Math.floor(itemIndex / 3) * 2 - 1; // Create rows
           
-          let px = store.location.position.x + offsetX;
-          let pz = store.location.position.z + offsetZ;
-          let py = store.location.position.y + 0.5;
-          try {
-            const terrain = this.world.getSystem<TerrainSystem>('terrain');
-            if (terrain) {
-              const th = terrain.getHeightAt(px, pz);
-              if (Number.isFinite(th)) py = (th as number) + 0.3;
-            }
-          } catch (_e) {}
-          const position = { x: px, y: py, z: pz };
+          const position = {
+            x: store.location.position.x + offsetX,
+            y: 0, // Will be grounded to terrain
+            z: store.location.position.z + offsetZ
+          };
           
           const itemApp = await this.spawnItemFromData(itemData, position, 'shop', store.name);
           shopItemInstances.push(itemApp);
@@ -149,12 +172,13 @@ export class ItemSpawnerSystem extends SystemBase {
   private async spawnChestLootItems(): Promise<void> {
     
     // Define chest locations closer to origin for visual verification
-          const chestLocations = [
-        { name: 'Central Test Chest', x: 0, y: 3, z: 0, tier: ItemRarity.RARE },
-        { name: 'North Test Chest', x: 0, y: 3, z: 10, tier: ItemRarity.RARE },
-        { name: 'East Test Chest', x: 10, y: 3, z: 0, tier: ItemRarity.LEGENDARY },
-        { name: 'South Test Chest', x: 0, y: 3, z: -10, tier: ItemRarity.RARE },
-        { name: 'West Test Chest', x: -10, y: 3, z: 0, tier: ItemRarity.LEGENDARY }
+    // Y values will be grounded to terrain
+    const chestLocations = [
+        { name: 'Central Test Chest', x: 0, y: 0, z: 0, tier: ItemRarity.RARE },
+        { name: 'North Test Chest', x: 0, y: 0, z: 10, tier: ItemRarity.RARE },
+        { name: 'East Test Chest', x: 10, y: 0, z: 0, tier: ItemRarity.LEGENDARY },
+        { name: 'South Test Chest', x: 0, y: 0, z: -10, tier: ItemRarity.RARE },
+        { name: 'West Test Chest', x: -10, y: 0, z: 0, tier: ItemRarity.LEGENDARY }
       ];
     
     for (const chest of chestLocations) {
@@ -164,17 +188,11 @@ export class ItemSpawnerSystem extends SystemBase {
       for (let itemIndex = 0; itemIndex < loot.length; itemIndex++) {
         const itemData = loot[itemIndex];
         if (itemData) {
-          let px = chest.x + (itemIndex * 0.5) - 1;
-          let pz = chest.z;
-          let py = chest.y;
-          try {
-            const terrain = this.world.getSystem<TerrainSystem>('terrain');
-            if (terrain) {
-              const th = terrain.getHeightAt(px, pz);
-              if (Number.isFinite(th)) py = (th as number) + 0.3;
-            }
-          } catch (_e) {}
-          const position = { x: px, y: py, z: pz };
+          const position = {
+            x: chest.x + (itemIndex * 0.5) - 1,
+            y: chest.y,
+            z: chest.z
+          };
           
           const itemApp = await this.spawnItemFromData(itemData, position, 'chest', chest.name);
           chestItemInstances.push(itemApp);
@@ -188,35 +206,28 @@ export class ItemSpawnerSystem extends SystemBase {
   private async spawnResourceItems(): Promise<void> {
     
     // Spawn resources close to origin for easy visual verification
+    // Y values will be grounded to terrain
     const resourceSpawns = [
       // Logs near origin
-      { itemId: 'logs', x: 2, y: 2, z: 2 },
-      { itemId: 'oak_logs', x: 3, y: 2, z: 2 },
-      { itemId: 'willow_logs', x: 4, y: 2, z: 2 },
+      { itemId: 'logs', x: 2, y: 0, z: 2 },
+      { itemId: 'oak_logs', x: 3, y: 0, z: 2 },
+      { itemId: 'willow_logs', x: 4, y: 0, z: 2 },
       
       // Fish near origin  
-      { itemId: 'raw_shrimps', x: -2, y: 2, z: 2 },
-      { itemId: 'raw_sardine', x: -3, y: 2, z: 2 },
-      { itemId: 'raw_trout', x: -4, y: 2, z: 2 },
-      { itemId: 'raw_salmon', x: -5, y: 2, z: 2 },
+      { itemId: 'raw_shrimps', x: -2, y: 0, z: 2 },
+      { itemId: 'raw_sardine', x: -3, y: 0, z: 2 },
+      { itemId: 'raw_trout', x: -4, y: 0, z: 2 },
+      { itemId: 'raw_salmon', x: -5, y: 0, z: 2 },
       
       // Cooked food samples
-      { itemId: 'cooked_shrimps', x: 2, y: 2, z: -2 },
-      { itemId: 'cooked_trout', x: 3, y: 2, z: -2 }
+      { itemId: 'cooked_shrimps', x: 2, y: 0, z: -2 },
+      { itemId: 'cooked_trout', x: 3, y: 0, z: -2 }
     ];
     
     for (const spawn of resourceSpawns) {
       const itemData = getItem(spawn.itemId);
       if (itemData) {
-        let px = spawn.x, pz = spawn.z; let py = spawn.y;
-        try {
-          const terrain = this.world.getSystem<TerrainSystem>('terrain');
-          if (terrain) {
-            const th = terrain.getHeightAt(px, pz);
-            if (Number.isFinite(th)) py = (th as number) + 0.2;
-          }
-        } catch (_e) {}
-        const position = { x: px, y: py, z: pz };
+        const position = { x: spawn.x, y: spawn.y, z: spawn.z };
         await this.spawnItemFromData(itemData, position, 'resource', 'Resource Area');
       }
     }
@@ -225,6 +236,10 @@ export class ItemSpawnerSystem extends SystemBase {
   private async spawnItemFromData(itemData: Item, position: { x: number; y: number; z: number }, spawnType: string, location: string): Promise<string> {
     const itemId = `gdd_${itemData.id}_${this.itemIdCounter++}`;
     
+    // Ground item to terrain - use Infinity to allow any initial height difference
+    // This is safe because we're always grounding to actual terrain height
+    const groundedPosition = groundToTerrain(this.world, position, 0.2, Infinity);
+    
     // Create item entity via EntityManager
     const entityManager = getSystem(this.world, 'rpg-entity-manager') as EntityManager;
     
@@ -232,8 +247,8 @@ export class ItemSpawnerSystem extends SystemBase {
     const entityConfig = {
       id: itemId,
       type: EntityType.ITEM,
-      name: itemData.name,
-      position: position,
+      name: `Item: ${itemData.name}`,
+      position: groundedPosition,
       rotation: { x: 0, y: 0, z: 0, w: 1 },
       scale: { x: 1, y: 1, z: 1 },
       visible: true,
@@ -265,24 +280,16 @@ export class ItemSpawnerSystem extends SystemBase {
       }
     };
 
-    // Ground item to terrain
-    try {
-      const terrain = this.world.getSystem<TerrainSystem>('terrain');
-      if (terrain && typeof entityConfig.position.x === 'number' && typeof entityConfig.position.z === 'number') {
-        const th = terrain.getHeightAt(entityConfig.position.x, entityConfig.position.z);
-        if (Number.isFinite(th)) entityConfig.position.y = (th as number) + 0.2;
-      }
-    } catch (_e) {}
     const itemEntity = await entityManager.spawnEntity(entityConfig);
     if (!itemEntity) {
       throw new Error(`Failed to spawn item: ${itemData.name}`);
     }
     
-    // Register with systems
+    // Register with systems - use grounded position, not original
     this.emitTypedEvent(EventType.ITEM_SPAWNED, {
       itemId: itemId,
       itemType: itemData.id,
-      position: position,
+      position: groundedPosition,
       spawnType: spawnType,
       location: location,
       config: entityConfig
@@ -401,17 +408,11 @@ export class ItemSpawnerSystem extends SystemBase {
       const itemId = data.lootTable[index];
       const itemData = getItem(itemId);
       if (itemData) {
-        let px = data.position.x + (index % 3) * 0.5 - 0.5;
-        let pz = data.position.z + Math.floor(index / 3) * 0.5 - 0.5;
-        let py = data.position.y;
-        try {
-          const terrain = this.world.getSystem<TerrainSystem>('terrain');
-          if (terrain) {
-            const th = terrain.getHeightAt(px, pz);
-            if (Number.isFinite(th)) py = (th as number) + 0.2;
-          }
-        } catch (_e) {}
-        const offsetPosition = { x: px, y: py, z: pz };
+        const offsetPosition = {
+          x: data.position.x + (index % 3) * 0.5 - 0.5,
+          y: data.position.y,
+          z: data.position.z + Math.floor(index / 3) * 0.5 - 0.5
+        };
         
         await this.spawnItemFromData(itemData, offsetPosition, 'loot', 'Mob Drop');
       }

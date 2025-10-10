@@ -631,8 +631,9 @@ export class Entity implements IEntity {
     this.nameSprite = UIRenderer.createSpriteFromCanvas(nameCanvas, GAME_CONSTANTS.UI.SPRITE_SCALE)
     if (this.nameSprite) {
       this.nameSprite.position.set(0, 2.5, 0) // Position above the entity
-      if (this.world.stage.scene) {
-        this.world.stage.scene.add(this.nameSprite)
+      // Add to entity node so it follows the entity
+      if (this.node) {
+        this.node.add(this.nameSprite)
       }
     }
   }
@@ -649,8 +650,9 @@ export class Entity implements IEntity {
     this.healthSprite = UIRenderer.createSpriteFromCanvas(healthCanvas, GAME_CONSTANTS.UI.SPRITE_SCALE)
     if (this.healthSprite) {
       this.healthSprite.position.set(0, 2.0, 0) // Position above the entity, below name tag
-      if (this.world.stage.scene) {
-        this.world.stage.scene.add(this.healthSprite)
+      // Add to entity node so it follows the entity
+      if (this.node) {
+        this.node.add(this.healthSprite)
       }
     }
   }
@@ -1158,8 +1160,11 @@ export class Entity implements IEntity {
     this.destroyed = true
 
     // Clean up UI elements first - from BaseEntity
-    if (this.nameSprite && this.world.stage.scene) {
-      this.world.stage.scene.remove(this.nameSprite)
+    if (this.nameSprite) {
+      // Remove from node (not scene since we added it to node)
+      if (this.node) {
+        this.node.remove(this.nameSprite)
+      }
       // Strong type assumption - sprite material is SpriteMaterial
       const spriteMaterial = this.nameSprite.material as THREE.SpriteMaterial
       if (spriteMaterial.map) {
@@ -1169,9 +1174,12 @@ export class Entity implements IEntity {
       this.nameSprite = null
     }
 
-    if (this.healthSprite && this.world.stage.scene) {
-      this.world.stage.scene.remove(this.healthSprite)
-      // Strong type assumption - sprite material is SpriteMaterial  
+    if (this.healthSprite) {
+      // Remove from node (not scene since we added it to node)
+      if (this.node) {
+        this.node.remove(this.healthSprite)
+      }
+      // Strong type assumption - sprite material is SpriteMaterial
       const spriteMaterial = this.healthSprite.material as THREE.SpriteMaterial
       if (spriteMaterial.map) {
         spriteMaterial.map.dispose()

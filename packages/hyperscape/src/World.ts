@@ -703,6 +703,7 @@ export class World extends EventEmitter {
   }
 
   destroy(): void {
+    console.log('[World] Destroying world...')
     for (const system of this.systems) {
       system.destroy();
     }
@@ -717,6 +718,10 @@ export class World extends EventEmitter {
     }
     this.__busListenerMap.clear();
     this.removeAllListeners();
+    
+    // Reset initialization flag so world can be re-initialized if needed
+    this._initialized = false;
+    console.log('[World] World destroyed')
   }
 
 

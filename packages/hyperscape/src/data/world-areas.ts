@@ -613,9 +613,9 @@ export function getMobSpawnsInArea(areaId: string): MobSpawnPoint[] {
  * Player Spawn Points for Random Assignment
  */
 export const PLAYER_SPAWN_POINTS: WorldPosition[] = [
-  { x: 0, y: 50, z: 0 },     // Lumbridge center - Y will be grounded to terrain
-  { x: 100, y: 50, z: 0 },   // Draynor center - Y will be grounded to terrain
-  { x: -100, y: 50, z: 100 } // Falador center - Y will be grounded to terrain
+  { x: 0, y: 0, z: 0 },     // Lumbridge center - Y will be grounded to terrain
+  { x: 100, y: 0, z: 0 },   // Draynor center - Y will be grounded to terrain
+  { x: -100, y: 0, z: 100 } // Falador center - Y will be grounded to terrain
 ];
 
 export function getRandomSpawnPoint(): WorldPosition {

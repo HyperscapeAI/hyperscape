@@ -5,7 +5,7 @@ export interface ResourceAction {
   label: string;
   icon?: string;
   enabled: boolean;
-  onClick: () => void;
+  onClick?: () => void;
 }
 
 export interface ResourceContextMenuProps {
@@ -15,6 +15,7 @@ export interface ResourceContextMenuProps {
   targetId?: string;
   targetType?: string;
   onClose: () => void;
+  onActionClick?: (actionId: string) => void;
 }
 
 export function ResourceContextMenu({ 
@@ -23,7 +24,8 @@ export function ResourceContextMenu({
   actions, 
   targetId,
   targetType,
-  onClose 
+  onClose,
+  onActionClick
 }: ResourceContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -97,7 +99,12 @@ export function ResourceContextMenu({
               e.stopPropagation();
               e.preventDefault();
               if (action.enabled) {
-                action.onClick();
+                // Prefer onActionClick callback, fallback to action.onClick for backwards compatibility
+                if (onActionClick) {
+                  onActionClick(action.id);
+                } else if (action.onClick) {
+                  action.onClick();
+                }
                 onClose();
               }
             }}

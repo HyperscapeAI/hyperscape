@@ -68,6 +68,13 @@ export function Interface({ world }: { world: World }) {
     targetType: ''
   })
   const [damageNumbers, setDamageNumbers] = useState<DamageNumber[]>([])
+  const [gatheringState, setGatheringState] = useState<{
+    active: boolean
+    action: string
+    resourceType: string
+    startTime: number
+    duration: number
+  } | null>(null)
 
   useEffect(() => {
     const localPlayer = world.getPlayer()
@@ -244,6 +251,17 @@ export function Interface({ world }: { world: World }) {
       }
     }
 
+    const handleCloseMenu = () => {
+      setContextMenu(null)
+      setResourceContextMenu({
+        visible: false,
+        position: { x: 0, y: 0 },
+        actions: [],
+        targetId: '',
+        targetType: ''
+      })
+    }
+
     const handleCombatEvent = (rawData: unknown) => {
       const data = rawData as { damage?: number; amount?: number; type?: string; x?: number; y?: number }
       // Add damage numbers for combat events
@@ -277,6 +295,38 @@ export function Interface({ world }: { world: World }) {
       }
     }
 
+    const handleGatheringStarted = (rawData: unknown) => {
+      const data = rawData as { playerId: string; resourceId: string; skill?: string; actionName?: string; duration?: number; action?: string }
+      if (data.playerId !== localPlayer.id) return
+      
+      const actionName = data.actionName || data.action || data.skill || 'gathering'
+      const resourceType = data.resourceId.includes('tree') ? 'tree' : 
+                           data.resourceId.includes('fish') ? 'fishing spot' :
+                           data.resourceId.includes('rock') ? 'rock' : 'resource'
+      
+      setGatheringState({
+        active: true,
+        action: actionName,
+        resourceType,
+        startTime: Date.now(),
+        duration: data.duration || 5000 // Default 5 seconds
+      })
+    }
+
+    const handleGatheringCompleted = (rawData: unknown) => {
+      const data = rawData as { playerId: string }
+      if (data.playerId !== localPlayer.id) return
+      
+      setGatheringState(null)
+    }
+
+    const handleGatheringStopped = (rawData: unknown) => {
+      const data = rawData as { playerId: string }
+      if (data.playerId !== localPlayer.id) return
+      
+      setGatheringState(null)
+    }
+
     // Subscribe to events
     const typedWorld = world
     typedWorld.on(EventType.UI_UPDATE, handleUIUpdate)
@@ -290,11 +340,16 @@ export function Interface({ world }: { world: World }) {
     typedWorld.on(EventType.STORE_CLOSE, handleStoreClose)
     // Removed STORE_INTERFACE_UPDATE - UI updates reactively to STORE_BUY/STORE_SELL events
     typedWorld.on(EventType.UI_CONTEXT_MENU, handleContextMenu)
+    typedWorld.on(EventType.UI_OPEN_MENU, handleResourceMenu)
+    typedWorld.on(EventType.UI_CLOSE_MENU, handleCloseMenu)
     typedWorld.on(EventType.UI_OPEN_PANE, handleOpenPane)
     typedWorld.on(EventType.COMBAT_DAMAGE_DEALT, handleCombatEvent)
     typedWorld.on(EventType.COMBAT_HEAL, handleCombatEvent)
     typedWorld.on(EventType.SKILLS_XP_GAINED, handleCombatEvent)
     typedWorld.on(EventType.COMBAT_MISS, handleCombatEvent)
+    typedWorld.on(EventType.RESOURCE_GATHERING_STARTED, handleGatheringStarted)
+    typedWorld.on(EventType.RESOURCE_GATHERING_COMPLETED, handleGatheringCompleted)
+    typedWorld.on(EventType.RESOURCE_GATHERING_STOPPED, handleGatheringStopped)
 
     // Keyboard shortcuts
     const control = world.controls?.bind({ priority: 100 }) as {
@@ -325,11 +380,16 @@ export function Interface({ world }: { world: World }) {
       typedWorld.off(EventType.STORE_CLOSE, handleStoreClose)
       // Removed STORE_INTERFACE_UPDATE listener cleanup
       typedWorld.off(EventType.UI_CONTEXT_MENU, handleContextMenu)
+      typedWorld.off(EventType.UI_OPEN_MENU, handleResourceMenu)
+      typedWorld.off(EventType.UI_CLOSE_MENU, handleCloseMenu)
       typedWorld.off(EventType.UI_OPEN_PANE, handleOpenPane)
       typedWorld.off(EventType.COMBAT_DAMAGE_DEALT, handleCombatEvent)
       typedWorld.off(EventType.COMBAT_HEAL, handleCombatEvent)
       typedWorld.off(EventType.SKILLS_XP_GAINED, handleCombatEvent)
       typedWorld.off(EventType.COMBAT_MISS, handleCombatEvent)
+      typedWorld.off(EventType.RESOURCE_GATHERING_STARTED, handleGatheringStarted)
+      typedWorld.off(EventType.RESOURCE_GATHERING_COMPLETED, handleGatheringCompleted)
+      typedWorld.off(EventType.RESOURCE_GATHERING_STOPPED, handleGatheringStopped)
       if (control?.unbind) {
         control.unbind()
       }
@@ -443,8 +503,31 @@ export function Interface({ world }: { world: World }) {
           world={world}
         />
       )}
+      <ResourceContextMenu
+        visible={resourceContextMenu.visible}
+        position={resourceContextMenu.position}
+        actions={resourceContextMenu.actions}
+        targetId={resourceContextMenu.targetId}
+        targetType={resourceContextMenu.targetType}
+        onActionClick={(actionId) => {
+          // Emit event to ResourceInteractionSystem
+          world.emit(EventType.RESOURCE_ACTION, {
+            playerId: world.getPlayer()?.id || '',
+            resourceId: resourceContextMenu.targetId,
+            action: actionId
+          });
+        }}
+        onClose={() => setResourceContextMenu({
+          visible: false,
+          position: { x: 0, y: 0 },
+          actions: [],
+          targetId: '',
+          targetType: ''
+        })}
+      />
       {/* ButtonPanel removed; replaced by minimap tabs in Sidebar */}
       <DamageNumbers damageNumbers={damageNumbers} />
+      {gatheringState && <GatheringProgress state={gatheringState} />}
       <InteractionHandler world={world} />
     </>
   )
@@ -1927,5 +2010,94 @@ function DamageNumbers({ damageNumbers }: { damageNumbers: DamageNumber[] }) {
         )
       })}
     </>
+  )
+}
+
+// Gathering Progress Component
+function GatheringProgress({ state }: { 
+  state: { 
+    active: boolean
+    action: string
+    resourceType: string
+    startTime: number
+    duration: number
+  } 
+}) {
+  const [progress, setProgress] = useState(0)
+  
+  useEffect(() => {
+    if (!state.active) return
+    
+    const updateProgress = () => {
+      const elapsed = Date.now() - state.startTime
+      const progressPercent = Math.min((elapsed / state.duration) * 100, 100)
+      setProgress(progressPercent)
+      
+      if (progressPercent >= 100) {
+        return
+      }
+    }
+    
+    // Update every 50ms for smooth animation
+    const interval = setInterval(updateProgress, 50)
+    updateProgress() // Initial update
+    
+    return () => clearInterval(interval)
+  }, [state])
+  
+  const getActionIcon = (action: string) => {
+    if (action.includes('chop')) return '🪓'
+    if (action.includes('fish')) return '🎣'
+    if (action.includes('mine')) return '⛏️'
+    return '⚒️'
+  }
+  
+  const getActionColor = (action: string) => {
+    if (action.includes('chop')) return '#8B4513' // Brown
+    if (action.includes('fish')) return '#4682B4' // Blue
+    if (action.includes('mine')) return '#808080' // Gray
+    return '#10b981' // Green
+  }
+  
+  return (
+    <div
+      className="fixed left-1/2 -translate-x-1/2 bg-[rgba(11,10,21,0.95)] border border-white/20 rounded-lg p-4 pointer-events-none backdrop-blur-xl z-[900] shadow-[0_8px_32px_rgba(0,0,0,0.6)]"
+      style={{
+        bottom: 'calc(6rem + env(safe-area-inset-bottom))',
+        minWidth: '300px'
+      }}
+    >
+      <div className="flex items-center gap-3 mb-2">
+        <span className="text-2xl">{getActionIcon(state.action)}</span>
+        <div className="flex-1">
+          <div className="text-sm font-medium text-white/90 capitalize">
+            {state.action.replace('_', ' ')}
+          </div>
+          <div className="text-xs text-white/60">
+            {state.resourceType.replace('_', ' ')}
+          </div>
+        </div>
+        <div className="text-sm font-mono text-white/70">
+          {Math.ceil((state.duration - (Date.now() - state.startTime)) / 1000)}s
+        </div>
+      </div>
+      
+      {/* Progress Bar */}
+      <div className="w-full h-2 bg-black/50 rounded-full overflow-hidden border border-white/10">
+        <div
+          className="h-full transition-all duration-100 ease-linear rounded-full"
+          style={{
+            width: `${progress}%`,
+            background: `linear-gradient(90deg, ${getActionColor(state.action)}, ${getActionColor(state.action)}cc)`,
+            boxShadow: `0 0 10px ${getActionColor(state.action)}88`
+          }}
+        />
+      </div>
+      
+      {/* Progress percentage */}
+      <div className="text-center text-xs mt-1 text-white/50 font-mono">
+        {Math.floor(progress)}%
+      </div>
+    </div>
   )
 }

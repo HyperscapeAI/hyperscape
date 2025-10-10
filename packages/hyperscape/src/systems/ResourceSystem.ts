@@ -113,8 +113,10 @@ export class ResourceSystem extends SystemBase {
   }
 
   start(): void {
+    console.log('[ResourceSystem] ⚡ start() called - starting gathering update interval');
     // Start listening to gathering events
-    this.createInterval(() => this.updateGathering(), 500); // Check every 500ms
+    const interval = this.createInterval(() => this.updateGathering(), 500); // Check every 500ms
+    console.log('[ResourceSystem] Update interval created:', interval ? 'Success' : 'Failed');
   }
 
   /**
@@ -341,6 +343,8 @@ export class ResourceSystem extends SystemBase {
     const playerId = createPlayerID(data.playerId);
     const resourceId = createResourceID(data.resourceId);
     
+    console.log(`[ResourceSystem] startGathering called for player ${data.playerId} on resource ${data.resourceId}`);
+    
     const resource = this.resources.get(resourceId);
     
     // Check if resource exists
@@ -379,70 +383,45 @@ export class ResourceSystem extends SystemBase {
       return;
     }
 
-    // Check if player has required tool equipped
-    const toolMap = {
-      'bronze_hatchet': { type: 'hatchet', name: 'hatchet' },
-      'fishing_rod': { type: 'fishing_rod', name: 'fishing rod' },
-      'bronze_pickaxe': { type: 'pickaxe', name: 'pickaxe' }
+    // Check player skill level (reactive pattern)
+    const cachedSkills = this.playerSkills.get(data.playerId);
+    const skillLevel = cachedSkills?.[resource.skillRequired]?.level ?? 1;
+    
+    if (resource.levelRequired !== undefined && skillLevel < resource.levelRequired) {
+      this.emitTypedEvent(EventType.UI_MESSAGE, {
+        playerId: data.playerId,
+        message: `You need level ${resource.levelRequired} ${resource.skillRequired} to use this resource.`,
+        type: 'error'
+      });
+      return;
+    }
+
+    // TODO: Add proper tool check via inventory system query (not callback)
+    // For now, skip tool check to get gathering working
+    // Tools will be checked later when we have proper inventory queries
+
+    // Start gathering process
+    const skillCheck = Math.random() * 100; // Will determine success
+    const gatheringSession = {
+      playerId: playerId,
+      resourceId: resourceId,
+      startTime: Date.now(),
+      skillCheck
     };
+
+    this.activeGathering.set(playerId, gatheringSession);
+
+    const actionName = resource.skillRequired === 'woodcutting' ? 'chopping' : 
+                       resource.skillRequired === 'fishing' ? 'fishing' : 'gathering';
+    const resourceName = resource.name || resource.type.replace('_', ' ');
+    const gatheringDuration = 5000 - (skillCheck * 20); // 3-5 seconds
     
-    const tool = toolMap[resource.toolRequired as keyof typeof toolMap];
+    console.log(`[ResourceSystem] ✅ Gathering started! Player ${data.playerId} ${actionName} ${resourceName} for ${gatheringDuration/1000}s (skill check: ${skillCheck})`);
     
-    this.emitTypedEvent(EventType.INVENTORY_HAS_EQUIPPED, {
-      playerId: data.playerId,
-      slot: 'weapon', // Tools are equipped in weapon slot
-      itemType: tool.type,
-      callback: (hasEquipped: boolean) => {
-        if (!hasEquipped) {
-          this.emitTypedEvent(EventType.UI_MESSAGE, {
-            playerId: data.playerId,
-            message: `You need a ${tool.name} equipped to ${resource.skillRequired}.`,
-            type: 'error'
-          });
-          return;
-        }
-
-        // Check player skill level (reactive pattern)
-        const cachedSkills = this.playerSkills.get(data.playerId);
-        const skillLevel = cachedSkills?.[resource.skillRequired]?.level ?? 1;
-        
-        if (resource.levelRequired !== undefined && skillLevel < resource.levelRequired) {
-          this.emitTypedEvent(EventType.UI_MESSAGE, {
-            playerId: data.playerId,
-            message: `You need level ${resource.levelRequired} ${resource.skillRequired} to use this resource.`,
-            type: 'error'
-          });
-          return;
-        }
-
-        // Start gathering process
-        const skillCheck = Math.random() * 100; // Will determine success
-        const gatheringSession = {
-          playerId: playerId,
-          resourceId: resourceId,
-          startTime: Date.now(),
-          skillCheck
-        };
-
-        this.activeGathering.set(playerId, gatheringSession);
-
-        const actionName = resource.skillRequired === 'woodcutting' ? 'chopping' : 'fishing';
-        
-        // Send gathering started event
-        this.emitTypedEvent(EventType.RESOURCE_GATHERING_STARTED, {
-          playerId: data.playerId,
-          resourceId: data.resourceId,
-          skill: resource.skillRequired,
-          actionName
-        });
-
-        // Show gathering message
-        this.emitTypedEvent(EventType.UI_MESSAGE, {
-          playerId: data.playerId, 
-          message: `You start ${actionName}...`,
-          type: 'info'
-        });
-      }
+    // Show toast notification
+    this.emitTypedEvent(EventType.UI_TOAST, {
+      message: `You start ${actionName} the ${resourceName.toLowerCase()}...`,
+      type: 'info'
     });
   }
 
@@ -467,18 +446,29 @@ export class ResourceSystem extends SystemBase {
     const now = Date.now();
     const completedSessions: PlayerID[] = [];
 
+    if (this.activeGathering.size > 0) {
+      console.log(`[ResourceSystem] updateGathering: checking ${this.activeGathering.size} active gathering sessions`);
+    }
+
     for (const [playerId, session] of this.activeGathering.entries()) {
       const resource = this.resources.get(session.resourceId);
       if (!resource?.isAvailable) {
+        console.log(`[ResourceSystem] Resource ${session.resourceId} not available, canceling gathering`);
         completedSessions.push(playerId);
         continue;
       }
 
       // Check if gathering time is complete (3-5 seconds based on skill)
       const gatheringTime = 5000 - (session.skillCheck * 20); // 3-5 seconds based on skill check
-      if (now - session.startTime >= gatheringTime) {
+      const elapsed = now - session.startTime;
+      
+      if (elapsed >= gatheringTime) {
+        console.log(`[ResourceSystem] ⏰ Gathering time complete! Elapsed: ${elapsed}ms, Required: ${gatheringTime}ms`);
         this.completeGathering(playerId, session);
         completedSessions.push(playerId);
+      } else if (Math.floor(elapsed / 1000) !== Math.floor((elapsed - 500) / 1000)) {
+        // Log every second
+        console.log(`[ResourceSystem] ⏳ Gathering in progress: ${Math.floor(elapsed / 1000)}s / ${Math.floor(gatheringTime / 1000)}s`);
       }
     }
 
@@ -491,6 +481,8 @@ export class ResourceSystem extends SystemBase {
   private completeGathering(playerId: PlayerID, session: { playerId: PlayerID; resourceId: ResourceID; startTime: number; skillCheck: number }): void {
     const resource = this.resources.get(session.resourceId)!;
 
+    console.log(`[ResourceSystem] completeGathering called for resource ${session.resourceId}`);
+
     // Calculate success based on skill level and random check (reactive pattern)
     const cachedSkills = this.playerSkills.get(playerId);
     const skillLevel = cachedSkills?.[resource.skillRequired]?.level ?? 1;
@@ -500,6 +492,8 @@ export class ResourceSystem extends SystemBase {
     const skillBonus = skillLevel * 2;
     const successRate = Math.min(85, baseSuccessRate + skillBonus);
     const isSuccessful = session.skillCheck <= successRate;
+    
+    console.log(`[ResourceSystem] Gathering result: ${isSuccessful ? 'SUCCESS' : 'FAIL'} (roll: ${session.skillCheck}, needed: <=${successRate})`);
 
     if (isSuccessful) {
       // Determine drops
@@ -528,10 +522,15 @@ export class ResourceSystem extends SystemBase {
 
             // Skills system will listen to XP_GAINED and emit SKILLS_UPDATED reactively
 
-            const actionName = resource.skillRequired === 'woodcutting' ? 'chop down the tree' : 'catch a fish';
-            this.emitTypedEvent(EventType.UI_MESSAGE, {
-              playerId: playerId,
-              message: `You successfully ${actionName} and receive ${drop.quantity}x ${drop.itemName}!`,
+            const actionName = resource.skillRequired === 'woodcutting' ? 'chop down the tree' : 
+                               resource.skillRequired === 'fishing' ? 'catch a fish' : 'gather from the resource';
+            const resourceName = resource.name || resource.type.replace('_', ' ');
+            
+            console.log(`[ResourceSystem] ✅ SUCCESS! ${drop.itemName} x${drop.quantity} added to inventory, ${drop.xpAmount} XP gained`);
+            
+            // Show success message via toast
+            this.emitTypedEvent(EventType.UI_TOAST, {
+              message: `You successfully ${actionName}! +${drop.quantity} ${drop.itemName}`,
               type: 'success'
             });
 
@@ -543,10 +542,19 @@ export class ResourceSystem extends SystemBase {
       resource.isAvailable = false;
       resource.lastDepleted = Date.now();
 
+      console.log(`[ResourceSystem] 🌲→🪵 Resource depleted! Will respawn in ${resource.respawnTime/1000}s`);
+
+      // Emit depletion event so visualization can show stump/depleted state
+      this.emitTypedEvent(EventType.RESOURCE_DEPLETED, {
+        resourceId: session.resourceId
+      });
+
       // Set respawn timer
       const respawnTimer = setTimeout(() => {
         resource.isAvailable = true;
         resource.lastDepleted = 0;
+        
+        console.log(`[ResourceSystem] 🌲 Resource respawned: ${session.resourceId}`);
         
         // Notify nearby players
         this.emitTypedEvent(EventType.RESOURCE_RESPAWNED, {
@@ -559,9 +567,13 @@ export class ResourceSystem extends SystemBase {
 
     } else {
       // Failed attempt
-      const actionName = resource.skillRequired === 'woodcutting' ? 'cut the tree' : 'catch anything';
-      this.emitTypedEvent(EventType.UI_MESSAGE, {
-        playerId: playerId,
+      const actionName = resource.skillRequired === 'woodcutting' ? 'chop the tree' : 
+                         resource.skillRequired === 'fishing' ? 'catch anything' : 'gather';
+      
+      console.log(`[ResourceSystem] ❌ FAILED! Skill check ${session.skillCheck} > ${successRate}`);
+      
+      // Show failure message via toast
+      this.emitTypedEvent(EventType.UI_TOAST, {
         message: `You fail to ${actionName}.`,
         type: 'info'
       });

@@ -20,7 +20,7 @@ export const BANKS: Record<string, BankEntityData> = {
     name: 'Central Bank',
     location: {
       zone: 'town_central',
-      position: { x: 5, y: 2, z: 8 }
+      position: { x: 5, y: 0, z: 8 } // Y will be grounded to terrain
     },
     isShared: false,
     maxSlots: -1, // Unlimited per GDD
@@ -32,7 +32,7 @@ export const BANKS: Record<string, BankEntityData> = {
     name: 'Eastern Bank',
     location: {
       zone: 'town_eastern',
-      position: { x: 105, y: 2, z: 8 }
+      position: { x: 105, y: 0, z: 8 } // Y will be grounded to terrain
     },
     isShared: false,
     maxSlots: -1,
@@ -44,7 +44,7 @@ export const BANKS: Record<string, BankEntityData> = {
     name: 'Western Bank', 
     location: {
       zone: 'town_western',
-      position: { x: -95, y: 2, z: 8 }
+      position: { x: -95, y: 0, z: 8 } // Y will be grounded to terrain
     },
     isShared: false,
     maxSlots: -1,
@@ -56,7 +56,7 @@ export const BANKS: Record<string, BankEntityData> = {
     name: 'Northern Bank',
     location: {
       zone: 'town_northern', 
-      position: { x: 5, y: 2, z: 108 }
+      position: { x: 5, y: 0, z: 108 } // Y will be grounded to terrain
     },
     isShared: false,
     maxSlots: -1,
@@ -68,7 +68,7 @@ export const BANKS: Record<string, BankEntityData> = {
     name: 'Southern Bank',
     location: {
       zone: 'town_southern',
-      position: { x: 5, y: 2, z: -92 }
+      position: { x: 5, y: 0, z: -92 } // Y will be grounded to terrain
     },
     isShared: false,
     maxSlots: -1,
@@ -86,7 +86,7 @@ export const GENERAL_STORES: Record<string, StoreData> = {
     name: 'Central General Store',
     location: {
       zone: 'town_central',
-      position: { x: -5, y: 2, z: 8 }
+      position: { x: -5, y: 0, z: 8 } // Y will be grounded to terrain
     },
     buyback: true,
     buybackRate: 0.5, // 50% of item value
@@ -140,7 +140,7 @@ export const GENERAL_STORES: Record<string, StoreData> = {
     name: 'Eastern General Store',
     location: {
       zone: 'town_eastern',
-      position: { x: 95, y: 2, z: 8 }
+      position: { x: 95, y: 0, z: 8 } // Y will be grounded to terrain
     },
     buyback: true,
     buybackRate: 0.5,
@@ -194,7 +194,7 @@ export const GENERAL_STORES: Record<string, StoreData> = {
     name: 'Western General Store',
     location: {
       zone: 'town_western',
-      position: { x: -105, y: 2, z: 8 }
+      position: { x: -105, y: 0, z: 8 } // Y will be grounded to terrain
     },
     buyback: true,
     buybackRate: 0.5,
@@ -248,7 +248,7 @@ export const GENERAL_STORES: Record<string, StoreData> = {
     name: 'Northern General Store',
     location: {
       zone: 'town_northern',
-      position: { x: -5, y: 2, z: 108 }
+      position: { x: -5, y: 0, z: 108 } // Y will be grounded to terrain
     },
     buyback: true,
     buybackRate: 0.5,
@@ -302,7 +302,7 @@ export const GENERAL_STORES: Record<string, StoreData> = {
     name: 'Southern General Store',
     location: {
       zone: 'town_southern',
-      position: { x: -5, y: 2, z: -92 }
+      position: { x: -5, y: 0, z: -92 } // Y will be grounded to terrain
     },
     buyback: true,
     buybackRate: 0.5,

@@ -65,16 +65,8 @@ export class EntityManager extends SystemBase {
     this.subscribe(EventType.ENTITY_PROPERTY_REQUEST, (data) => this.handlePropertyRequest({ entityId: data.entityId, propertyName: data.property, value: data.value }));
     
     // Listen for specific entity type spawn requests
-    this.subscribe(EventType.ITEM_SPAWNED, (data) => this.handleItemSpawn({ 
-      id: data.itemId, 
-      customId: `item_${data.itemId}`, 
-      name: 'item', 
-      position: data.position, 
-      model: null,
-      quantity: 1,
-      stackable: true,
-      value: 1
-    }));
+    // NOTE: Don't subscribe to ITEM_SPAWNED - that's an event we emit AFTER spawning, not a spawn request
+    // Subscribing to it would cause duplicate spawns!
     this.subscribe(EventType.ITEM_PICKUP, (data) => this.handleItemPickup({ entityId: data.itemId, playerId: data.playerId }));
     // EntityManager should handle spawn REQUESTS, not completed spawns
     this.subscribe(EventType.MOB_SPAWN_REQUEST, (data) => this.handleMobSpawn({
@@ -84,6 +76,7 @@ export class EntityManager extends SystemBase {
       customId: `mob_${Date.now()}`,
       name: data.mobType
     }));
+    this.subscribe(EventType.NPC_SPAWN_REQUEST, (data) => this.handleNPCSpawnRequest(data));
     this.subscribe(EventType.MOB_ATTACKED, (data) => this.handleMobAttacked({ entityId: data.mobId, damage: data.damage, attackerId: data.attackerId }));
         this.subscribe(EventType.COMBAT_MOB_ATTACK, (data) => this.handleMobAttack({ mobId: data.mobId, targetId: data.targetId, damage: 0 }));
     // RESOURCE_GATHERED has different structure in EventMap
@@ -384,7 +377,7 @@ export class EntityManager extends SystemBase {
     
     const config: MobEntityConfig = {
       id: data.customId || `mob_${this.nextEntityId++}`,
-      name: data.name || mobType || 'Mob',
+      name: `Mob: ${data.name || mobType || 'Unknown'} (Lv${level})`,
       type: EntityType.MOB,
       position: position,
       rotation: { x: 0, y: 0, z: 0, w: 1 },
@@ -790,10 +783,13 @@ export class EntityManager extends SystemBase {
   }
 
   private async spawnResource(resourceId: string, position: { x: number, y: number, z: number }, resourceType: string): Promise<Entity | null> {
+    // Create readable resource name
+    const resourceName = resourceType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    
     const config: ResourceEntityConfig = {
       id: resourceId,
       type: EntityType.RESOURCE,
-      name: `Resource_${resourceType}`,
+      name: `Resource: ${resourceName}`,
       position: position,
       rotation: { x: 0, y: 0, z: 0, w: 1 },
       scale: { x: 1, y: 1, z: 1 },
@@ -840,6 +836,71 @@ export class EntityManager extends SystemBase {
     // Resource harvest logic would go here
     // For now, just log it
       }
+
+  private async handleNPCSpawnRequest(data: { npcId: string; name: string; type: string; position: { x: number; y: number; z: number }; services?: string[]; modelPath?: string }): Promise<void> {
+    // Determine NPC type prefix based on services/type
+    let typePrefix = 'NPC';
+    if (data.type === 'bank' || data.services?.includes('banking')) {
+      typePrefix = 'Bank';
+    } else if (data.type === 'general_store' || data.services?.includes('buy_items')) {
+      typePrefix = 'Store';
+    } else if (data.type === 'skill_trainer') {
+      typePrefix = 'Trainer';
+    } else if (data.type === 'quest_giver') {
+      typePrefix = 'Quest';
+    }
+    
+    const config: NPCEntityConfig = {
+      id: `npc_${data.npcId}_${this.nextEntityId++}`,
+      name: `${typePrefix}: ${data.name}`,
+      type: EntityType.NPC,
+      position: data.position,
+      rotation: { x: 0, y: 0, z: 0, w: 1 },
+      scale: { x: 1, y: 1, z: 1 },
+      visible: true,
+      interactable: true,
+      interactionType: InteractionType.DIALOGUE,
+      interactionDistance: 3,
+      description: data.name,
+      model: data.modelPath || null,
+      npcType: this.mapTypeToNPCType(data.type),
+      dialogues: [],
+      questGiver: data.type === 'quest_giver',
+      shopkeeper: data.type === 'general_store',
+      bankTeller: data.type === 'bank',
+      properties: {
+        movementComponent: null,
+        combatComponent: null,
+        healthComponent: null,
+        visualComponent: null,
+        health: { current: 100, max: 100 },
+        level: 1
+      }
+    };
+    
+    await this.spawnEntity(config);
+    
+    // If it's a store, register it with the store system
+    if (data.type === 'general_store' || data.services?.includes('buy_items')) {
+      this.emitTypedEvent(EventType.STORE_REGISTER_NPC, {
+        npcId: data.npcId,
+        storeId: `store_${data.type}`, 
+        position: data.position,
+        name: data.name,
+        area: 'town'
+      });
+    }
+  }
+  
+  private mapTypeToNPCType(type: string): NPCType {
+    switch (type) {
+      case 'bank': return NPCType.BANKER;
+      case 'general_store': return NPCType.SHOPKEEPER;
+      case 'skill_trainer': return NPCType.SKILL_MASTER;
+      case 'quest_giver': return NPCType.QUEST_GIVER;
+      default: return NPCType.QUEST_GIVER;
+    }
+  }
 
   private handleNPCSpawn(data: { 
     customId: string,

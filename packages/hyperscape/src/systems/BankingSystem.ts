@@ -11,6 +11,7 @@ import {
   createPlayerID,
 } from '../utils/IdentifierUtils';
 import { SystemBase } from './SystemBase';
+import { PlayerIdMapper } from './PlayerIdMapper';
 
 /**
  * Banking System
@@ -28,11 +29,11 @@ export class BankingSystem extends SystemBase {
   // Logger is inherited from SystemBase, no need to override
   private readonly MAX_BANK_SLOTS = BANKING_CONSTANTS.MAX_BANK_SLOTS;
   private readonly STARTER_TOWN_BANKS = [
-    { id: 'bank_town_0', name: 'Central Bank', position: { x: 0, y: 2, z: 5 } },
-    { id: 'bank_town_1', name: 'Eastern Bank', position: { x: 100, y: 2, z: 5 } },
-    { id: 'bank_town_2', name: 'Western Bank', position: { x: -100, y: 2, z: 5 } },
-    { id: 'bank_town_3', name: 'Northern Bank', position: { x: 0, y: 2, z: 105 } },
-    { id: 'bank_town_4', name: 'Southern Bank', position: { x: 0, y: 2, z: -95 } }
+    { id: 'bank_town_0', name: 'Central Bank', position: { x: 0, y: 0, z: 5 } }, // Y will be grounded to terrain
+    { id: 'bank_town_1', name: 'Eastern Bank', position: { x: 100, y: 0, z: 5 } }, // Y will be grounded to terrain
+    { id: 'bank_town_2', name: 'Western Bank', position: { x: -100, y: 0, z: 5 } }, // Y will be grounded to terrain
+    { id: 'bank_town_3', name: 'Northern Bank', position: { x: 0, y: 0, z: 105 } }, // Y will be grounded to terrain
+    { id: 'bank_town_4', name: 'Southern Bank', position: { x: 0, y: 0, z: -95 } } // Y will be grounded to terrain
   ];
 
   constructor(world: World) {

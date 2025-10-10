@@ -289,6 +289,7 @@ export interface EventMap {
   [EventType.RESOURCE_GATHER]: { playerId: string; resourceId: string };
   [EventType.RESOURCE_HARVEST]: { playerId: string; resourceId: string; success: boolean };
   [EventType.RESOURCE_GATHERING_STARTED]: { playerId: string; resourceId: string; playerPosition: { x: number; y: number; z: number } };
+  [EventType.RESOURCE_GATHERING_PROGRESS]: { playerId: string; resourceId: string; skill: string; actionName: string; duration: number; progress: number };
   [EventType.RESOURCE_GATHERING_STOPPED]: { playerId: string; resourceId: string };
   [EventType.RESOURCE_GATHERING_COMPLETED]: { playerId: string; resourceId: string; resourceType: 'tree' | 'rock' | 'ore' | 'herb' | 'fish'; skill: 'woodcutting' | 'mining' | 'fishing' | 'herbalism' };
   [EventType.RESOURCE_SPAWN_POINTS_REGISTERED]: { spawnPoints: Array<{ id: string; type: 'tree' | 'rock' | 'ore' | 'herb' | 'fish'; position: { x: number; y: number; z: number } }> };

@@ -741,7 +741,9 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       // Emit typed player joined event (after snapshot)
       if (socket.player) {
         const playerId = socket.player.data.id as string;
-            this.world.emit(EventType.PLAYER_JOINED, { playerId });
+        const userId = socket.player.data.userId as string | undefined;
+        console.log(`[ServerNetwork] Emitting PLAYER_JOINED - playerId: ${playerId}, userId: ${userId}`);
+        this.world.emit(EventType.PLAYER_JOINED, { playerId, userId });
       }
 
       // Broadcast new player entity to all existing clients except the new connection

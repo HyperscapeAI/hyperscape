@@ -18,9 +18,8 @@ import type { ItemEntityConfig } from '../types/entities';
 // LootEntry unused for now
 import { items } from '../data/items';
 import type { DroppedItem, } from '../types/systems';
-import { calculateDistance } from '../utils/EntityUtils';
+import { calculateDistance, groundToTerrain } from '../utils/EntityUtils';
 import { EntityManager } from './EntityManager';
-import { TerrainSystem } from './TerrainSystem';
 
 
 export class LootSystem extends SystemBase {
@@ -327,20 +326,14 @@ export class LootSystem extends SystemBase {
       return;
     }
 
-    // Ground to terrain before spawning entity
-    try {
-      const terrain = this.world.getSystem<TerrainSystem>('terrain');
-      if (terrain) {
-        const th = terrain.getHeightAt(position.x, position.z);
-        if (Number.isFinite(th)) position = { x: position.x, y: (th as number) + 0.2, z: position.z };
-      }
-    } catch (_e) {}
+    // Ground to terrain - use Infinity to allow any initial height difference
+    const groundedPosition = groundToTerrain(this.world, position, 0.2, Infinity);
 
     const itemEntity = await entityManager.spawnEntity({
       id: dropId,
       name: `${item.name} (${quantity})`,
       type: 'item',
-      position,
+      position: groundedPosition,
       itemId: itemId,
       itemType: this.getItemTypeString(item.type),
       quantity: quantity,
@@ -358,7 +351,7 @@ export class LootSystem extends SystemBase {
       id: dropId,
       itemId: itemId,
       quantity: quantity,
-      position,
+      position: groundedPosition,
       despawnTime: now + this.LOOT_DESPAWN_TIME,
       droppedBy: droppedBy ?? 'unknown',
       droppedAt: now,

@@ -289,15 +289,68 @@ export class ResourceVisualizationSystem extends SystemBase {
   private hideResource(resourceId: string): void {
     const resource = this.resources.get(resourceId);
     if (resource && resource.mesh) {
-      resource.mesh.visible = false;
+      // Transform tree into stump instead of hiding
+      if (resource.type === 'tree' || resource.type.includes('tree')) {
+        this.transformTreeToStump(resource.mesh);
+      } else {
+        // For non-tree resources, just hide
+        resource.mesh.visible = false;
+      }
     }
   }
 
   private showResource(resourceId: string): void {
     const resource = this.resources.get(resourceId);
     if (resource && resource.mesh) {
-      resource.mesh.visible = true;
+      // Restore tree from stump
+      if (resource.type === 'tree' || resource.type.includes('tree')) {
+        this.restoreTreeFromStump(resource.mesh);
+      } else {
+        resource.mesh.visible = true;
+      }
     }
+  }
+  
+  private transformTreeToStump(treeMesh: THREE.Mesh | THREE.Object3D): void {
+    // Hide leaves, keep only trunk, and make it shorter
+    treeMesh.traverse((child) => {
+      if (child.name === 'leaves') {
+        child.visible = false; // Hide leaves
+      } else if (child.name === 'trunk' && child instanceof THREE.Mesh) {
+        // Make trunk shorter (stump height)
+        child.scale.y = 0.3; // Reduce to 30% height (stump)
+        child.position.y = 0.6; // Adjust position since it's shorter
+        
+        // Change color to darker brown (dead wood)
+        if (child.material instanceof THREE.Material) {
+          const material = child.material as THREE.MeshLambertMaterial;
+          material.color.setHex(0x654321); // Darker brown for stump
+        }
+      }
+    });
+    
+    console.log(`[ResourceVisualization] Transformed tree to stump: ${treeMesh.name}`);
+  }
+  
+  private restoreTreeFromStump(treeMesh: THREE.Mesh | THREE.Object3D): void {
+    // Restore leaves and trunk to full size
+    treeMesh.traverse((child) => {
+      if (child.name === 'leaves') {
+        child.visible = true; // Show leaves again
+      } else if (child.name === 'trunk' && child instanceof THREE.Mesh) {
+        // Restore full trunk height
+        child.scale.y = 1.0;
+        child.position.y = 2.0; // Restore original position
+        
+        // Restore original brown color
+        if (child.material instanceof THREE.Material) {
+          const material = child.material as THREE.MeshLambertMaterial;
+          material.color.setHex(0x8B4513); // Original brown
+        }
+      }
+    });
+    
+    console.log(`[ResourceVisualization] Restored tree from stump: ${treeMesh.name}`);
   }
 
   private removeResource(resourceId: string): void {

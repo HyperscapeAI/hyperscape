@@ -12,6 +12,17 @@ export { System } from '../systems/System'
 export function Client({ wsUrl, onSetup }: ClientProps) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const uiRef = useRef<HTMLDivElement>(null)
+  
+  // Detect HMR and force full page reload instead of hot reload
+  useEffect(() => {
+    if (import.meta.hot) {
+      import.meta.hot.dispose(() => {
+        console.log('[Client] HMR detected - reloading page to prevent duplicate worlds')
+        window.location.reload()
+      })
+    }
+  }, [])
+  
   const world = useMemo(() => {
     console.log('[Client] Creating new world instance')
     const world = createClientWorld()
@@ -50,6 +61,8 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
   }, [world])
 
   useEffect(() => {
+    let cleanedUp = false
+    
     const init = async () => {
       console.log('[Client] Init useEffect triggered')
       const viewport = viewportRef.current
@@ -126,6 +139,23 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
     }
     
     init()
+    
+    // Cleanup function
+    return () => {
+      if (!cleanedUp) {
+        cleanedUp = true
+        console.log('[Client] Cleaning up world on unmount...')
+        try {
+          // Destroy the world to cleanup WebSocket and resources
+          if (world && world.destroy) {
+            world.destroy()
+            console.log('[Client] World destroyed')
+          }
+        } catch (error) {
+          console.error('[Client] Error during cleanup:', error)
+        }
+      }
+    }
   }, [world, wsUrl, onSetup])
   
     

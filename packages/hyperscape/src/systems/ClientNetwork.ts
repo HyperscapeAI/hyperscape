@@ -467,16 +467,21 @@ export class ClientNetwork extends SystemBase {
   }
 
   destroy = () => {
+    console.log('[ClientNetwork] Destroying network connection...')
     if (this.ws) {
+      console.log('[ClientNetwork] Closing WebSocket, state:', this.ws.readyState)
       this.ws.removeEventListener('message', this.onPacket)
       this.ws.removeEventListener('close', this.onClose)
       if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
         this.ws.close()
+        console.log('[ClientNetwork] WebSocket closed')
       }
       this.ws = null
     }
     // Clear any pending queue items
     this.queue.length = 0
+    this.connected = false
+    console.log('[ClientNetwork] Network destroyed')
   }
 
   // Plugin-specific upload method

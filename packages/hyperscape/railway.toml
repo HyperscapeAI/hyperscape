@@ -1,0 +1,44 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "railway.Dockerfile"
+
+[deploy]
+numReplicas = 1
+startCommand = "node build/index.js"
+restartPolicyType = "on-failure"
+restartPolicyMaxRetries = 3
+
+# Health check configuration
+healthcheckPath = "/status"
+healthcheckTimeout = 30
+
+[service]
+# The service will be accessible via Railway's provided domain
+# Custom domains can be added through Railway dashboard
+
+[env]
+# These should be set in Railway dashboard or via railway.json
+# Required variables:
+# - PORT (auto-provided by Railway)
+# - PUBLIC_WS_URL
+# - PUBLIC_ASSETS_URL
+# - PUBLIC_APP_URL
+# - JWT_SECRET
+# - NODE_ENV
+
+# Optional variables:
+# - PRIVY_APP_ID
+# - PRIVY_APP_SECRET
+# - PUBLIC_PRIVY_APP_ID
+# - PUBLIC_ENABLE_FARCASTER
+# - LIVEKIT_API_KEY
+# - LIVEKIT_API_SECRET
+# - LIVEKIT_URL
+# - PLAYER_LIMIT
+
+[volumes]
+# Mount for persistent data (SQLite database and world assets)
+# Create this volume in Railway dashboard:
+# Name: hyperscape-world-data
+# Mount Path: /app/world
+

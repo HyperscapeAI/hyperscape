@@ -10,6 +10,7 @@ import { EntityManager } from './EntityManager';
 import { SystemBase } from './SystemBase';
 import { WorldGenerationSystem } from './WorldGenerationSystem';
 import type { TerrainSystem } from './TerrainSystem';
+import { PlayerIdMapper } from './PlayerIdMapper';
 import * as THREE from 'three';
 
 export class PlayerSystem extends SystemBase {
@@ -176,19 +177,27 @@ export class PlayerSystem extends SystemBase {
                 return;
       }
 
-    // Load player data from database
+    // Determine which ID to use for database lookups
+    // Use userId (persistent account ID) if available, otherwise use playerId (session ID)
+    const databaseId = data.userId || data.playerId;
+    console.log(`[PlayerSystem] Player entering - playerId: ${data.playerId}, userId: ${data.userId}, databaseId: ${databaseId}`);
+
+    // Load player data from database using persistent userId
     let playerData: Player | undefined;
     if (this.databaseSystem) {
-      const dbData = this.databaseSystem.getPlayer(data.playerId);
+      const dbData = this.databaseSystem.getPlayer(databaseId);
       if (dbData) {
+        console.log(`[PlayerSystem] Loaded existing player data from database for userId: ${databaseId}`);
         playerData = PlayerMigration.fromPlayerRow(dbData, data.playerId);
+      } else {
+        console.log(`[PlayerSystem] No existing player data found for userId: ${databaseId}`);
       }
     }
 
     // Create new player if not found in database
     if (!playerData) {
       const playerLocal = this.playerLocalRefs.get(data.playerId);
-      const playerName = playerLocal?.name || `Player_${data.playerId}`;
+      const playerName = playerLocal?.name || `Player_${databaseId.substring(0, 8)}`;
       playerData = PlayerMigration.createNewPlayer(data.playerId, data.playerId, playerName);
 
       // Ground initial spawn to terrain height on server
@@ -202,9 +211,10 @@ export class PlayerSystem extends SystemBase {
         }
       }
 
-      // Save new player to database
+      // Save new player to database using persistent userId
       if (this.databaseSystem) {
-        this.databaseSystem.savePlayer(data.playerId, {
+        console.log(`[PlayerSystem] Creating new player in database with userId: ${databaseId}`);
+        this.databaseSystem.savePlayer(databaseId, {
           name: playerData.name,
           combatLevel: playerData.combat.combatLevel,
           attackLevel: playerData.skills.attack.level,
@@ -221,7 +231,13 @@ export class PlayerSystem extends SystemBase {
       }
     }
 
-    // Add to our system
+    // Register userId mapping for database persistence (critical!)
+    if (data.userId) {
+      PlayerIdMapper.register(data.playerId, data.userId);
+      (playerData as Player & { userId?: string }).userId = data.userId;
+    }
+
+    // Add to our system using entity ID for runtime lookups
     this.players.set(data.playerId, playerData);
 
     // Emit player ready event, but DO NOT set position here anymore.
@@ -259,6 +275,9 @@ export class PlayerSystem extends SystemBase {
     // Clean up
     this.players.delete(data.playerId);
     this.playerLocalRefs.delete(data.playerId);
+    
+    // Unregister userId mapping
+    PlayerIdMapper.unregister(data.playerId);
     
     // Clear any respawn timers
     const timer = this.respawnTimers.get(data.playerId);
@@ -623,6 +642,13 @@ export class PlayerSystem extends SystemBase {
     const player = this.players.get(playerId);
     if (!player || !this.databaseSystem) return;
 
+    // Use userId for database persistence if available
+    const databaseId = PlayerIdMapper.getDatabaseId(playerId);
+    
+    if (databaseId !== playerId) {
+      console.log(`[PlayerSystem] Saving player to database - playerId: ${playerId}, userId: ${databaseId}`);
+    }
+
     // NEVER save invalid Y positions to database
     let safeY = player.position.y;
     if (safeY < -5 || safeY > 200 || !Number.isFinite(safeY)) {
@@ -630,7 +656,7 @@ export class PlayerSystem extends SystemBase {
       safeY = 10; // Safe default
     }
 
-    this.databaseSystem.savePlayer(playerId, {
+    this.databaseSystem.savePlayer(databaseId, {
       name: player.name,
       combatLevel: player.combat.combatLevel,
       attackLevel: player.skills.attack.level,

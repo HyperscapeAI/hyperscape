@@ -30,7 +30,6 @@ interface ContextMenuItem {
   label: string;
   icon?: string;
   enabled: boolean;
-  onClick: () => void;
 }
 
 interface ActiveGathering {
@@ -128,6 +127,15 @@ export class ResourceInteractionSystem extends SystemBase {
       if (this.activeGathering && this.activeGathering.resourceId === data.resourceId) {
         this.stopGatheringAnimation();
       }
+    });
+
+    // Listen for resource action events from UI
+    this.subscribe(EventType.RESOURCE_ACTION, (data: {
+      playerId: string;
+      resourceId: string;
+      action: string;
+    }) => {
+      this.handleResourceAction(data);
     });
   }
 
@@ -300,6 +308,10 @@ export class ResourceInteractionSystem extends SystemBase {
     const localPlayer = this.world.getPlayer();
     if (!localPlayer) return;
     
+    Logger.system('ResourceInteractionSystem', `Showing context menu for resource: ${resource.id} (${resource.type})`);
+    
+    // Build actions WITHOUT onClick handlers (they can't be serialized through events)
+    // Instead, the UI will emit RESOURCE_ACTION events with the action ID
     const actions: ContextMenuItem[] = [];
     
     // Add appropriate actions based on resource type
@@ -308,24 +320,21 @@ export class ResourceInteractionSystem extends SystemBase {
         id: 'chop',
         label: 'Chop',
         icon: '🪓',
-        enabled: resource.isAvailable,
-        onClick: () => this.startChoppingTree(resource)
+        enabled: resource.isAvailable
       });
     } else if (resource.type.includes('rock') || resource.type.includes('ore')) {
       actions.push({
         id: 'mine',
         label: 'Mine',
         icon: '⛏️',
-        enabled: resource.isAvailable,
-        onClick: () => this.startMining(resource)
+        enabled: resource.isAvailable
       });
     } else if (resource.type.includes('fish')) {
       actions.push({
         id: 'fish',
         label: 'Fish',
         icon: '🎣',
-        enabled: resource.isAvailable,
-        onClick: () => this.startFishing(resource)
+        enabled: resource.isAvailable
       });
     }
     
@@ -334,8 +343,7 @@ export class ResourceInteractionSystem extends SystemBase {
       id: 'examine',
       label: 'Examine',
       icon: '🔍',
-      enabled: true,
-      onClick: () => this.examineResource(resource)
+      enabled: true
     });
     
     // Emit event to show context menu
@@ -347,6 +355,37 @@ export class ResourceInteractionSystem extends SystemBase {
       targetId: resource.id,
       targetType: 'resource'
     });
+  }
+
+  private handleResourceAction(data: { playerId: string; resourceId: string; action: string }): void {
+    console.log(`[ResourceInteraction] 🎯 Player ${data.playerId} action: ${data.action} on resource ${data.resourceId}`);
+    
+    const resource = this.resources.get(data.resourceId);
+    if (!resource) {
+      console.warn(`[ResourceInteraction] ⚠️ Resource not found: ${data.resourceId}`);
+      return;
+    }
+
+    // Execute the appropriate action
+    switch (data.action) {
+      case 'chop':
+        console.log('[ResourceInteraction] Starting chopping tree...');
+        this.startChoppingTree(resource);
+        break;
+      case 'mine':
+        console.log('[ResourceInteraction] Starting mining...');
+        this.startMining(resource);
+        break;
+      case 'fish':
+        console.log('[ResourceInteraction] Starting fishing...');
+        this.startFishing(resource);
+        break;
+      case 'examine':
+        this.examineResource(resource);
+        break;
+      default:
+        console.warn(`[ResourceInteraction] Unknown action: ${data.action}`);
+    }
   }
 
   private startChoppingTree(resource: ResourceInteractable): void {
@@ -409,11 +448,16 @@ export class ResourceInteractionSystem extends SystemBase {
         clearInterval(checkInterval);
         this.startGatheringAnimation(resource);
         
-        // Emit gathering started event
+        // Calculate gathering duration (3-5 seconds based on skill)
+        const gatheringDuration = 5000; // Will be refined by ResourceSystem based on skill
+        
+        // Emit gathering started event with duration for progress bar
         this.emitTypedEvent(EventType.RESOURCE_GATHERING_STARTED, {
           playerId: localPlayer.id,
           resourceId: resource.id,
-          playerPosition: currentPlayer.position
+          playerPosition: currentPlayer.position,
+          action: resource.type.includes('tree') ? 'Chopping' : 'Gathering',
+          duration: gatheringDuration
         });
         
               }
@@ -537,6 +581,7 @@ export class ResourceInteractionSystem extends SystemBase {
 
   private registerResource(resource: ResourceInteractable): void {
     this.resources.set(resource.id, resource);
+    Logger.system('ResourceInteractionSystem', `Registered resource: ${resource.id} (${resource.type}) at (${resource.position.x.toFixed(0)}, ${resource.position.z.toFixed(0)})`);
   }
 
   update(_deltaTime: number): void {

@@ -6,6 +6,7 @@ import { SystemBase } from './SystemBase';
 import { EventType } from '../types/events';
 import { Logger } from '../utils/Logger';
 import { TerrainSystem } from './TerrainSystem';
+import { groundToTerrain } from '../utils/EntityUtils';
 
 /**
  * World Generation System
@@ -107,16 +108,14 @@ export class WorldGenerationSystem extends SystemBase {
         const npcTileZ = Math.floor(npc.position.z / TILE_SIZE);
 
         if (npcTileX === tileData.tileX && npcTileZ === tileData.tileZ) {
-            // Ground NPC to terrain height
-            let npcY = npc.position.y;
-            const th = this.terrainSystem.getHeightAt(npc.position.x, npc.position.z);
-            if (Number.isFinite(th)) npcY = (th as number) + 0.1;
+            // Ground NPC to terrain - this will throw if terrain not available
+            const groundedPosition = groundToTerrain(this.world, npc.position, 0.1, Infinity);
             
             this.emitTypedEvent(EventType.NPC_SPAWN_REQUEST, {
                 npcId: npc.id,
                 name: npc.name,
                 type: npc.type,
-                position: { x: npc.position.x, y: npcY, z: npc.position.z },
+                position: groundedPosition,
                 services: npc.services,
                 modelPath: npc.modelPath,
             });
@@ -154,7 +153,7 @@ export class WorldGenerationSystem extends SystemBase {
       name: area.name,
       position: { 
         x: (area.bounds.minX + area.bounds.maxX) / 2, 
-        y: 2, 
+        y: 0, // Y will be grounded to terrain
         z: (area.bounds.minZ + area.bounds.maxZ) / 2 
       },
       safeZoneRadius: Math.max(
