@@ -637,9 +637,8 @@ export class ResourceInteractionSystem extends SystemBase {
         
         // Send RESOURCE_GATHER to server so ResourceSystem starts now (server will emit started/depleted)
         try {
-          // Route via network entityEvent to guarantee server receipt
           if (this.world.network?.send) {
-            this.world.network.send('entityEvent', { id: localPlayer.id, version: 1, name: EventType.RESOURCE_GATHER, data: { playerId: localPlayer.id, resourceId: serverResourceId } })
+            this.world.network.send('resourceGather', { playerId: localPlayer.id, resourceId: serverResourceId })
           } else {
             this.emitTypedEvent(EventType.RESOURCE_GATHER, { playerId: localPlayer.id, resourceId: serverResourceId })
           }

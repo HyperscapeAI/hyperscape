@@ -152,6 +152,7 @@ export class ResourceSystem extends SystemBase {
         this.resources.set(createResourceID(resource.id), resource);
         // Emit spawn event so visual test or interaction layers can render cubes
         this.emitTypedEvent(EventType.RESOURCE_SPAWNED, resource);
+        // Network broadcast via dedicated packet handled by ServerNetwork listener
       }
     }
   }

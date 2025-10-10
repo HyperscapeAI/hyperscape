@@ -117,6 +117,12 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     this.handlers['onEntityEvent'] = this.onEntityEvent.bind(this);
     this.handlers['onEntityRemoved'] = this.onEntityRemoved.bind(this);
     this.handlers['onSettings'] = this.onSettings.bind(this);
+    // Dedicated resource packet handlers
+    this.handlers['onResourceGather'] = (socket, data) => {
+      const { playerId, resourceId } = (data as { playerId: string; resourceId: string }) || { playerId: socket.player?.id, resourceId: undefined }
+      if (!playerId || !resourceId) return
+      this.world.emit(EventType.RESOURCE_GATHER, { playerId, resourceId })
+    }
     this.handlers['onMoveRequest'] = this.onMoveRequest.bind(this);
     this.handlers['onInput'] = this.onInput.bind(this);
   }
@@ -183,16 +189,13 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     
     // Environment model loading is handled by ServerEnvironment.start()
     
-    // Bridge important world events to all clients
+    // Bridge important resource events to all clients using dedicated packets and snapshot on connect
     try {
-      const forward = (name: string, data: unknown) => {
-        // Use generic entityEvent packet with a reserved id
-        this.send('entityEvent', { id: 'world', version: 1, name, data })
-      }
-      this.world.on(EventType.RESOURCE_DEPLETED, (...args: unknown[]) => forward(EventType.RESOURCE_DEPLETED, args[0]))
-      this.world.on(EventType.RESOURCE_RESPAWNED, (...args: unknown[]) => forward(EventType.RESOURCE_RESPAWNED, args[0]))
-      this.world.on(EventType.RESOURCE_SPAWNED, (...args: unknown[]) => forward(EventType.RESOURCE_SPAWNED, args[0]))
-      this.world.on(EventType.RESOURCE_SPAWN_POINTS_REGISTERED, (...args: unknown[]) => forward(EventType.RESOURCE_SPAWN_POINTS_REGISTERED, args[0]))
+      this.world.on(EventType.RESOURCE_DEPLETED, (...args: unknown[]) => this.send('resourceDepleted', args[0]))
+      this.world.on(EventType.RESOURCE_RESPAWNED, (...args: unknown[]) => this.send('resourceRespawned', args[0]))
+      this.world.on(EventType.RESOURCE_SPAWNED, (...args: unknown[]) => this.send('resourceSpawned', args[0]))
+      this.world.on(EventType.RESOURCE_SPAWN_POINTS_REGISTERED, (...args: unknown[]) => this.send('resourceSpawnPoints', args[0]))
+      this.world.on(EventType.INVENTORY_UPDATED, (...args: unknown[]) => this.send('inventoryUpdated', args[0]))
     } catch (_err) {}
   }
 
@@ -682,6 +685,22 @@ export class ServerNetwork extends System implements NetworkWithSocket {
         livekit,
         authToken,
       });
+
+      // After core snapshot, send authoritative resource snapshot
+      try {
+        const resourceSystem = this.world.getSystem?.('rpg-resource') as unknown as { getAllResources?: () => Array<{ id: string; type: string; position: { x: number; y: number; z: number }; isAvailable: boolean; lastDepleted?: number; respawnTime?: number }> } | undefined
+        const resources = resourceSystem?.getAllResources?.() || []
+        const payload = {
+          resources: resources.map(r => ({
+            id: r.id,
+            type: r.type,
+            position: r.position,
+            isAvailable: r.isAvailable,
+            respawnAt: !r.isAvailable && r.lastDepleted && r.respawnTime ? (r.lastDepleted + r.respawnTime) : undefined,
+          }))
+        }
+        this.sendTo(socket.id, 'resourceSnapshot', payload)
+      } catch (_err) {}
 
       this.sockets.set(socket.id, socket);
       console.log(`[ServerNetwork] Socket added. Total sockets: ${this.sockets.size}`);
