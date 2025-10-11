@@ -139,6 +139,7 @@ export class World extends EventEmitter {
   controls?: ClientInput;
   prefs?: ClientInterface;
   audio?: ClientAudio;
+  music?: import('./systems/MusicSystem').MusicSystem;
   monitor?: ClientMonitor & {
     getStats?: () => Promise<{ currentCPU: number; currentMemory: number; maxMemory: number }>;
   };
@@ -703,6 +704,7 @@ export class World extends EventEmitter {
   }
 
   destroy(): void {
+    console.log('[World] Destroying world...')
     for (const system of this.systems) {
       system.destroy();
     }
@@ -717,6 +719,10 @@ export class World extends EventEmitter {
     }
     this.__busListenerMap.clear();
     this.removeAllListeners();
+    
+    // Reset initialization flag so world can be re-initialized if needed
+    this._initialized = false;
+    console.log('[World] World destroyed')
   }
 
 

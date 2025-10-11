@@ -461,11 +461,10 @@ export class InventoryInteractionSystem extends SystemBase {
     
     // Handle different drop scenarios
     if (dragData.sourceType === 'inventory' && target.type === 'equipment') {
-      // Equip item
-      this.emitTypedEvent(EventType.EQUIPMENT_EQUIP, {
+      // Equip item - use TRY_EQUIP to auto-detect slot
+      this.emitTypedEvent(EventType.EQUIPMENT_TRY_EQUIP, {
         playerId: this.getCurrentPlayerId(),
-        itemId: dragData.itemId,
-        inventorySlot: dragData.sourceSlot
+        itemId: dragData.itemId
       });
     } else if (dragData.sourceType === 'equipment' && target.type === 'inventory') {
       // Unequip item

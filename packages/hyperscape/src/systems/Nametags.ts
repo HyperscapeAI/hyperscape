@@ -18,16 +18,16 @@ const _v3_1 = new THREE.Vector3()
  */
 
 const RES = 2
-const NAMETAG_WIDTH = 200 * RES
-const NAMETAG_HEIGHT = 35 * RES
-const NAME_FONT_SIZE = 16 * RES
-const NAME_OUTLINE_SIZE = 4 * RES
+const NAMETAG_WIDTH = 160 * RES  // Reduced 20% (was 200)
+const NAMETAG_HEIGHT = 20 * RES  // Reduced to fix Y-stretch (was 35)
+const NAME_FONT_SIZE = 14 * RES  // Slightly smaller (was 16)
+const NAME_OUTLINE_SIZE = 3 * RES  // Reduced proportionally (was 4)
 
 const HEALTH_MAX = 100
-const HEALTH_HEIGHT = 12 * RES
-const HEALTH_WIDTH = 100 * RES
-const HEALTH_BORDER = 1.5 * RES
-const HEALTH_BORDER_RADIUS = 20 * RES
+const HEALTH_HEIGHT = 3 * RES  // Reduced 4x (was 12)
+const HEALTH_WIDTH = 50 * RES  // Reduced 2x (was 100)
+const HEALTH_BORDER = 1 * RES  // Reduced proportionally (was 1.5)
+const HEALTH_BORDER_RADIUS = 10 * RES  // Reduced proportionally (was 20)
 
 const PER_ROW = 8
 const PER_COLUMN = 32

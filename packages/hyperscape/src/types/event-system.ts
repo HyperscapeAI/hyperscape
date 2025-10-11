@@ -216,7 +216,7 @@ export interface EventMap {
   [EventType.ITEM_DESPAWN]: { itemId: string };
   [EventType.ITEM_RESPAWN_SHOPS]: void;
   [EventType.ITEM_SPAWN_LOOT]: { lootTable: string; position: { x: number; y: number; z: number } };
-  [EventType.ITEM_SPAWN]: { itemType: string; position: { x: number; y: number; z: number } };
+  [EventType.ITEM_SPAWN]: { itemId: string; itemType?: string; position: { x: number; y: number; z: number }; quantity?: number };
   [EventType.ITEM_PICKUP]: { playerId: string; itemId: string; groundItemId?: string };
   [EventType.INVENTORY_DROP_ALL]: { playerId: string; position: Position3D };
   [EventType.ITEM_USED]: { 
@@ -289,6 +289,7 @@ export interface EventMap {
   [EventType.RESOURCE_GATHER]: { playerId: string; resourceId: string };
   [EventType.RESOURCE_HARVEST]: { playerId: string; resourceId: string; success: boolean };
   [EventType.RESOURCE_GATHERING_STARTED]: { playerId: string; resourceId: string; playerPosition: { x: number; y: number; z: number } };
+  [EventType.RESOURCE_GATHERING_PROGRESS]: { playerId: string; resourceId: string; skill: string; actionName: string; duration: number; progress: number };
   [EventType.RESOURCE_GATHERING_STOPPED]: { playerId: string; resourceId: string };
   [EventType.RESOURCE_GATHERING_COMPLETED]: { playerId: string; resourceId: string; resourceType: 'tree' | 'rock' | 'ore' | 'herb' | 'fish'; skill: 'woodcutting' | 'mining' | 'fishing' | 'herbalism' };
   [EventType.RESOURCE_SPAWN_POINTS_REGISTERED]: { spawnPoints: Array<{ id: string; type: 'tree' | 'rock' | 'ore' | 'herb' | 'fish'; position: { x: number; y: number; z: number } }> };

@@ -8,6 +8,7 @@ import { EventType } from '../types/events'
 import { uuid } from '../utils'
 import { SystemBase } from './SystemBase'
 import { PlayerLocal } from '../entities/PlayerLocal'
+import { EventType } from '../types/events'
 
 const _v3_1 = new THREE.Vector3()
 const _quat_1 = new THREE.Quaternion()
@@ -509,6 +510,32 @@ export class ClientNetwork extends SystemBase {
     // Strong type assumption - entities system has remove method
     this.world.entities.remove(id)
   }
+  
+  onGatheringComplete = (data: { playerId: string; resourceId: string; successful: boolean }) => {
+    console.log(`[ClientNetwork] 📬 Received gatheringComplete from server:`, data);
+    
+    // Forward to local event system for UI updates (progress bar, animation)
+    this.world.emit(EventType.RESOURCE_GATHERING_COMPLETED, {
+      playerId: data.playerId,
+      resourceId: data.resourceId,
+      successful: data.successful,
+      skill: 'woodcutting' // Will be refined later
+    });
+  }
+  
+  onShowToast = (data: { playerId: string; message: string; type: string }) => {
+    console.log(`[ClientNetwork] 💬 Toast from server:`, data.message);
+    
+    // Only show toast for local player
+    const localPlayer = this.world.getPlayer();
+    if (localPlayer && localPlayer.id === data.playerId) {
+      // Forward to local event system for toast display
+      this.world.emit(EventType.UI_TOAST, {
+        message: data.message,
+        type: data.type
+      });
+    }
+  }
 
   applyPendingModifications = (entityId: string) => {
     const pending = this.pendingModifications.get(entityId)
@@ -583,16 +610,21 @@ export class ClientNetwork extends SystemBase {
   }
 
   destroy = () => {
+    console.log('[ClientNetwork] Destroying network connection...')
     if (this.ws) {
+      console.log('[ClientNetwork] Closing WebSocket, state:', this.ws.readyState)
       this.ws.removeEventListener('message', this.onPacket)
       this.ws.removeEventListener('close', this.onClose)
       if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
         this.ws.close()
+        console.log('[ClientNetwork] WebSocket closed')
       }
       this.ws = null
     }
     // Clear any pending queue items
     this.queue.length = 0
+    this.connected = false
+    console.log('[ClientNetwork] Network destroyed')
   }
 
   // Plugin-specific upload method

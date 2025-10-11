@@ -119,14 +119,40 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     this.handlers['onEntityEvent'] = this.onEntityEvent.bind(this);
     this.handlers['onEntityRemoved'] = this.onEntityRemoved.bind(this);
     this.handlers['onSettings'] = this.onSettings.bind(this);
-    // Dedicated resource packet handlers
+    // Dedicated resource packet handler
     this.handlers['onResourceGather'] = (socket, data) => {
-      const { playerId, resourceId } = (data as { playerId: string; resourceId: string }) || { playerId: socket.player?.id, resourceId: undefined }
-      if (!playerId || !resourceId) return
-      this.world.emit(EventType.RESOURCE_GATHER, { playerId, resourceId })
+      const playerEntity = socket.player;
+      if (!playerEntity) {
+        console.warn('[ServerNetwork] onResourceGather: no player entity for socket');
+        return;
+      }
+      
+      const payload = data as { resourceId?: string; playerPosition?: { x: number; y: number; z: number } };
+      if (!payload.resourceId) {
+        console.warn('[ServerNetwork] onResourceGather: no resourceId in payload');
+        return;
+      }
+      
+      const playerPosition = payload.playerPosition || {
+        x: playerEntity.position.x,
+        y: playerEntity.position.y,
+        z: playerEntity.position.z
+      };
+      
+      console.log(`[ServerNetwork] 📨 Received gather request from player ${playerEntity.id} for resource ${payload.resourceId}`);
+      
+      // Forward to ResourceSystem
+      this.world.emit(EventType.RESOURCE_GATHERING_STARTED, {
+        playerId: playerEntity.id,
+        resourceId: payload.resourceId,
+        playerPosition: playerPosition
+      });
     }
     this.handlers['onMoveRequest'] = this.onMoveRequest.bind(this);
     this.handlers['onInput'] = this.onInput.bind(this);
+    // Combat/Item handlers
+    this.handlers['onAttackMob'] = this.onAttackMob.bind(this);
+    this.handlers['onPickupItem'] = this.onPickupItem.bind(this);
     // Character selection handlers (feature-flagged usage)
     this.handlers['onCharacterListRequest'] = this.onCharacterListRequest.bind(this);
     this.handlers['onCharacterCreate'] = this.onCharacterCreate.bind(this);
@@ -134,27 +160,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     this.handlers['onEnterWorld'] = this.onEnterWorld.bind(this);
   }
 
-  // Ensure auth-related columns exist on 'users' for Privy linking (safe no-op if already present)
-  private async ensureUsersAuthColumns(): Promise<void> {
-    try {
-      // this.db is a Knex-like instance
-      const hasPrivy = await (this.db as unknown as { schema?: { hasColumn: (t: string, c: string) => Promise<boolean>; table: Function } }).schema?.hasColumn('users', 'privyUserId')
-      const hasFarcaster = await (this.db as unknown as { schema?: { hasColumn: (t: string, c: string) => Promise<boolean> } }).schema?.hasColumn('users', 'farcasterFid')
-      // If schema APIs are not available, skip quietly
-      if (hasPrivy === undefined && hasFarcaster === undefined) return
-      const schema = (this.db as unknown as { schema: { table: (name: string, cb: (tb: any) => void) => Promise<void> } }).schema
-      if (hasPrivy === false || hasFarcaster === false) {
-        await schema.table('users', (tb: any) => {
-          if (hasPrivy === false) tb.text('privyUserId').nullable().index()
-          if (hasFarcaster === false) tb.text('farcasterFid').nullable().index()
-        })
-      }
-    } catch {
-      // Do not throw; fallback to legacy path if we cannot alter schema
-    }
-  }
-
-  // --- Character selection stubs (non-breaking, feature-flag guarded) ---
+  // --- Character selection infrastructure (feature-flag guarded) ---
   private async loadCharacterList(accountId: string): Promise<Array<{ id: string; name: string; level?: number; lastLocation?: { x: number; y: number; z: number } }>> {
     try {
       const databaseSystem = this.world.getSystem('rpg-database') as import('./DatabaseSystem').DatabaseSystem | undefined
@@ -185,21 +191,53 @@ export class ServerNetwork extends System implements NetworkWithSocket {
   }
 
   private onCharacterCreate(socket: Socket, data: unknown): void {
-    // Feature-flag only: accept create request and echo created (stub)
-    if (process.env.ENABLE_CHARACTER_SELECT !== '1') return;
+    console.log('[ServerNetwork] onCharacterCreate called with data:', data)
+    console.log('[ServerNetwork] ENABLE_CHARACTER_SELECT:', process.env.ENABLE_CHARACTER_SELECT)
+    
+    // Feature-flag only: accept create request and echo created
+    if (process.env.ENABLE_CHARACTER_SELECT !== '1') {
+      console.warn('[ServerNetwork] Character selection feature is disabled (ENABLE_CHARACTER_SELECT !== 1)')
+      return;
+    }
+    
     const payload = (data as { name?: string }) || {};
     const name = (payload.name || '').trim().slice(0, 20) || 'Adventurer';
+    console.log('[ServerNetwork] Received character create request, raw name:', payload.name, 'trimmed:', name)
+    
     // Basic validation: alphanumeric plus spaces, 3-20 chars
     const safeName = name.replace(/[^a-zA-Z0-9 ]/g, '').trim();
     const finalName = safeName.length >= 3 ? safeName : 'Adventurer';
+    console.log('[ServerNetwork] Final character name after validation:', finalName)
+    
     const id = uuid();
     const accountId = (socket as unknown as { accountId?: string }).accountId || ''
+    
+    if (!accountId) {
+      console.error('[ServerNetwork] Cannot create character - no accountId on socket!')
+      return
+    }
+    
+    console.log('[ServerNetwork] Creating character:', { id, accountId, finalName })
+    
     try {
       const databaseSystem = this.world.getSystem('rpg-database') as import('./DatabaseSystem').DatabaseSystem | undefined
-      if (databaseSystem && accountId) {
-        databaseSystem.createCharacter(accountId, id, finalName)
+      if (!databaseSystem) {
+        console.error('[ServerNetwork] DatabaseSystem not found!')
+        return
       }
-    } catch {}
+      
+      console.log('[ServerNetwork] Calling databaseSystem.createCharacter...')
+      const result = databaseSystem.createCharacter(accountId, id, finalName)
+      console.log('[ServerNetwork] createCharacter result:', result)
+      
+      if (!result) {
+        console.error('[ServerNetwork] createCharacter returned false!')
+      }
+    } catch (err) {
+      console.error('[ServerNetwork] Error creating character:', err)
+    }
+    
+    console.log('[ServerNetwork] Sending characterCreated response to client')
     this.sendTo(socket.id, 'characterCreated', { id, name: finalName })
   }
 
@@ -303,7 +341,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     }) : undefined;
     socket.player = (addedEntity as unknown as Entity) || undefined;
     if (socket.player) {
-      this.world.emit(EventType.PLAYER_JOINED, { playerId: socket.player.data.id as string });
+      this.world.emit(EventType.PLAYER_JOINED, { playerId: socket.player.data.id as string, userId: accountId });
       try {
         // Send to everyone else
         this.send('entityAdded', socket.player.serialize(), socket.id);
@@ -351,6 +389,26 @@ export class ServerNetwork extends System implements NetworkWithSocket {
           })
         } catch {}
       } catch (_err) {}
+    }
+  }
+
+  // Ensure auth-related columns exist on 'users' for Privy linking (safe no-op if already present)
+  private async ensureUsersAuthColumns(): Promise<void> {
+    try {
+      // this.db is a Knex-like instance
+      const hasPrivy = await (this.db as unknown as { schema?: { hasColumn: (t: string, c: string) => Promise<boolean>; table: Function } }).schema?.hasColumn('users', 'privyUserId')
+      const hasFarcaster = await (this.db as unknown as { schema?: { hasColumn: (t: string, c: string) => Promise<boolean> } }).schema?.hasColumn('users', 'farcasterFid')
+      // If schema APIs are not available, skip quietly
+      if (hasPrivy === undefined && hasFarcaster === undefined) return
+      const schema = (this.db as unknown as { schema: { table: (name: string, cb: (tb: any) => void) => Promise<void> } }).schema
+      if (hasPrivy === false || hasFarcaster === false) {
+        await schema.table('users', (tb: any) => {
+          if (hasPrivy === false) tb.text('privyUserId').nullable().index()
+          if (hasFarcaster === false) tb.text('farcasterFid').nullable().index()
+        })
+      }
+    } catch {
+      // Do not throw; fallback to legacy path if we cannot alter schema
     }
   }
 
@@ -1070,7 +1128,9 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       // Emit typed player joined only when player entity exists (legacy path)
       if (socket.player) {
         const playerId = socket.player.data.id as string;
-        this.world.emit(EventType.PLAYER_JOINED, { playerId });
+        const userId = socket.player.data.userId as string | undefined;
+        console.log(`[ServerNetwork] Emitting PLAYER_JOINED - playerId: ${playerId}, userId: ${userId}`);
+        this.world.emit(EventType.PLAYER_JOINED, { playerId, userId });
       }
 
       // Broadcast new player entity to all existing clients except the new connection
@@ -1349,6 +1409,55 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     if (payload.type === 'click' && Array.isArray(payload.target)) {
         this.onMoveRequest(socket, { target: payload.target, runMode: payload.runMode });
     }
+  }
+  
+  private onAttackMob(socket: Socket, data: unknown): void {
+    const playerEntity = socket.player;
+    if (!playerEntity) {
+      console.warn('[ServerNetwork] onAttackMob: no player entity for socket');
+      return;
+    }
+    
+    const payload = data as { mobId?: string; attackType?: string };
+    if (!payload.mobId) {
+      console.warn('[ServerNetwork] onAttackMob: no mobId in payload');
+      return;
+    }
+    
+    console.log(`[ServerNetwork] ⚔️ Received attack request from player ${playerEntity.id} for mob ${payload.mobId}, type: ${payload.attackType || 'melee'}`);
+    
+    // Forward to CombatSystem
+    this.world.emit(EventType.COMBAT_ATTACK_REQUEST, {
+      playerId: playerEntity.id,
+      targetId: payload.mobId,
+      attackerType: 'player',
+      targetType: 'mob',
+      attackType: payload.attackType || 'melee'
+    });
+  }
+  
+  private onPickupItem(socket: Socket, data: unknown): void {
+    const playerEntity = socket.player;
+    if (!playerEntity) {
+      console.warn('[ServerNetwork] onPickupItem: no player entity for socket');
+      return;
+    }
+    
+    const payload = data as { itemId?: string; entityId?: string };
+    const itemId = payload.itemId || payload.entityId;
+    
+    if (!itemId) {
+      console.warn('[ServerNetwork] onPickupItem: no itemId in payload');
+      return;
+    }
+    
+    console.log(`[ServerNetwork] 📦 Received pickup request from player ${playerEntity.id} for item ${itemId}`);
+    
+    // Forward to InventorySystem (not ItemPickupSystem which is disabled)
+    this.world.emit(EventType.ITEM_PICKUP, {
+      playerId: playerEntity.id,
+      itemId: itemId
+    });
   }
 
   onEntityEvent(socket: Socket, data: unknown): void {

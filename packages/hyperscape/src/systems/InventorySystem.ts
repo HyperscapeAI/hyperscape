@@ -40,18 +40,20 @@ export class InventorySystem extends SystemBase {
   protected playerInventories = new Map<PlayerID, PlayerInventory>();
   private readonly MAX_INVENTORY_SLOTS = 28;
   private persistTimers = new Map<string, NodeJS.Timeout>();
+  private saveInterval?: NodeJS.Timeout;
+  private readonly AUTO_SAVE_INTERVAL = 30000; // 30 seconds
 
   constructor(world: World) {
     super(world, {
       name: 'rpg-inventory',
       dependencies: {
         required: [],
-        optional: ['rpg-ui', 'rpg-equipment', 'rpg-player']
+        optional: ['rpg-ui', 'rpg-equipment', 'rpg-player', 'rpg-database']
       },
       autoCleanup: true
     });
   }
-
+  
   async init(): Promise<void> {
     const isServer = this.world.network?.isServer || false
     const isClient = this.world.network?.isClient || false
@@ -111,6 +113,37 @@ export class InventorySystem extends SystemBase {
     this.subscribe(EventType.INVENTORY_CHECK, (data) => {
       this.handleInventoryCheck(data);
     });
+  }
+  
+  start(): void {
+    // Start periodic auto-save on server only
+    if (this.world.isServer) {
+      this.startAutoSave();
+    }
+  }
+  
+  private startAutoSave(): void {
+    this.saveInterval = this.createInterval(() => {
+      this.performAutoSave();
+    }, this.AUTO_SAVE_INTERVAL)!;
+    console.log('[InventorySystem] Auto-save started (every 30s)');
+  }
+  
+  private async performAutoSave(): Promise<void> {
+    const db = this.getDatabase();
+    if (!db) return;
+    
+    console.log(`[InventorySystem] Auto-saving ${this.playerInventories.size} player inventories...`);
+    for (const playerId of this.playerInventories.keys()) {
+      try {
+        const inv = this.getOrCreateInventory(playerId);
+        const saveItems = inv.items.map(i => ({ itemId: i.itemId, quantity: i.quantity, slotIndex: i.slot, metadata: null as null }));
+        db.savePlayerInventory(playerId, saveItems);
+        db.savePlayer(playerId, { coins: inv.coins });
+      } catch (error) {
+        Logger.error('InventorySystem', `Error during auto-save for player ${playerId}`, error);
+      }
+    }
   }
 
   private initializeInventory(playerData: { id: string }): void {
@@ -537,7 +570,7 @@ export class InventorySystem extends SystemBase {
 
   private emitInventoryUpdate(playerId: PlayerID): void {
     const inventoryData = this.getInventoryData(playerId);
-    this.emitTypedEvent(EventType.INVENTORY_UPDATED, {
+    const inventoryUpdateData = {
       playerId,
       items: inventoryData.items.map(item => ({
         slot: item.slot,
@@ -553,7 +586,23 @@ export class InventorySystem extends SystemBase {
       })),
       coins: inventoryData.coins,
       maxSlots: inventoryData.maxSlots
-    });
+    };
+    
+    // Emit local event for server-side systems
+    this.emitTypedEvent(EventType.INVENTORY_UPDATED, inventoryUpdateData);
+    
+    // Broadcast to all clients if on server
+    if (this.world.isServer) {
+      const network = this.world.network as { send?: (method: string, data: unknown) => void } | undefined;
+      if (network && network.send) {
+        network.send('inventoryUpdated', {
+          playerId,
+          items: inventoryUpdateData.items,
+          coins: inventoryData.coins
+        });
+        console.log(`[InventorySystem] 📡 Broadcast inventory update to clients - ${inventoryData.items.length} items`);
+      }
+    }
   }
 
   // Public API
@@ -843,6 +892,8 @@ export class InventorySystem extends SystemBase {
     const itemId = data.item.itemId;
     const quantity = data.item.quantity;
     
+    console.log(`[InventorySystem] 📥 handleInventoryAdd called - playerId: ${playerId}, itemId: ${itemId}, quantity: ${quantity}`);
+    
     // Validate the event data before processing
     if (!playerId) {
       Logger.error('InventorySystem', 'handleInventoryAdd: playerId is missing');
@@ -859,7 +910,8 @@ export class InventorySystem extends SystemBase {
       return;
     }
     
-    this.addItem({ playerId, itemId, quantity });
+    const result = this.addItem({ playerId, itemId, quantity });
+    console.log(`[InventorySystem] addItem result: ${result ? 'SUCCESS' : 'FAILED'}`);
   }
 
   /**
@@ -890,6 +942,36 @@ export class InventorySystem extends SystemBase {
   }
 
   destroy(): void {
+    // Stop auto-save interval
+    if (this.saveInterval) {
+      clearInterval(this.saveInterval);
+      this.saveInterval = undefined;
+    }
+    
+    // Clear all pending persist timers
+    for (const timer of this.persistTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.persistTimers.clear();
+    
+    // Final save before shutdown
+    if (this.world.isServer) {
+      const db = this.getDatabase();
+      if (db) {
+        console.log('[InventorySystem] Final save before shutdown...');
+        for (const playerId of this.playerInventories.keys()) {
+          try {
+            const inv = this.getOrCreateInventory(playerId);
+            const saveItems = inv.items.map(i => ({ itemId: i.itemId, quantity: i.quantity, slotIndex: i.slot, metadata: null as null }));
+            db.savePlayerInventory(playerId, saveItems);
+            db.savePlayer(playerId, { coins: inv.coins });
+          } catch (error) {
+            Logger.error('InventorySystem', `Error during final save for player ${playerId}`, error);
+          }
+        }
+      }
+    }
+    
     // Clear all player inventories on system shutdown
     this.playerInventories.clear();
     // Call parent cleanup (handles event listeners, timers, etc.)

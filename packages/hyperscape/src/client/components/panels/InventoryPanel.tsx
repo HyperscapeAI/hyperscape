@@ -36,6 +36,11 @@ function DraggableInventorySlot({ item, index, size }: DraggableItemProps) {
     transition,
     opacity: isDragging ? 0.5 : 1,
   }
+  
+  // Debug: log what we're trying to render
+  if (item) {
+    console.log(`[InventorySlot ${index}] Rendering item:`, item.itemId, 'qty:', item.quantity);
+  }
 
   return (
     <div
@@ -44,6 +49,7 @@ function DraggableInventorySlot({ item, index, size }: DraggableItemProps) {
       {...attributes}
       {...listeners}
       className={`relative bg-black/35 border border-white/[0.08] rounded flex items-center justify-center text-white text-[10px] ${item ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
+      title={item ? `${item.itemId} (${item.quantity})` : 'Empty slot'}
     >
       {item ? item.itemId.substring(0, 3) : ''}
       {item && item.quantity > 1 ? (
@@ -56,8 +62,7 @@ function DraggableInventorySlot({ item, index, size }: DraggableItemProps) {
 }
 
 export function InventoryPanel({ items, coins, onItemMove, onItemUse, onItemEquip }: InventoryPanelProps) {
-  // Always render items compacted by index to avoid gaps when any slot index is invalid
-  const slots = Array<InventorySlotItem | null>(28).fill(null)
+  const slots: (InventorySlotItem | null)[] = Array(28).fill(null)
   items.forEach((item, i) => {
     if (i < 28) slots[i] = item
   })

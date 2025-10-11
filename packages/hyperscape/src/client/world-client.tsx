@@ -12,11 +12,67 @@ export { System } from '../systems/System'
 export function Client({ wsUrl, onSetup }: ClientProps) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const uiRef = useRef<HTMLDivElement>(null)
+  
+  // Detect HMR and force full page reload instead of hot reload
+  useEffect(() => {
+    if (import.meta.hot) {
+      import.meta.hot.dispose(() => {
+        console.log('[Client] HMR detected - reloading page to prevent duplicate worlds')
+        window.location.reload()
+      })
+    }
+  }, [])
+  
   // Create world immediately so network can connect and deliver characterList
   const world = useMemo(() => {
     console.log('[Client] Creating new world instance')
     const w = createClientWorld()
     console.log('[Client] World instance created')
+    
+    // Expose world for browser debugging
+    if (typeof window !== 'undefined') {
+      (window as any).world = w;
+      
+      // Install simple debug commands
+      (window as any).debug = {
+        // Teleport camera to see mobs at Y=40+
+        seeHighEntities: () => {
+          if (w.camera) {
+            w.camera.position.set(10, 50, 10);
+            w.camera.lookAt(0, 40, 0);
+            console.log('📷 Camera moved to Y=50, looking at Y=40');
+          }
+        },
+        // Teleport to ground level
+        seeGround: () => {
+          if (w.camera) {
+            w.camera.position.set(10, 5, 10);
+            w.camera.lookAt(0, 0, 0);
+            console.log('📷 Camera moved to ground level');
+          }
+        },
+        // List all mobs with positions
+        mobs: () => {
+          const entityManager = w.getSystem('rpg-entity-manager');
+          if (!entityManager) return;
+          const mobs: Array<{ name: string; position: number[]; hasMesh: boolean; meshVisible: boolean | undefined }> = [];
+          for (const [id, entity] of (entityManager as any).getAllEntities()) {
+            if (entity.type === 'mob') {
+              mobs.push({
+                name: entity.name,
+                position: entity.node.position.toArray(),
+                hasMesh: !!entity.mesh,
+                meshVisible: entity.mesh?.visible
+              });
+            }
+          }
+          console.table(mobs);
+          return mobs;
+        }
+      };
+      console.log('🛠️  Debug commands ready: debug.seeHighEntities(), debug.seeGround(), debug.mobs()');
+    }
+    
     return w
   }, [])
   const defaultUI = { visible: true, active: false, app: null, pane: null }
@@ -49,6 +105,8 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
   }, [world])
 
   useEffect(() => {
+    let cleanedUp = false
+    
     const init = async () => {
       console.log('[Client] Init useEffect triggered')
       const viewport = viewportRef.current
@@ -124,6 +182,23 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
     }
     
     init()
+    
+    // Cleanup function
+    return () => {
+      if (!cleanedUp) {
+        cleanedUp = true
+        console.log('[Client] Cleaning up world on unmount...')
+        try {
+          // Destroy the world to cleanup WebSocket and resources
+          if (world && world.destroy) {
+            world.destroy()
+            console.log('[Client] World destroyed')
+          }
+        } catch (error) {
+          console.error('[Client] Error during cleanup:', error)
+        }
+      }
+    }
   }, [world, wsUrl, onSetup])
   
     

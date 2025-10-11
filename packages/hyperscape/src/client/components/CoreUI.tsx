@@ -15,6 +15,7 @@ import { MouseRightIcon } from './MouseRightIcon'
 import { MouseWheelIcon } from './MouseWheelIcon'
 import { Sidebar } from './Sidebar'
 import { LoadingScreen } from './LoadingScreen'
+import { ActionProgressBar } from './ActionProgressBar'
 
 // Type for icon components
 type IconComponent = React.ComponentType<{ size?: number | string }>
@@ -105,6 +106,7 @@ export function CoreUI({ world }: { world: World }) {
       {ready && <Sidebar world={world} ui={ui || { active: false, pane: null }} />}
       {ready && <Chat world={world} />}
       {(ready || characterFlowActive) && <Interface world={world} />}
+      {ready && <ActionProgressBar world={world} />}
       {avatar && <AvatarPane key={avatar?.hash} world={world} info={avatar} />}
       {!ready && !characterFlowActive && <LoadingScreen world={world} message="Loading world..." />}
       {characterFlowActive && !ready && <LoadingScreen world={world} message="Entering world..." />}
@@ -331,25 +333,15 @@ export function CoreUI({ world }: { world: World }) {
 // }
 
 function Disconnected() {
-  // useEffect(() => {
-  //   document.body.style.filter = 'grayscale(100%)'
-  //   return () => {
-  //     document.body.style.filter = null
-  //   }
-  // }, [])
   return (
     <>
       <div
-        className="fixed top-0 left-0 w-full h-full backdrop-grayscale pointer-events-none z-[9999] animate-[fadeIn_3s_forwards]"
+        className="fixed top-0 left-0 w-full h-full backdrop-grayscale pointer-events-none z-[9999] opacity-0 animate-[fadeIn_3s_ease-in-out_forwards]"
       />
       <style>{`
         @keyframes fadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
       `}</style>
       <div
@@ -371,23 +363,8 @@ const kickMessages: Record<string, string> = {
 }
 function KickedOverlay({ code }: { code: string }) {
   return (
-    <div
-      className="absolute inset-0 bg-black flex items-center justify-center pointer-events-auto"
-    >
-      <style>{`
-        @keyframes spin {
-          from {
-            transform: rotate(0deg);
-          }
-          to {
-            transform: rotate(360deg);
-          }
-        }
-        .kicked-overlay svg {
-          animation: spin 1s linear infinite;
-        }
-      `}</style>
-      <div className="kicked-overlay">{kickMessages[code] || kickMessages.unknown}</div>
+    <div className="absolute inset-0 bg-black flex items-center justify-center pointer-events-auto">
+      <div className="text-white text-lg">{kickMessages[code] || kickMessages.unknown}</div>
     </div>
   )
 }
@@ -407,22 +384,8 @@ function ActionsBlock({ world }: { world: World }) {
   if (!showActions) return null
   return (
     <div
-      className="actions-block absolute flex flex-col items-center"
-      style={{
-        top: 'calc(2rem + env(safe-area-inset-top))',
-        left: 'calc(2rem + env(safe-area-inset-left))',
-        bottom: 'calc(2rem + env(safe-area-inset-bottom))',
-      }}
+      className="absolute flex flex-col items-center top-[calc(2rem+env(safe-area-inset-top))] left-[calc(2rem+env(safe-area-inset-left))] bottom-[calc(2rem+env(safe-area-inset-bottom))] xl:top-[calc(2rem+env(safe-area-inset-top))] xl:left-[calc(2rem+env(safe-area-inset-left))] xl:bottom-[calc(2rem+env(safe-area-inset-bottom))] max-xl:top-[calc(1rem+env(safe-area-inset-top))] max-xl:left-[calc(1rem+env(safe-area-inset-left))] max-xl:bottom-[calc(1rem+env(safe-area-inset-bottom))]"
     >
-      <style>{`
-        @media all and (max-width: 1200px) {
-          .actions-block {
-            top: calc(1rem + env(safe-area-inset-top)) !important;
-            left: calc(1rem + env(safe-area-inset-left)) !important;
-            bottom: calc(1rem + env(safe-area-inset-bottom)) !important;
-          }
-        }
-      `}</style>
       <Actions world={world} />
     </div>
   )
@@ -523,7 +486,7 @@ function Toast({ world }: { world: World }) {
   if (!msg) return null
   return (
     <div
-      className='toast absolute left-0 right-0 flex justify-center'
+      className='absolute left-0 right-0 flex justify-center'
       style={{
         top: 'calc(50% - 4.375rem)',
       }}
@@ -539,25 +502,6 @@ function Toast({ world }: { world: World }) {
             transform: translateY(0) scale(1);
           }
         }
-        .toast-msg {
-          height: 2.875rem;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 0 1rem;
-          background: rgba(11, 10, 21, 0.85);
-          border: 0.0625rem solid #2a2b39;
-          backdrop-filter: blur(5px);
-          border-radius: 1.4375rem;
-          opacity: 0;
-          transform: translateY(0.625rem) scale(0.9);
-          transition: all 0.1s ease-in-out;
-        }
-        .toast-msg.visible {
-          opacity: 1;
-          transform: translateY(0) scale(1);
-          animation: toastIn 0.1s ease-in-out;
-        }
       `}</style>
       {msg && <ToastMsg key={msg.id} text={msg.text} />}
     </div>
@@ -567,9 +511,9 @@ function Toast({ world }: { world: World }) {
 function ToastMsg({ text }: { text: string }) {
   const [visible, setVisible] = useState(true)
   useEffect(() => {
-    setTimeout(() => setVisible(false), 1000)
+    setTimeout(() => setVisible(false), 3000) // Show for 3 seconds
   }, [])
-  return <div className={cls('toast-msg', { visible })}>{text}</div>
+  return <div className={cls('h-[2.875rem] flex items-center justify-center px-4 bg-[rgba(11,10,21,0.85)] border border-[#2a2b39] backdrop-blur-[5px] rounded-[1.4375rem] transition-all duration-100 ease-in-out text-white text-[0.9375rem] font-medium', { 'opacity-100 translate-y-0 scale-100 animate-[toastIn_0.1s_ease-in-out]': visible, 'opacity-0 translate-y-2.5 scale-90': !visible })}>{text}</div>
 }
 
 function TouchBtns({ world }: { world: World }) {
@@ -588,38 +532,15 @@ function TouchBtns({ world }: { world: World }) {
   }, [])
   return (
     <div
-      className='touchbtns absolute flex flex-col items-center gap-2'
+      className='absolute flex flex-col items-center gap-2'
       style={{
         bottom: 'calc(1rem + env(safe-area-inset-bottom))',
         right: 'calc(1rem + env(safe-area-inset-right))',
       }}
     >
-      <style>{`
-        .touchbtns-btn {
-          pointer-events: auto;
-          width: 3.5rem;
-          height: 3.5rem;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: rgba(11, 10, 21, 0.85);
-          border: 0.0625rem solid #2a2b39;
-          backdrop-filter: blur(5px);
-          border-radius: 1rem;
-          box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.2);
-          cursor: pointer;
-        }
-        .touchbtns-btn:active {
-          transform: scale(0.95);
-        }
-        .touchbtns-btn.action {
-          background: #ff4d4d;
-          border-color: #ff6666;
-        }
-      `}</style>
       {isAction && (
         <div
-          className='touchbtns-btn action'
+          className='pointer-events-auto w-14 h-14 flex items-center justify-center bg-[#ff4d4d] border border-[#ff6666] backdrop-blur-[5px] rounded-2xl shadow-[0_0.125rem_0.25rem_rgba(0,0,0,0.2)] cursor-pointer active:scale-95'
           onClick={() => {
             (world.controls as { action?: { onPress: () => void } })?.action?.onPress()
           }}

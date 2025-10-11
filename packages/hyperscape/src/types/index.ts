@@ -69,6 +69,8 @@ export { EquipmentSlotName } from './core';
 // Re-export other types (using specific exports to avoid circular dependencies)
 export * from './database';
 export * from './entities';
+// Explicitly export enums from entities that are commonly used
+export { MobType, EntityType, InteractionType, ItemRarity, MobAIState, NPCType, ResourceType } from './entities';
 export * from './events';
 export * from './identifiers';
 export * from './systems';

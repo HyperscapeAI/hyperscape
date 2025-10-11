@@ -23,6 +23,7 @@ import { ALL_WORLD_AREAS, STARTER_TOWNS, getMobSpawnsInArea, getNPCsInArea } fro
 import type { Item, MobData, TreasureLocation } from '../types/core';
 import type { DataValidationResult } from '../types/validation-types'
 import type { MobSpawnPoint, NPCLocation, WorldArea } from './world-areas';
+import { ItemType, WeaponType, EquipmentSlotName, AttackType } from '../types/core';
 
 /**
  * Data validation results
@@ -53,12 +54,111 @@ export class DataManager {
   }
 
   /**
+   * Load manifests from server via fetch (client-side)
+   */
+  private async loadManifestsFromServer(): Promise<void> {
+    // Vite serves files from public/ directory at root during development
+    // In production, server serves /world-assets/manifests/ route
+    const baseUrl = '/manifests';
+    
+    try {
+      // Load items
+      const itemsRes = await fetch(`${baseUrl}/items.json`);
+      if (itemsRes.ok) {
+        const list = await itemsRes.json() as Array<Item>;
+        for (const it of list) {
+          if (!it || !it.id) continue;
+          const normalized = this.normalizeItem(it);
+          (ITEMS as Map<string, Item>).set(normalized.id, normalized);
+        }
+        console.log(`[DataManager] Loaded ${list.length} items from server manifests`);
+      }
+    } catch (e) {
+      console.warn('[DataManager] Failed to load items.json:', (e as Error).message);
+    }
+    
+    try {
+      // Load mobs
+      const mobsRes = await fetch(`${baseUrl}/mobs.json`);
+      if (mobsRes.ok) {
+        const list = await mobsRes.json() as Array<MobData>;
+        for (const mob of list) {
+          if (!mob || !mob.id) continue;
+          (ALL_MOBS as Record<string, MobData>)[mob.id] = mob;
+        }
+        console.log(`[DataManager] Loaded ${list.length} mobs from server manifests`);
+      }
+    } catch (e) {
+      console.warn('[DataManager] Failed to load mobs.json:', (e as Error).message);
+    }
+    
+    try {
+      // Load NPCs
+      const npcsRes = await fetch(`${baseUrl}/npcs.json`);
+      if (npcsRes.ok) {
+        const list = await npcsRes.json() as Array<{
+          id: string;
+          name: string;
+          description: string;
+          type: string;
+          modelPath: string;
+          services: string[];
+        }>;
+        
+        if (!(globalThis as { EXTERNAL_NPCS?: Map<string, unknown> }).EXTERNAL_NPCS) {
+          (globalThis as { EXTERNAL_NPCS?: Map<string, unknown> }).EXTERNAL_NPCS = new Map();
+        }
+        for (const npc of list) {
+          if (!npc || !npc.id) continue;
+          (globalThis as unknown as { EXTERNAL_NPCS: Map<string, unknown> }).EXTERNAL_NPCS.set(npc.id, npc);
+        }
+        console.log(`[DataManager] Loaded ${list.length} NPCs from server manifests`);
+      }
+    } catch (e) {
+      console.warn('[DataManager] Failed to load npcs.json:', (e as Error).message);
+    }
+    
+    try {
+      // Load resources
+      const resourcesRes = await fetch(`${baseUrl}/resources.json`);
+      if (resourcesRes.ok) {
+        const list = await resourcesRes.json() as Array<{
+          id: string;
+          name: string;
+          type: string;
+          modelPath: string;
+        }>;
+        
+        if (!(globalThis as { EXTERNAL_RESOURCES?: Map<string, unknown> }).EXTERNAL_RESOURCES) {
+          (globalThis as { EXTERNAL_RESOURCES?: Map<string, unknown> }).EXTERNAL_RESOURCES = new Map();
+        }
+        for (const resource of list) {
+          if (!resource || !resource.id) continue;
+          (globalThis as unknown as { EXTERNAL_RESOURCES: Map<string, unknown> }).EXTERNAL_RESOURCES.set(resource.id, resource);
+        }
+        console.log(`[DataManager] Loaded ${list.length} resources from server manifests`);
+      }
+    } catch (e) {
+      console.warn('[DataManager] Failed to load resources.json:', (e as Error).message);
+    }
+  }
+
+  /**
    * Load external assets written by 3D Asset Forge (manifests under world/assets)
    */
   private async loadExternalAssetsFromWorld(): Promise<void> {
-    // Determine world assets dir: try server's world/assets path
-    // Server sets worldDir in src/server/index.ts and serves assets at /world-assets/
-    // Here, read relative to the server package root
+    // Check if we're in a browser environment
+    // Server has 'process' global, browser has 'window'
+    const isServer = typeof process !== 'undefined' && process.versions && process.versions.node;
+    const isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined';
+    
+    if (isBrowser && !isServer) {
+      // Client-side: Load manifests via fetch from server
+      await this.loadManifestsFromServer();
+      return;
+    }
+    
+    // Server-side: Load manifests from filesystem
     try {
       // Resolve from process.cwd() (packages/hyperscape during dev-final)
       const baseDir = process.cwd()
@@ -73,12 +173,12 @@ export class DataManager {
       const itemsPath = require('path').join(manifestsDir, 'items.json')
       if (fs.existsSync(itemsPath)) {
         const raw = fs.readFileSync(itemsPath, 'utf-8') as string
-        const list = JSON.parse(raw) as Array<import('../types/core').Item>
+        const list = JSON.parse(raw) as Array<Item>
         for (const it of list) {
           if (!it || !it.id) continue
           // Ensure required defaults
           const normalized = this.normalizeItem(it)
-          ;(ITEMS as Map<string, import('../types/core').Item>).set(normalized.id, normalized)
+          ;(ITEMS as Map<string, Item>).set(normalized.id, normalized)
         }
         console.log(`[DataManager] Loaded ${list.length} external items from manifests`)
       }
@@ -87,12 +187,123 @@ export class DataManager {
       const mobsPath = require('path').join(manifestsDir, 'mobs.json')
       if (fs.existsSync(mobsPath)) {
         const raw = fs.readFileSync(mobsPath, 'utf-8') as string
-        const list = JSON.parse(raw) as Array<import('../types/core').MobData>
+        const list = JSON.parse(raw) as Array<MobData>
         for (const mob of list) {
           if (!mob || !mob.id) continue
-          ;(ALL_MOBS as Record<string, import('../types/core').MobData>)[mob.id] = mob
+          ;(ALL_MOBS as Record<string, MobData>)[mob.id] = mob
         }
         console.log(`[DataManager] Loaded ${list.length} external mobs from manifests`)
+      }
+
+      // Load NPCs
+      const npcsPath = require('path').join(manifestsDir, 'npcs.json')
+      if (fs.existsSync(npcsPath)) {
+        const raw = fs.readFileSync(npcsPath, 'utf-8') as string
+        const list = JSON.parse(raw) as Array<{
+          id: string;
+          name: string;
+          description: string;
+          type: string;
+          modelPath: string;
+          animations?: { idle?: string; talk?: string };
+          services: string[];
+        }>
+        
+        // NPCs can be added to world areas dynamically
+        // For now, just log that they're available
+        console.log(`[DataManager] Loaded ${list.length} external NPCs from manifests`)
+        
+        // Store NPCs for later use by NPC spawning systems
+        this.worldAssetsDir
+        for (const npc of list) {
+          if (!npc || !npc.id) continue
+          // Store in a global NPCs map for systems to access
+          if (!(globalThis as { EXTERNAL_NPCS?: Map<string, unknown> }).EXTERNAL_NPCS) {
+            (globalThis as { EXTERNAL_NPCS?: Map<string, unknown> }).EXTERNAL_NPCS = new Map()
+          }
+          (globalThis as unknown as { EXTERNAL_NPCS: Map<string, unknown> }).EXTERNAL_NPCS.set(npc.id, npc)
+        }
+      }
+
+      // Load resources
+      const resourcesPath = require('path').join(manifestsDir, 'resources.json')
+      if (fs.existsSync(resourcesPath)) {
+        const raw = fs.readFileSync(resourcesPath, 'utf-8') as string
+        const list = JSON.parse(raw) as Array<{
+          id: string;
+          name: string;
+          type: string;
+          modelPath: string;
+          iconPath?: string;
+          harvestSkill: string;
+          requiredLevel: number;
+          harvestTime: number;
+          respawnTime: number;
+          yields: Array<{ itemId: string; quantity: number; chance: number }>;
+        }>
+        
+        console.log(`[DataManager] Loaded ${list.length} external resources from manifests`)
+        
+        // Store resources for terrain system and resource system to access
+        if (!(globalThis as { EXTERNAL_RESOURCES?: Map<string, unknown> }).EXTERNAL_RESOURCES) {
+          (globalThis as { EXTERNAL_RESOURCES?: Map<string, unknown> }).EXTERNAL_RESOURCES = new Map()
+        }
+        for (const resource of list) {
+          if (!resource || !resource.id) continue
+          (globalThis as unknown as { EXTERNAL_RESOURCES: Map<string, unknown> }).EXTERNAL_RESOURCES.set(resource.id, resource)
+        }
+      }
+
+      // Load buildings
+      const buildingsPath = require('path').join(manifestsDir, 'buildings.json')
+      if (fs.existsSync(buildingsPath)) {
+        const raw = fs.readFileSync(buildingsPath, 'utf-8') as string
+        const list = JSON.parse(raw) as Array<{
+          id: string;
+          name: string;
+          type: string;
+          modelPath: string;
+          iconPath?: string;
+          description: string;
+        }>
+        
+        console.log(`[DataManager] Loaded ${list.length} external buildings from manifests`)
+        
+        // Store buildings for world building systems
+        if (!(globalThis as { EXTERNAL_BUILDINGS?: Map<string, unknown> }).EXTERNAL_BUILDINGS) {
+          (globalThis as { EXTERNAL_BUILDINGS?: Map<string, unknown> }).EXTERNAL_BUILDINGS = new Map()
+        }
+        for (const building of list) {
+          if (!building || !building.id) continue
+          (globalThis as unknown as { EXTERNAL_BUILDINGS: Map<string, unknown> }).EXTERNAL_BUILDINGS.set(building.id, building)
+        }
+      }
+
+      // Load avatars
+      const avatarsPath = require('path').join(manifestsDir, 'avatars.json')
+      if (fs.existsSync(avatarsPath)) {
+        const raw = fs.readFileSync(avatarsPath, 'utf-8') as string
+        const list = JSON.parse(raw) as Array<{
+          id: string;
+          name: string;
+          description: string;
+          type: string;
+          isRigged: boolean;
+          characterHeight: number;
+          modelPath: string;
+          animations?: { idle?: string; walk?: string; run?: string };
+        }>
+        
+        console.log(`[DataManager] Loaded ${list.length} external avatars from manifests`)
+        
+        // Store avatars for player system
+        if (!(globalThis as { EXTERNAL_AVATARS?: Map<string, unknown> }).EXTERNAL_AVATARS) {
+          (globalThis as { EXTERNAL_AVATARS?: Map<string, unknown> }).EXTERNAL_AVATARS = new Map()
+        }
+        for (const avatar of list) {
+          if (!avatar || !avatar.id) continue
+          (globalThis as unknown as { EXTERNAL_AVATARS: Map<string, unknown> }).EXTERNAL_AVATARS.set(avatar.id, avatar)
+        }
       }
     } catch (e) {
       // Non-fatal
@@ -100,9 +311,8 @@ export class DataManager {
     }
   }
 
-  private normalizeItem(item: import('../types/core').Item): import('../types/core').Item {
+  private normalizeItem(item: Item): Item {
     // Ensure required fields have sane defaults and enums
-    const { ItemType, WeaponType, EquipmentSlotName, AttackType } = require('../types/core')
     const safeWeaponType = item.weaponType ?? WeaponType.NONE
     const equipSlot = item.equipSlot ?? null
     const attackType = item.attackType ?? null
@@ -124,8 +334,8 @@ export class DataManager {
       ...item,
       type: item.type,
       weaponType: safeWeaponType,
-      equipSlot: equipSlot as import('../types/core').EquipmentSlotName | null,
-      attackType: attackType as import('../types/core').AttackType | null,
+      equipSlot: equipSlot as EquipmentSlotName | null,
+      attackType: attackType as AttackType | null,
       ...defaults,
     }
   }
@@ -164,16 +374,16 @@ export class DataManager {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    // Validate items
+    // Validate items (warning only - manifests might be loading)
     const itemCount = ITEMS.size;
     if (itemCount === 0) {
-      errors.push('No items found in ITEMS');
+      warnings.push('No items loaded from manifests yet');
     }
 
-    // Validate mobs
+    // Validate mobs (warning only - manifests might be loading)
     const mobCount = Object.keys(ALL_MOBS).length;
     if (mobCount === 0) {
-      errors.push('No mobs found in ALL_MOBS');
+      warnings.push('No mobs loaded from manifests yet');
     }
 
     // Validate world areas
@@ -188,8 +398,10 @@ export class DataManager {
       warnings.push('No treasure locations found in TREASURE_LOCATIONS');
     }
 
-    // Validate cross-references
-    this.validateCrossReferences(errors, warnings);
+    // Validate cross-references (only if we have data)
+    if (itemCount > 0 && mobCount > 0) {
+      this.validateCrossReferences(errors, warnings);
+    }
 
     return {
       isValid: errors.length === 0,

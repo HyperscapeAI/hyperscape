@@ -514,6 +514,7 @@ export interface Item {
   weaponType: WeaponType | null      // Type of weapon (if applicable)
   equipable: boolean          // Can be equipped
   attackType: AttackType | null      // Type of attack (melee, ranged, magic)
+  attackSpeed?: number        // Attack speed in milliseconds (for weapons)
   
   // Item properties
   description: string         // Item description
@@ -522,7 +523,7 @@ export interface Item {
   rarity: ItemRarity              // ItemRarity tier
   
   // Visual assets
-  modelPath: string           // 3D model path
+  modelPath: string | null    // 3D model path (null if no model exists yet)
   iconPath: string            // UI icon path
   
   // Consumable properties
@@ -1884,7 +1885,7 @@ export interface NPCLocation {
   type: 'bank' | 'general_store' | 'skill_trainer' | 'quest_giver';
   position: WorldPosition;
   services: string[];
-  modelPath: string;
+  modelPath?: string; // Optional - will use fallback shape if not provided
   description: string;
 }
 

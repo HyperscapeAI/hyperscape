@@ -8,6 +8,7 @@
 import { EventEmitter } from 'eventemitter3'
 import type { PhysXInfo, PhysXModule } from './types/physics'
 import THREE from './extras/three'
+import loadPhysXScript from './physx-script-loader'
 
 export enum PhysXState {
   NOT_LOADED = 'not_loaded',
@@ -298,7 +299,6 @@ class PhysXManager extends EventEmitter {
       if (isBrowser) {
         // Browser environment - use script loader
         console.log('[PhysXManager] Browser environment detected, loading PhysX via script...')
-        const loadPhysXScript = (await import('./physx-script-loader')).default
         PHYSX = await loadPhysXScript(moduleOptions)
       } else {
         // Node.js/server environment - use dynamic import for ESM compatibility

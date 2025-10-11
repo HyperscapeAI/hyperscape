@@ -33,17 +33,32 @@ export function calculateDamage(
   let baseDamage = 1;
   
   if (attackType === AttackType.MELEE) {
-    if (attacker.stats?.attack) {
-      baseDamage = Math.floor(attacker.stats.attack * COMBAT_CONSTANTS.DAMAGE_MULTIPLIERS.MELEE_ATTACK) + 1;
-    } else if (attacker.config?.attackPower) {
-      baseDamage = attacker.config.attackPower;
+    const attackStat = attacker.stats?.attack || 0;
+    const attackPower = attacker.config?.attackPower || 0;
+    
+    if (attackStat > 0) {
+      baseDamage = Math.floor(attackStat * COMBAT_CONSTANTS.DAMAGE_MULTIPLIERS.MELEE_ATTACK) + 1;
+    } else if (attackPower > 0) {
+      baseDamage = attackPower;
+    } else {
+      baseDamage = 5; // Default melee damage
     }
   } else if (attackType === AttackType.RANGED) {
-    if (attacker.stats?.ranged) {
-      baseDamage = Math.floor(attacker.stats.ranged * COMBAT_CONSTANTS.DAMAGE_MULTIPLIERS.RANGED_ATTACK) + 1;
-    } else if (attacker.config?.attackPower) {
-      baseDamage = attacker.config.attackPower;
+    const rangedStat = attacker.stats?.ranged || 0;
+    const attackPower = attacker.config?.attackPower || 0;
+    
+    if (rangedStat > 0) {
+      baseDamage = Math.floor(rangedStat * COMBAT_CONSTANTS.DAMAGE_MULTIPLIERS.RANGED_ATTACK) + 1;
+    } else if (attackPower > 0) {
+      baseDamage = attackPower;
+    } else {
+      baseDamage = 3; // Default ranged damage
     }
+  }
+  
+  // Ensure baseDamage is valid
+  if (!Number.isFinite(baseDamage) || baseDamage < 1) {
+    baseDamage = 5;
   }
   
   // Apply defense reduction
@@ -53,6 +68,15 @@ export function calculateDamage(
   // Calculate final damage with randomization
   const finalDamage = Math.max(COMBAT_CONSTANTS.MIN_DAMAGE, baseDamage - damageReduction);
   const damage = Math.floor(Math.random() * finalDamage) + 1;
+  
+  // Ensure damage is valid
+  if (!Number.isFinite(damage) || damage < 1) {
+    return {
+      damage: 1,
+      isCritical: false,
+      damageType: attackType
+    };
+  }
   
   // Simple critical hit chance (10%)
   const isCritical = Math.random() < 0.1;

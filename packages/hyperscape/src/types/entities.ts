@@ -25,6 +25,7 @@ export enum EntityType {
   ITEM = 'item',
   NPC = 'npc',
   RESOURCE = 'resource',
+  HEADSTONE = 'headstone',
   STATIC = 'static'
 }
 
@@ -48,8 +49,18 @@ export enum PlayerCombatStyle {
   RANGED = 'ranged'
 }
 
+// Mob types simplified to match actual 3D models available
+// Models are loaded from world/assets/manifests/mobs.json
+// Actual model files: goblin, thug, human, troll, imp
 export enum MobType {
+  // Base model types (what GLB files actually exist)
   GOBLIN = 'goblin',
+  THUG = 'thug',     // Used for: bandit
+  HUMAN = 'human',   // Used for: barbarian, guard, black_knight, ice_warrior, dark_ranger
+  TROLL = 'troll',   // Used for: hobgoblin
+  IMP = 'imp',       // Used for: dark_warrior
+  
+  // Legacy aliases (deprecated - use actual mob IDs from JSON instead)
   BANDIT = 'bandit',
   BARBARIAN = 'barbarian',
   HOBGOBLIN = 'hobgoblin',
@@ -361,14 +372,15 @@ export interface HeadstoneEntityConfig extends EntityConfig<BaseEntityProperties
 
 // Spawn data interfaces for entity creation
 export interface ItemSpawnData {
-  id: string;
-  customId: string;
-  name: string;
+  id?: string;
+  itemId?: string; // Alias for id, either id or itemId must be provided
+  customId?: string;
+  name?: string;
   position: Position3D;
-  model: string | null;
-  quantity: number;
-  stackable: boolean;
-  value: number;
+  model?: string | null;
+  quantity?: number;
+  stackable?: boolean;
+  value?: number;
 }
 
 export interface MobSpawnData {

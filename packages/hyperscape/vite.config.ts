@@ -2,7 +2,6 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { polyfillNode } from 'esbuild-plugin-polyfill-node'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -92,15 +91,7 @@ export default defineConfig({
       target: 'esnext', // Support top-level await
       define: {
         global: 'globalThis'
-      },
-      plugins: [
-        polyfillNode({
-          polyfills: {
-            buffer: true,
-            process: true
-          }
-        })
-      ]
+      }
     }
   },
 }) 

@@ -320,7 +320,7 @@ export class TerrainSystem extends System {
       color: 0xb8956a, // Rich sandy tan
       heightRange: [0.0, 0.3],
       resources: ['rock', 'ore'],
-      mobs: ['goblin', 'hobgoblin'],
+      mobs: [], // Loaded from JSON manifests
       fogIntensity: 0.3,
       ambientSound: 'wastes_wind',
       colorScheme: {
@@ -331,7 +331,7 @@ export class TerrainSystem extends System {
       terrainMultiplier: 0.4,
       waterLevel: 1.0,
       maxSlope: 0.6,
-      mobTypes: ['goblin', 'hobgoblin'],
+      mobTypes: [], // Loaded from JSON manifests
       difficulty: 1,
       baseHeight: 0.15,
       heightVariation: 0.15,
@@ -347,7 +347,7 @@ export class TerrainSystem extends System {
       color: 0x1a4d1f, // Deep, dark forest green
       heightRange: [0.2, 0.7],
       resources: ['tree', 'herb', 'rare_ore'],
-      mobs: ['dark_warrior', 'barbarian'],
+      mobs: [], // Loaded from JSON manifests
       fogIntensity: 0.8,
       ambientSound: 'dark_forest_ambient',
       colorScheme: {
@@ -358,7 +358,7 @@ export class TerrainSystem extends System {
       terrainMultiplier: 0.9,
       waterLevel: 2.5,
       maxSlope: 0.5,
-      mobTypes: ['dark_warrior', 'barbarian'],
+      mobTypes: [], // Loaded from JSON manifests
       difficulty: 2,
       baseHeight: 0.45,
       heightVariation: 0.25,
@@ -374,7 +374,7 @@ export class TerrainSystem extends System {
       color: 0xc5dce8, // Icy blue-white
       heightRange: [0.6, 1.0],
       resources: ['rock', 'gem', 'rare_ore'],
-      mobs: ['ice_warrior', 'black_knight'],
+      mobs: [], // Loaded from JSON manifests
       fogIntensity: 0.6,
       ambientSound: 'frozen_wind',
       colorScheme: {
@@ -385,7 +385,7 @@ export class TerrainSystem extends System {
       terrainMultiplier: 1.2,
       waterLevel: 0.5,
       maxSlope: 0.8,
-      mobTypes: ['ice_warrior', 'black_knight'],
+      mobTypes: [], // Loaded from JSON manifests
       difficulty: 3,
       baseHeight: 0.8,
       heightVariation: 0.2,
@@ -401,7 +401,7 @@ export class TerrainSystem extends System {
       color: 0x6b3820, // Dark rust brown
       heightRange: [0.0, 0.4],
       resources: ['rare_ore'],
-      mobs: ['dark_ranger', 'black_knight'],
+      mobs: [], // Loaded from JSON manifests
       fogIntensity: 0.5,
       ambientSound: 'corrupted_whispers',
       colorScheme: {
@@ -412,7 +412,7 @@ export class TerrainSystem extends System {
       terrainMultiplier: 0.3,
       waterLevel: 0.0,
       maxSlope: 0.7,
-      mobTypes: ['dark_ranger', 'black_knight'],
+      mobTypes: [], // Loaded from JSON manifests
       difficulty: 3,
       baseHeight: 0.2,
       heightVariation: 0.2,

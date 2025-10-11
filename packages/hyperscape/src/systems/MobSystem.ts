@@ -9,7 +9,7 @@ import { SystemBase } from './SystemBase';
 import { ALL_MOBS, MOB_SPAWN_CONSTANTS } from '../data/mobs';
 import { ALL_WORLD_AREAS } from '../data/world-areas';
 import { MobInstance, MobSpawnConfig } from '../types/core';
-import { calculateDistance } from '../utils/EntityUtils';
+import { calculateDistance, groundToTerrain } from '../utils/EntityUtils';
 import { EntityManager } from './EntityManager';
 import type { XPSystem } from '../types/system-interfaces';
 
@@ -127,7 +127,7 @@ export class MobSystem extends SystemBase {
               const distance = Math.random() * mobSpawn.spawnRadius;
               const position = {
                 x: mobSpawn.position.x + Math.cos(angle) * distance,
-                y: mobSpawn.position.y || 2, // Use specified Y or default to 2
+                y: mobSpawn.position.y || 0, // Use specified Y or default to 0 (will be grounded to terrain)
                 z: mobSpawn.position.z + Math.sin(angle) * distance
               };
 
@@ -158,6 +158,9 @@ export class MobSystem extends SystemBase {
     if (!this.entityManager) {
       return null;
     }
+    
+    // Ground mob to terrain - use Infinity to allow any initial height difference
+    const groundedPosition = groundToTerrain(this.world, position, 0.5, Infinity);
     
     const mobId = `mob_${spawnId}_${Date.now()}`;
     
@@ -190,13 +193,13 @@ export class MobSystem extends SystemBase {
       level: config.level,
       health: (config.stats?.constitution || 10) * 10, // Health = Constitution * 10 per GDD
       maxHealth: (config.stats?.constitution || 10) * 10,
-      position: { x: position.x, y: position.y, z: position.z },
+      position: { x: groundedPosition.x, y: groundedPosition.y, z: groundedPosition.z },
       isAlive: true,
       isAggressive: config.isAggressive,
       aggroRange: config.aggroRange,
       aiState: 'idle' as const,
-      homePosition: { x: position.x, y: position.y, z: position.z },
-      spawnLocation: { x: position.x, y: position.y, z: position.z },
+      homePosition: { x: groundedPosition.x, y: groundedPosition.y, z: groundedPosition.z },
+      spawnLocation: { x: groundedPosition.x, y: groundedPosition.y, z: groundedPosition.z },
       equipment: {
         weapon: config.equipment?.weapon ? {
           id: 1,
@@ -320,11 +323,14 @@ export class MobSystem extends SystemBase {
     const mob = this.mobs.get(mobId);
     if (!mob) return;
 
+    // Ground spawn location to terrain before respawning - use Infinity to allow any initial height difference
+    const groundedPosition = groundToTerrain(this.world, mob.spawnLocation, 0.5, Infinity);
+
     // Reset mob to spawn state
     mob.isAlive = true;
     mob.health = mob.maxHealth;
-    mob.position = { ...mob.spawnLocation };
-    mob.homePosition = { ...mob.spawnLocation };
+    mob.position = { ...groundedPosition };
+    mob.homePosition = { ...groundedPosition };
     mob.aiState = 'idle';
     mob.target = null;
     mob.lastAI = Date.now();
@@ -339,7 +345,7 @@ export class MobSystem extends SystemBase {
         // Emit a spawn request - EntityManager will create the entity and emit MOB_SPAWNED
         this.emitTypedEvent(EventType.MOB_SPAWN_REQUEST, {
           mobType: config.type,
-          position: { x: mob.position.x, y: mob.position.y, z: mob.position.z },
+          position: { x: groundedPosition.x, y: groundedPosition.y, z: groundedPosition.z },
           level: config.level,
           name: config.name,
           customId: mobId
@@ -934,27 +940,12 @@ export class MobSystem extends SystemBase {
 
   /**
    * Move mob towards target position
+   * DISABLED: Movement now handled by MobEntity which properly syncs to clients
    */
   private moveTowardsTarget(mob: MobInstance, targetPosition: { x: number; y: number; z: number }): void {
-    if (!targetPosition) return;
-
-    const mobPosition = mob.position;
-    const distance = Math.sqrt(
-      (targetPosition.x - mobPosition.x) ** 2 + 
-      (targetPosition.z - mobPosition.z) ** 2
-    );
-
-    if (distance > 0.5) { // Don't move if very close
-      const moveSpeed = 2; // units per second
-      const deltaTime = 0.016; // Assuming 60 FPS
-      const moveDistance = moveSpeed * deltaTime;
-      
-      const normalizedX = (targetPosition.x - mobPosition.x) / distance;
-      const normalizedZ = (targetPosition.z - mobPosition.z) / distance;
-      
-      mob.position.x += normalizedX * moveDistance;
-      mob.position.z += normalizedZ * moveDistance;
-    }
+    // DISABLED: MobEntity.serverUpdate() handles all mob AI and movement
+    // Direct mob.position modification does not trigger network sync!
+    // MobEntity uses Entity.setPosition() → Entity.markNetworkDirty() → EntityManager broadcasts
   }
 
   /**

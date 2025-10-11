@@ -16,6 +16,7 @@ import { dataManager } from '../data/DataManager';
 import { equipmentRequirements } from '../data/EquipmentRequirements';
 import { SystemBase } from './SystemBase';
 import { Logger } from '../utils/Logger';
+import { PlayerIdMapper } from './PlayerIdMapper';
 
 import { World } from '../World';
 import {
@@ -56,6 +57,9 @@ export type { EquipmentSlot, PlayerEquipment };
 export class EquipmentSystem extends SystemBase {
   private playerEquipment = new Map<string, PlayerEquipment>();
   private playerSkills = new Map<string, Record<string, { level: number; xp: number }>>();
+  private databaseSystem?: import('./DatabaseSystem').DatabaseSystem;
+  private saveInterval?: NodeJS.Timeout;
+  private readonly AUTO_SAVE_INTERVAL = 30000; // 30 seconds
   
   // GDD-compliant level requirements
   // Level requirements are now stored in item data directly
@@ -69,7 +73,8 @@ export class EquipmentSystem extends SystemBase {
         ],
         optional: [
           'rpg-player', // Better with player system for player data
-          'rpg-ui' // Better with UI for notifications
+          'rpg-ui', // Better with UI for notifications
+          'rpg-database' // For persistence
         ]
       },
       autoCleanup: true
@@ -77,13 +82,27 @@ export class EquipmentSystem extends SystemBase {
   }
 
   async init(): Promise<void> {
+    // Get DatabaseSystem for persistence
+    this.databaseSystem = this.world.getSystem('rpg-database') as import('./DatabaseSystem').DatabaseSystem | undefined;
+    
+    if (!this.databaseSystem && this.world.isServer) {
+      console.warn('[EquipmentSystem] DatabaseSystem not found - equipment will not persist!');
+    }
     
     // Set up type-safe event subscriptions
     this.subscribe(EventType.PLAYER_REGISTERED, (data) => {
       this.initializePlayerEquipment({ id: data.playerId });
     });
+    this.subscribe(EventType.PLAYER_JOINED, (data) => {
+      // Load equipment from database when player joins
+      this.loadEquipmentFromDatabase(data.playerId);
+    });
     this.subscribe(EventType.PLAYER_UNREGISTERED, (data) => {
       this.cleanupPlayerEquipment(data.playerId);
+    });
+    this.subscribe(EventType.PLAYER_LEFT, async (data) => {
+      // Save equipment before player leaves
+      await this.saveEquipmentToDatabase(data.playerId);
     });
 
     // Listen to skills updates for reactive patterns
@@ -132,6 +151,12 @@ export class EquipmentSystem extends SystemBase {
   }
 
   private initializePlayerEquipment(playerData: { id: string }): void {
+    // Extract userId from entity for persistence  
+    const entity = this.world.entities.get(playerData.id);
+    if (entity && entity.data?.userId) {
+      PlayerIdMapper.register(playerData.id, entity.data.userId as string);
+    }
+    
     const equipment: PlayerEquipment = {
       playerId: playerData.id,
       weapon: { id: `${playerData.id}_weapon`, name: 'Weapon Slot', slot: EquipmentSlotName.WEAPON, itemId: null, item: null },
@@ -161,6 +186,80 @@ export class EquipmentSystem extends SystemBase {
     const bronzeSword = this.getItemData('bronze_sword');
     if (bronzeSword) {
       this.forceEquipItem(playerId, bronzeSword, 'weapon');
+    }
+  }
+  
+  private async loadEquipmentFromDatabase(playerId: string): Promise<void> {
+    if (!this.databaseSystem) return;
+    
+    // Use userId for database lookup
+    const databaseId = PlayerIdMapper.getDatabaseId(playerId);
+    console.log(`[EquipmentSystem] Loading equipment from database - playerId: ${playerId}, userId: ${databaseId}`);
+    
+    const dbEquipment = this.databaseSystem.getPlayerEquipment(databaseId);
+    
+    if (dbEquipment && dbEquipment.length > 0) {
+      const equipment = this.playerEquipment.get(playerId);
+      if (!equipment) return;
+      
+      // Load equipped items from database
+      for (const dbItem of dbEquipment) {
+        if (!dbItem.itemId) continue; // Skip null items
+        
+        const itemData = this.getItemData(dbItem.itemId);
+        if (itemData && dbItem.slotType) {
+          const slot = equipment[dbItem.slotType as keyof PlayerEquipment];
+          if (slot && typeof slot === 'object' && 'itemId' in slot) {
+            slot.itemId = parseInt(dbItem.itemId, 10);
+            slot.item = itemData;
+          }
+        }
+      }
+      
+      // Recalculate stats after loading equipment
+      this.recalculateStats(playerId);
+      console.log(`[EquipmentSystem] Loaded ${dbEquipment.length} equipped items from database for player ${playerId}`);
+    } else {
+      console.log(`[EquipmentSystem] No saved equipment found for userId ${databaseId}, using defaults`);
+    }
+  }
+  
+  private async saveEquipmentToDatabase(playerId: string): Promise<void> {
+    if (!this.databaseSystem) return;
+    
+    const equipment = this.playerEquipment.get(playerId);
+    if (!equipment) return;
+    
+    // Use userId for database save
+    const databaseId = PlayerIdMapper.getDatabaseId(playerId);
+    
+    // Convert to database format
+    const dbEquipment: Array<{ slotType: string; itemId: string; quantity: number }> = [];
+    
+    const slots = [
+      { key: 'weapon', slot: EquipmentSlotName.WEAPON },
+      { key: 'shield', slot: EquipmentSlotName.SHIELD },
+      { key: 'helmet', slot: EquipmentSlotName.HELMET },
+      { key: 'body', slot: EquipmentSlotName.BODY },
+      { key: 'legs', slot: EquipmentSlotName.LEGS },
+      { key: 'arrows', slot: EquipmentSlotName.ARROWS },
+    ];
+    
+    for (const { key, slot } of slots) {
+      const equipSlot = equipment[key as keyof PlayerEquipment];
+      if (equipSlot && typeof equipSlot === 'object' && 'itemId' in equipSlot && equipSlot.itemId) {
+        dbEquipment.push({
+          slotType: slot,
+          itemId: String(equipSlot.itemId),
+          quantity: 1
+        });
+      }
+    }
+    
+    this.databaseSystem.savePlayerEquipment(databaseId, dbEquipment);
+    
+    if (databaseId !== playerId) {
+      console.log(`[EquipmentSystem] Saved equipment to database - playerId: ${playerId}, userId: ${databaseId}, items: ${dbEquipment.length}`);
     }
   }
 
@@ -294,6 +393,9 @@ export class EquipmentSystem extends SystemBase {
     });
     
     this.sendMessage(data.playerId, `Equipped ${itemData.name}.`, 'info');
+    
+    // Save to database after equipping
+    this.saveEquipmentToDatabase(data.playerId);
   }
 
   private unequipItem(data: { playerId: string; slot: string }): void {
@@ -346,6 +448,9 @@ export class EquipmentSystem extends SystemBase {
     });
     
     this.sendMessage(data.playerId, `Unequipped ${itemName}.`, 'info');
+    
+    // Save to database after unequipping
+    this.saveEquipmentToDatabase(data.playerId);
   }
 
   private handleForceEquip(data: { playerId: string; item: Item; slot: string }): void {
@@ -789,60 +894,23 @@ export class EquipmentSystem extends SystemBase {
 
   /**
    * Create visual representation of equipped item
+   * DISABLED: Cube-based equipment visuals clutter the scene
+   * Equipment should be attached to player skeleton, not floating cubes
    */
-  private createEquipmentVisual(playerId: string, slot: EquipmentSlot): void {
-    if (!THREE || !slot.item) return;
-
-    const { item } = slot;
-    let geometry: THREE.BufferGeometry;
-
-    // Create geometry based on equipment slot
-    switch (slot.slot) {
-      case 'helmet':
-        geometry = new THREE.BoxGeometry(0.4, 0.3, 0.4);
-        break;
-      case 'body':
-        geometry = new THREE.BoxGeometry(0.5, 0.6, 0.3);
-        break;
-      case 'legs':
-        geometry = new THREE.BoxGeometry(0.4, 0.8, 0.3);
-        break;
-      case 'weapon':
-        geometry = new THREE.BoxGeometry(0.1, 1.2, 0.1);
-        break;
-      case 'shield':
-        geometry = new THREE.BoxGeometry(0.05, 0.8, 0.5);
-        break;
-      case 'arrows':
-        geometry = new THREE.BoxGeometry(0.05, 0.6, 0.05);
-        break;
-      default:
-        geometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-    }
-
-    const color = equipmentRequirements.getEquipmentColor(item.name as string) ?? equipmentRequirements.getDefaultColorByType(item.type as string);
-    const material = new THREE.MeshLambertMaterial({ 
-      color: color,
-      transparent: true,
-      opacity: 0.9
-    });
-
-    const visual = new THREE.Mesh(geometry, material);
-    visual.name = `equipment_${slot.slot}_${playerId}`;
-    visual.userData = {
-      type: 'equipment_visual',
-      playerId: playerId,
-      slot: slot.slot,
-      itemId: item.id
-    };
-
-    slot.visualMesh = visual;
+  private createEquipmentVisual(_playerId: string, _slot: EquipmentSlot): void {
+    // DISABLED: Box geometry equipment visuals are debug/test artifacts
+    // 
+    // Proper implementation should:
+    // 1. Load actual 3D models for equipment (GLB files)
+    // 2. Attach to player/mob skeleton bones (e.g., hand bone for weapon)
+    // 3. Use proper material/texture system
+    // 4. Handle equipment swapping with smooth transitions
+    //
+    // For MVP: Equipment is tracked in data/stats but not visually shown
+    // Combat mechanics work without visual equipment representation
     
-    // Add to world scene
-    if (this.world.stage.scene) {
-      this.world.stage.scene.add(visual);
-    }
-
+    // DO NOT CREATE CUBE PROXIES
+    return;
   }
 
   /**
@@ -970,7 +1038,49 @@ export class EquipmentSystem extends SystemBase {
   /**
    * Cleanup when system is destroyed
    */
+  start(): void {
+    // Start periodic auto-save on server only
+    if (this.world.isServer && this.databaseSystem) {
+      this.startAutoSave();
+    }
+  }
+  
+  private startAutoSave(): void {
+    this.saveInterval = setInterval(() => {
+      this.performAutoSave();
+    }, this.AUTO_SAVE_INTERVAL);
+    console.log('[EquipmentSystem] Auto-save started (every 30s)');
+  }
+  
+  private async performAutoSave(): Promise<void> {
+    if (!this.databaseSystem) return;
+    
+    console.log(`[EquipmentSystem] Auto-saving ${this.playerEquipment.size} player equipment sets...`);
+    for (const playerId of this.playerEquipment.keys()) {
+      try {
+        await this.saveEquipmentToDatabase(playerId);
+      } catch (error) {
+        Logger.systemError('EquipmentSystem', `Error during auto-save for player ${playerId}`, 
+          error instanceof Error ? error : new Error(String(error)));
+      }
+    }
+  }
+  
   destroy(): void {
+    // Stop auto-save interval
+    if (this.saveInterval) {
+      clearInterval(this.saveInterval);
+      this.saveInterval = undefined;
+    }
+    
+    // Final save before shutdown
+    if (this.world.isServer && this.databaseSystem) {
+      console.log('[EquipmentSystem] Final save before shutdown...');
+      for (const playerId of this.playerEquipment.keys()) {
+        this.saveEquipmentToDatabase(playerId);
+      }
+    }
+    
     // Clear all player equipment data
     this.playerEquipment.clear();
     

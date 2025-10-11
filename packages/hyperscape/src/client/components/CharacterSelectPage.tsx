@@ -143,17 +143,6 @@ export function CharacterSelectPage({
     }
   }, [wsUrl, authDeps.token, authDeps.privyUserId])
 
-  const createCharacter = React.useCallback(() => {
-    const name = newCharacterName.trim().slice(0, 20)
-    if (!name) return
-    const ws = preWsRef.current
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      pendingActionRef.current = { type: 'create', name }
-      return
-    }
-    ws.send(writePacket('characterCreate', { name }))
-  }, [newCharacterName])
-
   const selectCharacter = React.useCallback((id: string) => {
     try { console.log('[CharacterSelect] selecting character:', id) } catch {}
     setSelectedCharacterId(id)
@@ -162,6 +151,28 @@ export function CharacterSelectPage({
     if (!ws || ws.readyState !== WebSocket.OPEN) return
     ws.send(writePacket('characterSelected', { characterId: id }))
   }, [])
+
+  const createCharacter = React.useCallback(() => {
+    const name = newCharacterName.trim().slice(0, 20)
+    if (!name || name.length < 3) {
+      console.warn('[CharacterSelect] Name must be 3-20 characters')
+      return
+    }
+    const ws = preWsRef.current
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      console.warn('[CharacterSelect] WebSocket not ready, queueing create request')
+      pendingActionRef.current = { type: 'create', name }
+      return
+    }
+    try {
+      console.log('[CharacterSelect] Sending characterCreate:', name)
+      ws.send(writePacket('characterCreate', { name }))
+      setNewCharacterName('')
+      setShowCreate(false)
+    } catch (err) {
+      console.error('[CharacterSelect] Failed to create character:', err)
+    }
+  }, [newCharacterName])
 
   const enterWorld = React.useCallback(() => {
     try { console.log('[CharacterSelect] Enter world with selected:', selectedCharacterId) } catch {}

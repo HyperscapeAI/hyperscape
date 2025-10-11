@@ -367,14 +367,79 @@ async function startServer() {
       root: assetsDir,
       prefix: '/world-assets/',
       decorateReply: false,
-      setHeaders: res => {
+      wildcard: true, // Enable wildcard matching for subdirectories
+      setHeaders: (res, filePath) => {
+        // Debug log for MP3 files
+        if (filePath.endsWith('.mp3')) {
+          fastify.log.info(`[Server] 🎵 Serving MP3: ${filePath}`)
+          res.setHeader('Content-Type', 'audio/mpeg')
+          res.setHeader('Accept-Ranges', 'bytes')
+        } else if (filePath.endsWith('.ogg')) {
+          res.setHeader('Content-Type', 'audio/ogg')
+          res.setHeader('Accept-Ranges', 'bytes')
+        } else if (filePath.endsWith('.wav')) {
+          res.setHeader('Content-Type', 'audio/wav')
+          res.setHeader('Accept-Ranges', 'bytes')
+        }
+        
         // all assets are hashed & immutable so we can use aggressive caching
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable') // 1 year
         res.setHeader('Expires', new Date(Date.now() + 31536000000).toUTCString()) // older browsers
       },
     })
+    fastify.log.info(`[Server] ✅ Registered /world-assets/ → ${assetsDir}`)
   } catch (error) {
     fastify.log.error({ err: error }, '[Server] Error registering world assets')
+    throw error
+  }
+  
+  // ALSO register as /assets/ for backward compatibility with hardcoded mob models
+  // This allows both /assets/models/mobs/goblin.glb AND /world-assets/forge/... to work
+  try {
+    await fastify.register(statics, {
+      root: assetsDir,
+      prefix: '/assets/',
+      decorateReply: false,
+      setHeaders: (res, filePath) => {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+        res.setHeader('Expires', new Date(Date.now() + 31536000000).toUTCString())
+
+        console.log('DEBUG: filePath', filePath)
+        
+        // Set proper content type for GLB files
+        if (filePath.endsWith('.glb')) {
+          res.setHeader('Content-Type', 'model/gltf-binary')
+        }
+        // Set proper content type for audio files
+        else if (filePath.endsWith('.mp3')) {
+          res.setHeader('Content-Type', 'audio/mpeg')
+        } else if (filePath.endsWith('.ogg')) {
+          res.setHeader('Content-Type', 'audio/ogg')
+        } else if (filePath.endsWith('.wav')) {
+          res.setHeader('Content-Type', 'audio/wav')
+        }
+        
+        // Log asset requests to debug loading issues
+        if (filePath.endsWith('.glb')) {
+          fastify.log.info(`[Assets] 📥 Serving GLB: ${filePath}`)
+        }
+      },
+    })
+    fastify.log.info(`[Server] ✅ Registered /assets/ → ${assetsDir}`)
+    
+    // Log what files are available
+    const toolsDir = path.join(assetsDir, 'models/tools')
+    if (await fs.pathExists(toolsDir)) {
+      const toolFiles = await fs.readdir(toolsDir)
+      fastify.log.info(`[Server] Tools available: ${toolFiles.join(', ')}`)
+    }
+    const mobsDir = path.join(assetsDir, 'models/mobs')
+    if (await fs.pathExists(mobsDir)) {
+      const mobFiles = await fs.readdir(mobsDir)
+      fastify.log.info(`[Server] Mob models available: ${mobFiles.join(', ')}`)
+    }
+  } catch (error) {
+    fastify.log.error({ err: error }, '[Server] Error registering assets alias')
     throw error
   }
 

@@ -74,11 +74,9 @@ export const GATHERING_CONSTANTS = {
 } as const;
 
 // === MOB SYSTEM ===
+// Mob stats (HP, damage, etc.) are loaded from world/assets/manifests/mobs.json
+// Only system-level constants here, no mob-specific data
 export const MOB_CONSTANTS = {
-  GOBLIN_HEALTH: 50,
-  GOBLIN_DAMAGE: 8,
-  HOBGOBLIN_HEALTH: 80,
-  HOBGOBLIN_DAMAGE: 12,
   SPAWN_RADIUS: 20,
   MAX_MOBS_PER_AREA: 10,
   MOB_RESPAWN_TIME: 30000, // 30 seconds
@@ -88,12 +86,13 @@ export const MOB_CONSTANTS = {
 
 // === UI AND VISUAL ===
 export const UI_CONSTANTS = {
-  HEALTH_BAR_WIDTH: 100,
-  HEALTH_BAR_HEIGHT: 12,
+  HEALTH_BAR_WIDTH: 50,
+  HEALTH_BAR_HEIGHT: 5,
   NAME_TAG_WIDTH: 200,
-  NAME_TAG_HEIGHT: 30,
-  UI_SCALE: 0.01, // Canvas to world scale
-  SPRITE_SCALE: 1.0,
+  NAME_TAG_HEIGHT: 25,
+  UI_SCALE: 0.1, // Canvas to world scale
+  SPRITE_SCALE: 0.1,
+  HEALTH_SPRITE_SCALE: 0.05,
   HUD_UPDATE_RATE: 100, // 10 FPS for UI updates
   CHAT_MESSAGE_TIMEOUT: 5000 // 5 seconds
 } as const;
@@ -225,17 +224,9 @@ export const ITEM_ID_TO_KEY: Record<number, string> = {
 } as const;
 
 // === MOB TYPES ===
-export const MOB_TYPES = {
-  GOBLIN: 'goblin',
-  HOBGOBLIN: 'hobgoblin',
-  DARK_WARRIOR: 'dark_warrior',
-  BARBARIAN: 'barbarian',
-  BANDIT: 'bandit',
-  GUARD: 'guard',
-  BLACK_KNIGHT: 'black_knight',
-  ICE_WARRIOR: 'ice_warrior',
-  DARK_RANGER: 'dark_ranger'
-} as const;
+// Mob types are now loaded dynamically from world/assets/manifests/mobs.json
+// Use getAllMobs() from data/mobs.ts to get available mob types at runtime
+export const MOB_TYPES = {} as const;
 
 // === BIOME TYPES ===
 export const BIOME_TYPES = {

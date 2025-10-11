@@ -135,10 +135,12 @@ export interface PlayerInitEvent {
 
 export interface PlayerEnterEvent {
   playerId: string;
+  userId?: string; // Database user ID for persistence
 }
 
 export interface PlayerLeaveEvent {
   playerId: string;
+  userId?: string; // Database user ID for persistence
 }
 
 export interface PlayerLevelUpEvent {
@@ -545,6 +547,7 @@ export enum EventType {
   RESOURCE_DEPLETED = 'rpg:resource:depleted',
   RESOURCE_RESPAWNED = 'rpg:resource:respawned',
   RESOURCE_GATHERING_STARTED = 'rpg:resource:gathering:started',
+  RESOURCE_GATHERING_PROGRESS = 'rpg:resource:gathering:progress',
   RESOURCE_GATHERING_STOPPED = 'rpg:resource:gathering:stopped',
 
   // Resource Validation Events

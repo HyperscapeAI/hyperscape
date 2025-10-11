@@ -119,82 +119,25 @@ export function Chat({ world }: { world: World }) {
         right: 'env(safe-area-inset-right)',
       }}
     >
-      <style>{`
-        @media all and (max-width: 768px) {
-          .mainchat-header {
-            height: 2.25rem !important;
-            font-size: 0.9rem !important;
-          }
-          .mainchat-entry {
-            height: 2.75rem !important;
-          }
-          .mainchat-entry input {
-            font-size: 0.95rem !important;
-          }
-        }
-        .mainchat.hidden {
-          display: none;
-        }
-        .mainchat-header {
-          pointer-events: auto;
-          height: 2.5rem;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 0 1rem;
-          background: rgba(11, 10, 21, 0.9);
-          backdrop-filter: blur(5px);
-          cursor: pointer;
-          user-select: none;
-          color: white;
-        }
-        .mainchat-msgs {
-          padding: 1rem;
-          background: rgba(11, 10, 21, 0.85);
-          color: white;
-        }
-        .mainchat-entry {
-          height: 3.25rem;
-          padding: 0 1rem;
-          background: rgba(11, 10, 21, 0.85);
-          backdrop-filter: blur(5px);
-          display: ${active && !collapsed ? 'flex' : 'none'};
-          align-items: center;
-          cursor: text;
-        }
-        .mainchat-entry input {
-          width: 100%;
-          font-size: 1.05rem;
-          line-height: 1;
-          color: white;
-          outline: none;
-        }
-        .mainchat-entry input:focus {
-          outline: none;
-        }
-        .mainchat.collapsed .mainchat-msgs { display: none; }
-        .mainchat.collapsed .mainchat-entry { display: none; }
-      `}</style>
       <div
-        className='mainchat-header'
+        className='pointer-events-auto h-10 md:h-10 flex items-center justify-between px-4 bg-[rgba(11,10,21,0.9)] backdrop-blur-[5px] cursor-pointer select-none text-white'
         onClick={() => setCollapsed(prev => !prev)}
         title={collapsed ? 'Open chat' : 'Collapse chat'}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div className="flex items-center gap-2">
           <MessageSquareIcon size={16} />
           <span>Chat</span>
         </div>
-        <div style={{ opacity: 0.8, fontSize: '0.85rem' }}>{collapsed ? '▾' : '▴'}</div>
+        <div className="opacity-80 text-[0.85rem]">{collapsed ? '▾' : '▴'}</div>
       </div>
-      <div className='mainchat-msgs'>
+      <div className={cls('p-4 bg-[rgba(11,10,21,0.85)] text-white', { hidden: collapsed })}>
         {isTouch && (!active || collapsed) && <MiniMessages world={world} />}
         {(isTouch && active && !collapsed) && <Messages world={world} active={active} />}
         {(!isTouch && !collapsed) && <Messages world={world} active={active} />}
       </div>
       {!active && !collapsed && (
         <div
-          className='mainchat-entry'
-          style={{ display: 'flex', borderTop: 'none' }}
+          className='h-11 md:h-13 px-4 bg-[rgba(11,10,21,0.85)] backdrop-blur-[5px] flex items-center cursor-text'
           onClick={() => {
             setActive(true)
             setCollapsed(false)
@@ -204,6 +147,7 @@ export function Chat({ world }: { world: World }) {
             readOnly
             value={''}
             placeholder={'Press Enter to chat'}
+            className="w-full text-[1.05rem] md:text-[0.95rem] leading-none text-white outline-none bg-transparent border-none"
             onFocus={() => {
               setActive(true)
               setCollapsed(false)
@@ -212,12 +156,12 @@ export function Chat({ world }: { world: World }) {
         </div>
       )}
       <label 
-        className='mainchat-entry'
+        className={cls('h-11 md:h-13 px-4 bg-[rgba(11,10,21,0.85)] backdrop-blur-[5px] items-center cursor-text', { 'flex': active && !collapsed, 'hidden': !active || collapsed })}
         onClick={() => inputRef.current?.focus()}
       >
         <input
           ref={inputRef}
-          className='side-chatbox-input'
+          className='w-full text-[1.05rem] md:text-[0.95rem] leading-none text-white outline-none bg-transparent border-none focus:outline-none'
           type='text'
           placeholder='Say something...'
           value={msg}

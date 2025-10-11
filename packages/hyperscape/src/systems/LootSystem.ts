@@ -10,17 +10,17 @@
 
 import type { World } from '../types/index';
 import { EventType } from '../types/events';
-import { LootTable, ItemType } from '../types/core';
-import { ItemRarity } from '../types/entities';
+import { LootTable, ItemType, InventoryItem } from '../types/core';
+import { ItemRarity, EntityType, InteractionType } from '../types/entities';
+import type { HeadstoneEntityConfig } from '../types/entities';
 import { MobType, Item } from '../types/index';
 import { SystemBase } from './SystemBase';
 import type { ItemEntityConfig } from '../types/entities';
 // LootEntry unused for now
 import { items } from '../data/items';
 import type { DroppedItem, } from '../types/systems';
-import { calculateDistance } from '../utils/EntityUtils';
+import { calculateDistance, groundToTerrain } from '../utils/EntityUtils';
 import { EntityManager } from './EntityManager';
-import { TerrainSystem } from './TerrainSystem';
 
 
 export class LootSystem extends SystemBase {
@@ -66,13 +66,19 @@ export class LootSystem extends SystemBase {
       };
       this.handleMobDeath(payload);
     });
-    this.subscribe<{ position: { x: number; y: number; z: number }; lootEntries: { itemId: string; quantity: number }[] }>(EventType.ITEM_DROP, (data) => {
-      const items = data.lootEntries.map((entry) => ({ itemId: entry.itemId, quantity: entry.quantity }));
-      this.handleLootDropRequest({ position: data.position, items });
-    });
-    this.subscribe<{ playerId: string; itemId: string }>(EventType.ITEM_PICKUP, (data) => { 
-      this.handleLootPickup(data);
-    });
+    // NOTE: REMOVED - LootSystem should NOT subscribe to ITEM_DROP
+    // ITEM_DROP is for player inventory drops only (handled by InventorySystem)
+    // LootSystem handles mob loot via MOB_DEATH event and emits ITEM_SPAWN
+    // this.subscribe<{ position: { x: number; y: number; z: number }; lootEntries: { itemId: string; quantity: number }[] }>(EventType.ITEM_DROP, (data) => {
+    //   const items = data.lootEntries.map((entry) => ({ itemId: entry.itemId, quantity: entry.quantity }));
+    //   this.handleLootDropRequest({ position: data.position, items });
+    // });
+    // NOTE: REMOVED - Do NOT subscribe to ITEM_PICKUP here, it conflicts with InventorySystem
+    // InventorySystem is the authoritative handler for ITEM_PICKUP
+    // LootSystem should only drop loot via ITEM_SPAWN events
+    // this.subscribe<{ playerId: string; itemId: string }>(EventType.ITEM_PICKUP, (data) => { 
+    //   this.handleLootPickup(data);
+    // });
     this.subscribe<{ playerId: string; position: { x: number; y: number; z: number } }>(EventType.PLAYER_POSITION_UPDATED, (_event) => {
       // Check nearby loot - need to implement this method
 
@@ -245,13 +251,10 @@ export class LootSystem extends SystemBase {
     const mobTypeEnum = data.mobType as MobType;
     const lootTable = this.lootTables.get(mobTypeEnum);
     if (!lootTable) {
-
       return;
     }
 
-    // Create corpse visual directly without going through entity manager
-    const _corpseId = `corpse_${data.mobId}`;
-
+    const corpseId = `corpse_${data.mobId}`;
     const lootItems: Array<{ itemId: string; quantity: number }> = [];
 
     // Process guaranteed drops
@@ -276,22 +279,61 @@ export class LootSystem extends SystemBase {
       }
     }
 
-    // Spawn loot items in world
-    for (let i = 0; i < lootItems.length; i++) {
-      const loot = lootItems[i];
-      
-      // Spread items around the drop position
-      const offsetX = (Math.random() - 0.5) * 2; // -1 to 1 meter spread
-      const offsetZ = (Math.random() - 0.5) * 2;
-      
-      const dropPosition = {
-        x: data.position.x + offsetX,
-        y: data.position.y + 0.5, // Slightly above ground
-        z: data.position.z + offsetZ
-      };
-      
-      await this.spawnDroppedItem(loot.itemId, loot.quantity, dropPosition, data.killedBy);
+    // Convert loot items to InventoryItem format
+    const inventoryItems: InventoryItem[] = lootItems.map((loot, index) => ({
+      id: `loot_${corpseId}_${index}`,
+      itemId: loot.itemId,
+      quantity: loot.quantity,
+      slot: index,
+      metadata: null
+    }));
+
+    // Create corpse entity with loot via EntityManager
+    const entityManager = this.world.getSystem<EntityManager>('rpg-entity-manager');
+    if (!entityManager) {
+      console.error('[LootSystem] EntityManager not found, cannot spawn corpse');
+      return;
     }
+
+    // Ground to terrain
+    const groundedPosition = groundToTerrain(this.world, data.position, 0.2, Infinity);
+
+    const corpseConfig: HeadstoneEntityConfig = {
+      id: corpseId,
+      name: `${data.mobType} corpse`,
+      type: EntityType.HEADSTONE,
+      position: groundedPosition,
+      rotation: { x: 0, y: 0, z: 0, w: 1 },
+      scale: { x: 1, y: 1, z: 1 },
+      visible: true,
+      interactable: true,
+      interactionType: InteractionType.LOOT,
+      interactionDistance: 2,
+      description: `Corpse of a ${data.mobType}`,
+      model: null,
+      headstoneData: {
+        playerId: data.mobId,
+        playerName: data.mobType,
+        deathTime: Date.now(),
+        deathMessage: `Killed by ${data.killedBy}`,
+        position: groundedPosition,
+        items: inventoryItems,
+        itemCount: inventoryItems.length,
+        despawnTime: Date.now() + this.LOOT_DESPAWN_TIME
+      },
+      properties: {
+        movementComponent: null,
+        combatComponent: null,
+        healthComponent: null,
+        visualComponent: null,
+        health: { current: 1, max: 1 },
+        level: 1
+      }
+    };
+
+    await entityManager.spawnEntity(corpseConfig);
+
+    console.log(`[LootSystem] 💀 Spawned corpse ${corpseId} with ${inventoryItems.length} items at (${groundedPosition.x.toFixed(1)}, ${groundedPosition.z.toFixed(1)})`);
 
     // Emit loot dropped event
     this.emitTypedEvent(EventType.LOOT_DROPPED, {
@@ -327,20 +369,14 @@ export class LootSystem extends SystemBase {
       return;
     }
 
-    // Ground to terrain before spawning entity
-    try {
-      const terrain = this.world.getSystem<TerrainSystem>('terrain');
-      if (terrain) {
-        const th = terrain.getHeightAt(position.x, position.z);
-        if (Number.isFinite(th)) position = { x: position.x, y: (th as number) + 0.2, z: position.z };
-      }
-    } catch (_e) {}
+    // Ground to terrain - use Infinity to allow any initial height difference
+    const groundedPosition = groundToTerrain(this.world, position, 0.2, Infinity);
 
     const itemEntity = await entityManager.spawnEntity({
       id: dropId,
       name: `${item.name} (${quantity})`,
       type: 'item',
-      position,
+      position: groundedPosition,
       itemId: itemId,
       itemType: this.getItemTypeString(item.type),
       quantity: quantity,
@@ -358,7 +394,7 @@ export class LootSystem extends SystemBase {
       id: dropId,
       itemId: itemId,
       quantity: quantity,
-      position,
+      position: groundedPosition,
       despawnTime: now + this.LOOT_DESPAWN_TIME,
       droppedBy: droppedBy ?? 'unknown',
       droppedAt: now,

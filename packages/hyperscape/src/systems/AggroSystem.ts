@@ -307,30 +307,9 @@ export class AggroSystem extends SystemBase {
   }
 
   private returnToHome(mobState: MobAIStateData): void {
-    // Validate positions before calculating distance
-    if (!mobState.currentPosition || !mobState.homePosition ||
-        typeof mobState.currentPosition.x !== 'number' || typeof mobState.currentPosition.y !== 'number' || typeof mobState.currentPosition.z !== 'number' ||
-        typeof mobState.homePosition.x !== 'number' || typeof mobState.homePosition.y !== 'number' || typeof mobState.homePosition.z !== 'number') {
-      console.warn(`[AggroSystem] Invalid positions for returnToHome for mob ${mobState.mobId}`);
-      return;
-    }
-    
-    const homeDistance = calculateDistance(mobState.currentPosition, mobState.homePosition);
-    
-    if (homeDistance > 2.0) { // If away from home
-      
-      // Emit movement request to return home
-      this.emitTypedEvent(EventType.MOB_MOVE_REQUEST, {
-        mobId: mobState.mobId,
-        targetPosition: {
-          x: mobState.homePosition.x,
-          y: mobState.homePosition.y,
-          z: mobState.homePosition.z
-        },
-        speed: mobState.chaseSpeed * 0.7, // Slower return speed
-        reason: 'return'
-      });
-    }
+    // DISABLED: Return-to-home movement now handled by MobEntity.handleFleeState()
+    // MobEntity automatically returns to spawn when target is lost
+    // This system only triggers the state change, not the actual movement
   }
 
   private updateMobAI(): void {
@@ -438,39 +417,16 @@ export class AggroSystem extends SystemBase {
     // If close enough, start combat
     if (distance <= 2.0 && !mobState.isInCombat) {
       this.startCombatWithPlayer(mobState, mobState.currentTarget);
-    } else if (distance > 2.5) {
-      // Move closer to target
-      this.emitTypedEvent(EventType.MOB_MOVE_REQUEST, {
-        mobId: mobState.mobId,
-        targetPosition: { x: player.node.position.x, y: player.node.position.y, z: player.node.position.z },
-        speed: mobState.chaseSpeed,
-        reason: 'chase'
-      });
-    } else if (!player.node?.position || typeof player.node.position.x !== 'number' ||
-               typeof player.node.position.y !== 'number' || typeof player.node.position.z !== 'number') {
-      console.warn(`[AggroSystem] Player ${player.id} has no valid node position for movement`);
-      this.stopChasing(mobState);
-      return;
     }
+    // NOTE: Movement requests removed - MobEntity handles all movement via its own AI
+    // MobEntity.serverUpdate() detects target and moves towards it
+    // Emitting MOB_MOVE_REQUEST events was redundant and no system handled them
   }
 
   private updatePatrol(mobState: MobAIStateData): void {
-    // Simple patrol behavior - move to random position within patrol radius
-    const angle = Math.random() * Math.PI * 2;
-    const distance = Math.random() * mobState.patrolRadius;
-    
-    const patrolTarget = {
-      x: mobState.homePosition.x + Math.cos(angle) * distance,
-      y: mobState.homePosition.y,
-      z: mobState.homePosition.z + Math.sin(angle) * distance
-    };
-    
-    this.emitTypedEvent(EventType.MOB_MOVE_REQUEST, {
-      mobId: mobState.mobId,
-      targetPosition: patrolTarget,
-      speed: mobState.chaseSpeed * 0.5, // Slow patrol speed
-      reason: 'patrol'
-    });
+    // DISABLED: Patrol movement now handled by MobEntity.serverUpdate()
+    // MobEntity has built-in patrol logic with patrol points
+    // This system only tracks aggro state, not actual movement
   }
 
   private onCombatStarted(data: { attackerId: string; targetId: string; entityType?: string }): void {

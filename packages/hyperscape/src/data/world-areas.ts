@@ -33,7 +33,7 @@ export const STARTER_TOWNS: Record<string, WorldArea> = {
         type: 'bank',
         position: { x: 5, y: 0, z: 5 },
         services: ['banking', 'item_storage'],
-        modelPath: '/assets/models/npcs/bank_clerk.glb',
+        // modelPath: '/assets/models/npcs/bank_clerk.glb', // TODO: Generate in 3D Asset Forge
         description: 'A helpful bank clerk who manages the town vault.'
       },
       {
@@ -42,7 +42,7 @@ export const STARTER_TOWNS: Record<string, WorldArea> = {
         type: 'general_store',
         position: { x: -8, y: 0, z: 10 },
         services: ['buy_items', 'sell_items'],
-        modelPath: '/assets/models/npcs/shopkeeper.glb',
+        // modelPath: '/assets/models/npcs/shopkeeper.glb', // TODO: Generate in 3D Asset Forge
         description: 'Sells basic tools and supplies for new adventurers.'
       }
     ],
@@ -62,7 +62,23 @@ export const STARTER_TOWNS: Record<string, WorldArea> = {
         level: 1
       }
     ],
-    mobSpawns: [], // Safe zone - no hostile mobs
+    mobSpawns: [
+      // Add some weak mobs near spawn for testing/tutorial
+      {
+        mobId: 'goblin',
+        position: { x: 10, y: 0, z: 10 },
+        spawnRadius: 3,
+        maxCount: 2,
+        respawnTime: 300000 // 5 minutes
+      },
+      {
+        mobId: 'goblin',
+        position: { x: -10, y: 0, z: -10 },
+        spawnRadius: 3,
+        maxCount: 2,
+        respawnTime: 300000
+      }
+    ],
     connections: ['mistwood_valley', 'northern_plains'],
     specialFeatures: ['tutorial_area', 'spawn_point_1']
   },
@@ -82,7 +98,7 @@ export const STARTER_TOWNS: Record<string, WorldArea> = {
         type: 'bank',
         position: { x: 95, y: 0, z: 5 },
         services: ['banking', 'item_storage'],
-        modelPath: '/assets/models/npcs/bank_clerk.glb',
+        // modelPath: '/assets/models/npcs/bank_clerk.glb', // TODO: Generate in 3D Asset Forge
         description: 'Guards the village treasury with diligence.'
       },
       {
@@ -91,7 +107,7 @@ export const STARTER_TOWNS: Record<string, WorldArea> = {
         type: 'general_store',
         position: { x: 105, y: 0, z: -8 },
         services: ['buy_items', 'sell_items'],
-        modelPath: '/assets/models/npcs/shopkeeper.glb',
+        // modelPath: '/assets/models/npcs/shopkeeper.glb', // TODO: Generate in 3D Asset Forge
         description: 'A traveling merchant who settled in this quiet village.'
       }
     ],
@@ -131,7 +147,7 @@ export const STARTER_TOWNS: Record<string, WorldArea> = {
         type: 'bank',
         position: { x: -95, y: 0, z: 95 },
         services: ['banking', 'item_storage'],
-        modelPath: '/assets/models/npcs/bank_clerk.glb',
+        // modelPath: '/assets/models/npcs/bank_clerk.glb', // TODO: Generate in 3D Asset Forge
         description: 'The most experienced banker in the kingdom.'
       },
       {
@@ -140,7 +156,7 @@ export const STARTER_TOWNS: Record<string, WorldArea> = {
         type: 'general_store',
         position: { x: -110, y: 0, z: 105 },
         services: ['buy_items', 'sell_items'],
-        modelPath: '/assets/models/npcs/shopkeeper.glb',
+        // modelPath: '/assets/models/npcs/shopkeeper.glb', // TODO: Generate in 3D Asset Forge
         description: 'Specializes in weapons and armor for adventurers.'
       }
     ],
@@ -613,9 +629,9 @@ export function getMobSpawnsInArea(areaId: string): MobSpawnPoint[] {
  * Player Spawn Points for Random Assignment
  */
 export const PLAYER_SPAWN_POINTS: WorldPosition[] = [
-  { x: 0, y: 50, z: 0 },     // Lumbridge center - Y will be grounded to terrain
-  { x: 100, y: 50, z: 0 },   // Draynor center - Y will be grounded to terrain
-  { x: -100, y: 50, z: 100 } // Falador center - Y will be grounded to terrain
+  { x: 0, y: 0, z: 0 },     // Lumbridge center - Y will be grounded to terrain
+  { x: 100, y: 0, z: 0 },   // Draynor center - Y will be grounded to terrain
+  { x: -100, y: 0, z: 100 } // Falador center - Y will be grounded to terrain
 ];
 
 export function getRandomSpawnPoint(): WorldPosition {

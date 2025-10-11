@@ -154,7 +154,6 @@ export class TestUISystem extends SystemBase {
       context.fillStyle = '#cccccc';
       context.fillText('• DefaultWorldSystem: Loaded', 20, 60);
       context.fillText('• TestMobLoader: Active', 20, 80);
-      context.fillText('• TestPhysicsCube: Running', 20, 100);
       context.fillText('• TestUISystem: Online', 20, 120);
       
       context.fillStyle = '#00ff88';

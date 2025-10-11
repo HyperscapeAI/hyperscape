@@ -74,4 +74,5 @@ playwright-report/
 ios/
 android/
 capacitor.config.json
-world/assets/
+world/assets/forge
+world/assets/assets

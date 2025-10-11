@@ -30,15 +30,22 @@ const names = [
   'serverStateUpdate',
   'deltaUpdate',
   'compressedUpdate',
-  // Dedicated resource packets
+  // Resource system packets
   'resourceSnapshot',
   'resourceSpawnPoints',
   'resourceSpawned',
   'resourceDepleted',
   'resourceRespawned',
   'resourceGather',
-  // Inventory packets
+  'gatheringComplete',
+  // Combat packets
+  'attackMob',
+  // Item pickup packets
+  'pickupItem',
+  // Inventory sync packets
   'inventoryUpdated',
+  // UI feedback packets
+  'showToast',
   // Character selection packets (feature-flagged usage)
   'characterListRequest',
   'characterCreate',

@@ -97,53 +97,27 @@ export class ItemPickupSystem extends SystemBase {
 
   /**
    * Create visual mesh for ground item
+   * Uses small subtle geometries instead of large colored cubes
    */
   private createItemMesh(item: Item, itemId: string): THREE.Mesh {
-    // Create geometry based on item type
-    let geometry: THREE.BufferGeometry;
+    // Create a small, subtle sphere for all ground items
+    // This makes items pickupable without visual clutter
+    // In the future, this should load actual 3D models for each item
     
-    switch (item.type) {
-      case ItemType.WEAPON:
-        if (item.name.toLowerCase().includes('bow')) {
-          geometry = new THREE.BoxGeometry(0.1, 0.8, 0.05);
-        } else if (item.name.toLowerCase().includes('shield')) {
-          geometry = new THREE.BoxGeometry(0.03, 0.5, 0.4);
-        } else {
-          geometry = new THREE.BoxGeometry(0.05, 0.6, 0.05);
-        }
-        break;
-      case ItemType.ARMOR:
-        if (item.equipSlot === 'helmet') {
-          geometry = new THREE.BoxGeometry(0.3, 0.25, 0.3);
-        } else if (item.equipSlot === 'body') {
-          geometry = new THREE.BoxGeometry(0.4, 0.5, 0.2);
-        } else if (item.equipSlot === 'legs') {
-          geometry = new THREE.BoxGeometry(0.3, 0.6, 0.2);
-        } else {
-          geometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
-        }
-        break;
-      case ItemType.AMMUNITION:
-        geometry = new THREE.BoxGeometry(0.02, 0.3, 0.02);
-        break;
-      case ItemType.CONSUMABLE:
-        geometry = new THREE.SphereGeometry(0.1, 6, 4);
-        break;
-      case ItemType.TOOL:
-        geometry = new THREE.BoxGeometry(0.05, 0.4, 0.05);
-        break;
-      default:
-        geometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-    }
-
+    const geometry = new THREE.SphereGeometry(0.15, 8, 6); // Small sphere for all items
+    
+    // Use subtle, realistic colors instead of bright test colors
     const material = new THREE.MeshLambertMaterial({ 
       color: this.getItemColor(item),
       transparent: true,
-      opacity: 0.9
+      opacity: 0.7, // More transparent
+      emissive: this.getItemColor(item),
+      emissiveIntensity: 0.1 // Subtle glow
     });
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = `ground_item_${item.name.replace(/\s+/g, '_')}`;
+    mesh.scale.set(0.5, 0.5, 0.5); // Make it even smaller
     
     // Add interaction data for raycasting
     mesh.userData = {
@@ -155,14 +129,10 @@ export class ItemPickupSystem extends SystemBase {
       clickable: true
     };
 
-    // Add PhysX collider for interaction
+    // Add PhysX collider for interaction (small sphere)
     mesh.userData.physx = {
-      type: 'box',
-      size: { 
-        x: (geometry as THREE.BoxGeometry).parameters?.width || 0.2,
-        y: (geometry as THREE.BoxGeometry).parameters?.height || 0.2,
-        z: (geometry as THREE.BoxGeometry).parameters?.depth || 0.2
-      },
+      type: 'sphere',
+      radius: 0.15,
       collider: true,
       trigger: false,
       interactive: true

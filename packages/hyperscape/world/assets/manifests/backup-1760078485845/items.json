@@ -1,0 +1,74 @@
+[
+  {
+    "id": "bronze-sword",
+    "name": "Bronze Sword",
+    "type": "weapon",
+    "quantity": 1,
+    "stackable": false,
+    "maxStackSize": 1,
+    "value": 50,
+    "weight": 2,
+    "equipSlot": "weapon",
+    "weaponType": "SWORD",
+    "equipable": true,
+    "attackType": "MELEE",
+    "description": "A basic bronze sword, low-poly RuneScape style",
+    "examine": "A basic bronze sword, low-poly RuneScape style",
+    "tradeable": true,
+    "rarity": "common",
+    "modelPath": "/world-assets/forge/bronze-sword/bronze-sword.glb",
+    "iconPath": "/world-assets/forge/bronze-sword/concept-art.png",
+    "healAmount": 0,
+    "stats": {
+      "attack": 0,
+      "defense": 0,
+      "strength": 0
+    },
+    "bonuses": {
+      "attack": 4,
+      "strength": 3,
+      "defense": 0,
+      "ranged": 0
+    },
+    "requirements": {
+      "level": 1,
+      "skills": {}
+    }
+  },
+  {
+    "id": "steel-sword",
+    "name": "Steel Sword",
+    "type": "weapon",
+    "quantity": 1,
+    "stackable": false,
+    "maxStackSize": 1,
+    "value": 50,
+    "weight": 2,
+    "equipSlot": "weapon",
+    "weaponType": "SWORD",
+    "equipable": true,
+    "attackType": "MELEE",
+    "description": "A sturdy steel sword, low-poly RuneScape style",
+    "examine": "A sturdy steel sword, low-poly RuneScape style",
+    "tradeable": true,
+    "rarity": "common",
+    "modelPath": "/world-assets/forge/steel-sword/steel-sword.glb",
+    "iconPath": "/world-assets/forge/steel-sword/concept-art.png",
+    "healAmount": 0,
+    "stats": {
+      "attack": 0,
+      "defense": 0,
+      "strength": 0
+    },
+    "bonuses": {
+      "attack": 4,
+      "strength": 3,
+      "defense": 0,
+      "ranged": 0
+    },
+    "requirements": {
+      "level": 1,
+      "skills": {}
+    }
+  }
+]

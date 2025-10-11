@@ -2,6 +2,7 @@ import THREE from '../extras/three';
 import { getSystem } from '../utils/SystemUtils';
 import type { World } from '../types/index';
 import { SystemBase } from './SystemBase';
+import { groundToTerrain } from '../utils/EntityUtils';
 
 import { EventType } from '../types/events';
 import type { Player, InteractionSystem, Item, MobInstance, NPC, Resource } from '../types/core';
@@ -128,12 +129,16 @@ export class VisualTestSystem extends SystemBase {
     
     const cube = this.createCube(color, `Mob_${mobType}_${mobId}`);
     
+    // Ground position to terrain
+    const position = mobData.position || { x: 0, y: 0, z: 0 };
+    const groundedPosition = groundToTerrain(this.world, position, 1.0, Infinity);
+    
     const entity: VisualTestEntity = {
       id: mobId,
       type: 'mob',
       mesh: cube,
       cube: cube, // Same reference for clarity
-      position: mobData.position || { x: 0, y: 2, z: 0 },
+      position: groundedPosition,
       color: color,
       label: `${mobType.toUpperCase()}: ${mobId}`
     };
@@ -167,12 +172,16 @@ export class VisualTestSystem extends SystemBase {
     
     const cube = this.createCube(color, `Item_${itemName}_${itemId}`);
     
+    // Ground position to terrain
+    const position = { x: 0, y: 0, z: 0 }; // Items don't have positions in their definition
+    const groundedPosition = groundToTerrain(this.world, position, 0.5, Infinity);
+    
     const entity: VisualTestEntity = {
       id: itemId,
       type: 'item',
       mesh: cube,
       cube: cube, // Same reference for clarity
-      position: { x: 0, y: 1, z: 0 }, // Items don't have positions in their definition
+      position: groundedPosition,
       color: color,
       label: `ITEM: ${itemName}`
     };
@@ -193,12 +202,16 @@ export class VisualTestSystem extends SystemBase {
     
     const cube = this.createCube(color, `Resource_${resourceData.type}_${resourceData.id}`);
     
+    // Ground position to terrain
+    const position = resourceData.position || { x: 0, y: 0, z: 0 };
+    const groundedPosition = groundToTerrain(this.world, position, 0.5, Infinity);
+    
     const entity: VisualTestEntity = {
       id: resourceData.id,
       type: 'resource',
       mesh: cube,
       cube: cube, // Same reference for clarity
-      position: resourceData.position || { x: 0, y: 2, z: 0 },
+      position: groundedPosition,
       color: color,
       label: `${resourceData.type.toUpperCase()}: ${resourceData.id}`
     };
@@ -219,12 +232,16 @@ export class VisualTestSystem extends SystemBase {
     
     const cube = this.createCube(color, `NPC_${npcData.type}_${npcData.id}`);
     
+    // Ground position to terrain
+    const position = npcData.position || { x: 0, y: 0, z: 0 };
+    const groundedPosition = groundToTerrain(this.world, position, 1.0, Infinity);
+    
     const entity: VisualTestEntity = {
       id: npcData.id,
       type: 'npc',
       mesh: cube,
       cube: cube, // Same reference for clarity
-      position: npcData.position || { x: 0, y: 2, z: 0 },
+      position: groundedPosition,
       color: color,
       label: `${npcData.type.toUpperCase()}: ${npcData.name || npcData.id}`
     };
@@ -302,12 +319,13 @@ export class VisualTestSystem extends SystemBase {
   private generateTestWorld(): void {
     
     // Create starter town banks (cyan cubes)
+    // Y will be grounded to terrain by the cube creation
     const banks = [
-      { id: 'bank_central', position: { x: 0, y: 2, z: 5 } },
-      { id: 'bank_east', position: { x: 100, y: 2, z: 5 } },
-      { id: 'bank_west', position: { x: -100, y: 2, z: 5 } },
-      { id: 'bank_north', position: { x: 0, y: 2, z: 105 } },
-      { id: 'bank_south', position: { x: 0, y: 2, z: -95 } }
+      { id: 'bank_central', position: { x: 0, y: 0, z: 5 } },
+      { id: 'bank_east', position: { x: 100, y: 0, z: 5 } },
+      { id: 'bank_west', position: { x: -100, y: 0, z: 5 } },
+      { id: 'bank_north', position: { x: 0, y: 0, z: 105 } },
+      { id: 'bank_south', position: { x: 0, y: 0, z: -95 } }
     ];
 
     for (const bank of banks) {
@@ -322,13 +340,14 @@ export class VisualTestSystem extends SystemBase {
       });
     }
 
-    // Create general stores (orange cubes)  
+    // Create general stores (orange cubes)
+    // Y will be grounded to terrain by the cube creation
     const stores = [
-      { id: 'store_central', position: { x: 0, y: 2, z: -5 } },
-      { id: 'store_east', position: { x: 100, y: 2, z: -5 } },
-      { id: 'store_west', position: { x: -100, y: 2, z: -5 } },
-      { id: 'store_north', position: { x: 0, y: 2, z: 95 } },
-      { id: 'store_south', position: { x: 0, y: 2, z: -105 } }
+      { id: 'store_central', position: { x: 0, y: 0, z: -5 } },
+      { id: 'store_east', position: { x: 100, y: 0, z: -5 } },
+      { id: 'store_west', position: { x: -100, y: 0, z: -5 } },
+      { id: 'store_north', position: { x: 0, y: 0, z: 95 } },
+      { id: 'store_south', position: { x: 0, y: 0, z: -105 } }
     ];
 
     for (const store of stores) {
@@ -366,7 +385,7 @@ export class VisualTestSystem extends SystemBase {
         id: `tree_${i}`,
         type: 'tree',
         name: 'Oak Tree',
-        position: { x: trees[i].x, y: 2, z: trees[i].z },
+        position: { x: trees[i].x, y: 0, z: trees[i].z }, // Y will be grounded to terrain
         skillRequired: 'woodcutting',
         levelRequired: 1,
         toolRequired: 'bronze_hatchet',
@@ -390,7 +409,7 @@ export class VisualTestSystem extends SystemBase {
         id: `fishing_${i}`,
         type: 'fishing_spot',
         name: 'Fishing Spot',
-        position: { x: fishingSpots[i].x, y: 1, z: fishingSpots[i].z },
+        position: { x: fishingSpots[i].x, y: 0, z: fishingSpots[i].z }, // Y will be grounded to terrain
         skillRequired: 'fishing',
         levelRequired: 1,
         toolRequired: 'fishing_rod',
@@ -421,13 +440,13 @@ export class VisualTestSystem extends SystemBase {
         level: 2,
         health: 30,
         maxHealth: 30,
-        position: { x: goblins[i].x, y: 2, z: goblins[i].z },
+        position: { x: goblins[i].x, y: 0, z: goblins[i].z }, // Y will be grounded to terrain
         isAlive: true,
         isAggressive: true,
         aggroRange: 5,
         wanderRadius: 10,
         respawnTime: 60000,
-        spawnLocation: { x: goblins[i].x, y: 2, z: goblins[i].z },
+        spawnLocation: { x: goblins[i].x, y: 0, z: goblins[i].z }, // Y will be grounded to terrain
         spawnBiomes: ['plains'],
         modelPath: '/models/mobs/goblin.glb',
         animationSet: {
@@ -483,13 +502,13 @@ export class VisualTestSystem extends SystemBase {
         level: 5,
         health: 50,
         maxHealth: 50,
-        position: { x: bandits[i].x, y: 2, z: bandits[i].z },
+        position: { x: bandits[i].x, y: 0, z: bandits[i].z }, // Y will be grounded to terrain
         isAlive: true,
         isAggressive: true,
         aggroRange: 7,
         wanderRadius: 15,
         respawnTime: 120000,
-        spawnLocation: { x: bandits[i].x, y: 2, z: bandits[i].z },
+        spawnLocation: { x: bandits[i].x, y: 0, z: bandits[i].z }, // Y will be grounded to terrain
         spawnBiomes: ['plains'],
         modelPath: '/models/mobs/bandit.glb',
         animationSet: {

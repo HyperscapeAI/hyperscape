@@ -61,47 +61,34 @@ export class MobEntity extends Entity {
   }
 
   protected async createMesh(): Promise<void> {
-    // Create mob geometry based on type
-    let geometry: THREE.BufferGeometry;
-    let material: THREE.Material;
-
-    switch (this.config.mobType) {
-      case MobType.GOBLIN:
-        geometry = new THREE.CapsuleGeometry(0.3, 1.2, 4, 8);
-        material = new THREE.MeshLambertMaterial({ color: 0x4a7c3a });
-        break;
-      case MobType.HOBGOBLIN:
-        geometry = new THREE.CapsuleGeometry(0.4, 1.5, 4, 8);
-        material = new THREE.MeshLambertMaterial({ color: 0x6b4423 });
-        break;
-      case MobType.BARBARIAN:
-        geometry = new THREE.CapsuleGeometry(0.5, 1.8, 4, 8);
-        material = new THREE.MeshLambertMaterial({ color: 0x8b4513 });
-        break;
-      case MobType.GUARD:
-        geometry = new THREE.CapsuleGeometry(0.4, 1.7, 4, 8);
-        material = new THREE.MeshLambertMaterial({ color: 0x4682b4 });
-        break;
-      case MobType.DARK_WARRIOR:
-        geometry = new THREE.CapsuleGeometry(0.45, 1.75, 4, 8);
-        material = new THREE.MeshLambertMaterial({ color: 0x2f2f2f });
-        break;
-      case MobType.BLACK_KNIGHT:
-        geometry = new THREE.CapsuleGeometry(0.5, 1.9, 4, 8);
-        material = new THREE.MeshLambertMaterial({ color: 0x1a1a1a });
-        break;
-      case MobType.ICE_WARRIOR:
-        geometry = new THREE.CapsuleGeometry(0.45, 1.75, 4, 8);
-        material = new THREE.MeshLambertMaterial({ color: 0x87ceeb });
-        break;
-      case MobType.DARK_RANGER:
-        geometry = new THREE.CapsuleGeometry(0.35, 1.6, 4, 8);
-        material = new THREE.MeshLambertMaterial({ color: 0x228b22 });
-        break;
-      default:
-        geometry = new THREE.CapsuleGeometry(0.4, 1.5, 4, 8);
-        material = new THREE.MeshLambertMaterial({ color: 0x666666 });
+    console.log(`[MobEntity] createMesh() called for ${this.config.mobType}`, {
+      hasModelPath: !!this.config.model,
+      modelPath: this.config.model,
+      hasLoader: !!this.world.loader,
+      isServer: this.world.isServer,
+      isClient: this.world.isClient
+    });
+    
+    // SKIP MODEL LOADING - Prevents 404 errors, uses clean fallbacks
+    // Directory /world-assets/forge/ doesn't exist yet
+    // Models will be generated later - for now, use capsules
+    
+    if (this.world.isServer) {
+      return; // Don't create fallback mesh on server
     }
+    
+    console.log(`[MobEntity] No model path for ${this.config.mobType}, creating fallback capsule`);
+    
+    // Fallback: Create colored capsule - use simple hash-based color from mob name
+    // This is data-driven and works for any mob type without hardcoding
+    const mobName = String(this.config.mobType).toLowerCase();
+    const colorHash = mobName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const hue = (colorHash % 360) / 360; // Convert to 0-1 range for HSL
+    const color = new THREE.Color().setHSL(hue, 0.6, 0.4); // Consistent saturation and lightness
+    
+    // Standard humanoid capsule size (data-driven from level could be added later)
+    const geometry = new THREE.CapsuleGeometry(0.4, 1.6, 4, 8);
+    const material = new THREE.MeshLambertMaterial({ color: color.getHex() });
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = `Mob_${this.config.mobType}_${this.id}`;

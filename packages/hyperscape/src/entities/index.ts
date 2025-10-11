@@ -32,6 +32,7 @@ export { InteractableEntity } from './InteractableEntity';
 
 // Concrete entity classes
 export { ItemEntity } from './ItemEntity';
+export { HeadstoneEntity } from './HeadstoneEntity';
 export { MobEntity } from './MobEntity';
 export { ResourceEntity } from './ResourceEntity';
 export { NPCEntity } from './NPCEntity';

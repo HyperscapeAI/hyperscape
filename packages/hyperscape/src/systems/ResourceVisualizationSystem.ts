@@ -400,143 +400,191 @@ export class ResourceVisualizationSystem extends SystemBase {
 
   private hideResource(resourceId: string, eventPosition?: Position3D): void {
     let resource = this.resources.get(resourceId);
+    
     // Fallback 0: find in scene by name or userData.resourceId
     if (!resource) {
       const obj = this.findObjectByResourceId(resourceId) as THREE.Mesh | null;
       if (obj) {
-        resource = { id: resourceId, type: 'tree', position: eventPosition || { x: obj.position.x, y: obj.position.y, z: obj.position.z }, mesh: obj };
+        resource = { 
+          id: resourceId, 
+          type: 'tree', 
+          position: eventPosition || { x: obj.position.x, y: obj.position.y, z: obj.position.z }, 
+          mesh: obj 
+        };
         this.resources.set(resourceId, resource);
       }
     }
-    if (!resource) {
-      // Fallback: find nearest by provided event position if available
+    
+    // Fallback: find nearest by provided event position if available
+    if (!resource && eventPosition) {
       let bestId: string | null = null;
       let bestDist = Infinity;
       for (const [rid, vr] of this.resources.entries()) {
-        const refX = eventPosition?.x ?? 0;
-        const refZ = eventPosition?.z ?? 0;
+        const refX = eventPosition.x;
+        const refZ = eventPosition.z;
         const dx = (vr.mesh?.position.x || vr.position.x) - refX;
         const dz = (vr.mesh?.position.z || vr.position.z) - refZ;
         const d2 = dx * dx + dz * dz;
-        if (d2 < bestDist) { bestDist = d2; bestId = rid; }
+        if (d2 < bestDist) { 
+          bestDist = d2; 
+          bestId = rid; 
+        }
       }
       if (bestId) resource = this.resources.get(bestId)!;
     }
+    
     let obj = resource?.mesh || this.findObjectByResourceId(resourceId);
-    if (resource && obj) {
-      // Climb to the top-most object that represents this resource to ensure complete hide
-      const ascendToResourceRoot = (o: THREE.Object3D): THREE.Object3D => {
-        let current: THREE.Object3D = o;
-        while (current.parent) {
-          const parent = current.parent as THREE.Object3D & { userData?: any };
-          const parentName = (parent.name || '').toLowerCase();
-          const sameId = !!(parent as any).userData && ((parent as any).userData.resourceId === resourceId);
-          const isResourceRootName = parentName === `resource_${resourceId}` || parentName.includes('tree_wrapper') || parentName.includes('tree_group');
-          if (sameId || isResourceRootName) {
-            current = parent;
-            continue;
-          }
-          break;
+    if (!resource || !obj) return;
+    
+    // Climb to the top-most object that represents this resource to ensure complete hide
+    const ascendToResourceRoot = (o: THREE.Object3D): THREE.Object3D => {
+      let current: THREE.Object3D = o;
+      while (current.parent) {
+        const parent = current.parent as THREE.Object3D & { userData?: any };
+        const parentName = (parent.name || '').toLowerCase();
+        const sameId = !!(parent as any).userData && ((parent as any).userData.resourceId === resourceId);
+        const isResourceRootName = parentName === `resource_${resourceId}` || parentName.includes('tree_wrapper') || parentName.includes('tree_group');
+        if (sameId || isResourceRootName) {
+          current = parent;
+          continue;
         }
-        return current;
-      };
-      obj = ascendToResourceRoot(obj);
-      const px = (resource.mesh && resource.mesh.position ? resource.mesh.position.x : resource.position.x);
-      const pz = (resource.mesh && resource.mesh.position ? resource.mesh.position.z : resource.position.z);
-      Logger.system?.('ResourceVisualizationSystem', `Hide resource ${resourceId} at (${Number(px).toFixed(0)}, ${Number(pz).toFixed(0)})`);
-      // Compute world pos before removal for sibling cleanup
-      const worldPos = new THREE.Vector3();
-      obj.getWorldPosition(worldPos);
-      // Remove the tree from its current parent (could be a group/chunk, not the scene)
-      const parent = obj.parent || null;
-      if (parent) {
-        parent.remove(obj);
-        this.detachedTrees.set(resourceId, { obj, parent });
-        // Limited duplicate cleanup: only siblings in the same parent within 3m
-        const siblings = [...parent.children];
-        for (const sib of siblings) {
-          if (sib === obj) continue;
-          const name = (sib.name || '').toLowerCase();
-          const isTreeName = name.includes('tree');
-          const typeTag = ((sib as any).userData?.resourceType || '').toLowerCase();
-          const looksLikeTree = isTreeName || typeTag === 'tree';
-          if (!looksLikeTree) continue;
-          const sp = new THREE.Vector3();
-          (sib as THREE.Object3D).getWorldPosition(sp);
-          if (sp.distanceToSquared(worldPos) <= 9) {
-            parent.remove(sib);
-            this.detachedNearby.set(resourceId, [
-              ...(this.detachedNearby.get(resourceId) || []),
-              { obj: sib, parent }
-            ]);
-          }
+        break;
+      }
+      return current;
+    };
+    
+    obj = ascendToResourceRoot(obj);
+    const px = (resource.mesh && resource.mesh.position ? resource.mesh.position.x : resource.position.x);
+    const pz = (resource.mesh && resource.mesh.position ? resource.mesh.position.z : resource.position.z);
+    Logger.system?.('ResourceVisualizationSystem', `Hide resource ${resourceId} at (${Number(px).toFixed(0)}, ${Number(pz).toFixed(0)})`);
+    
+    // Compute world pos before removal for sibling cleanup
+    const worldPos = new THREE.Vector3();
+    obj.getWorldPosition(worldPos);
+    
+    // Remove the tree from its current parent (could be a group/chunk, not the scene)
+    const parent = obj.parent || null;
+    if (parent) {
+      parent.remove(obj);
+      this.detachedTrees.set(resourceId, { obj, parent });
+      
+      // Limited duplicate cleanup: only siblings in the same parent within 3m
+      const siblings = [...parent.children];
+      for (const sib of siblings) {
+        if (sib === obj) continue;
+        const name = (sib.name || '').toLowerCase();
+        const isTreeName = name.includes('tree');
+        const typeTag = ((sib as any).userData?.resourceType || '').toLowerCase();
+        const looksLikeTree = isTreeName || typeTag === 'tree';
+        if (!looksLikeTree) continue;
+        
+        const sp = new THREE.Vector3();
+        (sib as THREE.Object3D).getWorldPosition(sp);
+        if (sp.distanceToSquared(worldPos) <= 9) {
+          parent.remove(sib);
+          this.detachedNearby.set(resourceId, [
+            ...(this.detachedNearby.get(resourceId) || []),
+            { obj: sib, parent }
+          ]);
         }
-      } else {
-        // No parent to remove from; at least hide it and mark as detached for later reattach
-        obj.visible = false;
-        this.detachedTrees.set(resourceId, { obj, parent: null });
       }
-      // Nearby duplicate removal disabled: keep logic simple and deterministic
-      if (resource.type.includes('tree')) {
-        // Place stump at the tree's world position
-        const stump = this.getOrCreateStump(resourceId, { x: worldPos.x, y: worldPos.y, z: worldPos.z });
-        stump.visible = true;
-      }
+    } else {
+      // No parent to remove from; at least hide it and mark as detached for later reattach
+      obj.visible = false;
+      this.detachedTrees.set(resourceId, { obj, parent: null });
+    }
+    
+    // Place stump at the tree's world position for tree-type resources
+    if (resource.type.includes('tree')) {
+      const stump = this.getOrCreateStump(resourceId, { x: worldPos.x, y: worldPos.y, z: worldPos.z });
+      stump.visible = true;
     }
   }
 
   private showResource(resourceId: string, eventPosition?: Position3D): void {
     let resource = this.resources.get(resourceId);
+    
     // Fallback 0: find in scene by name or userData.resourceId
     if (!resource) {
       const obj = this.findObjectByResourceId(resourceId) as THREE.Mesh | null;
       if (obj) {
-        resource = { id: resourceId, type: 'tree', position: eventPosition || { x: obj.position.x, y: obj.position.y, z: obj.position.z }, mesh: obj };
+        resource = { 
+          id: resourceId, 
+          type: 'tree', 
+          position: eventPosition || { x: obj.position.x, y: obj.position.y, z: obj.position.z }, 
+          mesh: obj 
+        };
         this.resources.set(resourceId, resource);
       }
     }
-    if (!resource) {
-      // Fallback: find nearest to provided position if available
+    
+    // Fallback: find nearest to provided position if available
+    if (!resource && eventPosition) {
       let bestId: string | null = null;
       let bestDist = Infinity;
       for (const [rid, vr] of this.resources.entries()) {
-        const refX = eventPosition?.x ?? 0;
-        const refZ = eventPosition?.z ?? 0;
+        const refX = eventPosition.x;
+        const refZ = eventPosition.z;
         const dx = (vr.mesh?.position.x || vr.position.x) - refX;
         const dz = (vr.mesh?.position.z || vr.position.z) - refZ;
         const d2 = dx * dx + dz * dz;
-        if (d2 < bestDist) { bestDist = d2; bestId = rid; }
+        if (d2 < bestDist) { 
+          bestDist = d2; 
+          bestId = rid; 
+        }
       }
       if (bestId) resource = this.resources.get(bestId)!;
     }
-    if (resource) {
-      const stored = this.detachedTrees.get(resourceId);
-      const tree = stored?.obj || resource.mesh || this.findObjectByResourceId(resourceId);
-      if (!tree) return;
-      const parent = stored?.parent || this.world.stage?.scene || null;
-      if (parent && tree.parent !== parent) {
-        parent.add(tree);
+    
+    if (!resource) return;
+    
+    const stored = this.detachedTrees.get(resourceId);
+    const tree = stored?.obj || resource.mesh || this.findObjectByResourceId(resourceId);
+    if (!tree) return;
+    
+    const parent = stored?.parent || this.world.stage?.scene || null;
+    if (parent && tree.parent !== parent) {
+      parent.add(tree);
+    }
+    
+    Logger.system?.('ResourceVisualizationSystem', `Show resource ${resourceId} at (${(tree.position.x||resource.position.x).toFixed(0)}, ${(tree.position.z||resource.position.z).toFixed(0)})`);
+    tree.visible = true;
+    
+    const stump = this.stumps.get(resourceId);
+    if (stump) stump.visible = false;
+    
+    this.detachedTrees.delete(resourceId);
+    
+    // Reattach nearby trees that were removed during depletion
+    const nearby = this.detachedNearby.get(resourceId);
+    if (nearby) {
+      for (const { obj: nearbyObj, parent: nearbyParent } of nearby) {
+        if (nearbyParent && nearbyObj.parent !== nearbyParent) {
+          nearbyParent.add(nearbyObj);
+        }
+        nearbyObj.visible = true;
       }
-      Logger.system?.('ResourceVisualizationSystem', `Show resource ${resourceId} at (${(tree.position.x||resource.position.x).toFixed(0)}, ${(tree.position.z||resource.position.z).toFixed(0)})`);
-      tree.visible = true;
-      const stump = this.stumps.get(resourceId);
-      if (stump) stump.visible = false;
-      this.detachedTrees.delete(resourceId);
-      // No nearby-removal to reattach (simplified logic)
+      this.detachedNearby.delete(resourceId);
     }
   }
 
   private getOrCreateStump(resourceId: string, position: Position3D): THREE.Mesh {
     let stump = this.stumps.get(resourceId);
     if (stump) return stump;
-    // Use a small green box as the depletion marker (visual confirmation like elsewhere)
-    const geo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
-    const greenMaterial = this.materials.leaves as THREE.Material; // bright green already defined
-    const stumpMesh = new THREE.Mesh(geo, greenMaterial);
-    stumpMesh.position.set(position.x, (position.y || 0) + 0.3, position.z);
+    
+    // Create a very small, dark brown stump (barely visible) instead of bright green cube
+    // This serves as a marker for the system but doesn't clutter the visual experience
+    const geo = new THREE.CylinderGeometry(0.2, 0.25, 0.3, 6); // Small cylinder instead of cube
+    const stumpMaterial = new THREE.MeshLambertMaterial({ 
+      color: 0x3d2817, // Dark brown for realistic stump
+      transparent: true,
+      opacity: 0.8
+    });
+    const stumpMesh = new THREE.Mesh(geo, stumpMaterial);
+    stumpMesh.position.set(position.x, (position.y || 0) + 0.15, position.z); // Lower to ground
     stumpMesh.castShadow = true;
     stumpMesh.receiveShadow = true;
-    stumpMesh.visible = false;
+    stumpMesh.visible = false; // Start invisible, only show when tree is cut
     stumpMesh.name = `stump_${resourceId}`;
     if (this.world.stage?.scene) {
       this.world.stage.scene.add(stumpMesh);

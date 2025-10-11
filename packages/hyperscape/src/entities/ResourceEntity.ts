@@ -34,6 +34,10 @@ export class ResourceEntity extends InteractableEntity {
       depleted: config.depleted !== undefined ? config.depleted : false,
       lastHarvestTime: config.lastHarvestTime !== undefined ? config.lastHarvestTime : 0
     };
+    
+    // Resources don't have health bars - they're not combatants
+    this.health = 0;
+    this.maxHealth = 0;
   }
 
   /**
@@ -118,7 +122,16 @@ export class ResourceEntity extends InteractableEntity {
   }
 
   protected async createMesh(): Promise<void> {
-    // Create basic resource mesh based on type
+    // SKIP MODEL LOADING - Prevents 404 errors
+    // Resources use procedural meshes from ResourceVisualizationSystem instead
+    
+    if (this.world.isServer) {
+      return; // Don't create fallback mesh on server
+    }
+    
+    console.log(`[ResourceEntity] Creating fallback primitive for ${this.config.resourceType}`)
+    
+    // Fallback: Create basic resource mesh based on type as placeholder
     let geometry: THREE.BufferGeometry;
     let material: THREE.Material;
     

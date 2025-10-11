@@ -91,9 +91,7 @@ export function Sidebar({ world, ui }: SidebarProps) {
     }
     const onInventory = (raw: unknown) => {
       const data = raw as { items: InventorySlotItem[]; playerId?: string; coins?: number }
-      console.log('[Sidebar] onInventory called:', data.items?.length, 'items for player:', data.playerId)
       if (Array.isArray(data.items)) {
-        console.log('[Sidebar] Setting inventory state with', data.items.length, 'items')
         setInventory(data.items)
       }
       if (typeof data.coins === 'number') {
@@ -161,16 +159,6 @@ export function Sidebar({ world, ui }: SidebarProps) {
       <div
         className='sidebar absolute text-base inset-0 pointer-events-none z-[1]'
       >
-        <style>{`
-          .minimap-card {
-            transition: all 0.3s ease;
-          }
-          @media (hover: hover) and (pointer: fine) {
-            .minimap-card:hover {
-              border-color: rgba(255,255,255,0.15) !important;
-            }
-          }
-        `}</style>
         
         {/* Minimap - top right */}
         <div 
@@ -181,7 +169,7 @@ export function Sidebar({ world, ui }: SidebarProps) {
           }}
         >
           {!minimapCollapsed && (
-            <div className="minimap-card border border-white/[0.08] rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] p-2 pb-1.5 transition-all duration-300 overflow-visible pointer-events-auto flex flex-col gap-2" 
+            <div className="border border-white/[0.08] rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] p-2 pb-1.5 transition-all duration-300 overflow-visible pointer-events-auto flex flex-col gap-2 hover:border-white/[0.15]" 
               style={{
                 background: 'linear-gradient(180deg, rgba(12,12,20,0.98), rgba(12,12,20,0.92))',
               }}

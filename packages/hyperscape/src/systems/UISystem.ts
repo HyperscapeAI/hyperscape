@@ -123,8 +123,12 @@ export class UISystem extends SystemBase {
         }
       }
     });
-    // Context menu bridge: when ResourceInteractionSystem dispatches rpg:contextmenu,
-    // create a simple overlay menu and re-dispatch selection via rpg:contextmenu:select
+    // NOTE: Context menu creation DISABLED
+    // EntityContextMenu (React component) now handles ALL context menus
+    // UISystem creating DOM menus was causing conflicts and blocking React menu clicks
+    // Keeping this code commented for reference:
+    
+    /* DISABLED - EntityContextMenu handles this now
     if (typeof window !== 'undefined') {
       window.addEventListener('rpg:contextmenu', (e: Event) => {
         const ce = e as CustomEvent<{ target: { id: string; name: string; position: { x: number; y: number; z: number } }; mousePosition: { x: number; y: number }; items?: Array<{ id: string; label: string; enabled: boolean }> }>
@@ -211,6 +215,7 @@ export class UISystem extends SystemBase {
         }, 0);
       });
     }
+    */ // END DISABLED SECTION
   }
 
   private convertPlayerEquipmentToEquipment(playerEquipment: PlayerEquipmentItems): Equipment {
