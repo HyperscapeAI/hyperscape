@@ -3,9 +3,9 @@ import React, { useEffect, useState } from 'react'
 import { World } from '../../World'
 import { EventType } from '../../types/events'
 
-export function LoadingScreen({ world }: { world: World }) {
+export function LoadingScreen({ world, message }: { world: World; message?: string }) {
   const [progress, setProgress] = useState(3) // Start at 3% to show immediate feedback
-  const [loadingStage, setLoadingStage] = useState('Initializing...')
+  const [loadingStage, setLoadingStage] = useState(message || 'Initializing...')
   const { title, desc, image } = world.settings
 
   useEffect(() => {

@@ -4,6 +4,7 @@ import THREE from '../extras/three'
 import { readPacket, writePacket } from '../packets'
 import { storage } from '../storage'
 import type { ChatMessage, EntityData, SnapshotData, World, WorldOptions } from '../types'
+import { EventType } from '../types/events'
 import { uuid } from '../utils'
 import { SystemBase } from './SystemBase'
 import { PlayerLocal } from '../entities/PlayerLocal'
@@ -32,6 +33,10 @@ export class ClientNetwork extends SystemBase {
   serverTimeOffset: number
   maxUploadSize: number
   pendingModifications: Map<string, Array<Record<string, unknown>>> = new Map()
+  // Cache character list so UI can render even if it mounts after the packet arrives
+  lastCharacterList: Array<{ id: string; name: string; level?: number; lastLocation?: { x: number; y: number; z: number } }> | null = null
+  // Cache latest inventory per player so UI can hydrate even if it mounted late
+  lastInventoryByPlayerId: Record<string, { playerId: string; items: Array<{ slot: number; itemId: string; quantity: number }>; coins: number; maxSlots: number }> = {}
   
   constructor(world: World) {
     super(world, { name: 'client-network', dependencies: { required: [], optional: [] }, autoCleanup: true })
@@ -186,6 +191,20 @@ export class ClientNetwork extends SystemBase {
     if (!this.world.network || (this.world.network as { id?: string }).id !== this.id) {
       (this.world as { network?: unknown }).network = this;
     }
+    
+    // Auto-enter world if in character-select mode and we have a selected character
+    try {
+      const snapshotData = data as unknown as { entities?: unknown[]; characters?: unknown[] }
+      const isCharacterSelectMode = Array.isArray(snapshotData.entities) && snapshotData.entities.length === 0 && Array.isArray(snapshotData.characters)
+      if (isCharacterSelectMode && typeof localStorage !== 'undefined') {
+        const selectedCharacterId = localStorage.getItem('selectedCharacterId')
+        if (selectedCharacterId) {
+          console.log('[ClientNetwork] Auto-entering world with selected character:', selectedCharacterId)
+          // Send enterWorld immediately so server spawns the selected character
+          this.send('enterWorld', { characterId: selectedCharacterId })
+        }
+      }
+    } catch {}
     // Ensure Physics is fully initialized before processing entities
     // This is needed because PlayerLocal uses physics extensions during construction
     if (!this.world.physics.physics) {
@@ -298,6 +317,17 @@ export class ClientNetwork extends SystemBase {
       }
     }
 
+    // Character-select mode: if server sent an empty entity list with account info,
+    // surface the character list/modal immediately even if the dedicated packet hasn't arrived yet.
+    try {
+      const anyData = data as unknown as { entities?: unknown[]; account?: unknown }
+      if (Array.isArray(anyData.entities) && anyData.entities.length === 0 && anyData.account) {
+        const list = this.lastCharacterList || []
+        console.log('[ClientNetwork] Snapshot indicates character-select mode; opening modal with cached list:', list.length)
+        this.world.emit('rpg:character:list', { characters: list })
+      }
+    } catch {}
+
     if (data.livekit) {
       this.world.livekit?.deserialize(data.livekit);
     }
@@ -324,6 +354,23 @@ export class ClientNetwork extends SystemBase {
     const newEntity = this.world.entities.add(data)
     if (newEntity) {
       this.applyPendingModifications(newEntity.id)
+      // If this is the local player added after character select, force-set initial position
+      try {
+        const isLocalPlayer = (data as { type?: string; owner?: string }).type === 'player' && (data as { owner?: string }).owner === this.id
+        if (isLocalPlayer && Array.isArray((data as { position?: number[] }).position)) {
+          let pos = (data as { position?: number[] }).position as [number, number, number]
+          // Safety clamp: never allow Y < 5 to prevent under-map spawn
+          if (pos[1] < 5) {
+            console.warn(`[ClientNetwork] Clamping invalid spawn Y=${pos[1]} to safe height 50`)
+            pos = [pos[0], 50, pos[2]]
+          }
+          if (newEntity instanceof PlayerLocal) {
+            newEntity.position.set(pos[0], pos[1], pos[2])
+            newEntity.updateServerPosition(pos[0], pos[1], pos[2])
+            console.log(`[ClientNetwork] Local player spawned at:`, pos)
+          }
+        }
+      } catch {}
     }
   }
 
@@ -415,8 +462,47 @@ export class ClientNetwork extends SystemBase {
   }
 
   onInventoryUpdated = (data: { playerId: string; items: Array<{ slot: number; itemId: string; quantity: number }>; coins: number; maxSlots: number }) => {
+    if ((window as any).DEBUG_RPG === '1' || process.env?.DEBUG_RPG === '1') {
+      console.log('[ClientNetwork] onInventoryUpdated received:', data.items.length, 'items for', data.playerId)
+    }
+    // Cache latest snapshot for late-mounting UI
+    this.lastInventoryByPlayerId[data.playerId] = data
     // Re-emit with typed event so UI updates without waiting for local add
     this.world.emit('rpg:inventory:updated', data)
+    this.world.emit(EventType.INVENTORY_UPDATED, data)
+  }
+
+  // --- Character selection (flag-gated by server) ---
+  onCharacterList = (data: { characters: Array<{ id: string; name: string; level?: number; lastLocation?: { x: number; y: number; z: number } }> }) => {
+    // Cache and re-emit so UI can show the modal
+    this.lastCharacterList = data.characters || []
+    try { console.log('[ClientNetwork] Received characterList:', (this.lastCharacterList || []).length) } catch {}
+    this.world.emit('rpg:character:list', data)
+    // Auto-select previously chosen character if available
+    try {
+      const storedId = typeof localStorage !== 'undefined' ? localStorage.getItem('selectedCharacterId') : null
+      if (storedId && Array.isArray(data.characters) && data.characters.some(c => c.id === storedId)) {
+        this.requestCharacterSelect(storedId)
+      }
+    } catch {}
+  }
+  onCharacterCreated = (data: { id: string; name: string }) => {
+    // Re-emit for UI to update lists
+    this.world.emit('rpg:character:created', data)
+  }
+  onCharacterSelected = (data: { characterId: string | null }) => {
+    this.world.emit('rpg:character:selected', data)
+  }
+
+  // Convenience methods
+  requestCharacterCreate(name: string) {
+    this.send('characterCreate', { name })
+  }
+  requestCharacterSelect(characterId: string) {
+    this.send('characterSelected', { characterId })
+  }
+  requestEnterWorld() {
+    this.send('enterWorld', {})
   }
 
   onEntityRemoved = (id: string) => {

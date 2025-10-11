@@ -40,7 +40,13 @@ export function Interface({ world }: { world: World }) {
     coins: number
     combatStyle: 'attack' | 'strength' | 'defense' | 'ranged'
   } | null>(null)
-  const [inventory, setInventory] = useState<InventoryItem[]>([])
+  const [inventory, setInventory] = useState<InventoryItem[] | null>(null)
+  
+  // Debug: log inventory changes
+  useEffect(() => {
+    if (!inventory) return
+    console.log('[Interface] Inventory state updated:', inventory.length, 'items:', inventory.map(i => ({ id: i.id, itemId: i.itemId, slot: i.slot, quantity: i.quantity })))
+  }, [inventory])
   const [equipment, setEquipment] = useState<PlayerEquipmentItems | null>(null)
   const [showInventory, setShowInventory] = useState(false)
   const [showBank, setShowBank] = useState(false)
@@ -68,11 +74,14 @@ export function Interface({ world }: { world: World }) {
     targetType: ''
   })
   const [damageNumbers, setDamageNumbers] = useState<DamageNumber[]>([])
+  // Character selection (server feature-flag controlled)
+  const [showCharacterSelect, setShowCharacterSelect] = useState(false)
+  const [characters, setCharacters] = useState<Array<{ id: string; name: string; level?: number; lastLocation?: { x: number; y: number; z: number } }>>([])
+  const [newCharacterName, setNewCharacterName] = useState('')
 
   useEffect(() => {
-    const localPlayer = world.getPlayer()
-    if (!localPlayer) return
-
+    const getLocal = () => world.getPlayer()
+    // local player may be null until spawned (character select). Always guard accesses.
     // Handle UI updates
     const handleUIUpdate = (data: unknown) => {
       const update = data as {
@@ -80,7 +89,8 @@ export function Interface({ world }: { world: World }) {
         component: 'player' | 'health' | 'inventory' | 'equipment' | 'bank' | 'store'
         data: unknown
       }
-      if (update.playerId !== localPlayer.id) return
+      const lp = getLocal()
+      if (!lp || update.playerId !== lp.id) return
 
       switch (update.component) {
         case 'player':
@@ -133,46 +143,58 @@ export function Interface({ world }: { world: World }) {
         coins: number
         combatStyle: 'attack' | 'strength' | 'defense' | 'ranged'
       }> & { playerId: string }
-      if (data.playerId !== localPlayer.id) return
+      const lp = getLocal(); if (!lp || data.playerId !== lp.id) return
       setPlayerStats(prev => prev ? { ...prev, ...data } : null)
     }
 
     const handleInventoryUpdate = (rawData: unknown) => {
       const data = rawData as { playerId: string; items: InventoryItem[] }
-      if (data.playerId !== localPlayer.id) return
+      if (typeof window !== 'undefined' && (window as any).DEBUG_RPG === '1') {
+        console.log('[Interface] handleInventoryUpdate:', data.playerId, data.items?.length, 'items')
+      }
+      const lp = getLocal(); 
+      if (!lp) {
+        if ((window as any).DEBUG_RPG === '1') console.log('[Interface] No local player yet')
+        return
+      }
+      if (data.playerId !== lp.id) {
+        if ((window as any).DEBUG_RPG === '1') console.log('[Interface] Inventory update for different player:', data.playerId, 'vs', lp.id)
+        return
+      }
+      if ((window as any).DEBUG_RPG === '1') console.log('[Interface] Updating inventory UI with', data.items?.length, 'items')
       setInventory(data.items || [])
     }
 
     const handleEquipmentUpdate = (rawData: unknown) => {
               const data = rawData as { playerId: string; equipment: PlayerEquipmentItems }
-      if (data.playerId !== localPlayer.id) return
+      const lp = getLocal(); if (!lp || data.playerId !== lp.id) return
       setEquipment(data.equipment)
     }
 
     const handleBankOpen = (rawData: unknown) => {
               const data = rawData as BankEntityData & { playerId: string; items: BankItem[] }
-      if (data.playerId !== localPlayer.id) return
+      const lp = getLocal(); if (!lp || data.playerId !== lp.id) return
       setBankData(data)
       setShowBank(true)
     }
 
     const handleBankClose = (rawData: unknown) => {
       const data = rawData as { playerId: string }
-      if (data.playerId !== localPlayer.id) return
+      const lp = getLocal(); if (!lp || data.playerId !== lp.id) return
       setShowBank(false)
       setBankData(null)
     }
 
     const handleStoreOpen = (rawData: unknown) => {
       const data = rawData as StoreData & { playerId: string }
-      if (data.playerId !== localPlayer.id) return
+      const lp = getLocal(); if (!lp || data.playerId !== lp.id) return
       setStoreData(data)
       setShowStore(true)
     }
 
     const handleStoreClose = (rawData: unknown) => {
       const data = rawData as { playerId: string }
-      if (data.playerId !== localPlayer.id) return
+      const lp = getLocal(); if (!lp || data.playerId !== lp.id) return
       setShowStore(false)
       setStoreData(null)
     }
@@ -209,7 +231,7 @@ export function Interface({ world }: { world: World }) {
         actions: string[]
         playerId: string
       }
-      if (data.playerId !== localPlayer.id) return
+      const lp = getLocal(); if (!lp || data.playerId !== lp.id) return
       setContextMenu({
         x: data.x,
         y: data.y,
@@ -227,8 +249,7 @@ export function Interface({ world }: { world: World }) {
         targetId?: string
         targetType?: 'resource'
       }
-      
-      if (data.playerId !== localPlayer.id) return
+      const lp = getLocal(); if (!lp || data.playerId !== lp.id) return
       
       // Check if this is a resource context menu
       if (data.type === 'context' && data.targetType === 'resource' && data.actions && data.position) {
@@ -277,8 +298,40 @@ export function Interface({ world }: { world: World }) {
       }
     }
 
+    // Character selection events (sent only when server feature flag is enabled)
+    const handleCharacterList = (raw: unknown) => {
+      const data = raw as { characters: Array<{ id: string; name: string; level?: number; lastLocation?: { x: number; y: number; z: number } }> }
+      try { console.log('[Interface] character:list received', (data.characters || []).length) } catch {}
+      setCharacters(data.characters || [])
+      // Only show modal if there are characters to choose from
+      if ((data.characters || []).length > 0) {
+        setShowCharacterSelect(true)
+      } else {
+        setShowCharacterSelect(false)
+      }
+    }
+    const handleCharacterCreated = (raw: unknown) => {
+      const data = raw as { id: string; name: string }
+      setCharacters(prev => [...prev, { id: data.id, name: data.name }])
+      setNewCharacterName('')
+    }
+    const handleCharacterSelected = (_raw: unknown) => {
+      // Selection acknowledged; request enter world
+      const net = (world.network as unknown) as { requestEnterWorld?: () => void }
+      if (net?.requestEnterWorld) net.requestEnterWorld()
+      setShowCharacterSelect(false)
+      // Also broadcast a DOM event so pre-world shell can proceed to create world
+      try {
+        const ev = new CustomEvent('rpg:character:selected')
+        window.dispatchEvent(ev)
+      } catch {}
+    }
+
     // Subscribe to events
     const typedWorld = world
+    typedWorld.on('rpg:character:list', handleCharacterList)
+    typedWorld.on('rpg:character:created', handleCharacterCreated)
+    typedWorld.on('rpg:character:selected', handleCharacterSelected)
     typedWorld.on(EventType.UI_UPDATE, handleUIUpdate)
     typedWorld.on(EventType.STATS_UPDATE, handleStatsUpdate)
     typedWorld.on(EventType.INVENTORY_UPDATED, handleInventoryUpdate)
@@ -311,7 +364,26 @@ export function Interface({ world }: { world: World }) {
     }
 
     // Request initial data
-    typedWorld.emit(EventType.UI_REQUEST, { playerId: localPlayer.id })
+    const lp = getLocal(); 
+    if (lp) {
+      typedWorld.emit(EventType.UI_REQUEST, { playerId: lp.id })
+      // Also explicitly request inventory update in case early updates were dropped
+      setTimeout(() => {
+        const player = world.getPlayer()
+        if (player) {
+          console.log('[Interface] Requesting inventory update for', player.id)
+          typedWorld.emit(EventType.INVENTORY_REQUEST, { playerId: player.id })
+        }
+      }, 500)
+    }
+    // If the network already cached a character list (packet arrived before UI mount), show it now
+    try {
+      const net = (world.network as unknown) as { lastCharacterList?: Array<{ id: string; name: string }> }
+      if (net?.lastCharacterList && net.lastCharacterList.length >= 0) {
+        setCharacters(net.lastCharacterList)
+        setShowCharacterSelect(true)
+      }
+    } catch {}
 
     return () => {
       typedWorld.off(EventType.UI_UPDATE, handleUIUpdate)
@@ -330,6 +402,9 @@ export function Interface({ world }: { world: World }) {
       typedWorld.off(EventType.COMBAT_HEAL, handleCombatEvent)
       typedWorld.off(EventType.SKILLS_XP_GAINED, handleCombatEvent)
       typedWorld.off(EventType.COMBAT_MISS, handleCombatEvent)
+      typedWorld.off('rpg:character:list', handleCharacterList)
+      typedWorld.off('rpg:character:created', handleCharacterCreated)
+      typedWorld.off('rpg:character:selected', handleCharacterSelected)
       if (control?.unbind) {
         control.unbind()
       }
@@ -401,6 +476,67 @@ export function Interface({ world }: { world: World }) {
 
   return (
     <>
+      {showCharacterSelect && (
+        <div
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-[200]"
+          style={{ pointerEvents: 'auto' }}
+        >
+          <div
+            className="bg-[rgba(11,10,21,0.95)] border border-dark-border rounded-lg p-4 w-[28rem]"
+            style={{ backdropFilter: 'blur(5px)' }}
+          >
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="m-0 text-lg">Select Character</h3>
+            </div>
+            <div className="flex flex-col gap-2 max-h-64 overflow-y-auto mb-3">
+              {characters.length === 0 && (
+                <div className="text-gray-400 text-sm">No characters yet. Create one below.</div>
+              )}
+              {characters.map((c) => (
+                <div key={c.id} className="flex items-center justify-between bg-black/30 rounded p-2">
+                  <div>
+                    <div className="font-bold">{c.name}</div>
+                    {c.level !== undefined && (
+                      <div className="text-xs text-gray-400">Level {c.level}</div>
+                    )}
+                  </div>
+                  <button
+                    className="bg-emerald-600 text-white text-sm rounded px-3 py-1 border-0 cursor-pointer"
+                    onClick={() => {
+                      const net = (world.network as unknown) as { requestCharacterSelect?: (id: string) => void }
+                      if (net?.requestCharacterSelect) net.requestCharacterSelect(c.id)
+                    }}
+                  >
+                    Play
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2">
+              <div className="text-sm text-gray-300 mb-1">Create New Character</div>
+              <div className="flex gap-2">
+                <input
+                  value={newCharacterName}
+                  onChange={(e) => setNewCharacterName(e.target.value)}
+                  placeholder="Name"
+                  className="flex-1 bg-black/40 border border-white/10 rounded px-2 py-1 text-white"
+                />
+                <button
+                  className="bg-blue-600 text-white text-sm rounded px-3 py-1 border-0 cursor-pointer"
+                  onClick={() => {
+                    const name = newCharacterName.trim()
+                    if (!name) return
+                    const net = (world.network as unknown) as { requestCharacterCreate?: (name: string) => void }
+                    if (net?.requestCharacterCreate) net.requestCharacterCreate(name)
+                  }}
+                >
+                  Create
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* HUD removed; replaced by minimap/side panel */}
       {/* Skills now lives in right sidebar panel */}
       {/* Inventory/Equipment panel moved to right sidebar */}

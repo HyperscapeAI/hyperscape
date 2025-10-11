@@ -12,25 +12,24 @@ export { System } from '../systems/System'
 export function Client({ wsUrl, onSetup }: ClientProps) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const uiRef = useRef<HTMLDivElement>(null)
+  // Create world immediately so network can connect and deliver characterList
   const world = useMemo(() => {
     console.log('[Client] Creating new world instance')
-    const world = createClientWorld()
+    const w = createClientWorld()
     console.log('[Client] World instance created')
-    return world
+    return w
   }, [])
-  const [ui, setUI] = useState(world.ui?.state || { visible: true, active: false, app: null, pane: null })
+  const defaultUI = { visible: true, active: false, app: null, pane: null }
+  const [ui, setUI] = useState(defaultUI)
   useEffect(() => {
     const handleUI = (data: unknown) => {
-      // Handle UI state update - expecting full UI state
-      if (data && typeof data === 'object') {
-        setUI(data as typeof ui)
-      }
+      if (data && typeof data === 'object') setUI(data as typeof ui)
     }
     world.on(EventType.UI_UPDATE, handleUI)
     return () => {
       world.off(EventType.UI_UPDATE, handleUI)
     }
-  }, [])
+  }, [world])
 
   // Handle window resize to update Three.js canvas
   useEffect(() => {
@@ -59,7 +58,6 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
         console.log('[Client] Waiting for viewport/ui refs...')
         return
       }
-      
       console.log('[Client] Starting world initialization...')
             
       const baseEnvironment = {
@@ -146,7 +144,7 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
           inset: 0;
           pointer-events: none;
           user-select: none;
-          display: ${ui.visible ? 'block' : 'none'};
+          display: ${ui.visible ? 'block' : 'block'};
           overflow: hidden;
           z-index: 10;
         }

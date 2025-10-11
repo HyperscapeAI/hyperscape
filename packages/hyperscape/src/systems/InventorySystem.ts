@@ -53,9 +53,21 @@ export class InventorySystem extends SystemBase {
   }
 
   async init(): Promise<void> {
-    // Subscribe to inventory events
-    this.subscribe(EventType.PLAYER_REGISTERED, (data) => {
+    const isServer = this.world.network?.isServer || false
+    const isClient = this.world.network?.isClient || false
+    if (typeof process !== 'undefined' && process.env.DEBUG_RPG === '1') {
+      console.log(`[InventorySystem] init() called, isServer: ${isServer}, isClient: ${isClient}`)
+    }
+    
+    // Subscribe to inventory events (use world.on for reliable event delivery)
+    this.world.on(EventType.PLAYER_REGISTERED, (data: { playerId: string }) => {
+      if (process.env.DEBUG_RPG === '1') {
+        console.log(`[InventorySystem] PLAYER_REGISTERED received: ${data.playerId}`)
+      }
       if (!this.loadPersistedInventory(data.playerId)) {
+        if (process.env.DEBUG_RPG === '1') {
+          console.log(`[InventorySystem] No persisted inventory found, initializing empty for ${data.playerId}`)
+        }
         this.initializeInventory({ id: data.playerId });
       }
     });
@@ -198,6 +210,10 @@ export class InventorySystem extends SystemBase {
     if (!itemData) {
       Logger.error('InventorySystem', `Item not found: ${itemId}`);
       return false;
+    }
+    
+    if (process.env.DEBUG_RPG === '1') {
+      console.log(`[InventorySystem] Adding ${data.quantity}x ${itemId} to player ${playerId}`)
     }
     
     // Special handling for coins
@@ -691,6 +707,9 @@ export class InventorySystem extends SystemBase {
     try {
       const rows = db.getPlayerInventory(playerId);
       const playerRow = db.getPlayer(playerId);
+      if (process.env.DEBUG_RPG === '1') {
+        console.log(`[InventorySystem] Loading inventory for ${playerId}: ${rows?.length || 0} items, ${playerRow?.coins || 0} coins`)
+      }
       const hasState = (rows && rows.length > 0) || !!playerRow;
       if (!hasState) return false;
       const pid = createPlayerID(playerId);

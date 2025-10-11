@@ -80,8 +80,8 @@ export class Socket {
     const result = readPacket(packet)
     if (result.length === 2) {
       const [method, data] = result
-      if (method === 'onChatAdded') {
-        console.log('[Socket] Received onChatAdded, enqueueing for socket:', this.id);
+      if (method === 'onChatAdded' || method === 'onCharacterListRequest' || method === 'onCharacterCreate') {
+        console.log(`[Socket] Received ${method}, enqueueing for socket:`, this.id);
       }
       this.network.enqueue(this, method, data)
     }
