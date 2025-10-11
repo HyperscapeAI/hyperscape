@@ -56,9 +56,12 @@ export function createClientWorld() {
   
   // Expose constructors for browser tests immediately so tests can access without waiting
   if (typeof window !== 'undefined') {
-    const anyWin = window as unknown as { Hyperscape?: Record<string, unknown> };
+    const anyWin = window as unknown as { Hyperscape?: Record<string, unknown>; world?: World };
     anyWin.Hyperscape = anyWin.Hyperscape || {};
     anyWin.Hyperscape.CircularSpawnArea = CircularSpawnArea;
+    
+    // Expose world for debugging
+    anyWin.world = world;
   }
   
   // Register core client systems
@@ -148,10 +151,12 @@ export function createClientWorld() {
         }
       }
 
-      // Now that RPG systems are registered, run validation
-      console.log('[Client World] Registering terrain validation system...');
-      world.register('terrain-validation', TerrainValidationSystem);
-      console.log('[Client World] Terrain validation system registered');
+      // DISABLED: TerrainValidationSystem runs validation too early before entities sync
+      // It crashes the client when mobs haven't arrived from server yet
+      // To re-enable, delay validation until after client receives snapshot
+      // console.log('[Client World] Registering terrain validation system...');
+      // world.register('terrain-validation', TerrainValidationSystem);
+      // console.log('[Client World] Terrain validation system registered');
     } catch (error) {
       console.error('[Client World] Failed to register RPG game systems:', error);
       if (error instanceof Error) {

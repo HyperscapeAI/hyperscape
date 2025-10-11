@@ -12,8 +12,8 @@ import {
   World,
   PlayerEquipmentItems
 } from '../types/core'
-import { InteractionHandler } from './InteractionHandler'
-import { ResourceContextMenu } from '../client/components/ResourceContextMenu'
+import { LootWindow } from '../client/components/LootWindow'
+import { EntityContextMenu } from '../client/components/EntityContextMenu'
 
 // No local interfaces - use shared types with proper type assertions
 
@@ -48,25 +48,7 @@ export function Interface({ world }: { world: World }) {
   const [showSkills, setShowSkills] = useState(false)
   const [bankData, setBankData] = useState<BankEntityData & { items: BankItem[] } | null>(null)
   const [storeData, setStoreData] = useState<StoreData | null>(null)
-  const [contextMenu, setContextMenu] = useState<{
-    x: number
-    y: number
-    itemId: string
-    actions: string[]
-  } | null>(null)
-  const [resourceContextMenu, setResourceContextMenu] = useState<{
-    visible: boolean
-    position: { x: number; y: number }
-    actions: Array<{ id: string; label: string; icon?: string; enabled: boolean; onClick: () => void }>
-    targetId: string
-    targetType: string
-  }>({
-    visible: false,
-    position: { x: 0, y: 0 },
-    actions: [],
-    targetId: '',
-    targetType: ''
-  })
+  // Removed contextMenu and resourceContextMenu - EntityContextMenu handles all menus now
   const [damageNumbers, setDamageNumbers] = useState<DamageNumber[]>([])
   const [gatheringState, setGatheringState] = useState<{
     active: boolean
@@ -75,6 +57,23 @@ export function Interface({ world }: { world: World }) {
     startTime: number
     duration: number
   } | null>(null)
+  const [combatState, setCombatState] = useState<{
+    active: boolean
+    targetId: string
+    targetName: string
+    targetLevel: number
+  } | null>(null)
+  const [lootWindow, setLootWindow] = useState<{
+    visible: boolean
+    corpseId: string
+    corpseName: string
+    lootItems: InventoryItem[]
+  }>({
+    visible: false,
+    corpseId: '',
+    corpseName: '',
+    lootItems: []
+  })
 
   useEffect(() => {
     const localPlayer = world.getPlayer()
@@ -156,6 +155,25 @@ export function Interface({ world }: { world: World }) {
       setEquipment(data.equipment)
     }
 
+    const handleCorpseClick = (rawData: unknown) => {
+      const data = rawData as { corpseId: string; playerId: string; lootItems?: InventoryItem[]; position?: { x: number; y: number; z: number } }
+      if (data.playerId !== localPlayer.id) return
+      
+      // Get corpse entity to retrieve loot items
+      const corpseEntity = world.entities.get(data.corpseId)
+      if (corpseEntity && 'getLootItems' in corpseEntity) {
+        const lootItems = (corpseEntity as { getLootItems: () => InventoryItem[] }).getLootItems()
+        const corpseName = corpseEntity.name || 'Corpse'
+        
+        setLootWindow({
+          visible: true,
+          corpseId: data.corpseId,
+          corpseName,
+          lootItems
+        })
+      }
+    }
+
     const handleBankOpen = (rawData: unknown) => {
               const data = rawData as BankEntityData & { playerId: string; items: BankItem[] }
       if (data.playerId !== localPlayer.id) return
@@ -208,59 +226,7 @@ export function Interface({ world }: { world: World }) {
       }
     }
 
-    const handleContextMenu = (rawData: unknown) => {
-      const data = rawData as {
-        x: number
-        y: number
-        itemId: string
-        actions: string[]
-        playerId: string
-      }
-      if (data.playerId !== localPlayer.id) return
-      setContextMenu({
-        x: data.x,
-        y: data.y,
-        itemId: data.itemId,
-        actions: data.actions
-      })
-    }
-
-    const handleResourceMenu = (rawData: unknown) => {
-      const data = rawData as {
-        playerId: string
-        type?: 'context'
-        position?: { x: number; y: number }
-        actions?: Array<{ id: string; label: string; icon?: string; enabled: boolean; onClick: () => void }>
-        targetId?: string
-        targetType?: 'resource' | 'mob'
-      }
-      
-      if (data.playerId !== localPlayer.id) return
-      
-      // Check if this is a resource or mob context menu
-      if (data.type === 'context' && (data.targetType === 'resource' || data.targetType === 'mob') && data.actions && data.position) {
-        setResourceContextMenu({
-          visible: true,
-          position: data.position,
-          actions: data.actions,
-          targetId: data.targetId || '',
-          targetType: data.targetType
-        })
-        // Close regular context menu if open
-        setContextMenu(null)
-      }
-    }
-
-    const handleCloseMenu = () => {
-      setContextMenu(null)
-      setResourceContextMenu({
-        visible: false,
-        position: { x: 0, y: 0 },
-        actions: [],
-        targetId: '',
-        targetType: ''
-      })
-    }
+    // All menu handlers removed - EntityContextMenu handles everything via rpg:contextmenu event
 
     const handleCombatEvent = (rawData: unknown) => {
       const data = rawData as { damage?: number; amount?: number; type?: string; x?: number; y?: number }
@@ -327,6 +293,39 @@ export function Interface({ world }: { world: World }) {
       setGatheringState(null)
     }
 
+    const handleCombatStarted = (rawData: unknown) => {
+      const data = rawData as { attackerId: string; targetId: string }
+      // Handle combat for local player (whether they're attacker or target)
+      if (data.attackerId !== localPlayer.id && data.targetId !== localPlayer.id) return
+      
+      // Determine which entity is the opponent
+      const opponentId = data.attackerId === localPlayer.id ? data.targetId : data.attackerId
+      const opponentEntity = world.entities.get(opponentId)
+      const opponentData = opponentEntity && (opponentEntity as any).getMobData ? (opponentEntity as any).getMobData() : null
+      
+      setCombatState({
+        active: true,
+        targetId: opponentId,
+        targetName: opponentData?.name || opponentEntity?.name || 'Enemy',
+        targetLevel: opponentData?.level || 1
+      })
+      
+      console.log('[Interface] Combat started:', {
+        localPlayer: localPlayer.id,
+        opponent: opponentId,
+        opponentName: opponentData?.name
+      })
+    }
+
+    const handleCombatEnded = (rawData: unknown) => {
+      const data = rawData as { attackerId: string; targetId: string }
+      // End combat if local player is involved
+      if (data.attackerId !== localPlayer.id && data.targetId !== localPlayer.id) return
+      
+      console.log('[Interface] Combat ended for local player')
+      setCombatState(null)
+    }
+
     // Subscribe to events
     const typedWorld = world
     typedWorld.on(EventType.UI_UPDATE, handleUIUpdate)
@@ -339,9 +338,7 @@ export function Interface({ world }: { world: World }) {
     typedWorld.on(EventType.STORE_OPEN, handleStoreOpen)
     typedWorld.on(EventType.STORE_CLOSE, handleStoreClose)
     // Removed STORE_INTERFACE_UPDATE - UI updates reactively to STORE_BUY/STORE_SELL events
-    typedWorld.on(EventType.UI_CONTEXT_MENU, handleContextMenu)
-    typedWorld.on(EventType.UI_OPEN_MENU, handleResourceMenu)
-    typedWorld.on(EventType.UI_CLOSE_MENU, handleCloseMenu)
+    // Removed old menu event listeners - EntityContextMenu handles everything
     typedWorld.on(EventType.UI_OPEN_PANE, handleOpenPane)
     typedWorld.on(EventType.COMBAT_DAMAGE_DEALT, handleCombatEvent)
     typedWorld.on(EventType.COMBAT_HEAL, handleCombatEvent)
@@ -350,6 +347,9 @@ export function Interface({ world }: { world: World }) {
     typedWorld.on(EventType.RESOURCE_GATHERING_STARTED, handleGatheringStarted)
     typedWorld.on(EventType.RESOURCE_GATHERING_COMPLETED, handleGatheringCompleted)
     typedWorld.on(EventType.RESOURCE_GATHERING_STOPPED, handleGatheringStopped)
+    typedWorld.on(EventType.COMBAT_STARTED, handleCombatStarted)
+    typedWorld.on(EventType.COMBAT_ENDED, handleCombatEnded)
+    typedWorld.on(EventType.CORPSE_CLICK, handleCorpseClick)
 
     // Keyboard shortcuts
     const control = world.controls?.bind({ priority: 100 }) as {
@@ -379,9 +379,7 @@ export function Interface({ world }: { world: World }) {
       typedWorld.off(EventType.STORE_OPEN, handleStoreOpen)
       typedWorld.off(EventType.STORE_CLOSE, handleStoreClose)
       // Removed STORE_INTERFACE_UPDATE listener cleanup
-      typedWorld.off(EventType.UI_CONTEXT_MENU, handleContextMenu)
-      typedWorld.off(EventType.UI_OPEN_MENU, handleResourceMenu)
-      typedWorld.off(EventType.UI_CLOSE_MENU, handleCloseMenu)
+      // Removed old menu event listeners cleanup
       typedWorld.off(EventType.UI_OPEN_PANE, handleOpenPane)
       typedWorld.off(EventType.COMBAT_DAMAGE_DEALT, handleCombatEvent)
       typedWorld.off(EventType.COMBAT_HEAL, handleCombatEvent)
@@ -390,6 +388,9 @@ export function Interface({ world }: { world: World }) {
       typedWorld.off(EventType.RESOURCE_GATHERING_STARTED, handleGatheringStarted)
       typedWorld.off(EventType.RESOURCE_GATHERING_COMPLETED, handleGatheringCompleted)
       typedWorld.off(EventType.RESOURCE_GATHERING_STOPPED, handleGatheringStopped)
+      typedWorld.off(EventType.COMBAT_STARTED, handleCombatStarted)
+      typedWorld.off(EventType.COMBAT_ENDED, handleCombatEnded)
+      typedWorld.off(EventType.CORPSE_CLICK, handleCorpseClick)
       if (control?.unbind) {
         control.unbind()
       }
@@ -496,60 +497,20 @@ export function Interface({ world }: { world: World }) {
           world={world}
         />
       )}
-      {contextMenu && (
-        <ContextMenuPanel
-          menu={contextMenu}
-          onClose={() => setContextMenu(null)}
-          world={world}
-        />
-      )}
-      <ResourceContextMenu
-        visible={resourceContextMenu.visible}
-        position={resourceContextMenu.position}
-        actions={resourceContextMenu.actions}
-        targetId={resourceContextMenu.targetId}
-        targetType={resourceContextMenu.targetType}
-        onActionClick={(actionId) => {
-          const player = world.getPlayer();
-          if (!player) return;
-          
-          // Emit appropriate event based on target type
-          if (resourceContextMenu.targetType === 'resource') {
-            // Resource action (chop, mine, fish, etc.)
-            world.emit(EventType.RESOURCE_ACTION, {
-              playerId: player.id,
-              resourceId: resourceContextMenu.targetId,
-              action: actionId
-            });
-          } else if (resourceContextMenu.targetType === 'mob') {
-            // Mob action (attack, examine)
-            if (actionId === 'attack') {
-              world.emit(EventType.COMBAT_ATTACK_REQUEST, {
-                playerId: player.id,
-                targetId: resourceContextMenu.targetId,
-                attackerType: 'player',
-                targetType: 'mob'
-              });
-            } else if (actionId === 'examine') {
-              world.emit(EventType.UI_TOAST, {
-                message: `Level ${(resourceContextMenu.actions.find(a => a.id === 'examine')?.label || 'Unknown')} mob`,
-                type: 'info'
-              });
-            }
-          }
-        }}
-        onClose={() => setResourceContextMenu({
-          visible: false,
-          position: { x: 0, y: 0 },
-          actions: [],
-          targetId: '',
-          targetType: ''
-        })}
-      />
+      {/* All old context menus removed - EntityContextMenu handles everything */}
       {/* ButtonPanel removed; replaced by minimap tabs in Sidebar */}
       <DamageNumbers damageNumbers={damageNumbers} />
       {gatheringState && <GatheringProgress state={gatheringState} />}
-      <InteractionHandler world={world} />
+      {combatState && <CombatIndicator state={combatState} />}
+      <LootWindow
+        visible={lootWindow.visible}
+        corpseId={lootWindow.corpseId}
+        corpseName={lootWindow.corpseName}
+        lootItems={lootWindow.lootItems}
+        onClose={() => setLootWindow({ visible: false, corpseId: '', corpseName: '', lootItems: [] })}
+        world={world}
+      />
+      <EntityContextMenu world={world} />
     </>
   )
 }
@@ -671,792 +632,6 @@ function SkillsPanel({ stats, onClose }: { stats: PlayerStats & {
           <div className="opacity-90">XP: {Math.floor(hoverInfo.xp).toLocaleString()}</div>
           <div className="opacity-90">Next level at: {getXpForLevel(Math.min(120, hoverInfo.level + 1)).toLocaleString()} xp</div>
           <div className="opacity-90">Remaining: {(getXpForLevel(Math.min(120, hoverInfo.level + 1)) - Math.floor(hoverInfo.xp)).toLocaleString()} xp</div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ButtonPanel removed (function deleted)
-
-// HUD Component
-function Hud({ stats }: { stats: PlayerStats & {
-  id: string
-  name: string
-  stamina: number
-  maxStamina: number
-  xp: number
-  maxXp: number
-  coins: number
-  combatStyle: 'attack' | 'strength' | 'defense' | 'ranged'
-} }) {
-  const healthPercent = (stats.health.current / stats.health.max) * 100
-  const healthColor = healthPercent > 60 ? '#4ade80' : healthPercent > 30 ? '#fbbf24' : '#ef4444'
-  
-  const staminaPercent = (stats.stamina / stats.maxStamina) * 100
-  const staminaColor = '#3b82f6' // Blue color for stamina
-  
-  const xpPercent = (stats.xp / stats.maxXp) * 100
-  const xpColor = '#8b5cf6' // Purple color for XP
-  
-  const combatLevelColors = {
-    attack: '#ef4444',    // Red
-    strength: '#10b981',  // Green  
-    defense: '#3b82f6',   // Blue
-    ranged: '#f59e0b'     // Orange
-  }
-
-  return (
-    <div
-      className="rpg-hud absolute w-80 bg-dark-bg border border-dark-border rounded-lg p-3 pointer-events-none backdrop-blur-md"
-      style={{
-        top: 'calc(1rem + env(safe-area-inset-top))',
-        left: 'calc(1rem + env(safe-area-inset-left))',
-      }}
-    >
-      {/* Top Info */}
-      <div className="mb-3 flex justify-between items-center">
-        <div>
-          <div className="font-bold text-lg">Level {stats.level}</div>
-          <div className="text-sm text-gray-400">Combat Lv. {Math.floor(((stats.skills?.attack?.level || 0) + (stats.skills?.strength?.level || 0) + (stats.skills?.defense?.level || 0) + (stats.skills?.ranged?.level || 0)) / 4)}</div>
-        </div>
-        <div className="text-right">
-          <div className="text-yellow-400 font-bold">{stats.coins.toLocaleString()} gp</div>
-          <div 
-            className="text-sm"
-            style={{ color: combatLevelColors[stats.combatStyle] }}
-          >Style: {stats.combatStyle}</div>
-        </div>
-      </div>
-      
-      {/* Health Bar */}
-      <div className="mb-2">
-        <div className="text-sm mb-0.5 flex justify-between">
-          <span>Health</span>
-          <span>{stats.health.current}/{stats.health.max}</span>
-        </div>
-        <div className="w-full h-4 bg-black/50 rounded border border-white/10 overflow-hidden">
-          <div
-            className="h-full transition-[width] duration-300 ease-out"
-            style={{
-              width: `${healthPercent}%`,
-              background: `linear-gradient(90deg, ${healthColor}, ${healthColor}dd)`,
-            }}
-          />
-        </div>
-      </div>
-      
-      {/* Stamina Bar removed - now shown on minimap */}
-      
-      {/* XP Bar */}
-      <div className="mb-2">
-        <div className="text-sm mb-0.5 flex justify-between">
-          <span>Experience</span>
-          <span>{stats.xp}/{stats.maxXp} ({xpPercent.toFixed(1)}%)</span>
-        </div>
-        <div className="w-full h-3 bg-black/50 rounded border border-white/10 overflow-hidden">
-          <div
-            className="h-full transition-[width] duration-300 ease-out"
-            style={{
-              width: `${xpPercent}%`,
-              background: `linear-gradient(90deg, ${xpColor}, ${xpColor}dd)`,
-            }}
-          />
-        </div>
-      </div>
-      
-      {/* Skills summary removed; open full panel via Skills button */}
-    </div>
-  )
-}
-
-// Unified Inventory & Equipment Component
-function UnifiedInventoryEquipment({
-  items,
-  equipment,
-  stats,
-  onClose,
-  world,
-}: {
-  items: InventoryItem[]
-  equipment: PlayerEquipmentItems | null
-  stats: PlayerStats & {
-    id: string
-    name: string
-    stamina: number
-    maxStamina: number
-    xp: number
-    maxXp: number
-    coins: number
-    combatStyle: 'attack' | 'strength' | 'defense' | 'ranged'
-  } | null
-  onClose: () => void
-  world: World
-}) {
-  const [selectedSlot, setSelectedSlot] = useState<number | null>(null)
-  const [hoveredSlot, setHoveredSlot] = useState<number | null>(null)
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; slot: number; item: InventoryItem } | null>(null)
-
-  const handleItemClick = (e: React.MouseEvent, slot: number, item: InventoryItem | null) => {
-    e.stopPropagation()
-    if (!item) {
-      setSelectedSlot(null)
-      return
-    }
-    setSelectedSlot(slot)
-    setContextMenu(null)
-  }
-
-  const handleItemRightClick = (e: React.MouseEvent, slot: number, item: InventoryItem | null) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (!item) return
-    
-    setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      slot,
-      item
-    })
-  }
-
-  const handleContextMenuAction = (action: string) => {
-    if (!contextMenu) return
-    
-    const localPlayer = world.getPlayer()
-    if (!localPlayer) return
-
-    const { slot, item } = contextMenu
-    
-    switch (action) {
-      case 'use':
-        world.emit(EventType.INVENTORY_USE, {
-          playerId: localPlayer.id,
-          itemId: item.id,
-          slot,
-        })
-        break
-      case 'equip':
-        world.emit(EventType.EQUIPMENT_TRY_EQUIP, {
-          playerId: localPlayer.id,
-          itemId: item.id,
-        })
-        break
-      case 'drop':
-        world.emit(EventType.ITEM_DROP, {
-          playerId: localPlayer.id,
-          itemId: item.id,
-          slot,
-          quantity: 1,
-        })
-        break
-      case 'examine':
-        world.emit(EventType.ITEM_EXAMINE, {
-          playerId: localPlayer.id,
-          itemId: item.id,
-        })
-        break
-    }
-    
-    setContextMenu(null)
-    setSelectedSlot(null)
-  }
-
-  const handleUnequip = (slot: EquipmentSlotName) => {
-    const localPlayer = world.getPlayer()
-    if (!localPlayer) return
-
-    world.emit(EventType.EQUIPMENT_UNEQUIP, {
-      playerId: localPlayer.id,
-      slot,
-    })
-  }
-
-  const getItemTypeColor = (type: string | undefined) => {
-    if (!type) return '#6b7280'
-    switch (type.toLowerCase()) {
-      case 'weapon': return '#ef4444'
-      case 'armor': return '#3b82f6'
-      case 'consumable': return '#10b981'
-      case 'tool': return '#f59e0b'
-      case 'resource': return '#8b5cf6'
-      default: return '#6b7280'
-    }
-  }
-
-  const slots = Array(28).fill(null)
-  items.forEach((item, index) => {
-    if (index < 28) slots[index] = item
-  })
-
-  const equipmentSlots = [
-    { key: EquipmentSlotName.HELMET, label: 'Helmet', icon: '🎩' },
-    { key: EquipmentSlotName.BODY, label: 'Body', icon: '🎽' },
-    { key: EquipmentSlotName.LEGS, label: 'Legs', icon: '👖' },
-    { key: EquipmentSlotName.WEAPON, label: 'Weapon', icon: '⚔️' },
-    { key: EquipmentSlotName.SHIELD, label: 'Shield', icon: '🛡️' },
-    { key: EquipmentSlotName.ARROWS, label: 'Arrows', icon: '🏹' },
-  ]
-
-  return (
-    <>
-      <div
-        className="rpg-inventory-equipment"
-        style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: '40rem',
-          background: 'rgba(11, 10, 21, 0.95)',
-          border: '0.0625rem solid #2a2b39',
-          borderRadius: '0.5rem',
-          padding: '1rem',
-          pointerEvents: 'auto',
-          backdropFilter: 'blur(5px)',
-          display: 'flex',
-          gap: '1rem',
-        }}
-        onClick={(e) => {
-          if (e.target === e.currentTarget) {
-            setContextMenu(null)
-          }
-        }}
-      >
-        {/* Equipment Section (Left) */}
-        <div className="w-56">
-          <h3 className="m-0 mb-4 text-[1.1rem]">Equipment</h3>
-          
-          <div className="flex flex-col gap-2 mb-4">
-            {equipmentSlots.map(({ key, label, icon }) => {
-              const item = equipment?.[key]
-              return (
-                <div
-                  key={key}
-                  className={`flex items-center gap-2 p-2 bg-black/30 rounded ${item ? 'border border-blue-500' : 'border border-transparent'}`}
-                >
-                  <div className="text-xl w-8 text-center">{icon}</div>
-                  <div className="flex-1">
-                    <div className="text-xs text-gray-400">{label}</div>
-                    {item ? (
-                      <div className="text-sm font-bold">
-                        {item.name || `Item ${item.itemId}`}
-                        {key === 'arrows' && item?.quantity && ` (${item.quantity})`}
-                      </div>
-                    ) : (
-                      <div className="text-sm text-gray-500">(empty)</div>
-                    )}
-                  </div>
-                  {item && (
-                    <button
-                      onClick={() => handleUnequip(key)}
-                      className="bg-gray-500 border-none rounded text-white py-0.5 px-1.5 cursor-pointer text-xs"
-                      title="Unequip"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Combat Stats */}
-          {stats && (
-            <div className="p-3 bg-black/30 rounded">
-              <h4 className="m-0 mb-2 text-[0.9rem]">Combat Stats</h4>
-              <div className="grid grid-cols-2 gap-1 text-[0.8rem]">
-                <div>⚔️ ATK: {stats.skills?.attack?.level || 0}</div>
-                <div>💪 STR: {stats.skills?.strength?.level || 0}</div>
-                <div>🛡️ DEF: {stats.skills?.defense?.level || 0}</div>
-                <div>🏹 RNG: {stats.skills?.ranged?.level || 0}</div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Inventory Section (Right) */}
-        <div className="flex-1">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="m-0 text-[1.1rem]">Inventory</h3>
-            <div className="flex gap-2 items-center">
-              <span className="text-sm text-gray-400">
-                {items.length}/28 slots
-              </span>
-              <button
-                onClick={onClose}
-                className="bg-red-500 border-none rounded text-white py-1 px-2 cursor-pointer text-sm"
-              >
-                Close (I)
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-7 gap-1 mb-4">
-            {slots.map((item, index) => (
-              <div
-                key={index}
-                onClick={(e) => handleItemClick(e, index, item)}
-                onContextMenu={(e) => handleItemRightClick(e, index, item)}
-                onMouseEnter={() => setHoveredSlot(index)}
-                onMouseLeave={() => setHoveredSlot(null)}
-                style={{
-                  width: '3rem',
-                  height: '3rem',
-                  background: selectedSlot === index ? '#3b82f6' : hoveredSlot === index ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.5)',
-                  border: `0.0625rem solid ${item ? getItemTypeColor(getItemDisplayProps(item).type) : '#1f2937'}`,
-                  borderRadius: '0.25rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: item ? 'pointer' : 'default',
-                  fontSize: '0.65rem',
-                  position: 'relative',
-                  transition: 'all 0.2s ease',
-                  transform: hoveredSlot === index ? 'scale(1.05)' : 'scale(1)',
-                }}
-              >
-                {item && (
-                  <>
-                    <div style={{ 
-                      textAlign: 'center', 
-                      lineHeight: '1',
-                      fontWeight: 'bold',
-                      textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)' 
-                    }}>
-                      {getItemDisplayProps(item).name.substring(0, 8)}
-                    </div>
-                    {item.quantity > 1 && (
-                      <div
-                        style={{
-                          position: 'absolute',
-                          bottom: '0.125rem',
-                          right: '0.125rem',
-                          color: '#fbbf24',
-                          fontWeight: 'bold',
-                          fontSize: '0.55rem',
-                          background: 'rgba(0, 0, 0, 0.7)',
-                          borderRadius: '0.125rem',
-                          padding: '0.125rem 0.25rem',
-                        }}
-                      >
-                        {item.quantity}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {selectedSlot !== null && slots[selectedSlot] && (
-            <div 
-              className="p-3 bg-black/30 rounded"
-              style={{ border: `1px solid ${getItemTypeColor(slots[selectedSlot].type)}` }}
-            >
-              <div className="font-bold mb-1">
-                {slots[selectedSlot].name}
-              </div>
-              <div className="text-sm text-gray-400 mb-2">
-                Type: {slots[selectedSlot].type} • Quantity: {slots[selectedSlot].quantity}
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                <button
-                  onClick={() => handleContextMenuAction('use')}
-                  className="bg-emerald-500 border-none rounded text-white py-1.5 px-3 cursor-pointer text-sm"
-                >
-                  Use
-                </button>
-                <button
-                  onClick={() => handleContextMenuAction('equip')}
-                  className="bg-blue-500 border-none rounded text-white py-1.5 px-3 cursor-pointer text-sm"
-                >
-                  Equip
-                </button>
-                <button
-                  onClick={() => handleContextMenuAction('drop')}
-                  className="bg-red-500 border-none rounded text-white py-1.5 px-3 cursor-pointer text-sm"
-                >
-                  Drop
-                </button>
-                <button
-                  onClick={() => handleContextMenuAction('examine')}
-                  className="bg-gray-500 border-none rounded text-white py-1.5 px-3 cursor-pointer text-sm"
-                >
-                  Examine
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Context Menu */}
-      {contextMenu && (
-        <div
-          className="fixed bg-[rgba(11,10,21,0.95)] border border-[#2a2b39] rounded p-1 pointer-events-auto backdrop-blur-[5px] min-w-32 z-[1000]"
-          style={{
-            left: `${contextMenu.x}px`,
-            top: `${contextMenu.y}px`,
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {['use', 'equip', 'drop', 'examine'].map((action) => (
-            <div
-              key={action}
-              onClick={() => handleContextMenuAction(action)}
-              className="py-2 px-3 cursor-pointer rounded transition-colors duration-100 capitalize hover:bg-white/10"
-            >
-              {action}
-            </div>
-          ))}
-        </div>
-      )}
-    </>
-  )
-}
-
-// Inventory Component
-function _Inventory({
-  items,
-  onClose,
-  world,
-}: {
-  items: InventoryItem[]
-  onClose: () => void
-  world: World
-}) {
-  const [selectedSlot, setSelectedSlot] = useState<number | null>(null)
-  const [hoveredSlot, setHoveredSlot] = useState<number | null>(null)
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; slot: number; item: InventoryItem } | null>(null)
-
-  const handleItemClick = (e: React.MouseEvent, slot: number, item: InventoryItem | null) => {
-    e.stopPropagation() // Prevent event bubbling
-    if (!item) {
-      setSelectedSlot(null)
-      return
-    }
-    setSelectedSlot(slot)
-    setContextMenu(null)
-  }
-
-  const handleItemRightClick = (e: React.MouseEvent, slot: number, item: InventoryItem | null) => {
-    e.preventDefault()
-    e.stopPropagation() // Prevent event bubbling
-    if (!item) return
-    
-    setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      slot,
-      item
-    })
-  }
-
-  const handleContextMenuAction = (action: string) => {
-    if (!contextMenu) return
-    
-    const localPlayer = world.getPlayer()
-    if (!localPlayer) return
-
-    const { slot, item } = contextMenu
-    
-    switch (action) {
-      case 'use':
-        world.emit(EventType.INVENTORY_USE, {
-          playerId: localPlayer.id,
-          itemId: item.id,
-          slot,
-        })
-        break
-      case 'equip':
-        world.emit(EventType.EQUIPMENT_TRY_EQUIP, {
-          playerId: localPlayer.id,
-          itemId: item.id,
-        })
-        break
-      case 'drop':
-        world.emit(EventType.ITEM_DROP, {
-          playerId: localPlayer.id,
-          itemId: item.id,
-          slot,
-          quantity: 1,
-        })
-        break
-      case 'examine':
-        world.emit(EventType.ITEM_EXAMINE, {
-          playerId: localPlayer.id,
-          itemId: item.id,
-        })
-        break
-    }
-    
-    setContextMenu(null)
-    setSelectedSlot(null)
-  }
-
-  const getItemTypeColor = (type: string | undefined) => {
-    if (!type) return '#6b7280'
-    switch (type.toLowerCase()) {
-      case 'weapon': return '#ef4444'
-      case 'armor': return '#3b82f6'
-      case 'consumable': return '#10b981'
-      case 'tool': return '#f59e0b'
-      case 'resource': return '#8b5cf6'
-      default: return '#6b7280'
-    }
-  }
-
-  const slots = Array(28).fill(null)
-  items.forEach((item, index) => {
-    if (index < 28) slots[index] = item
-  })
-
-  return (
-    <>
-      <div
-        className="rpg-inventory absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[26rem] bg-[rgba(11,10,21,0.95)] border border-dark-border rounded-lg p-4 pointer-events-auto backdrop-blur-md"
-        onClick={(e) => {
-          // Only close context menu if clicking the background, not child elements
-          if (e.target === e.currentTarget) {
-            setContextMenu(null)
-          }
-        }}
-      >
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="m-0 text-xl">Inventory</h3>
-          <div className="flex gap-2 items-center">
-            <span className="text-sm text-gray-400">
-              {items.length}/28 slots
-            </span>
-            <button
-              onClick={onClose}
-              className="bg-red-500 border-none rounded text-white py-1 px-2 cursor-pointer text-sm"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-7 gap-1 mb-4">
-          {slots.map((item, index) => (
-            <div
-              key={index}
-              onClick={(e) => handleItemClick(e, index, item)}
-              onContextMenu={(e) => handleItemRightClick(e, index, item)}
-              onMouseEnter={() => setHoveredSlot(index)}
-              onMouseLeave={() => setHoveredSlot(null)}
-              className={`w-[3.25rem] h-[3.25rem] rounded flex flex-col items-center justify-center text-[0.7rem] relative transition-all duration-200 ${
-                selectedSlot === index 
-                  ? 'bg-blue-500' 
-                  : hoveredSlot === index 
-                    ? 'bg-white/10 scale-105' 
-                    : 'bg-black/50 scale-100'
-              } ${item ? 'cursor-pointer' : 'cursor-default'}`}
-              style={{
-                border: `0.0625rem solid ${item ? getItemTypeColor(getItemDisplayProps(item).type) : '#1f2937'}`,
-              }}
-            >
-              {item && (
-                <>
-                  <div className="text-center leading-none font-bold shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
-                    {getItemDisplayProps(item).name.substring(0, 8)}
-                  </div>
-                  {item.quantity > 1 && (
-                    <div className="absolute bottom-0.5 right-0.5 text-yellow-400 font-bold text-[0.6rem] bg-black/70 rounded-sm py-0.5 px-1">
-                      {item.quantity}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {selectedSlot !== null && slots[selectedSlot] && (
-          <div 
-            className="p-3 bg-black/30 rounded"
-            style={{
-              border: `1px solid ${getItemTypeColor(slots[selectedSlot].type)}` 
-            }}
-          >
-            <div className="font-bold mb-1">
-              {slots[selectedSlot].name}
-            </div>
-            <div className="text-sm text-gray-400 mb-2">
-              Type: {slots[selectedSlot].type} • Quantity: {slots[selectedSlot].quantity}
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              <button
-                onClick={() => handleContextMenuAction('use')}
-                className="bg-emerald-500 border-none rounded text-white py-1.5 px-3 cursor-pointer text-sm"
-              >
-                Use
-              </button>
-              <button
-                onClick={() => handleContextMenuAction('equip')}
-                className="bg-blue-500 border-none rounded text-white py-1.5 px-3 cursor-pointer text-sm"
-              >
-                Equip
-              </button>
-              <button
-                onClick={() => handleContextMenuAction('drop')}
-                className="bg-red-500 border-none rounded text-white py-1.5 px-3 cursor-pointer text-sm"
-              >
-                Drop
-              </button>
-              <button
-                onClick={() => handleContextMenuAction('examine')}
-                className="bg-gray-500 border-none rounded text-white py-1.5 px-3 cursor-pointer text-sm"
-              >
-                Examine
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Context Menu */}
-      {contextMenu && (
-        <div
-          style={{
-            position: 'fixed',
-            left: `${contextMenu.x}px`,
-            top: `${contextMenu.y}px`,
-            background: 'rgba(11, 10, 21, 0.95)',
-            border: '0.0625rem solid #2a2b39',
-            borderRadius: '0.25rem',
-            padding: '0.25rem',
-            pointerEvents: 'auto',
-            backdropFilter: 'blur(5px)',
-            minWidth: '8rem',
-            zIndex: 1000,
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {['use', 'equip', 'drop', 'examine'].map((action) => (
-            <div
-              key={action}
-              onClick={() => handleContextMenuAction(action)}
-              style={{
-                padding: '0.5rem 0.75rem',
-                cursor: 'pointer',
-                borderRadius: '0.25rem',
-                transition: 'background 0.1s',
-                textTransform: 'capitalize',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent'
-              }}
-            >
-              {action}
-            </div>
-          ))}
-        </div>
-      )}
-    </>
-  )
-}
-
-// Equipment Component
-function _EquipmentPanel({
-  equipment,
-  stats,
-  onClose,
-  world,
-}: {
-  equipment: PlayerEquipmentItems
-  stats: PlayerStats & {
-    id: string
-    name: string
-    stamina: number
-    maxStamina: number
-    xp: number
-    maxXp: number
-    coins: number
-    combatStyle: 'attack' | 'strength' | 'defense' | 'ranged'
-  } | null
-  onClose: () => void
-  world: World
-}) {
-  const handleUnequip = (slot: EquipmentSlotName) => {
-    const localPlayer = world.getPlayer()
-    if (!localPlayer) return
-
-    world.emit(EventType.EQUIPMENT_UNEQUIP, {
-      playerId: localPlayer.id,
-      slot,
-    })
-  }
-
-  const equipmentSlots = [
-    { key: EquipmentSlotName.HELMET, label: 'Helmet' },
-    { key: EquipmentSlotName.BODY, label: 'Body' },
-    { key: EquipmentSlotName.LEGS, label: 'Legs' },
-    { key: EquipmentSlotName.WEAPON, label: 'Weapon' },
-    { key: EquipmentSlotName.SHIELD, label: 'Shield' },
-    { key: EquipmentSlotName.ARROWS, label: 'Arrows' },
-  ]
-
-  return (
-    <div
-      className="absolute top-1/2 left-[35%] -translate-x-1/2 -translate-y-1/2 w-80 bg-[rgba(11,10,21,0.95)] border border-[#2a2b39] rounded-lg p-4 pointer-events-auto backdrop-blur-[5px]"
-    >
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="m-0">Equipment</h3>
-        <button
-          onClick={onClose}
-          className="bg-red-500 border-none rounded text-white py-1 px-2 cursor-pointer"
-        >
-          Close
-        </button>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        {equipmentSlots.map(({ key, label }) => {
-          const item = equipment[key]
-          return (
-            <div
-              key={key}
-              className="flex items-center gap-2 p-2 bg-black/30 rounded"
-            >
-              <div className="w-20">{label}:</div>
-              <div className="flex-1">
-                {item ? (
-                  <span>
-                    {item.name || `Item ${item.itemId}`}
-                    {key === 'arrows' && item?.quantity && ` (${item.quantity})`}
-                  </span>
-                ) : (
-                  <span className="text-gray-500">(empty)</span>
-                )}
-              </div>
-              {item && (
-                <button
-                  onClick={() => handleUnequip(key)}
-                  className="bg-gray-500 border-none rounded text-white py-0.5 px-2 cursor-pointer text-sm"
-                >
-                  Unequip
-                </button>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {stats && (
-        <div className="mt-4 p-2 bg-black/30 rounded">
-          <h4 className="m-0 mb-2">Combat Stats</h4>
-          <div className="grid grid-cols-2 gap-1 text-sm">
-            <div>Attack: {stats.skills?.attack?.level || 0}</div>
-            <div>Strength: {stats.skills?.strength?.level || 0}</div>
-            <div>Defense: {stats.skills?.defense?.level || 0}</div>
-            <div>Range: {stats.skills?.ranged?.level || 0}</div>
-          </div>
         </div>
       )}
     </div>
@@ -1627,59 +802,7 @@ function StorePanel({ data, onClose, world }: { data: StoreData; onClose: () => 
   )
 }
 
-// Context Menu Component
-function ContextMenuPanel({
-  menu,
-  onClose,
-  world,
-}: {
-  menu: {
-    x: number
-    y: number
-    itemId: string
-    actions: string[]
-  }
-  onClose: () => void
-  world: World
-}) {
-  const { x, y, actions } = menu
-  const options = actions.map(action => ({ action: action as 'use' | 'drop' | 'examine' | 'equip' | 'unequip', label: action }))
-
-  const handleOption = (option: { action: 'use' | 'drop' | 'examine' | 'equip' | 'unequip'; label: string }) => {
-    const localPlayer = world.getPlayer()
-    if (!localPlayer) return
-
-    world.emit(EventType.UI_CONTEXT_MENU, {
-      playerId: localPlayer.id,
-      x: menu.x,
-      y: menu.y,
-      itemId: menu.itemId,
-      actions: [option.action],
-    })
-    onClose()
-  }
-
-  return (
-    <div
-      className="rpg-context-menu absolute bg-[rgba(11,10,21,0.95)] border border-dark-border rounded p-1 pointer-events-auto backdrop-blur-md min-w-40"
-      style={{
-        left: `${x}px`,
-        top: `${y}px`,
-      }}
-      onMouseLeave={onClose}
-    >
-      {options.map((option, index: number) => (
-        <div
-          key={index}
-          onClick={() => handleOption(option)}
-          className="py-2 px-3 cursor-pointer rounded transition-colors duration-100 hover:bg-white/10"
-        >
-          {option.label}
-        </div>
-      ))}
-    </div>
-  )
-}
+// ContextMenuPanel removed - EntityContextMenu handles all context menus now
 
 // Hotbar Component (RuneScape-style)
 function Hotbar({ stats: _stats, inventory, world }: { stats: PlayerStats & {
@@ -1962,6 +1085,43 @@ function GatheringProgress({ state }: {
       {/* Progress percentage */}
       <div className="text-center text-xs mt-1 text-white/50 font-mono">
         {Math.floor(progress)}%
+      </div>
+    </div>
+  )
+}
+
+// Combat Indicator Component - shows active combat status with clear visibility
+function CombatIndicator({ state }: { 
+  state: { 
+    active: boolean
+    targetId: string
+    targetName: string
+    targetLevel: number
+  } 
+}) {
+  return (
+    <div
+      className="fixed left-1/2 -translate-x-1/2 bg-[rgba(139,0,0,0.95)] border-2 border-red-500/50 rounded-lg p-3 pointer-events-none backdrop-blur-xl z-[900] shadow-[0_8px_32px_rgba(255,0,0,0.4)]"
+      style={{
+        top: 'calc(6rem + env(safe-area-inset-top))',
+        minWidth: '320px'
+      }}
+    >
+      <div className="flex items-center gap-3">
+        <span className="text-3xl">⚔️</span>
+        <div className="flex-1">
+          <div className="text-base font-bold text-red-200 uppercase tracking-wide mb-1">
+            ⚔️ In Combat!
+          </div>
+          <div className="text-sm text-white/90 font-medium">
+            Fighting: <span className="font-bold text-white">{state.targetName}</span> <span className="text-yellow-300">(Lv {state.targetLevel})</span>
+          </div>
+          <div className="mt-2 text-xs text-red-300/70">
+            Auto-attacking every 3 seconds...
+          </div>
+        </div>
+        <div className="w-4 h-4 bg-red-500 rounded-full animate-ping absolute -top-2 -right-2"></div>
+        <div className="w-4 h-4 bg-red-500 rounded-full absolute -top-2 -right-2"></div>
       </div>
     </div>
   )

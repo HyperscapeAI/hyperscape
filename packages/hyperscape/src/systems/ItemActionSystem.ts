@@ -317,10 +317,10 @@ export class ItemActionSystem extends SystemBase {
    */
   private handleWearAction(playerId: string, itemId: string, slot?: number): void {
     
-    this.emitTypedEvent(EventType.EQUIPMENT_EQUIP, {
+    // Use TRY_EQUIP to auto-detect the equipment slot from item type
+    this.emitTypedEvent(EventType.EQUIPMENT_TRY_EQUIP, {
       playerId: playerId,
-      itemId: itemId,
-      inventorySlot: slot
+      itemId: itemId
     });
   }
 

@@ -207,7 +207,9 @@ export class MobAISystem extends SystemBase {
     if (!mob || !aiState) return;
 
     // Remove from world
-    this.world.stage.scene.remove(mob.mesh!);
+    if (mob.mesh) {
+      this.world.stage.scene.remove(mob.mesh);
+    }
     
     // Set AI state to dead
     this.setMobState(aiState, 'dead');
@@ -251,18 +253,21 @@ export class MobAISystem extends SystemBase {
         position = { x: playerPos.x, y: playerPos.y, z: playerPos.z };
     } else {
       // For test entities, use mob's current position as a fallback
-      position = { x: mob.mesh!.position.x, y: mob.mesh!.position.y, z: mob.mesh!.position.z };
+      if (!mob.mesh) return; // Can't add target if mob mesh isn't initialized
+      position = { x: mob.mesh.position.x, y: mob.mesh.position.y, z: mob.mesh.position.z };
     }
     
     // Check if target already exists
     const existingIndex = targets.findIndex(t => t.playerId === attackerId);
+    
+    const distance = mob.mesh ? mob.mesh.position.distanceTo(new THREE.Vector3(position.x, position.y, position.z)) : 0;
     
     const targetData: CombatTarget = {
       entityId: attackerId,
       entityType: 'player' as const,
       playerId: attackerId,
       position: position,
-              distance: mob.mesh!.position.distanceTo(new THREE.Vector3(position.x, position.y, position.z)),
+              distance: distance,
       lastSeen: Date.now(),
       threat: existingIndex >= 0 ? targets[existingIndex].threat + threat : threat
     };
@@ -381,6 +386,8 @@ export class MobAISystem extends SystemBase {
   private updatePatrolState(mob: MobReference, aiState: MobAIStateData): void {
     const now = Date.now();
     
+    if (!mob.mesh) return;
+    
     // Check for nearby targets
     const targets = this.combatTargets.get(mob.id) || [];
     if (targets.length > 0) {
@@ -395,7 +402,7 @@ export class MobAISystem extends SystemBase {
     
     // Check if reached patrol target
     if (aiState.patrolTarget) {
-      const distance = mob.mesh!.position.distanceTo(aiState.patrolTarget);
+      const distance = mob.mesh.position.distanceTo(aiState.patrolTarget);
       if (distance < 1.0) {
         this.setMobState(aiState, 'idle');
       }
@@ -408,6 +415,8 @@ export class MobAISystem extends SystemBase {
   private updateChaseState(mob: MobReference, aiState: MobAIStateData): void {
     const _now = Date.now();
     const targets = this.combatTargets.get(mob.id) || [];
+    
+    if (!mob.mesh) return;
     
     if (targets.length === 0) {
       this.setMobState(aiState, 'returning');
@@ -434,7 +443,7 @@ export class MobAISystem extends SystemBase {
       return;
     }
     
-    const distance = mob.mesh!.position.distanceTo(primaryTarget.position);
+    const distance = mob.mesh.position.distanceTo(primaryTarget.position);
     
     // Check if we're close enough to attack
     if (distance <= 2.0) { // Attack range
@@ -444,7 +453,7 @@ export class MobAISystem extends SystemBase {
     }
     
     // Check if target is too far (leashed)
-    const homeDistance = mob.mesh!.position.distanceTo(_v3_1.set(
+    const homeDistance = mob.mesh.position.distanceTo(_v3_1.set(
       aiState.homePosition.x,
       aiState.homePosition.y,
       aiState.homePosition.z
@@ -463,6 +472,8 @@ export class MobAISystem extends SystemBase {
     const now = Date.now();
     const targets = this.combatTargets.get(mob.id) || [];
     
+    if (!mob.mesh) return;
+    
     if (targets.length === 0 || !aiState.combatTarget) {
       this.setMobState(aiState, 'returning');
       return;
@@ -480,12 +491,12 @@ export class MobAISystem extends SystemBase {
     const playerWithNode = playerEntity as { node?: { position: THREE.Vector3 } };
     const targetPosition: { x: number; y: number; z: number } = playerWithNode?.node?.position || aiState.combatTarget.position || { x: 0, y: 0, z: 0 };
     
-    if (!targetPosition || !mob.mesh) {
+    if (!targetPosition) {
       this.setMobState(aiState, 'chase');
       return;
     }
     
-    const distance = mob.mesh!.position.distanceTo(_v3_1.set(targetPosition.x, targetPosition.y, targetPosition.z));
+    const distance = mob.mesh.position.distanceTo(_v3_1.set(targetPosition.x, targetPosition.y, targetPosition.z));
     
     // Too far for combat, chase
     if (distance > 3.0) {
@@ -506,13 +517,14 @@ export class MobAISystem extends SystemBase {
    */
   private updateReturningState(mob: MobReference, aiState: MobAIStateData): void {
 
+    if (!mob.mesh) return;
     
     const homePos = _v3_1.set(
       aiState.homePosition.x,
       aiState.homePosition.y,
       aiState.homePosition.z
     );
-    const distance = mob.mesh!.position.distanceTo(homePos);
+    const distance = mob.mesh.position.distanceTo(homePos);
     
     if (distance < 1.0) {
       this.setMobState(aiState, 'idle');
@@ -554,15 +566,15 @@ export class MobAISystem extends SystemBase {
     const rpgMobData = mobData;
     const stats = rpgMobData.stats || { attack: 1, strength: 1, defense: 1, constitution: 1, ranged: 1 };
     
-    // Calculate damage
-    const damage = Math.floor((stats.attack || 1) * (0.8 + Math.random() * 0.4));
+    // Calculate damage - this is just for logging, actual damage is calculated by CombatSystem
+    const _estimatedDamage = Math.floor((stats.attack || 1) * (0.8 + Math.random() * 0.4));
     
-    // Emit attack event
-    this.emitTypedEvent(EventType.MOB_ATTACKED, {
+    console.log(`[MobAISystem] Mob ${mob.id} attacking player ${target.entityId}`);
+    
+    // Emit attack event to CombatSystem which will handle damage calculation
+    this.emitTypedEvent(EventType.COMBAT_MOB_ATTACK, {
       mobId: mob.id,
-      targetId: target.entityId,
-      damage,
-      mobData: this.getMobData(mob)
+      targetId: target.entityId
     });
     
   }
@@ -590,6 +602,11 @@ export class MobAISystem extends SystemBase {
       const aiState = this.mobStates.get(mobId);
       if (!aiState || aiState.state === 'dead') continue;
       
+      // Skip if mob mesh is not initialized yet
+      if (!mob.mesh) {
+        continue;
+      }
+      
       // Skip if mob is not aggressive
       const mobData = this.getMobData(mob);
       if (!mobData.behavior.aggressive) continue;
@@ -602,7 +619,7 @@ export class MobAISystem extends SystemBase {
           continue;
         }
 
-        const distance = mob.mesh!.position.distanceTo(playerPos);
+        const distance = mob.mesh.position.distanceTo(playerPos);
 
         // Check aggro range
         const mobData = this.getMobData(mob);
@@ -643,17 +660,19 @@ export class MobAISystem extends SystemBase {
    */
   private respawnMob(mob: MobReference, aiState: MobAIStateData): void {
     
+    if (!mob.mesh) return;
+    
     // Reset mob state
     aiState.state = 'idle';
     aiState.lastStateChange = Date.now();
     
     // Reset position to home
-    mob.mesh!.position.set(
+    mob.mesh.position.set(
       aiState.homePosition.x,
       aiState.homePosition.y,
       aiState.homePosition.z
     );
-    this.world.stage.scene.add(mob.mesh!);
+    this.world.stage.scene.add(mob.mesh);
     
     // Clear targets
     this.combatTargets.set(mob.id, []);
@@ -664,81 +683,26 @@ export class MobAISystem extends SystemBase {
 
   /**
    * Update mob positions and animations
+   * NOTE: Movement is now handled by MobEntity.serverUpdate() on server
+   * This system only tracks AI state for compatibility
    */
   private updateMobMovement(_deltaTime: number): void {
-    const time = Date.now() * 0.001;
+    // DISABLED: Movement now handled by MobEntity which properly syncs to clients
+    // MobEntity.serverUpdate() handles all AI logic and movement
+    // Entity.setPosition() → Entity.markNetworkDirty() → EntityManager.sendNetworkUpdates()
     
-    for (const [mobId, mob] of this.activeMobs) {
-      const aiState = this.mobStates.get(mobId);
-      
-      if (!mob) continue;
-      
-      const currentHealth = this.getMobCurrentHealth(mob);
-      if (currentHealth <= 0) continue; // Skip dead mobs
-      
-      // Update position based on state
-      let targetPosition: THREE.Vector3 | null = null;
-      
-      switch (aiState?.state) {
-        case 'patrol':
-          targetPosition = aiState.patrolTarget ? new THREE.Vector3(
-            aiState.patrolTarget.x,
-            aiState.patrolTarget.y,
-            aiState.patrolTarget.z
-          ) : null;
-          break;
-        case 'chase':
-        case 'combat':
-          if (aiState.combatTarget && aiState.combatTarget.position) {
-            targetPosition = new THREE.Vector3(
-              aiState.combatTarget.position.x,
-              aiState.combatTarget.position.y,
-              aiState.combatTarget.position.z
-            );
-          }
-          break;
-        case 'returning':
-          targetPosition = new THREE.Vector3(
-            aiState.homePosition.x,
-            aiState.homePosition.y,
-            aiState.homePosition.z
-          );
-          break;
-      }
-      
-      // Move towards target if we have one
-      if (targetPosition && aiState) {
-        this.moveMobTowards(mob, targetPosition, aiState.chaseSpeed);
-      }
-      
-      // Add idle animation (bobbing)
-      if (aiState?.state === 'idle') {
-        const bobOffset = Math.sin(time * 2 + aiState.homePosition.x) * 0.02;
-        mob.mesh!.position.y = aiState.homePosition.y + 0.9 + bobOffset;
-      }
-    }
+    // We keep this method for state tracking but don't modify positions
+    // Visual animations (if any) can be added here for client-side effects only
   }
 
   /**
    * Move mob towards target
+   * DISABLED: Movement now handled by MobEntity
    */
   private moveMobTowards(mob: MobReference, targetPosition: THREE.Vector3, speed: number): void {
-
-    
-    const _mobData = this.getMobData(mob);
-    const direction = _v3_1.subVectors(targetPosition, mob.mesh!.position);
-    direction.y = 0; // Keep on ground
-    
-    // Only move if there's a horizontal distance to cover
-    if (direction.lengthSq() > 0.0001) { // Small epsilon to handle floating point errors
-      direction.normalize();
-      
-      // Move mob
-      mob.mesh!.position.add(direction.multiplyScalar(speed * 0.016)); // Assume 60fps
-    }
-    
-    const lookAtPos = targetPosition
-    mob.mesh!.lookAt(lookAtPos);
+    // DISABLED: MobEntity handles all movement via setPosition()
+    // Direct mesh.position modification bypasses network sync!
+    // Do not re-enable this method - it causes desync issues
   }
 
   /**

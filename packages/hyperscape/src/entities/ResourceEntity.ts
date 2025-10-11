@@ -34,6 +34,10 @@ export class ResourceEntity extends InteractableEntity {
       depleted: config.depleted !== undefined ? config.depleted : false,
       lastHarvestTime: config.lastHarvestTime !== undefined ? config.lastHarvestTime : 0
     };
+    
+    // Resources don't have health bars - they're not combatants
+    this.health = 0;
+    this.maxHealth = 0;
   }
 
   /**

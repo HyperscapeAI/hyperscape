@@ -4,6 +4,11 @@ import { PlayerRemote } from '../entities/PlayerRemote';
 import { PlayerEntity } from '../entities/PlayerEntity';
 import type { ComponentDefinition, EntityConstructor, EntityData, Entities as IEntities, Player, World } from '../types/index';
 import { SystemBase } from './SystemBase';
+import { MobEntity } from '../entities/MobEntity';
+import { NPCEntity } from '../entities/NPCEntity';
+import type { MobEntityConfig, NPCEntityConfig } from '../types/entities';
+import { EntityType, InteractionType, MobAIState, NPCType } from '../types/entities';
+import { getMobById } from '../data/mobs';
 import { ServerNetwork } from './ServerNetwork';
 
 // ComponentDefinition interface moved to shared types
@@ -130,6 +135,162 @@ export class Entities extends SystemBase implements IEntities {
         EntityClass = EntityTypes[isLocal ? 'playerLocal' : 'playerRemote'];
         console.log(`[Entities] Creating ${isLocal ? 'LOCAL' : 'REMOTE'} player entity: ${data.id}, owner: ${data.owner}, networkId: ${networkId}`);
       }
+    } else if (data.type === 'mob') {
+      // Client-side: build a real MobEntity from snapshot data so models load
+      const positionArray = (data.position || [0, 0, 0]) as [number, number, number];
+      const quaternionArray = (data.quaternion || [0, 0, 0, 1]) as [number, number, number, number];
+      // Derive mobType from name: "Mob: goblin (Lv1)" -> goblin
+      const name = data.name || 'Mob';
+      const mobTypeMatch = name.match(/Mob:\s*([^()]+)/i);
+      const derivedMobType = (mobTypeMatch ? mobTypeMatch[1].trim() : name).toLowerCase().replace(/\s+/g, '_');
+      const mobData = getMobById(derivedMobType);
+      
+      // Use model path from manifest data, or null if not found (will use fallback mesh)
+      const modelPath = (mobData && typeof mobData.modelPath === 'string' && mobData.modelPath.length > 0)
+        ? mobData.modelPath
+        : null; // No fallback path - if not in manifest, use fallback mesh
+      
+      console.log(`[Entities] CLIENT creating MobEntity from snapshot:`, {
+        id: data.id,
+        name: name,
+        derivedMobType,
+        foundInDB: !!mobData,
+        hasModelPath: !!modelPath,
+        modelPath,
+        position: positionArray
+      });
+
+      const mobConfig: MobEntityConfig = {
+        id: data.id,
+        name: name,
+        type: EntityType.MOB,
+        position: { x: positionArray[0], y: positionArray[1], z: positionArray[2] },
+        rotation: { x: quaternionArray[0], y: quaternionArray[1], z: quaternionArray[2], w: quaternionArray[3] },
+        scale: { x: 1, y: 1, z: 1 },
+        visible: true,
+        interactable: true,
+        interactionType: InteractionType.ATTACK,
+        interactionDistance: 5,
+        description: name,
+        model: modelPath,
+        // Minimal required MobEntity fields with sensible defaults
+        mobType: derivedMobType as unknown as import('../types/entities').MobType,
+        level: 1,
+        currentHealth: 100,
+        maxHealth: 100,
+        attackPower: 10,
+        defense: 2,
+        attackSpeed: 1.5,
+        moveSpeed: 5,
+        aggroRange: 10,
+        combatRange: 2,
+        xpReward: 10,
+        lootTable: [],
+        respawnTime: 300000,
+        spawnPoint: { x: positionArray[0], y: positionArray[1], z: positionArray[2] },
+        aiState: MobAIState.IDLE,
+        lastAttackTime: 0,
+        properties: {
+          movementComponent: null,
+          combatComponent: null,
+          healthComponent: null,
+          visualComponent: null,
+          health: { current: 100, max: 100 },
+          level: 1,
+        },
+        targetPlayerId: null,
+        deathTime: null,
+      };
+
+      // Construct specialized mob entity so it can load its 3D model on the client
+      // Use any cast to bypass constructor signature mismatch at compile time
+      const entity = new MobEntity(this.world, mobConfig as any);
+      this.items.set(entity.id, entity);
+
+      // Initialize entity if it has an init method
+      if (entity.init) {
+        (entity.init() as Promise<void>)?.catch(err => this.logger.error(`Entity ${entity.id} async init failed`, err));
+      }
+
+      return entity;
+    } else if (data.type === 'npc') {
+      // Client-side: build a real NPCEntity from snapshot data so models load
+      const positionArray = (data.position || [0, 0, 0]) as [number, number, number];
+      const quaternionArray = (data.quaternion || [0, 0, 0, 1]) as [number, number, number, number];
+      // Derive npcType from name: "Bank: Bank Clerk Niles" -> bank, "Store: General Store Owner Mara" -> store
+      const name = data.name || 'NPC';
+      const npcTypeMatch = name.match(/^(Bank|Store|Trainer|Quest):/i);
+      let derivedNPCType: NPCType = NPCType.QUEST_GIVER;
+      if (npcTypeMatch) {
+        const prefix = npcTypeMatch[1].toLowerCase();
+        if (prefix === 'bank') derivedNPCType = NPCType.BANK;
+        else if (prefix === 'store') derivedNPCType = NPCType.STORE;
+        else if (prefix === 'trainer') derivedNPCType = NPCType.TRAINER;
+      }
+      
+      // For now, NPCs don't have models generated yet - use fallback
+      // Once models are generated, they'll be loaded via modelPath
+      const modelPath = null; // Will be set when models are generated in 3D Asset Forge
+
+      const npcConfig: NPCEntityConfig = {
+        id: data.id,
+        name: name,
+        type: EntityType.NPC,
+        position: { x: positionArray[0], y: positionArray[1], z: positionArray[2] },
+        rotation: { x: quaternionArray[0], y: quaternionArray[1], z: quaternionArray[2], w: quaternionArray[3] },
+        scale: { x: 1, y: 1, z: 1 },
+        visible: true,
+        interactable: true,
+        interactionType: InteractionType.TALK,
+        interactionDistance: 3,
+        description: name,
+        model: modelPath,
+        // Minimal required NPCEntity fields
+        npcType: derivedNPCType,
+        npcId: data.id,
+        dialogueLines: ['Hello there!'],
+        services: [],
+        inventory: [],
+        skillsOffered: [],
+        questsAvailable: [],
+        properties: {
+          movementComponent: null,
+          combatComponent: null,
+          healthComponent: null,
+          visualComponent: null,
+          health: { current: 100, max: 100 },
+          level: 1,
+          npcComponent: {
+            behavior: 'friendly' as unknown as import('../types/core').NPCBehavior,
+            state: 'idle' as unknown as import('../types/core').NPCState,
+            currentTarget: null,
+            spawnPoint: { x: positionArray[0], y: positionArray[1], z: positionArray[2] },
+            wanderRadius: 0,
+            aggroRange: 0,
+            isHostile: false,
+            combatLevel: 1,
+            aggressionLevel: 0,
+            dialogueLines: ['Hello there!'],
+            dialogue: null,
+            services: []
+          },
+          dialogue: [],
+          shopInventory: [],
+          questGiver: false
+        }
+      };
+
+      // Construct specialized NPC entity so it can load its 3D model on the client when available
+      // Use any cast to bypass constructor signature mismatch at compile time
+      const entity = new NPCEntity(this.world, npcConfig as any);
+      this.items.set(entity.id, entity);
+
+      // Initialize entity if it has an init method
+      if (entity.init) {
+        (entity.init() as Promise<void>)?.catch(err => this.logger.error(`Entity ${entity.id} async init failed`, err));
+      }
+
+      return entity;
     } else if (data.type in EntityTypes) {
       EntityClass = EntityTypes[data.type];
     } else {

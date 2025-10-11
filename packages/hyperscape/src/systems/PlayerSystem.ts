@@ -403,23 +403,37 @@ export class PlayerSystem extends SystemBase {
   private emitPlayerUpdate(playerId: string): void {
     const player = this.players.get(playerId)!;
 
+    const playerData = {
+      id: player.id,
+      playerId: playerId,
+      name: player.name,
+      level: player.combat.combatLevel,
+      health: {
+        current: player.health.current,
+        max: player.health.max
+      },
+      alive: player.alive,
+      position: {
+        x: player.position.x,
+        y: player.position.y,
+        z: player.position.z
+      },
+      skills: player.skills,
+      stamina: player.stamina?.current || 100,
+      maxStamina: player.stamina?.max || 100,
+      coins: player.coins || 0,
+      combatStyle: player.combat.combatStyle || 'attack'
+    };
+
+    // Emit PLAYER_UPDATED for systems
     this.emitTypedEvent(EventType.PLAYER_UPDATED, {
       playerId,
       component: 'player',
-      data: {
-        id: player.id,
-        name: player.name,
-        level: player.combat.combatLevel,
-        health: player.health.current,
-        maxHealth: player.health.max,
-        alive: player.alive,
-                position: {
-          x: player.position.x,
-        y: player.position.y,
-        z: player.position.z
-        }
-      }
+      data: playerData
     });
+    
+    // Emit STATS_UPDATE for UI
+    this.emitTypedEvent(EventType.STATS_UPDATE, playerData);
   }
 
   // Public API methods

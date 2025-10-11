@@ -61,74 +61,67 @@ export class MobEntity extends Entity {
   }
 
   protected async createMesh(): Promise<void> {
-    // Try to load actual 3D model if available
-    if (this.config.model && this.world.loader && !this.world.isServer) {
-      console.log(`[MobEntity] 🔄 Attempting to load 3D model for ${this.config.mobType}: ${this.config.model}`);
-      
-      try {
-        await this.loadModel();
+    console.log(`[MobEntity] createMesh() called for ${this.config.mobType}`, {
+      hasModelPath: !!this.config.model,
+      modelPath: this.config.model,
+      hasLoader: !!this.world.loader,
+      isServer: this.world.isServer,
+      isClient: this.world.isClient
+    });
+    
+    // Try to load 3D model if path exists
+    if (this.config.model) {
+      if (!this.world.loader) {
+        console.warn(`[MobEntity] No loader available for mob ${this.config.mobType}, using fallback capsule`);
+      } else if (this.world.isServer) {
+        console.log(`[MobEntity] Server-side ${this.config.mobType}, skipping model`);
+        return; // Server doesn't load meshes
+      } else {
+        console.log(`[MobEntity] 🔄 Loading model from manifest: ${this.config.model}`);
         
-        // Success - model loaded
-        if (this.mesh) {
-          this.mesh.name = `Mob_${this.config.mobType}_${this.id}`;
-          console.log(`[MobEntity] ✅ 3D model successfully loaded for ${this.config.mobType}`);
-          return;
+        try {
+          // Load model from manifest path
+          await this.loadModel();
+          
+          if (this.mesh) {
+            this.mesh.name = `Mob_${this.config.mobType}_${this.id}`;
+            console.log(`[MobEntity] ✅ 3D model loaded for ${this.config.mobType} from ${this.config.model}`);
+            
+            // Calculate bounding box to check if model is tiny
+            const bbox = new THREE.Box3().setFromObject(this.mesh);
+            const size = bbox.getSize(new THREE.Vector3());
+            
+            if (size.x < 0.01 || size.y < 0.01 || size.z < 0.01) {
+              console.warn(`[MobEntity] Model is tiny (${size.x.toFixed(4)}x${size.y.toFixed(4)}x${size.z.toFixed(4)}m), scaling up 100x`);
+              this.mesh.scale.set(100, 100, 100);
+            }
+            
+            return; // Success - model loaded
+          }
+        } catch (error) {
+          console.warn(`[MobEntity] Model load failed for ${this.config.mobType}, using fallback capsule:`, (error as Error).message);
+          // Fall through to create fallback capsule
         }
-      } catch (error) {
-        // Model loading failed - gracefully fall back to capsule
-        console.warn(`[MobEntity] ⚠️  3D model failed to load for ${this.config.mobType}, using fallback capsule:`, (error as Error).message);
       }
-      
-    } else if (!this.config.model) {
-      console.log(`[MobEntity] No model path for ${this.config.mobType}, using fallback capsule`);
-    } else if (this.world.isServer) {
-      console.log(`[MobEntity] Server-side ${this.config.mobType}, skipping model`);
-      return; // Don't create fallback mesh on server
-    } else {
-      console.log(`[MobEntity] Loader not available for ${this.config.mobType}, using fallback capsule`);
     }
     
-    // Fallback: Create colored capsule based on mob type as placeholder
-    let geometry: THREE.BufferGeometry;
-    let material: THREE.Material;
-
-    switch (this.config.mobType) {
-      case MobType.GOBLIN:
-        geometry = new THREE.CapsuleGeometry(0.3, 1.2, 4, 8);
-        material = new THREE.MeshLambertMaterial({ color: 0x4a7c3a });
-        break;
-      case MobType.HOBGOBLIN:
-        geometry = new THREE.CapsuleGeometry(0.4, 1.5, 4, 8);
-        material = new THREE.MeshLambertMaterial({ color: 0x6b4423 });
-        break;
-      case MobType.BARBARIAN:
-        geometry = new THREE.CapsuleGeometry(0.5, 1.8, 4, 8);
-        material = new THREE.MeshLambertMaterial({ color: 0x8b4513 });
-        break;
-      case MobType.GUARD:
-        geometry = new THREE.CapsuleGeometry(0.4, 1.7, 4, 8);
-        material = new THREE.MeshLambertMaterial({ color: 0x4682b4 });
-        break;
-      case MobType.DARK_WARRIOR:
-        geometry = new THREE.CapsuleGeometry(0.45, 1.75, 4, 8);
-        material = new THREE.MeshLambertMaterial({ color: 0x2f2f2f });
-        break;
-      case MobType.BLACK_KNIGHT:
-        geometry = new THREE.CapsuleGeometry(0.5, 1.9, 4, 8);
-        material = new THREE.MeshLambertMaterial({ color: 0x1a1a1a });
-        break;
-      case MobType.ICE_WARRIOR:
-        geometry = new THREE.CapsuleGeometry(0.45, 1.75, 4, 8);
-        material = new THREE.MeshLambertMaterial({ color: 0x87ceeb });
-        break;
-      case MobType.DARK_RANGER:
-        geometry = new THREE.CapsuleGeometry(0.35, 1.6, 4, 8);
-        material = new THREE.MeshLambertMaterial({ color: 0x228b22 });
-        break;
-      default:
-        geometry = new THREE.CapsuleGeometry(0.4, 1.5, 4, 8);
-        material = new THREE.MeshLambertMaterial({ color: 0x666666 });
+    // No model path or model failed to load - use fallback
+    if (this.world.isServer) {
+      return; // Don't create fallback mesh on server
     }
+    
+    console.log(`[MobEntity] No model path for ${this.config.mobType}, creating fallback capsule`);
+    
+    // Fallback: Create colored capsule - use simple hash-based color from mob name
+    // This is data-driven and works for any mob type without hardcoding
+    const mobName = String(this.config.mobType).toLowerCase();
+    const colorHash = mobName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const hue = (colorHash % 360) / 360; // Convert to 0-1 range for HSL
+    const color = new THREE.Color().setHSL(hue, 0.6, 0.4); // Consistent saturation and lightness
+    
+    // Standard humanoid capsule size (data-driven from level could be added later)
+    const geometry = new THREE.CapsuleGeometry(0.4, 1.6, 4, 8);
+    const material = new THREE.MeshLambertMaterial({ color: color.getHex() });
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = `Mob_${this.config.mobType}_${this.id}`;

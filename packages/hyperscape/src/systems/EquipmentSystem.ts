@@ -894,60 +894,23 @@ export class EquipmentSystem extends SystemBase {
 
   /**
    * Create visual representation of equipped item
+   * DISABLED: Cube-based equipment visuals clutter the scene
+   * Equipment should be attached to player skeleton, not floating cubes
    */
-  private createEquipmentVisual(playerId: string, slot: EquipmentSlot): void {
-    if (!THREE || !slot.item) return;
-
-    const { item } = slot;
-    let geometry: THREE.BufferGeometry;
-
-    // Create geometry based on equipment slot
-    switch (slot.slot) {
-      case 'helmet':
-        geometry = new THREE.BoxGeometry(0.4, 0.3, 0.4);
-        break;
-      case 'body':
-        geometry = new THREE.BoxGeometry(0.5, 0.6, 0.3);
-        break;
-      case 'legs':
-        geometry = new THREE.BoxGeometry(0.4, 0.8, 0.3);
-        break;
-      case 'weapon':
-        geometry = new THREE.BoxGeometry(0.1, 1.2, 0.1);
-        break;
-      case 'shield':
-        geometry = new THREE.BoxGeometry(0.05, 0.8, 0.5);
-        break;
-      case 'arrows':
-        geometry = new THREE.BoxGeometry(0.05, 0.6, 0.05);
-        break;
-      default:
-        geometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-    }
-
-    const color = equipmentRequirements.getEquipmentColor(item.name as string) ?? equipmentRequirements.getDefaultColorByType(item.type as string);
-    const material = new THREE.MeshLambertMaterial({ 
-      color: color,
-      transparent: true,
-      opacity: 0.9
-    });
-
-    const visual = new THREE.Mesh(geometry, material);
-    visual.name = `equipment_${slot.slot}_${playerId}`;
-    visual.userData = {
-      type: 'equipment_visual',
-      playerId: playerId,
-      slot: slot.slot,
-      itemId: item.id
-    };
-
-    slot.visualMesh = visual;
+  private createEquipmentVisual(_playerId: string, _slot: EquipmentSlot): void {
+    // DISABLED: Box geometry equipment visuals are debug/test artifacts
+    // 
+    // Proper implementation should:
+    // 1. Load actual 3D models for equipment (GLB files)
+    // 2. Attach to player/mob skeleton bones (e.g., hand bone for weapon)
+    // 3. Use proper material/texture system
+    // 4. Handle equipment swapping with smooth transitions
+    //
+    // For MVP: Equipment is tracked in data/stats but not visually shown
+    // Combat mechanics work without visual equipment representation
     
-    // Add to world scene
-    if (this.world.stage.scene) {
-      this.world.stage.scene.add(visual);
-    }
-
+    // DO NOT CREATE CUBE PROXIES
+    return;
   }
 
   /**

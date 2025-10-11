@@ -216,7 +216,7 @@ export interface EventMap {
   [EventType.ITEM_DESPAWN]: { itemId: string };
   [EventType.ITEM_RESPAWN_SHOPS]: void;
   [EventType.ITEM_SPAWN_LOOT]: { lootTable: string; position: { x: number; y: number; z: number } };
-  [EventType.ITEM_SPAWN]: { itemType: string; position: { x: number; y: number; z: number } };
+  [EventType.ITEM_SPAWN]: { itemId: string; itemType?: string; position: { x: number; y: number; z: number }; quantity?: number };
   [EventType.ITEM_PICKUP]: { playerId: string; itemId: string; groundItemId?: string };
   [EventType.INVENTORY_DROP_ALL]: { playerId: string; position: Position3D };
   [EventType.ITEM_USED]: { 

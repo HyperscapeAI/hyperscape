@@ -1130,8 +1130,8 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     
     console.log(`[ServerNetwork] 📦 Received pickup request from player ${playerEntity.id} for item ${itemId}`);
     
-    // Forward to ItemPickupSystem
-    this.world.emit(EventType.ITEM_PICKUP_REQUEST, {
+    // Forward to InventorySystem (not ItemPickupSystem which is disabled)
+    this.world.emit(EventType.ITEM_PICKUP, {
       playerId: playerEntity.id,
       itemId: itemId
     });

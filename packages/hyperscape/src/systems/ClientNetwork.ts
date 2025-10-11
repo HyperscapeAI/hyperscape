@@ -408,17 +408,6 @@ export class ClientNetwork extends SystemBase {
   onResourceSpawned = (data: { id: string; type: string; position: { x: number; y: number; z: number } }) => {
     this.world.emit('rpg:resource:spawned', data)
   }
-  onResourceDepleted = (data: { resourceId: string; position?: { x: number; y: number; z: number } }) => {
-    this.world.emit('rpg:resource:depleted', data)
-  }
-  onResourceRespawned = (data: { resourceId: string; position?: { x: number; y: number; z: number } }) => {
-    this.world.emit('rpg:resource:respawned', data)
-  }
-
-  onInventoryUpdated = (data: { playerId: string; items: Array<{ slot: number; itemId: string; quantity: number }>; coins: number; maxSlots: number }) => {
-    // Re-emit with typed event so UI updates without waiting for local add
-    this.world.emit('rpg:inventory:updated', data)
-  }
 
   onEntityRemoved = (id: string) => {
     // Strong type assumption - entities system has remove method
@@ -437,7 +426,7 @@ export class ClientNetwork extends SystemBase {
     });
   }
   
-  onResourceDepleted = (data: { resourceId: string }) => {
+  onResourceDepleted = (data: { resourceId: string; position?: { x: number; y: number; z: number } }) => {
     console.log(`[ClientNetwork] 🌲→🪵 Resource depleted:`, data.resourceId);
     
     // Forward to local event system for visual transformation
@@ -446,7 +435,7 @@ export class ClientNetwork extends SystemBase {
     });
   }
   
-  onResourceRespawned = (data: { resourceId: string; position: { x: number; y: number; z: number } }) => {
+  onResourceRespawned = (data: { resourceId: string; position?: { x: number; y: number; z: number } }) => {
     console.log(`[ClientNetwork] 🌲 Resource respawned:`, data.resourceId);
     
     // Forward to local event system for visual restoration
@@ -456,7 +445,7 @@ export class ClientNetwork extends SystemBase {
     });
   }
   
-  onInventoryUpdated = (data: { playerId: string; items: unknown[]; coins: number }) => {
+  onInventoryUpdated = (data: { playerId: string; items: Array<{ slot: number; itemId: string; quantity: number }>; coins: number; maxSlots: number }) => {
     console.log(`[ClientNetwork] 📦 Inventory updated for player ${data.playerId}:`, data.items.length, 'items');
     console.log('[ClientNetwork] Item details:', data.items);
     

@@ -27,6 +27,51 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
     console.log('[Client] Creating new world instance')
     const world = createClientWorld()
     console.log('[Client] World instance created')
+    
+    // Expose world for browser debugging
+    if (typeof window !== 'undefined') {
+      (window as any).world = world;
+      
+      // Install simple debug commands
+      (window as any).debug = {
+        // Teleport camera to see mobs at Y=40+
+        seeHighEntities: () => {
+          if (world.camera) {
+            world.camera.position.set(10, 50, 10);
+            world.camera.lookAt(0, 40, 0);
+            console.log('📷 Camera moved to Y=50, looking at Y=40');
+          }
+        },
+        // Teleport to ground level
+        seeGround: () => {
+          if (world.camera) {
+            world.camera.position.set(10, 5, 10);
+            world.camera.lookAt(0, 0, 0);
+            console.log('📷 Camera moved to ground level');
+          }
+        },
+        // List all mobs with positions
+        mobs: () => {
+          const entityManager = world.getSystem('rpg-entity-manager');
+          if (!entityManager) return;
+          const mobs: Array<{ name: string; position: number[]; hasMesh: boolean; meshVisible: boolean | undefined }> = [];
+          for (const [id, entity] of (entityManager as any).getAllEntities()) {
+            if (entity.type === 'mob') {
+              mobs.push({
+                name: entity.name,
+                position: entity.node.position.toArray(),
+                hasMesh: !!entity.mesh,
+                meshVisible: entity.mesh?.visible
+              });
+            }
+          }
+          console.table(mobs);
+          return mobs;
+        }
+      };
+      console.log('🛠️  Debug commands ready: debug.seeHighEntities(), debug.seeGround(), debug.mobs()');
+    }
+    
     return world
   }, [])
   const [ui, setUI] = useState(world.ui?.state || { visible: true, active: false, app: null, pane: null })

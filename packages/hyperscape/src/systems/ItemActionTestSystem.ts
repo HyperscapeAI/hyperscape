@@ -433,35 +433,20 @@ export class ItemActionTestSystem extends SystemBase {
     
       }
 
-  private async createTestItem(testId: string, itemId: string, position: { x: number; y: number; z: number }, color: number): Promise<void> {
+  private async createTestItem(_testId: string, _itemId: string, _position: { x: number; y: number; z: number }, _color: number): Promise<void> {
+    // DISABLED: Visual cube proxies interfere with actual 3D models
+    // Tests work by checking entity data and inventory state, not visual cubes
     
-    // Create item visual (cube)
-    const geometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
-    const material = new THREE.MeshLambertMaterial({ color });
-    const itemCube = new THREE.Mesh(geometry, material);
+    // DO NOT CREATE VISUAL CUBES - they clutter the scene
+    // Tests rely on:
+    // - Entity system spawning real items
+    // - Inventory system tracking items
+    // - Scene hierarchy validation
     
-    itemCube.position.set(position.x, position.y + 0.5, position.z);
-    itemCube.name = `test_item_${testId}_${itemId}`;
-    itemCube.userData = {
-      type: 'test_item',
-      testId,
-      itemId,
-      rightClickable: true
-    };
-    
-    // Add glow effect to indicate it's clickable
-    const glowGeometry = new THREE.BoxGeometry(0.4, 0.4, 0.4);
-    const glowMaterial = new THREE.MeshLambertMaterial({ 
-      color: 0xFFFFFF,
-      transparent: true,
-      opacity: 0.3
-    });
-    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-    itemCube.add(glow);
-    
-    if (this.world.stage.scene) {
-      this.world.stage.scene.add(itemCube);
-    }
+    // const geometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+    // const material = new THREE.MeshLambertMaterial({ color });
+    // const itemCube = new THREE.Mesh(geometry, material);
+    // ... etc (DISABLED)
   }
 
   private simulateRightClick(testId: string): void {

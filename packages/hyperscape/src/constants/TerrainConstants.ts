@@ -55,6 +55,8 @@ export const TERRAIN_CONSTANTS = {
   
 } as const;
 
+// Biome configuration - mob types loaded from JSON manifests
+// These just define biome properties, actual mob spawning uses world-areas.ts
 export const BIOME_CONFIG = {
   'plains': {
     name: 'Plains',
@@ -63,7 +65,7 @@ export const BIOME_CONFIG = {
     terrainMultiplier: 0.5,
     waterLevel: -1,
     maxSlope: 0.5,
-    mobTypes: ['goblin', 'bandit'],
+    mobTypes: [], // Loaded from manifests
     difficulty: 0,
     baseHeight: 0,
     heightVariation: 1,
@@ -77,7 +79,7 @@ export const BIOME_CONFIG = {
     terrainMultiplier: 0.7,
     waterLevel: -0.5,
     maxSlope: 0.7,
-    mobTypes: ['goblin', 'barbarian', 'bandit'],
+    mobTypes: [], // Loaded from manifests
     difficulty: 1,
     baseHeight: 1,
     heightVariation: 1.5,
@@ -91,7 +93,7 @@ export const BIOME_CONFIG = {
     terrainMultiplier: 2,
     waterLevel: 1,
     maxSlope: 1.5,
-    mobTypes: ['barbarian', 'ice_warrior'],
+    mobTypes: [], // Loaded from manifests
     difficulty: 2,
     baseHeight: 5,
     heightVariation: 3,
@@ -105,7 +107,7 @@ export const BIOME_CONFIG = {
     terrainMultiplier: 0.3,
     waterLevel: -2,
     maxSlope: 0.3,
-    mobTypes: ['bandit', 'dark_warrior'],
+    mobTypes: [], // Loaded from manifests
     difficulty: 3,
     baseHeight: 0.5,
     heightVariation: 0.5,
@@ -119,7 +121,7 @@ export const BIOME_CONFIG = {
     terrainMultiplier: 0.6,
     waterLevel: 0,
     maxSlope: 0.6,
-    mobTypes: ['ice_warrior', 'hobgoblin'],
+    mobTypes: [], // Loaded from manifests
     difficulty: 3,
     baseHeight: 1.5,
     heightVariation: 1,

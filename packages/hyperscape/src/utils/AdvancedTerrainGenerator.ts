@@ -115,7 +115,7 @@ export class AdvancedTerrainGenerator {
             moisture: [0.0, 0.3],
             elevation: [0.6, 1.0],
             resources: ['ice', 'rare_ore'],
-            mobTypes: ['ice_warrior', 'frost_giant'],
+            mobTypes: [], // Loaded from JSON manifests
             difficulty: 3,
             colorVariation: 0.15,
             textureScale: 1.0,
@@ -130,7 +130,7 @@ export class AdvancedTerrainGenerator {
             moisture: [0.5, 0.8],
             elevation: [0.3, 0.7],
             resources: ['tree', 'gem', 'rare_ore'],
-            mobTypes: ['ice_warrior', 'black_knight'],
+            mobTypes: [], // Loaded from JSON manifests
             difficulty: 3,
             colorVariation: 0.2,
             textureScale: 0.8,

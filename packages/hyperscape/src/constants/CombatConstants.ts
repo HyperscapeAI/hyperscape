@@ -11,9 +11,9 @@ export const COMBAT_CONSTANTS = {
   MELEE_RANGE: 2,
   RANGED_RANGE: 10,
   
-  // Attack timing
-  ATTACK_COOLDOWN_MS: 600,
-  COMBAT_TIMEOUT_MS: 10000, // 10 seconds
+  // Attack timing (RuneScape-style speeds)
+  ATTACK_COOLDOWN_MS: 2400, // 2.4 seconds - standard weapon attack speed
+  COMBAT_TIMEOUT_MS: 10000, // 10 seconds without attacks ends combat
   
   // Damage calculations
   DAMAGE_MULTIPLIERS: {
@@ -43,62 +43,9 @@ export const AGGRO_CONSTANTS = {
   // Special level thresholds
   ALWAYS_AGGRESSIVE_LEVEL: 999, // Used for mobs that ignore level differences
   
-  // Mob behavior configurations
+  // Mob behavior configurations - loaded dynamically from mobs.json manifest
+  // Access via getMobById(mobId).behavior from data/mobs.ts
   MOB_BEHAVIORS: {
-    'goblin': { 
-      behavior: 'aggressive' as const, 
-      detectionRange: 8, 
-      leashRange: 15, 
-      levelIgnoreThreshold: 15 
-    },
-    'bandit': { 
-      behavior: 'aggressive' as const, 
-      detectionRange: 8, 
-      leashRange: 15, 
-      levelIgnoreThreshold: 15 
-    },
-    'barbarian': { 
-      behavior: 'aggressive' as const, 
-      detectionRange: 10, 
-      leashRange: 20, 
-      levelIgnoreThreshold: 15 
-    },
-    'hobgoblin': { 
-      behavior: 'aggressive' as const, 
-      detectionRange: 12, 
-      leashRange: 25, 
-      levelIgnoreThreshold: 25 
-    },
-    'guard': { 
-      behavior: 'aggressive' as const, 
-      detectionRange: 12, 
-      leashRange: 25, 
-      levelIgnoreThreshold: 25 
-    },
-    'dark_warrior': { 
-      behavior: 'aggressive' as const, 
-      detectionRange: 15, 
-      leashRange: 30, 
-      levelIgnoreThreshold: ALWAYS_AGGRESSIVE_LEVEL 
-    },
-    'black_knight': { 
-      behavior: 'aggressive' as const, 
-      detectionRange: 15, 
-      leashRange: 30, 
-      levelIgnoreThreshold: ALWAYS_AGGRESSIVE_LEVEL 
-    },
-    'ice_warrior': { 
-      behavior: 'aggressive' as const, 
-      detectionRange: 12, 
-      leashRange: 25, 
-      levelIgnoreThreshold: 35 
-    },
-    'dark_ranger': { 
-      behavior: 'aggressive' as const, 
-      detectionRange: 20, 
-      leashRange: 35, 
-      levelIgnoreThreshold: ALWAYS_AGGRESSIVE_LEVEL 
-    },
     'default': { 
       behavior: 'passive' as const, 
       detectionRange: 5, 

@@ -571,14 +571,20 @@ export class ResourceVisualizationSystem extends SystemBase {
   private getOrCreateStump(resourceId: string, position: Position3D): THREE.Mesh {
     let stump = this.stumps.get(resourceId);
     if (stump) return stump;
-    // Use a small green box as the depletion marker (visual confirmation like elsewhere)
-    const geo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
-    const greenMaterial = this.materials.leaves as THREE.Material; // bright green already defined
-    const stumpMesh = new THREE.Mesh(geo, greenMaterial);
-    stumpMesh.position.set(position.x, (position.y || 0) + 0.3, position.z);
+    
+    // Create a very small, dark brown stump (barely visible) instead of bright green cube
+    // This serves as a marker for the system but doesn't clutter the visual experience
+    const geo = new THREE.CylinderGeometry(0.2, 0.25, 0.3, 6); // Small cylinder instead of cube
+    const stumpMaterial = new THREE.MeshLambertMaterial({ 
+      color: 0x3d2817, // Dark brown for realistic stump
+      transparent: true,
+      opacity: 0.8
+    });
+    const stumpMesh = new THREE.Mesh(geo, stumpMaterial);
+    stumpMesh.position.set(position.x, (position.y || 0) + 0.15, position.z); // Lower to ground
     stumpMesh.castShadow = true;
     stumpMesh.receiveShadow = true;
-    stumpMesh.visible = false;
+    stumpMesh.visible = false; // Start invisible, only show when tree is cut
     stumpMesh.name = `stump_${resourceId}`;
     if (this.world.stage?.scene) {
       this.world.stage.scene.add(stumpMesh);

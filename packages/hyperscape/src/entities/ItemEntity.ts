@@ -9,6 +9,7 @@ import type { ItemType, MeshUserData, Item } from '../types/core';
 import { EquipmentSlotName, WeaponType } from '../types/core';
 import type { EntityInteractionData, ItemEntityConfig } from '../types/entities';
 import { InteractableEntity, type InteractableConfig } from './InteractableEntity';
+import { EventType } from '../types/events';
 
 // Re-export types for external use
 export type { ItemEntityConfig } from '../types/entities';
@@ -33,6 +34,10 @@ export class ItemEntity extends InteractableEntity {
     
     super(world, interactableConfig);
     this.config = config;
+    
+    // Items don't have health - set to 0 to prevent health bars
+    this.health = 0;
+    this.maxHealth = 0;
   }
 
   protected async createMesh(): Promise<void> {
@@ -44,107 +49,70 @@ export class ItemEntity extends InteractableEntity {
       isClient: this.world.isClient
     });
     
-    // Try to load actual 3D model if available
-    if (this.config.model && this.world.loader && !this.world.isServer) {
-      console.log(`[ItemEntity] ✅ Conditions met - attempting to load 3D model for ${this.config.itemId}: ${this.config.model}`);
-      
-      try {
-        await this.loadModel();
-        
-        // Success - model loaded
-        if (this.mesh) {
-          this.mesh.name = `Item_${this.config.itemId}`;
-          console.log(`[ItemEntity] 🎉 3D model successfully loaded for ${this.config.itemId}`);
-          return;
-        } else {
-          console.error(`[ItemEntity] ❌ loadModel() completed but this.mesh is still null for ${this.config.itemId}`);
-        }
-      } catch (error) {
-        // Model loading failed - gracefully fall back to cube
-        console.warn(`[ItemEntity] ⚠️  3D model failed to load for ${this.config.itemId}, using fallback cube. Error:`, error);
-      }
-      
-    } else {
-      console.warn(`[ItemEntity] ⚠️  Skipping 3D model load for ${this.config.itemId}:`, {
-        hasModel: !!this.config.model,
-        hasLoader: !!this.world.loader,
-        isServer: this.world.isServer,
-        reason: !this.config.model ? 'No model path' : 
-                !this.world.loader ? 'No loader system' :
-                this.world.isServer ? 'Server-side' : 'Unknown'
-      });
-      
-      if (this.world.isServer) {
-        return; // Don't create fallback mesh on server
-      }
+    // SKIP 3D MODEL LOADING - Use clean sphere fallbacks
+    // Models would cause 404 errors until /world-assets/forge/ is populated
+    // Uncomment below when you have actual GLB files
+    
+    // No model path or model failed to load - create subtle fallback mesh
+    if (this.world.isServer) {
+      return; // Don't create fallback mesh on server
     }
     
-    // Fallback: Create a simple cube as placeholder (scale it up to be visible!)
-    const geometry = new THREE.BoxGeometry(2, 2, 2); // Make bigger - 2x2x2 meters
+    console.log(`[ItemEntity] No model path for ${this.config.itemId}, creating minimal fallback sphere`);
+    
+    // Create a very small, subtle sphere as fallback
+    // This makes items pickupable without being visually intrusive
+    const geometry = new THREE.SphereGeometry(0.12, 8, 6);
+    
+    // Get subtle color based on item type
+    let color = 0xC0C0C0; // Default: Silver-gray
+    const nameLower = this.config.name.toLowerCase();
+    
+    if (nameLower.includes('bronze')) color = 0xCD7F32;
+    else if (nameLower.includes('steel')) color = 0xB0C4DE;
+    else if (nameLower.includes('gold') || nameLower.includes('coin')) color = 0xFFD700;
+    else if (nameLower.includes('wood') || nameLower.includes('log')) color = 0x8B4513;
+    else if (nameLower.includes('fish')) color = 0xB0E0E6;
+    
     const material = new THREE.MeshLambertMaterial({
-      color: this.getItemColor(),
-      transparent: false, // Make solid
-      opacity: 1.0
+      color: color,
+      transparent: true,
+      opacity: 0.6,
+      emissive: color,
+      emissiveIntensity: 0.05
     });
-
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.name = `Item_${this.config.itemId}_Fallback`;
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    this.mesh = mesh;
-
-    console.log(`[ItemEntity] 📦 Creating LARGE fallback cube for ${this.config.itemId} - color:`, this.getItemColor().toString(16));
-
-    // Set up userData with proper typing for item
-    const userData: MeshUserData = {
-      type: 'item',
-      entityId: this.id,
-      name: this.config.name,
-      interactable: true,
-      mobData: null,
-      itemData: {
-        id: this.id,
-        itemId: this.config.itemId,
-        name: this.config.name,
-        type: this.config.itemType,
-        quantity: this.config.quantity
-      }
-    };
-    if (this.mesh) {
-      this.mesh.userData = { ...userData };
-    }
-
-    // Add glow effect for rare items
-    if (this.config.rarity !== 'common') {
-      this.addGlowEffect();
-    }
     
-    // Add mesh to the entity's node so it appears in the scene
-    if (this.mesh && this.node) {
-      this.node.add(this.mesh);
-      
-      console.log(`[ItemEntity] 📦 Fallback cube (2m) added for ${this.config.itemId}:`, {
-        worldPosition: this.node.position.toArray(),
-        meshScale: this.mesh.scale.toArray(),
-        meshVisible: this.mesh.visible,
-        nodeVisible: this.node.visible,
-        color: this.getItemColor()
-      });
-      
-      // Also set userData on the node itself for easier detection
-      this.node.userData.type = 'item';
-      this.node.userData.entityId = this.id;
-      this.node.userData.interactable = true;
-      this.node.userData.itemData = userData.itemData;
-    }
+    this.mesh = new THREE.Mesh(geometry, material);
+    this.mesh.name = `Item_${this.config.itemId}`;
+    this.mesh.scale.set(0.8, 0.8, 0.8); // Small
+    this.mesh.castShadow = false; // Don't cast shadows for small items
+    this.mesh.receiveShadow = false;
+    
+    // Set up node userData for interaction system
+    this.node.userData.type = 'item';
+    this.node.userData.entityId = this.id;
+    this.node.userData.interactable = true;
+    this.node.userData.itemData = {
+      id: this.id,
+      itemId: this.config.itemId,
+      name: this.config.name,
+      type: this.config.itemType,
+      quantity: this.config.quantity
+    };
+    
+    // Also set mesh userData
+    this.mesh.userData = { ...this.node.userData };
+    
+    // Add mesh to node
+    this.node.add(this.mesh);
   }
 
   /**
    * Handle item interaction - implements InteractableEntity.handleInteraction
    */
   public async handleInteraction(data: EntityInteractionData): Promise<void> {
-    // Handle item pickup
-    this.world.emit('item:pickup_request', {
+    // Handle item pickup - emit ITEM_PICKUP event which will be handled by InventorySystem
+    this.world.emit(EventType.ITEM_PICKUP, {
       playerId: data.playerId,
       itemId: this.id,
       entityId: this.id,
@@ -188,32 +156,8 @@ export class ItemEntity extends InteractableEntity {
     }
   }
 
-  private getItemColor(): number {
-    // Color based on rarity
-    switch (this.config.rarity) {
-      case 'legendary': return 0xffd700; // Gold
-      case 'epic': return 0x9932cc; // Purple
-      case 'rare': return 0x0066ff; // Blue
-      case 'uncommon': return 0x00ff00; // Green
-      default: return 0xffffff; // White
-    }
-  }
-
-  private addGlowEffect(): void {
-    if (!this.mesh) return;
-
-    // Add a subtle glow effect for rare items
-    const glowGeometry = new THREE.BoxGeometry(0.6, 0.6, 0.6);
-    const glowMaterial = new THREE.MeshBasicMaterial({
-      color: this.getItemColor(),
-      transparent: true,
-      opacity: 0.3,
-      side: THREE.BackSide
-    });
-
-    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-    this.mesh.add(glow);
-  }
+  // REMOVED: Dead code - glow effects not used
+  // Items should use actual 3D models, not colored cube proxies
 
 
 

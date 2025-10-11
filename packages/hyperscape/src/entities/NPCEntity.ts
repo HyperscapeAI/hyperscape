@@ -20,6 +20,11 @@ export class NPCEntity extends Entity {
       dialogueLines: config.dialogueLines || ['Hello there!'],
       services: config.services || []
     };
+    
+    // NPCs don't have health bars - they're not combatants
+    // Set health to 0 to prevent health bar creation
+    this.health = 0;
+    this.maxHealth = 0;
   }
 
   protected async onInteract(data: EntityInteractionData): Promise<void> {
@@ -110,66 +115,64 @@ export class NPCEntity extends Entity {
   }
 
   protected async createMesh(): Promise<void> {
-    // Try to load actual 3D model if available
-    if (this.config.model && this.world.loader && !this.world.isServer) {
-      console.log(`[NPCEntity] 🔄 Attempting to load 3D model for ${this.config.npcType}: ${this.config.model}`);
-      
-      try {
-        await this.loadModel();
-        
-        // Success - model loaded
-        if (this.mesh) {
-          this.mesh.name = `NPC_${this.config.npcType}_${this.id}`;
-          console.log(`[NPCEntity] ✅ 3D model successfully loaded for ${this.config.npcType}`);
-          return;
-        }
-      } catch (error) {
-        // Model loading failed - gracefully fall back to colored box
-        console.warn(`[NPCEntity] ⚠️  3D model failed to load for ${this.config.npcType}, using fallback box:`, (error as Error).message);
-      }
-      
-    } else if (!this.config.model) {
-      console.log(`[NPCEntity] No model path for ${this.config.npcType}, using fallback box`);
-    } else if (this.world.isServer) {
-      console.log(`[NPCEntity] Server-side ${this.config.npcType}, skipping model`);
+    console.log(`[NPCEntity] createMesh() called for ${this.config.npcType}`, {
+      hasModelPath: !!this.config.model,
+      modelPath: this.config.model,
+      hasLoader: !!this.world.loader,
+      isServer: this.world.isServer
+    });
+    
+    // SKIP 3D MODEL LOADING - Use clean capsule fallbacks
+    // Prevents 404 errors until /world-assets/forge/ has actual files
+    
+    // No model loading - use fallback
+    if (this.world.isServer) {
       return; // Don't create fallback mesh on server
-    } else {
-      console.log(`[NPCEntity] Loader not available for ${this.config.npcType}, using fallback box`);
     }
     
-    // Fallback: Create basic NPC mesh as placeholder
-    const geometry = new THREE.BoxGeometry(0.6, 1.8, 0.6);
-    const material = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+    console.log(`[NPCEntity] Creating fallback capsule for ${this.config.npcType}`);
+    
+    // Fallback: Create NPC capsule (human-like shape)
+    const geometry = new THREE.CapsuleGeometry(0.35, 1.4, 4, 8);
+    const material = new THREE.MeshLambertMaterial({ color: 0x6b4423 }); // Brown
     this.mesh = new THREE.Mesh(geometry, material);
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
+    this.mesh.name = `NPC_${this.config.npcType}_${this.id}`;
     
     // Set NPC-specific visual properties
     this.mesh.scale.set(1, 2, 1); // Human-sized
     
-    // Color code by NPC type
+    // Color code by NPC type for easy identification
     if (this.mesh instanceof THREE.Mesh && this.mesh.material) {
       if (this.mesh.material instanceof THREE.MeshStandardMaterial) {
-        const material = this.mesh.material;
+        const fallbackMaterial = this.mesh.material;
         switch (this.config.npcType) {
           case 'bank':
-            material.color.setHex(0x00ff00); // Green for bank
+            fallbackMaterial.color.setHex(0x00ff00); // Green for bank
             break;
           case 'store':
-            material.color.setHex(0x0000ff); // Blue for store
+            fallbackMaterial.color.setHex(0x0000ff); // Blue for store
             break;
           case 'quest_giver':
-            material.color.setHex(0xffff00); // Yellow for quest giver
+            fallbackMaterial.color.setHex(0xffff00); // Yellow for quest giver
             break;
           case 'trainer':
-            material.color.setHex(0xff00ff); // Magenta for trainer
+            fallbackMaterial.color.setHex(0xff00ff); // Magenta for trainer
             break;
           default:
-            material.color.setHex(0xffffff); // White default
+            fallbackMaterial.color.setHex(0xffffff); // White default
             break;
         }
       }
     }
+    
+    // Add mesh to node so it appears in the scene
+    if (this.mesh) {
+      this.node.add(this.mesh);
+    }
+    
+    console.log(`[NPCEntity] ✅ Fallback mesh created and added for ${this.config.npcType}`);
   }
 
   public getNetworkData(): Record<string, unknown> {

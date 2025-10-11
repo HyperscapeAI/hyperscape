@@ -649,15 +649,21 @@ export abstract class VisualTestFramework extends SystemBase {
 
   /**
    * Creates visual representation of fake player
+   * DISABLED: Visual cube proxies interfere with actual 3D models
+   * Tests rely on real entity data, not visual cubes
    */
-  private createPlayerVisual(player: PlayerEntity): void {
-    this.emitTypedEvent(EventType.PLAYER_CREATE, {
-      id: `fake_player_${player.id}`,
-      position: { x: player.node.position.x, y: player.node.position.y + 1, z: player.node.position.z },
-      color: '#0088ff', // Blue for fake players
-      size: { x: 0.8, y: 1.8, z: 0.8 },
-      name: player.name,
-    })
+  private createPlayerVisual(_player: PlayerEntity): void {
+    // DISABLED: Cube creation causes visual clutter
+    // Tests work by checking entity data, positions, and scene hierarchy
+    // Visual cubes are not necessary and interfere with real models
+    
+    // this.emitTypedEvent(EventType.PLAYER_CREATE, {
+    //   id: `fake_player_${player.id}`,
+    //   position: { x: player.node.position.x, y: player.node.position.y + 1, z: player.node.position.z },
+    //   color: '#0088ff', // Blue for fake players
+    //   size: { x: 0.8, y: 1.8, z: 0.8 },
+    //   name: player.name,
+    // })
   }
 
   /**

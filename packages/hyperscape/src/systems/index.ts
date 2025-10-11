@@ -19,6 +19,7 @@ export * from './InventorySystem';
 export * from './AuthenticationSystem';
 export * from './InteractionSystem';
 export * from './ItemSpawnerSystem';
+// MobInteractionSystem removed - integrated into EntityInteractionSystem
 export * from './BankingSystem';
 export * from './AggroSystem';
 export * from './DeathSystem';

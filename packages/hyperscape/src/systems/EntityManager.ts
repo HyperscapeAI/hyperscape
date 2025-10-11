@@ -11,6 +11,7 @@
 import { World } from '../World';
 import { Entity, EntityConfig } from '../entities/Entity';
 import { ItemEntity } from '../entities/ItemEntity';
+import { HeadstoneEntity } from '../entities/HeadstoneEntity';
 import { MobEntity } from '../entities/MobEntity';
 import { NPCEntity } from '../entities/NPCEntity';
 import { ResourceEntity } from '../entities/ResourceEntity';
@@ -25,7 +26,8 @@ import type {
   NPCSpawnData as _NPCSpawnData, 
   ResourceEntityConfig, 
   ResourceEntityProperties as _ResourceEntityProperties, 
-  ResourceSpawnData as _ResourceSpawnData 
+  ResourceSpawnData as _ResourceSpawnData,
+  HeadstoneEntityConfig
 } from '../types/entities';
 import { EntityType, InteractionType, ItemRarity, MobAIState, MobType, NPCType, ResourceType } from '../types/entities';
 import { NPCBehavior, NPCState } from '../types/core';
@@ -34,6 +36,9 @@ import type { EntitySpawnedEvent } from '../types/systems';
 import { Logger } from '../utils/Logger';
 import { TerrainSystem } from './TerrainSystem';
 import { SystemBase } from './SystemBase';
+import { getItem } from '../data/items';
+import { getMobById } from '../data/mobs';
+import { getExternalNPC } from '../utils/ExternalAssetUtils';
 
 export class EntityManager extends SystemBase {
   private entities = new Map<string, Entity>();
@@ -68,7 +73,18 @@ export class EntityManager extends SystemBase {
     // Listen for specific entity type spawn requests
     // NOTE: Don't subscribe to ITEM_SPAWNED - that's an event we emit AFTER spawning, not a spawn request
     // Subscribing to it would cause duplicate spawns!
-    this.subscribe(EventType.ITEM_PICKUP, (data) => this.handleItemPickup({ entityId: data.itemId, playerId: data.playerId }));
+    // NOTE: Don't subscribe to ITEM_PICKUP - InventorySystem handles that and destroys the entity
+    // Subscribe to ITEM_SPAWN for dropped/spawned items
+    this.subscribe(EventType.ITEM_SPAWN, (data) => {
+      const itemIdToUse = data.itemId || data.itemType || 'unknown_item';
+      this.handleItemSpawn({
+        customId: `item_${itemIdToUse}_${Date.now()}`,
+        name: itemIdToUse,
+        position: data.position,
+        itemId: itemIdToUse,
+        quantity: data.quantity || 1
+      });
+    });
     // EntityManager should handle spawn REQUESTS, not completed spawns
     this.subscribe(EventType.MOB_SPAWN_REQUEST, (data) => this.handleMobSpawn({
       mobType: data.mobType,
@@ -125,6 +141,12 @@ export class EntityManager extends SystemBase {
       const entity = this.entities.get(entityId);
       if (entity) {
         entity.update(deltaTime);
+        
+        // Check if entity marked itself as dirty and needs network sync
+        if (this.world.isServer && entity.networkDirty) {
+          this.networkDirtyEntities.add(entityId);
+          entity.networkDirty = false; // Reset flag after adding to set
+        }
       }
     });
     
@@ -166,9 +188,21 @@ export class EntityManager extends SystemBase {
     let entity: Entity;
     
     // Create appropriate entity type
+    console.log(`[EntityManager] Creating ${config.type} entity with config:`, {
+      id: config.id,
+      name: config.name,
+      model: config.model,
+      modelExists: !!config.model,
+      position: config.position
+    });
+    
     switch (config.type) {
       case 'item':
         entity = new ItemEntity(this.world, config as ItemEntityConfig);
+        break;
+      case EntityType.HEADSTONE:
+      case 'headstone':
+        entity = new HeadstoneEntity(this.world, config as HeadstoneEntityConfig);
         break;
       case 'mob':
         entity = new MobEntity(this.world, config as MobEntityConfig);
@@ -245,6 +279,13 @@ export class EntityManager extends SystemBase {
   getEntity(entityId: string): Entity | undefined {
     return this.entities.get(entityId);
   }
+  
+  /**
+   * Get all entities (for debugging and iteration)
+   */
+  getAllEntities(): Map<string, Entity> {
+    return this.entities;
+  }
 
   /**
    * Get all entities of a specific type
@@ -268,13 +309,14 @@ export class EntityManager extends SystemBase {
     this.destroyEntity(data.entityId);
   }
 
-  private async handleInteractionRequest(data: { entityId: string; playerId: string; interactionType: string }): Promise<void> {
+  private async handleInteractionRequest(data: { entityId: string; playerId: string; interactionType?: string }): Promise<void> {
     const entity = this.entities.get(data.entityId);
     if (!entity) {
             return;
     }
     await entity.handleInteraction({
       ...data,
+      interactionType: data.interactionType || 'interact',
       position: entity.getPosition(),
       playerPosition: { x: 0, y: 0, z: 0 } // Default player position - would be provided by actual system
     });
@@ -302,9 +344,15 @@ export class EntityManager extends SystemBase {
   }
 
   private async handleItemSpawn(data: ItemSpawnData): Promise<void> {
-    const config: EntityConfig<ItemEntityProperties> = {
+    const itemIdToUse = data.itemId || data.id || 'unknown_item';
+    
+    // Get item data from items database to get model path and other properties
+    const itemData = getItem(itemIdToUse);
+    
+    // Create proper ItemEntityConfig (not generic EntityConfig)
+    const config: ItemEntityConfig = {
       id: data.customId || `item_${this.nextEntityId++}`,
-      name: data.name || 'Item',
+      name: data.name || itemData?.name || itemIdToUse,
       type: EntityType.ITEM,
       position: data.position || { x: 0, y: 0, z: 0 },
       rotation: { x: 0, y: 0, z: 0, w: 1 },
@@ -313,29 +361,48 @@ export class EntityManager extends SystemBase {
       interactable: true,
       interactionType: InteractionType.PICKUP,
       interactionDistance: 2,
-      description: data.name || 'Item',
-      model: data.model || null,
+      description: itemData?.description || data.name || itemIdToUse,
+      model: itemData?.modelPath || data.model || null,
+      modelPath: itemData?.modelPath || data.model || undefined,
+      // ItemEntityConfig required fields at top level
+      itemType: String(itemData?.type || 'misc'),
+      itemId: itemIdToUse,
+      quantity: data.quantity || 1,
+      stackable: itemData?.stackable !== false,
+      value: itemData?.value || data.value || 0,
+      weight: itemData?.weight || this.getItemWeight(itemIdToUse),
+      rarity: itemData?.rarity || ItemRarity.COMMON,
+      stats: (itemData?.stats as Record<string, number>) || {},
+      requirements: {
+        level: itemData?.requirements?.level || 1,
+        attack: (itemData?.requirements?.skills as Record<string, number>)?.attack || 0
+      },
+      effects: [],
+      armorSlot: null,
+      examine: itemData?.examine || '',
+      iconPath: itemData?.iconPath || '',
+      healAmount: itemData?.healAmount || 0,
+      // Properties field for Entity base class (must include ItemEntityProperties)
       properties: {
         movementComponent: null,
         combatComponent: null,
         healthComponent: null,
         visualComponent: null,
-        health: {
-          current: 1,
-          max: 1
-        },
+        health: { current: 1, max: 1 },
         level: 1,
         harvestable: false,
         dialogue: [],
-        weight: this.getItemWeight(data.id || ''),
-        rarity: ItemRarity.COMMON,
-        ...data,
-        itemId: data.id,
+        // ItemEntityProperties required fields
+        itemId: itemIdToUse,
         quantity: data.quantity || 1,
-        stackable: data.stackable !== false,
-        value: data.value || 0
+        stackable: itemData?.stackable !== false,
+        value: itemData?.value || data.value || 0,
+        weight: itemData?.weight || this.getItemWeight(itemIdToUse),
+        rarity: itemData?.rarity || ItemRarity.COMMON
       }
     };
+    
+    console.log(`[EntityManager] Spawning item: ${itemIdToUse} with model: ${config.model || 'none'}`);
     
     await this.spawnEntity(config);
   }
@@ -400,7 +467,6 @@ export class EntityManager extends SystemBase {
     }
     
     // Get mob data to access modelPath
-    const { getMobById } = await import('../data/mobs');
     const mobDataFromDB = getMobById(mobType);
     const modelPath = mobDataFromDB?.modelPath || `/assets/models/mobs/${mobType}.glb`;
     
@@ -532,19 +598,43 @@ export class EntityManager extends SystemBase {
   }
 
   private sendNetworkUpdates(): void {
-    const updates: Array<{ entityId: string; data: unknown }> = [];
+    // Only send network updates on the server
+    if (!this.world.isServer) {
+      this.networkDirtyEntities.clear();
+      return;
+    }
+    
+    const network = this.world.network as { send?: (method: string, data: unknown, excludeId?: string) => void };
+    
+    if (!network || !network.send) {
+      // No network system, clear dirty entities and return
+      this.networkDirtyEntities.clear();
+      return;
+    }
     
     this.networkDirtyEntities.forEach(entityId => {
       const entity = this.entities.get(entityId);
       if (entity) {
-        updates.push({
-          entityId,
-          data: entity.getNetworkData()
+        // Get current position from entity
+        const pos = entity.position;
+        const rot = entity.node?.quaternion;
+        
+        // Get network data from entity (includes health and other properties)
+        const networkData = entity.getNetworkData();
+        
+        // Send entityModified packet with position/rotation changes
+        // Call directly on network object to preserve 'this' context
+        // Non-null assertion safe because we checked network.send exists above
+        network.send!('entityModified', {
+          id: entityId,
+          changes: {
+            p: [pos.x, pos.y, pos.z],
+            q: rot ? [rot.x, rot.y, rot.z, rot.w] : undefined,
+            ...networkData // Include all entity-specific data (health, aiState, etc.)
+          }
         });
       }
     });
-    
-    this.emitTypedEvent(EventType.NETWORK_ENTITY_UPDATES, { updates });
     
     // Clear dirty entities
     this.networkDirtyEntities.clear();
@@ -884,7 +974,6 @@ export class EntityManager extends SystemBase {
     if (data.modelPath) {
       modelPath = data.modelPath;
     } else {
-      const { getExternalNPC } = await import('../utils/ExternalAssetUtils');
       const externalNPC = getExternalNPC(data.npcId);
       if (externalNPC && externalNPC.modelPath) {
         modelPath = externalNPC.modelPath as string;

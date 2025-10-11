@@ -940,27 +940,12 @@ export class MobSystem extends SystemBase {
 
   /**
    * Move mob towards target position
+   * DISABLED: Movement now handled by MobEntity which properly syncs to clients
    */
   private moveTowardsTarget(mob: MobInstance, targetPosition: { x: number; y: number; z: number }): void {
-    if (!targetPosition) return;
-
-    const mobPosition = mob.position;
-    const distance = Math.sqrt(
-      (targetPosition.x - mobPosition.x) ** 2 + 
-      (targetPosition.z - mobPosition.z) ** 2
-    );
-
-    if (distance > 0.5) { // Don't move if very close
-      const moveSpeed = 2; // units per second
-      const deltaTime = 0.016; // Assuming 60 FPS
-      const moveDistance = moveSpeed * deltaTime;
-      
-      const normalizedX = (targetPosition.x - mobPosition.x) / distance;
-      const normalizedZ = (targetPosition.z - mobPosition.z) / distance;
-      
-      mob.position.x += normalizedX * moveDistance;
-      mob.position.z += normalizedZ * moveDistance;
-    }
+    // DISABLED: MobEntity.serverUpdate() handles all mob AI and movement
+    // Direct mob.position modification does not trigger network sync!
+    // MobEntity uses Entity.setPosition() → Entity.markNetworkDirty() → EntityManager broadcasts
   }
 
   /**

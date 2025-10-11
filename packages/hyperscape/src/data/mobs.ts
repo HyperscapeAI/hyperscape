@@ -1,6 +1,23 @@
 /**
- * GDD-Compliant Mob Database
- * All mobs from the Game Design Document with accurate stats, drops, and behaviors
+ * Mob Database
+ * 
+ * ALL mob data is loaded from JSON manifests at runtime by DataManager.
+ * This keeps mob definitions data-driven and separate from code.
+ * 
+ * Available 3D model types (in /world-assets/forge/):
+ * - goblin/goblin_rigged.glb     → Used for goblins
+ * - thug/thug_rigged.glb         → Used for bandits
+ * - human/human_rigged.glb       → Used for guards, knights, warriors, rangers
+ * - troll/troll_rigged.glb       → Used for hobgoblins
+ * - imp/imp_rigged.glb           → Used for dark warriors
+ * 
+ * To add new mobs:
+ * 1. Add entry to world/assets/manifests/mobs.json
+ * 2. Use one of the existing modelPath types above
+ * 3. OR generate new model in 3D Asset Forge
+ * 4. Restart server to reload manifests
+ * 
+ * DO NOT add mob data here - keep it in JSON!
  */
 
 import type {
@@ -8,470 +25,53 @@ import type {
   MobDropItem
 } from '../types/core';
 
-// MobData comes from shared core types
+/**
+ * Mob Database - Populated at runtime from JSON manifests
+ * DataManager.loadMobs() reads world/assets/manifests/mobs.json
+ */
+export const ALL_MOBS: Record<string, MobData> = {};
 
 /**
- * Level 1 Mobs (Beginner Areas)
+ * Deprecated: Level-based collections
+ * Use getMobsByDifficulty() to filter by level from ALL_MOBS
  */
-export const LEVEL_1_MOBS: Record<string, MobData> = {
-  goblin: {
-    id: 'goblin',
-    name: 'Goblin',
-    description: 'Small green humanoids with crude weapons. The classic first enemy.',
-    mobType: 'humanoid',
-    type: 'humanoid',
-    difficultyLevel: 1,
-    stats: {
-      level: 2,
-      health: 5,
-      attack: 1,
-      strength: 1,
-      defense: 1,
-      ranged: 1,
-      constitution: 5
-    },
-    behavior: {
-      aggressive: true,
-      aggroRange: 3,
-      chaseRange: 8,
-      returnToSpawn: true,
-      ignoreLowLevelPlayers: false,
-      levelThreshold: 1
-    },
-    drops: [
-      { itemId: 'coins', quantity: 5, chance: 1.0, isGuaranteed: true },
-      { itemId: 'bronze_sword', quantity: 1, chance: 0.05, isGuaranteed: false },
-      { itemId: 'bronze_shield', quantity: 1, chance: 0.03, isGuaranteed: false },
-      { itemId: 'bronze_helmet', quantity: 1, chance: 0.02, isGuaranteed: false }
-    ],
-    spawnBiomes: ['mistwood_valley', 'goblin_wastes'],
-    modelPath: '/assets/models/mobs/goblin.glb',
-    animationSet: {
-      idle: '/assets/animations/goblin_idle.glb',
-      walk: '/assets/animations/goblin_walk.glb',
-      attack: '/assets/animations/goblin_attack.glb',
-      death: '/assets/animations/goblin_death.glb'
-    },
-    respawnTime: 900000,
-    xpReward: 8,
-    health: 5,
-    maxHealth: 5,
-    level: 2
-  },
-
-  bandit: {
-    id: 'bandit',
-    name: 'Desperate Bandit',
-    description: 'Humans who turned to crime after the Calamity. More desperate than evil.',
-    mobType: 'humanoid',
-    type: 'humanoid',
-    difficultyLevel: 1,
-    stats: {
-      level: 3,
-      health: 8,
-      attack: 2,
-      strength: 2,
-      defense: 1,
-      ranged: 1,
-      constitution: 8
-    },
-    behavior: {
-      aggressive: true,
-      aggroRange: 4,
-      chaseRange: 10,
-      returnToSpawn: true,
-      ignoreLowLevelPlayers: true,
-      levelThreshold: 5 // Won't attack players above combat level 5
-    },
-    drops: [
-      { itemId: 'coins', quantity: 8, chance: 1.0, isGuaranteed: true },
-      { itemId: 'bronze_sword', quantity: 1, chance: 0.08, isGuaranteed: false },
-      { itemId: 'bronze_body', quantity: 1, chance: 0.04, isGuaranteed: false }
-    ],
-    spawnBiomes: ['mistwood_valley', 'goblin_wastes', 'northern_plains'],
-    modelPath: '/assets/models/mobs/bandit.glb',
-    animationSet: {
-      idle: '/assets/animations/human_idle.glb',
-      walk: '/assets/animations/human_walk.glb',
-      attack: '/assets/animations/human_attack.glb',
-      death: '/assets/animations/human_death.glb'
-    },
-    respawnTime: 900000,
-    xpReward: 12,
-    health: 8,
-    maxHealth: 8,
-    level: 3
-  },
-
-  barbarian: {
-    id: 'barbarian',
-    name: 'Barbarian Warrior',
-    description: 'Primitive humans living in the wilderness who reject civilization.',
-    mobType: 'humanoid',
-    type: 'humanoid',
-    difficultyLevel: 1,
-    stats: {
-      level: 4,
-      health: 12,
-      attack: 3,
-      strength: 4,
-      defense: 2,
-      ranged: 1,
-      constitution: 12
-    },
-    behavior: {
-      aggressive: true,
-      aggroRange: 5,
-      chaseRange: 12,
-      returnToSpawn: true,
-      ignoreLowLevelPlayers: false,
-      levelThreshold: 5
-    },
-    drops: [
-      { itemId: 'coins', quantity: 12, chance: 1.0, isGuaranteed: true },
-      { itemId: 'bronze_sword', quantity: 1, chance: 0.12, isGuaranteed: false },
-      { itemId: 'bronze_helmet', quantity: 1, chance: 0.08, isGuaranteed: false },
-      { itemId: 'bronze_legs', quantity: 1, chance: 0.06, isGuaranteed: false }
-    ],
-    spawnBiomes: ['goblin_wastes', 'northern_plains'],
-    modelPath: '/assets/models/mobs/barbarian.glb',
-    animationSet: {
-      idle: '/assets/animations/barbarian_idle.glb',
-      walk: '/assets/animations/barbarian_walk.glb',
-      attack: '/assets/animations/barbarian_attack.glb',
-      death: '/assets/animations/barbarian_death.glb'
-    },
-    respawnTime: 900000,
-    xpReward: 18,
-    health: 12,
-    maxHealth: 12,
-    level: 4
-  }
-};
-
-/**
- * Level 2 Mobs (Intermediate Areas)
- */
-export const LEVEL_2_MOBS: Record<string, MobData> = {
-  hobgoblin: {
-    id: 'hobgoblin',
-    name: 'Hobgoblin',
-    description: 'Larger, militaristic cousins of goblins with organized fighting discipline.',
-    mobType: 'humanoid',
-    type: 'humanoid',
-    difficultyLevel: 2,
-    stats: {
-      level: 8,
-      health: 25,
-      attack: 8,
-      strength: 7,
-      defense: 6,
-      ranged: 3,
-      constitution: 25
-    },
-    behavior: {
-      aggressive: true,
-      aggroRange: 6,
-      chaseRange: 15,
-      returnToSpawn: true,
-      ignoreLowLevelPlayers: false,
-      levelThreshold: 5
-    },
-    drops: [
-      { itemId: 'coins', quantity: 25, chance: 1.0, isGuaranteed: true },
-      { itemId: 'steel_sword', quantity: 1, chance: 0.15, isGuaranteed: false },
-      { itemId: 'steel_shield', quantity: 1, chance: 0.12, isGuaranteed: false },
-      { itemId: 'steel_helmet', quantity: 1, chance: 0.10, isGuaranteed: false },
-      { itemId: 'steel_body', quantity: 1, chance: 0.08, isGuaranteed: false }
-    ],
-    spawnBiomes: ['darkwood_forest', 'corrupted_ruins'],
-    modelPath: '/assets/models/mobs/hobgoblin.glb',
-    animationSet: {
-      idle: '/assets/animations/hobgoblin_idle.glb',
-      walk: '/assets/animations/hobgoblin_walk.glb',
-      attack: '/assets/animations/hobgoblin_attack.glb',
-      death: '/assets/animations/hobgoblin_death.glb'
-    },
-    respawnTime: 900000,
-    xpReward: 35,
-    health: 25,
-    maxHealth: 25,
-    level: 8
-  },
-
-  guard: {
-    id: 'guard',
-    name: 'Corrupted Guard',
-    description: 'Former kingdom soldiers serving dark masters, well-trained but fallen.',
-    mobType: 'humanoid',
-    type: 'humanoid',
-    difficultyLevel: 2,
-    stats: {
-      level: 10,
-      health: 30,
-      attack: 10,
-      strength: 8,
-      defense: 8,
-      ranged: 5,
-      constitution: 30
-    },
-    behavior: {
-      aggressive: true,
-      aggroRange: 7,
-      chaseRange: 15,
-      returnToSpawn: true,
-      ignoreLowLevelPlayers: false,
-      levelThreshold: 5
-    },
-    drops: [
-      { itemId: 'coins', quantity: 35, chance: 1.0, isGuaranteed: true },
-      { itemId: 'steel_sword', quantity: 1, chance: 0.20, isGuaranteed: false },
-      { itemId: 'steel_shield', quantity: 1, chance: 0.18, isGuaranteed: false },
-      { itemId: 'steel_helmet', quantity: 1, chance: 0.15, isGuaranteed: false },
-      { itemId: 'steel_body', quantity: 1, chance: 0.12, isGuaranteed: false },
-      { itemId: 'steel_legs', quantity: 1, chance: 0.10, isGuaranteed: false }
-    ],
-    spawnBiomes: ['darkwood_forest', 'corrupted_ruins'],
-    modelPath: '/assets/models/mobs/guard.glb',
-    animationSet: {
-      idle: '/assets/animations/guard_idle.glb',
-      walk: '/assets/animations/guard_walk.glb',
-      attack: '/assets/animations/guard_attack.glb',
-      death: '/assets/animations/guard_death.glb'
-    },
-    respawnTime: 900000,
-    xpReward: 45,
-    health: 30,
-    maxHealth: 30,
-    level: 10
-  },
-
-  dark_warrior: {
-    id: 'dark_warrior',
-    name: 'Dark Warrior',
-    description: 'Warriors who embraced darkness after the Calamity, choosing power over honor.',
-    mobType: 'humanoid',
-    type: 'humanoid',
-    difficultyLevel: 2,
-    stats: {
-      level: 12,
-      health: 35,
-      attack: 12,
-      strength: 12,
-      defense: 8,
-      ranged: 6,
-      constitution: 35
-    },
-    behavior: {
-      aggressive: true,
-      aggroRange: 8,
-      chaseRange: 20,
-      returnToSpawn: true,
-      ignoreLowLevelPlayers: false, // Always hostile per GDD
-      levelThreshold: 10 // Level 12 dark warrior attacks players level 10+
-    },
-    drops: [
-      { itemId: 'coins', quantity: 45, chance: 1.0, isGuaranteed: true },
-      { itemId: 'steel_sword', quantity: 1, chance: 0.25, isGuaranteed: false },
-      { itemId: 'steel_shield', quantity: 1, chance: 0.20, isGuaranteed: false },
-      { itemId: 'steel_body', quantity: 1, chance: 0.15, isGuaranteed: false }
-    ],
-    spawnBiomes: ['darkwood_forest'],
-    modelPath: '/assets/models/mobs/dark_warrior.glb',
-    animationSet: {
-      idle: '/assets/animations/dark_warrior_idle.glb',
-      walk: '/assets/animations/dark_warrior_walk.glb',
-      attack: '/assets/animations/dark_warrior_attack.glb',
-      death: '/assets/animations/dark_warrior_death.glb'
-    },
-    respawnTime: 900000,
-    xpReward: 55,
-    health: 35,
-    maxHealth: 35,
-    level: 12
-  }
-};
-
-/**
- * Level 3 Mobs (Advanced Areas)
- */
-export const LEVEL_3_MOBS: Record<string, MobData> = {
-  black_knight: {
-    id: 'black_knight',
-    name: 'Black Knight',
-    description: 'The most feared human enemies, elite dark warriors in pitch-black armor.',
-    mobType: 'humanoid',
-    type: 'humanoid',
-    difficultyLevel: 3,
-    stats: {
-      level: 20,
-      health: 60,
-      attack: 20,
-      strength: 18,
-      defense: 15,
-      ranged: 8,
-      constitution: 60
-    },
-    behavior: {
-      aggressive: true,
-      aggroRange: 10,
-      chaseRange: 25,
-      returnToSpawn: true,
-      ignoreLowLevelPlayers: false,
-      levelThreshold: 15 // Level 20 black knight attacks players level 15+
-    },
-    drops: [
-      { itemId: 'coins', quantity: 100, chance: 1.0, isGuaranteed: true },
-      { itemId: 'mithril_sword', quantity: 1, chance: 0.20, isGuaranteed: false },
-      { itemId: 'mithril_shield', quantity: 1, chance: 0.15, isGuaranteed: false },
-      { itemId: 'mithril_helmet', quantity: 1, chance: 0.12, isGuaranteed: false },
-      { itemId: 'mithril_body', quantity: 1, chance: 0.10, isGuaranteed: false },
-      { itemId: 'mithril_legs', quantity: 1, chance: 0.08, isGuaranteed: false }
-    ],
-    spawnBiomes: ['blasted_lands', 'black_knight_fortress'],
-    modelPath: '/assets/models/mobs/black_knight.glb',
-    animationSet: {
-      idle: '/assets/animations/black_knight_idle.glb',
-      walk: '/assets/animations/black_knight_walk.glb',
-      attack: '/assets/animations/black_knight_attack.glb',
-      death: '/assets/animations/black_knight_death.glb'
-    },
-    respawnTime: 900000,
-    xpReward: 100,
-    health: 60,
-    maxHealth: 60,
-    level: 20
-  },
-
-  ice_warrior: {
-    id: 'ice_warrior',
-    name: 'Ice Warrior',
-    description: 'Ancient warriors of Valorhall, frozen but still fighting with incredible defense.',
-    mobType: 'undead',
-    type: 'undead',
-    difficultyLevel: 3,
-    stats: {
-      level: 18,
-      health: 80,
-      attack: 15,
-      strength: 12,
-      defense: 20, // Very high defense per GDD
-      ranged: 5,
-      constitution: 80
-    },
-    behavior: {
-      aggressive: true,
-      aggroRange: 8,
-      chaseRange: 15, // Slow but tough
-      returnToSpawn: true,
-      ignoreLowLevelPlayers: false,
-      levelThreshold: 10
-    },
-    drops: [
-      { itemId: 'coins', quantity: 120, chance: 1.0, isGuaranteed: true },
-      { itemId: 'mithril_sword', quantity: 1, chance: 0.18, isGuaranteed: false },
-      { itemId: 'mithril_helmet', quantity: 1, chance: 0.15, isGuaranteed: false },
-      { itemId: 'mithril_body', quantity: 1, chance: 0.12, isGuaranteed: false },
-      { itemId: 'mithril_legs', quantity: 1, chance: 0.10, isGuaranteed: false }
-    ],
-    spawnBiomes: ['northern_reaches'],
-    modelPath: '/assets/models/mobs/ice_warrior.glb',
-    animationSet: {
-      idle: '/assets/animations/ice_warrior_idle.glb',
-      walk: '/assets/animations/ice_warrior_walk.glb',
-      attack: '/assets/animations/ice_warrior_attack.glb',
-      death: '/assets/animations/ice_warrior_death.glb'
-    },
-    respawnTime: 900000,
-    xpReward: 90,
-    health: 80,
-    maxHealth: 80,
-    level: 18
-  },
-
-  dark_ranger: {
-    id: 'dark_ranger',
-    name: 'Dark Ranger',
-    description: 'Master bowmen who turned to darkness, deadly accurate with powerful longbows.',
-    mobType: 'humanoid',
-    type: 'humanoid',
-    difficultyLevel: 3,
-    stats: {
-      level: 22,
-      health: 50,
-      attack: 12,
-      strength: 10,
-      defense: 12,
-      ranged: 25, // High ranged attack per GDD
-      constitution: 50
-    },
-    behavior: {
-      aggressive: true,
-      aggroRange: 12, // Long range aggro
-      chaseRange: 20,
-      returnToSpawn: true,
-      ignoreLowLevelPlayers: false,
-      levelThreshold: 10
-    },
-    drops: [
-      { itemId: 'coins', quantity: 150, chance: 1.0, isGuaranteed: true },
-      { itemId: 'willow_bow', quantity: 1, chance: 0.25, isGuaranteed: false },
-      { itemId: 'arrows', quantity: 50, chance: 0.80, isGuaranteed: false }, // Common arrow drops per GDD
-      { itemId: 'mithril_helmet', quantity: 1, chance: 0.10, isGuaranteed: false },
-      { itemId: 'mithril_legs', quantity: 1, chance: 0.08, isGuaranteed: false }
-    ],
-    spawnBiomes: ['blasted_lands'],
-    modelPath: '/assets/models/mobs/dark_ranger.glb',
-    animationSet: {
-      idle: '/assets/animations/dark_ranger_idle.glb',
-      walk: '/assets/animations/dark_ranger_walk.glb',
-      attack: '/assets/animations/dark_ranger_attack.glb',
-      death: '/assets/animations/dark_ranger_death.glb'
-    },
-    respawnTime: 900000,
-    xpReward: 110,
-    health: 50,
-    maxHealth: 50,
-    level: 22
-  }
-};
-
-/**
- * Complete Mob Database
- */
-export const ALL_MOBS: Record<string, MobData> = {
-  ...LEVEL_1_MOBS,
-  ...LEVEL_2_MOBS,
-  ...LEVEL_3_MOBS
-};
+export const LEVEL_1_MOBS: Record<string, MobData> = {};
+export const LEVEL_2_MOBS: Record<string, MobData> = {};
+export const LEVEL_3_MOBS: Record<string, MobData> = {};
 
 /**
  * Helper Functions
  */
+
+// Get mob by ID
 export function getMobById(mobId: string): MobData | null {
   return ALL_MOBS[mobId] || null;
 }
 
+// Get mobs by difficulty level
 export function getMobsByDifficulty(level: 1 | 2 | 3): MobData[] {
   return Object.values(ALL_MOBS).filter(mob => mob.difficultyLevel === level);
 }
 
+// Get mobs by biome
 export function getMobsByBiome(biome: string): MobData[] {
   return Object.values(ALL_MOBS).filter(mob => 
-    mob.spawnBiomes.includes(biome)
+    mob.spawnBiomes?.includes(biome)
   );
 }
 
+// Check if mob can drop specific item
 export function canMobDropItem(mobId: string, itemId: string): boolean {
   const mob = getMobById(mobId);
   if (!mob) return false;
   
-  return mob.drops.some(drop => drop.itemId === itemId);
+  return mob.drops?.some(drop => drop.itemId === itemId) || false;
 }
 
+// Calculate mob drops with RNG
 export function calculateMobDrops(mobId: string): MobDropItem[] {
   const mob = getMobById(mobId);
-  if (!mob) return [];
+  if (!mob || !mob.drops) return [];
   
   const drops: MobDropItem[] = [];
   
@@ -490,7 +90,7 @@ export function calculateMobDrops(mobId: string): MobDropItem[] {
 }
 
 /**
- * GDD Combat Level Calculation for Mobs
+ * Calculate mob combat level using GDD formula
  * Same formula as players for consistency
  */
 export function calculateMobCombatLevel(mob: MobData): number {
@@ -520,11 +120,37 @@ export const MOB_SPAWN_CONSTANTS = {
 } as const;
 
 /**
- * Mob Type Classifications for Systems
+ * Mob Type Classifications - Derived from JSON data
+ * These are computed at runtime from loaded mob data
  */
-export const MOB_CLASSIFICATIONS = {
-  HUMANOID: ['goblin', 'bandit', 'barbarian', 'hobgoblin', 'guard', 'dark_warrior', 'black_knight', 'dark_ranger'],
-  UNDEAD: ['ice_warrior'], // Ice warriors are preserved/frozen, quasi-undead
-  AGGRESSIVE_ALWAYS: ['dark_warrior', 'black_knight', 'ice_warrior', 'dark_ranger'],
-  LEVEL_SENSITIVE: ['bandit'], // Ignore high-level players
-} as const;
+export function getMobClassifications(): {
+  HUMANOID: string[];
+  UNDEAD: string[];
+  AGGRESSIVE_ALWAYS: string[];
+  LEVEL_SENSITIVE: string[];
+} {
+  const humanoid: string[] = [];
+  const undead: string[] = [];
+  const aggressiveAlways: string[] = [];
+  const levelSensitive: string[] = [];
+  
+  for (const [mobId, mobData] of Object.entries(ALL_MOBS)) {
+    // Classify by type field from JSON
+    if (mobData.type === 'humanoid') {
+      humanoid.push(mobId);
+    } else if (mobData.type === 'undead') {
+      undead.push(mobId);
+    }
+    
+    // Check behavior from JSON
+    if (mobData.behavior?.levelThreshold && mobData.behavior.levelThreshold >= 999) {
+      aggressiveAlways.push(mobId);
+    }
+    
+    if (mobData.behavior?.ignoreLowLevelPlayers) {
+      levelSensitive.push(mobId);
+    }
+  }
+  
+  return { HUMANOID: humanoid, UNDEAD: undead, AGGRESSIVE_ALWAYS: aggressiveAlways, LEVEL_SENSITIVE: levelSensitive };
+}

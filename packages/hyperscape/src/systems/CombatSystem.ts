@@ -82,6 +82,14 @@ export class CombatSystem extends SystemBase {
     this.subscribe(EventType.COMBAT_MOB_ATTACK, (data: { mobId: string; targetId: string }) => {
       this.handleMobAttack(data);
     });
+    
+    // Listen for death events to end combat
+    this.subscribe(EventType.MOB_DIED, (data: { mobId: string }) => {
+      this.handleEntityDied(data.mobId, 'mob');
+    });
+    this.subscribe(EventType.PLAYER_DIED, (data: { playerId: string }) => {
+      this.handleEntityDied(data.playerId, 'player');
+    });
 
   }
 
@@ -115,6 +123,12 @@ export class CombatSystem extends SystemBase {
     // Get attacker and target positions for range check
     const attacker = this.getEntity(attackerId, attackerType);
     const target = this.getEntity(targetId, targetType);
+
+    // Check entities exist
+    if (!attacker || !target) {
+      console.warn(`[CombatSystem] Cannot start melee attack - entity not found`);
+      return;
+    }
 
     // Check if in melee range
     const attackerPos = attacker.position || attacker.getPosition();
@@ -165,7 +179,11 @@ export class CombatSystem extends SystemBase {
     const attacker = this.getEntity(attackerId, attackerType);
     const target = this.getEntity(targetId, targetType);
 
-
+    // Check entities exist
+    if (!attacker || !target) {
+      console.warn(`[CombatSystem] Cannot start ranged attack - entity not found`);
+      return;
+    }
 
     // Check if in ranged range
     const attackerPos = attacker.position || attacker.getPosition();
@@ -255,7 +273,9 @@ export class CombatSystem extends SystemBase {
     return result.damage;
   }
 
-  private calculateRangedDamage(attacker: Entity | MobEntity, target: Entity | MobEntity): number {
+  private calculateRangedDamage(attacker: Entity | MobEntity | null, target: Entity | MobEntity | null): number {
+    if (!attacker || !target) return 1;
+    
     // Extract required properties for damage calculation
     let attackerData: { stats?: CombatStats; config?: { attackPower?: number } } = {};
     let targetData: { stats?: CombatStats; config?: { defense?: number } } = {};
@@ -295,18 +315,36 @@ export class CombatSystem extends SystemBase {
   }
 
   private applyDamage(targetId: string, targetType: string, damage: number, attackerId: string): void {
+    console.log(`[CombatSystem] 💥 Applying ${damage} damage to ${targetType} ${targetId}`);
+    
     // Handle damage based on target type
     if (targetType === 'player') {
       // Get player system and use its damage method
       const playerSystem = this.world.getSystem<PlayerSystem>('rpg-player');
       if (!playerSystem) {
-
+        console.error('[CombatSystem] PlayerSystem not found!');
         return;
       }
+      
+      const entity = this.getEntity(targetId, 'player');
+      if (!entity) return;
       
       const damaged = playerSystem.damagePlayer(targetId, damage, attackerId);
       if (!damaged) {
         return;
+      }
+      
+      // Show damage message to player
+      try {
+        const attacker = this.getEntity(attackerId, 'mob');
+        const attackerName = this.getTargetName(attacker);
+        this.emitTypedEvent(EventType.UI_MESSAGE, {
+          playerId: targetId,
+          message: `The ${attackerName} hits you for ${damage} damage!`,
+          type: 'damage'
+        });
+      } catch (error) {
+        console.error('[CombatSystem] Error showing damage message:', error);
       }
     } else if (targetType === 'mob') {
       // For mobs, use the mob system to handle damage
@@ -327,6 +365,8 @@ export class CombatSystem extends SystemBase {
       // Check if mob died
       if (newHealth <= 0 && mobInstance.isAlive) {
         mobInstance.isAlive = false;
+        console.log(`[CombatSystem] 💀 Mob ${targetId} has been slain by ${attackerId}!`);
+        
         // Emit mob died event
         this.emitTypedEvent(EventType.MOB_DIED, {
           mobId: targetId,
@@ -334,6 +374,13 @@ export class CombatSystem extends SystemBase {
           position: mobInstance.homePosition,
           level: mobInstance.stats.level,
           killedBy: attackerId
+        });
+        
+        // Show victory message to player
+        this.emitTypedEvent(EventType.UI_MESSAGE, {
+          playerId: attackerId,
+          message: `You have defeated the ${mobInstance.name || mobInstance.type}!`,
+          type: 'success'
         });
       }
       
@@ -348,7 +395,7 @@ export class CombatSystem extends SystemBase {
       return;
     }
 
-    // Emit combat damage event
+    // Emit combat damage event for visual effects (damage numbers)
     this.emitTypedEvent(EventType.COMBAT_DAMAGE_DEALT, {
       attackerId,
       targetId,
@@ -361,12 +408,21 @@ export class CombatSystem extends SystemBase {
     const now = Date.now();
     const combatEndTime = now + COMBAT_CONSTANTS.COMBAT_TIMEOUT_MS;
 
+    console.log(`[CombatSystem] ⚔️  COMBAT STARTED: ${String(attackerId)} vs ${String(targetId)}`);
+
+    // Detect entity types (don't assume attacker is always player!)
+    const attackerEntity = this.world.entities.get(String(attackerId));
+    const targetEntity = this.world.entities.get(String(targetId));
+    
+    const attackerType = attackerEntity?.type === 'mob' ? 'mob' as const : 'player' as const;
+    const targetType = targetEntity?.type === 'mob' ? 'mob' as const : 'player' as const;
+
     // Set combat state for attacker
     this.combatStates.set(attackerId, {
       attackerId,
       targetId,
-      attackerType: 'player',
-      targetType: 'mob',
+      attackerType,
+      targetType,
       weaponType: AttackType.MELEE,
       inCombat: true,
       lastAttackTime: now,
@@ -377,8 +433,8 @@ export class CombatSystem extends SystemBase {
     this.combatStates.set(targetId, {
       attackerId: targetId,
       targetId: attackerId,
-      attackerType: 'mob',
-      targetType: 'player',
+      attackerType: targetType,
+      targetType: attackerType,
       weaponType: AttackType.MELEE,
       inCombat: true,
       lastAttackTime: 0,
@@ -390,6 +446,24 @@ export class CombatSystem extends SystemBase {
       attackerId: String(attackerId),
       targetId: String(targetId)
     });
+    
+    // Show combat UI indicator for the local player (whoever that is)
+    const localPlayer = this.world.getPlayer();
+    if (localPlayer && (String(attackerId) === localPlayer.id || String(targetId) === localPlayer.id)) {
+      try {
+        const opponent = String(attackerId) === localPlayer.id ? targetEntity : attackerEntity;
+        const opponentName = opponent?.name || 'Enemy';
+        
+        this.emitTypedEvent(EventType.UI_MESSAGE, {
+          playerId: localPlayer.id,
+          message: `⚔️ Combat started with ${opponentName}!`,
+          type: 'combat',
+          duration: 3000
+        });
+      } catch (error) {
+        console.error('[CombatSystem] Error showing combat start message:', error);
+      }
+    }
   }
 
   private endCombat(data: { entityId: string }): void {
@@ -402,6 +476,8 @@ export class CombatSystem extends SystemBase {
     const combatState = this.combatStates.get(typedEntityId);
     if (!combatState) return;
 
+    console.log(`[CombatSystem] ⚔️  COMBAT ENDED: ${data.entityId} vs ${String(combatState.targetId)}`);
+
     // Remove combat states
     this.combatStates.delete(typedEntityId);
     this.combatStates.delete(combatState.targetId);
@@ -411,6 +487,38 @@ export class CombatSystem extends SystemBase {
       attackerId: data.entityId,
       targetId: String(combatState.targetId)
     });
+    
+    // Show combat end message for player
+    if (combatState.attackerType === 'player') {
+      this.emitTypedEvent(EventType.UI_MESSAGE, {
+        playerId: data.entityId,
+        message: `Combat ended.`,
+        type: 'info'
+      });
+    }
+  }
+  
+  /**
+   * Handle entity death - end all combat involving this entity
+   */
+  private handleEntityDied(entityId: string, entityType: string): void {
+    console.log(`[CombatSystem] Entity died: ${entityId} (${entityType}), ending all combat`);
+    
+    const typedEntityId = createEntityID(entityId);
+    
+    // End combat for this entity
+    const combatState = this.combatStates.get(typedEntityId);
+    if (combatState) {
+      this.endCombat({ entityId });
+    }
+    
+    // Also end combat for anyone attacking this entity
+    for (const [attackerId, state] of this.combatStates) {
+      if (String(state.targetId) === entityId) {
+        console.log(`[CombatSystem] Ending combat for ${String(attackerId)} who was attacking dead entity ${entityId}`);
+        this.endCombat({ entityId: String(attackerId) });
+      }
+    }
   }
 
   // Public API methods
@@ -461,11 +569,12 @@ export class CombatSystem extends SystemBase {
     this.endCombat({ entityId });
   }
 
-  private getEntity(entityId: string, entityType: string): Entity | MobEntity {
+  private getEntity(entityId: string, entityType: string): Entity | MobEntity | null {
     if (entityType === 'mob') {
       const entity = this.world.entities.get(entityId);
       if (!entity) {
-        throw new Error(`[CombatSystem] Mob entity not found: ${entityId}`);
+        console.warn(`[CombatSystem] Mob entity not found: ${entityId}`);
+        return null;
       }
       return entity as MobEntity;
     }
@@ -474,36 +583,202 @@ export class CombatSystem extends SystemBase {
       // Look up players from world.entities.players (includes fake test players)
       const player = this.world.entities.players.get(entityId);
       if (!player) {
-        const availablePlayerIds = Array.from(this.world.entities.players.keys());
-        throw new Error(`[CombatSystem] Player entity not found: ${entityId}. Available players: [${availablePlayerIds.join(', ')}]`);
+        console.warn(`[CombatSystem] Player entity not found: ${entityId} (probably disconnected)`);
+        return null;
       }
       return player;
     }
 
     if (!this.entityManager) {
-      throw new Error('[CombatSystem] Entity manager not available');
+      console.warn('[CombatSystem] Entity manager not available');
+      return null;
     }
     const entity = this.entityManager.getEntity(entityId);
     if (!entity) {
-      throw new Error(`[CombatSystem] Entity not found: ${entityId}`);
+      console.warn(`[CombatSystem] Entity not found: ${entityId}`);
+      return null;
     }
     return entity;
   }
 
 
 
-  // Combat timeout checking - preserve active update logic
+  // Combat update loop - handles auto-attack and combat timeouts
   update(_dt: number): void {
     const now = Date.now();
     
-    // Check for combat timeouts
+    // Process all active combat sessions
     for (const [entityId, combatState] of this.combatStates) {
+      // Check for combat timeout first
       if (combatState.inCombat && combatState.combatEndTime && now >= combatState.combatEndTime) {
-        // Convert EntityID to string for the event
         const entityIdStr = String(entityId);
         this.endCombat({ entityId: entityIdStr });
+        continue;
+      }
+      
+      // Skip if not in combat or doesn't have valid target
+      if (!combatState.inCombat || !combatState.targetId) continue;
+      
+      // Auto-attack: continuously attack target while in range and combat is active
+      this.processAutoAttack(combatState, now);
+    }
+  }
+  
+  /**
+   * Process auto-attack for a combatant
+   * This creates the continuous attack loop that makes combat feel like RuneScape
+   */
+  private processAutoAttack(combatState: CombatData, now: number): void {
+    // Check attack cooldown - use weapon attack speed
+    const attackSpeed = this.getAttackSpeed(combatState.attackerId, combatState.attackerType);
+    const timeSinceLastAttack = now - combatState.lastAttackTime;
+    
+    if (timeSinceLastAttack < attackSpeed) {
+      return; // Still on cooldown
+    }
+    
+    // Get attacker and target entities
+    const attackerId = String(combatState.attackerId);
+    const targetId = String(combatState.targetId);
+    
+    const attacker = this.getEntity(attackerId, combatState.attackerType);
+    const target = this.getEntity(targetId, combatState.targetType);
+    
+    // Entity not found (disconnected player, despawned mob, etc.) - end combat
+    if (!attacker || !target) {
+      console.log(`[CombatSystem] Entity not found in auto-attack, ending combat`);
+      this.endCombat({ entityId: attackerId });
+      return;
+    }
+    
+    // Check if target is still alive
+    if (!this.isEntityAlive(target, combatState.targetType)) {
+      console.log(`[CombatSystem] Target ${targetId} is dead, ending combat`);
+      this.endCombat({ entityId: attackerId });
+      return;
+    }
+    
+    // Check range
+    const attackerPos = attacker.position || attacker.getPosition();
+    const targetPos = target.position || target.getPosition();
+    const distance = calculateDistance3D(attackerPos, targetPos);
+    
+    const maxRange = combatState.weaponType === AttackType.RANGED 
+      ? COMBAT_CONSTANTS.RANGED_RANGE 
+      : COMBAT_CONSTANTS.MELEE_RANGE;
+    
+    if (distance > maxRange) {
+      // Out of range - don't end combat, just skip this attack
+      // Player might be moving back into range
+      return;
+    }
+    
+    // All checks passed - execute auto-attack
+    console.log(`[CombatSystem] ⚔️  Auto-attack: ${attackerId} -> ${targetId} (${combatState.weaponType})`);
+    
+    // Calculate and apply damage
+    const damage = combatState.weaponType === AttackType.RANGED
+      ? this.calculateRangedDamage(attacker, target)
+      : this.calculateMeleeDamage(attacker, target);
+    
+    console.log(`[CombatSystem] 💥 Damage calculated: ${damage} (${combatState.weaponType})`);
+    
+    this.applyDamage(targetId, combatState.targetType, damage, attackerId);
+    
+    // Update last attack time
+    combatState.lastAttackTime = now;
+    combatState.combatEndTime = now + COMBAT_CONSTANTS.COMBAT_TIMEOUT_MS; // Extend combat timeout
+    
+    // Emit attack event for visual feedback
+    const attackEvent = combatState.weaponType === AttackType.RANGED
+      ? EventType.COMBAT_RANGED_ATTACK
+      : EventType.COMBAT_MELEE_ATTACK;
+    
+    this.emitTypedEvent(attackEvent, {
+      attackerId,
+      targetId,
+      attackerType: combatState.attackerType,
+      targetType: combatState.targetType
+    });
+    
+    // Emit UI message for player attacks
+    if (combatState.attackerType === 'player') {
+      this.emitTypedEvent(EventType.UI_MESSAGE, {
+        playerId: attackerId,
+        message: `You hit the ${this.getTargetName(target)} for ${damage} damage!`,
+        type: 'combat'
+      });
+    }
+  }
+  
+  /**
+   * Get display name for a target entity
+   */
+  private getTargetName(entity: Entity | MobEntity | null): string {
+    if (!entity) return 'Unknown';
+    const mobEntity = entity as MobEntity;
+    if (mobEntity.getMobData) {
+      return mobEntity.getMobData().name;
+    }
+    return entity.name || 'Enemy';
+  }
+  
+  /**
+   * Get attack speed in milliseconds for an entity
+   */
+  private getAttackSpeed(entityId: EntityID, entityType: string): number {
+    const entity = this.getEntity(String(entityId), entityType);
+    if (!entity) return COMBAT_CONSTANTS.ATTACK_COOLDOWN_MS;
+    
+    // Check equipment for weapon attack speed
+    const equipmentComponent = entity.getComponent('equipment');
+    if (equipmentComponent?.data?.weapon) {
+      const weapon = equipmentComponent.data.weapon as { attackSpeed?: number };
+      if (weapon.attackSpeed) {
+        return weapon.attackSpeed;
       }
     }
+    
+    // Check mob attack speed
+    const mobEntity = entity as MobEntity;
+    if (mobEntity.getMobData) {
+      const mobData = mobEntity.getMobData();
+      const mobAttackSpeed = (mobData as { attackSpeed?: number }).attackSpeed;
+      if (mobAttackSpeed) {
+        return mobAttackSpeed * 1000; // Convert seconds to ms
+      }
+    }
+    
+    // Default attack speed (RuneScape-style 2.4 seconds for most weapons)
+    return COMBAT_CONSTANTS.ATTACK_COOLDOWN_MS;
+  }
+  
+  /**
+   * Check if entity is alive
+   */
+  private isEntityAlive(entity: Entity | MobEntity | null, entityType: string): boolean {
+    if (!entity) return false;
+    if (entityType === 'player') {
+      // Check player health
+      const player = entity as Entity;
+      const healthComponent = player.getComponent('health');
+      if (healthComponent?.data) {
+        const health = healthComponent.data as { current: number; isDead?: boolean };
+        return health.current > 0 && !health.isDead;
+      }
+      return player.getHealth() > 0;
+    }
+    
+    if (entityType === 'mob') {
+      // Check mob health
+      const mob = entity as MobEntity;
+      if (mob.getMobData) {
+        return mob.getMobData().health > 0;
+      }
+      return mob.getHealth() > 0;
+    }
+    
+    return false;
   }
 
   destroy(): void {

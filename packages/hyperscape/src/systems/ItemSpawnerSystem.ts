@@ -248,9 +248,24 @@ export class ItemSpawnerSystem extends SystemBase {
   private async spawnItemFromData(itemData: Item, position: { x: number; y: number; z: number }, spawnType: string, location: string): Promise<string> {
     const itemId = `gdd_${itemData.id}_${this.itemIdCounter++}`;
     
+    console.log(`[ItemSpawnerSystem] Spawning ${itemData.name} at initial position:`, position);
+    
     // Ground item to terrain - use Infinity to allow any initial height difference
     // This is safe because we're always grounding to actual terrain height
     const groundedPosition = groundToTerrain(this.world, position, 0.2, Infinity);
+    
+    console.log(`[ItemSpawnerSystem] After grounding ${itemData.name}:`, {
+      original: position,
+      grounded: groundedPosition,
+      yChange: (groundedPosition.y - position.y).toFixed(2)
+    });
+    
+    // VALIDATE: Check if Y position is reasonable
+    if (groundedPosition.y > 100) {
+      console.error(`[ItemSpawnerSystem] ❌ EXTREME Y after grounding for ${itemData.name}: ${groundedPosition.y.toFixed(2)}m`);
+      console.error(`  This suggests terrain height at (${position.x}, ${position.z}) is ${groundedPosition.y.toFixed(2)}m`);
+      console.error(`  Expected terrain height: 0-30m`);
+    }
     
     // Create item entity via EntityManager
     const entityManager = getSystem(this.world, 'rpg-entity-manager') as EntityManager;

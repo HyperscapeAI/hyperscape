@@ -226,17 +226,9 @@ export const ITEM_ID_TO_KEY: Record<number, string> = {
 } as const;
 
 // === MOB TYPES ===
-export const MOB_TYPES = {
-  GOBLIN: 'goblin',
-  HOBGOBLIN: 'hobgoblin',
-  DARK_WARRIOR: 'dark_warrior',
-  BARBARIAN: 'barbarian',
-  BANDIT: 'bandit',
-  GUARD: 'guard',
-  BLACK_KNIGHT: 'black_knight',
-  ICE_WARRIOR: 'ice_warrior',
-  DARK_RANGER: 'dark_ranger'
-} as const;
+// Mob types are now loaded dynamically from world/assets/manifests/mobs.json
+// Use getAllMobs() from data/mobs.ts to get available mob types at runtime
+export const MOB_TYPES = {} as const;
 
 // === BIOME TYPES ===
 export const BIOME_TYPES = {

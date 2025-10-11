@@ -57,9 +57,8 @@ import { PlayerSpawnSystem } from './PlayerSpawnSystem'
 import { PlayerSystem } from './PlayerSystem'
 import { ProcessingSystem } from './ProcessingSystem'
 import { ResourceSystem } from './ResourceSystem'
-import { ResourceInteractionSystem } from './ResourceInteractionSystem'
+import { EntityInteractionSystem } from './EntityInteractionSystem'
 import { ResourceVisualizationSystem } from './ResourceVisualizationSystem'
-import { MobInteractionSystem } from './MobInteractionSystem'
 import { StoreSystem } from './StoreSystem'
 import { WorldGenerationSystem } from './WorldGenerationSystem'
 
@@ -79,7 +78,6 @@ import { AggroTestSystem } from './AggroTestSystem'
 import { BankingTestSystem } from './BankingTestSystem'
 import { EquipmentTestSystem } from './EquipmentTestSystem'
 import { InventoryTestSystem } from './InventoryTestSystem'
-import { PhysicsTestSystem } from './PhysicsTestSystem'
 import { ResourceGatheringTestSystem } from './ResourceGatheringTestSystem'
 import { StoreTestSystem } from './StoreTestSystem'
 import { TestRunner } from './TestRunner'
@@ -98,10 +96,6 @@ import { PlayerTestSystem } from './PlayerTestSystem'
 import { SkillsTestSystem } from './SkillsTestSystem'
 import { UITestSystem } from './UITestSystem'
 import { WoodcuttingTestSystem } from './WoodcuttingTestSystem'
-
-// PHYSICS INTEGRATION TEST SYSTEMS
-import { PhysicsIntegrationTestSystem } from './PhysicsIntegrationTestSystem'
-import { PrecisionPhysicsTestSystem } from './PrecisionPhysicsTestSystem'
 
 // PERFORMANCE MONITORING
 
@@ -153,7 +147,6 @@ export interface Systems {
   testStore?: StoreTestSystem
   testResourceGathering?: ResourceGatheringTestSystem
   testEquipment?: EquipmentTestSystem
-  testPhysics?: PhysicsTestSystem
   testLootDrop?: LootDropTestSystem
   testCorpse?: CorpseTestSystem
   testItemAction?: ItemActionTestSystem
@@ -163,8 +156,6 @@ export interface Systems {
   testFiremaking?: FiremakingTestSystem
   testDeath?: DeathTestSystem
   testPersistence?: PersistenceTestSystem
-  testPhysicsIntegration?: PhysicsIntegrationTestSystem
-  testPrecisionPhysics?: PrecisionPhysicsTestSystem
   testSkills?: SkillsTestSystem
   testPlayer?: PlayerTestSystem
   testDatabase?: DatabaseTestSystem
@@ -332,16 +323,22 @@ export async function registerSystems(world: World): Promise<void> {
     // 15. Resource system - Gathering mechanics (depends on inventory system)
     world.register('rpg-resource', ResourceSystem)
 
-    // 15a. Resource interaction system - Context menu and interaction flow for resources
-    world.register('resource-interaction', ResourceInteractionSystem)
-
-    // 15b. Resource visualization system - Creates visible meshes for resources (client-only)
+    // Client-only interaction systems (context menus, UI)
     if (world.isClient) {
+      // 15a. Entity Interaction system - Single context menu handler for ALL entity types
+      world.register('entity-interaction', EntityInteractionSystem)
+      
+      // 15b. Resource visualization system - Creates visible meshes for resources
       world.register('resource-visualization', ResourceVisualizationSystem)
     }
 
     // 16. Item pickup system - Ground item management (depends on inventory system)
-    world.register('rpg-item-pickup', ItemPickupSystem)
+    // NOTE: DISABLED - ItemPickupSystem conflicts with new EntityManager + InventorySystem architecture
+    // The new architecture uses:
+    //   - EntityManager to create/destroy ItemEntity objects (3D visuals)
+    //   - InventorySystem to handle ITEM_PICKUP and ITEM_DROP (inventory data)
+    // ItemPickupSystem is legacy and creates duplicate event handlers
+    // world.register('rpg-item-pickup', ItemPickupSystem)
 
     // 17. Item actions system - Item usage mechanics (depends on inventory system)
     world.register('rpg-item-actions', ItemActionSystem)
@@ -366,10 +363,10 @@ export async function registerSystems(world: World): Promise<void> {
     // Performance optimization systems
     world.register('entity-culling', EntityCullingSystem)
 
-    // Client-only interaction systems
+    // Client-only inventory drag & drop (already registered above)
     if (world.isClient) {
       world.register('rpg-inventory-interaction', InventoryInteractionSystem)
-      world.register('mob-interaction', MobInteractionSystem)
+      // NOTE: entity-interaction already registered above (line 329)
     }
 
     // New MMO-style Systems
@@ -381,12 +378,13 @@ export async function registerSystems(world: World): Promise<void> {
       world.register('rpg-mob-ai', MobAISystem)
     }
 
-    // VISUAL TEST SYSTEMS - Register for comprehensive testing (only when tests enabled)
-    if (testsEnabled) {
-      // DISABLED: Visual tests cause continuous spawning and memory leaks
-      // world.register('rpg-visual-test', VisualTestSystem)
-      // world.register('rpg-performance-monitor', PerformanceMonitor)
-    }
+    // VISUAL TEST SYSTEMS - PERMANENTLY DISABLED
+    // These create colored cube proxies which interfere with actual 3D models
+    // DO NOT ENABLE unless specifically testing with cube proxies
+    // if (testsEnabled) {
+    //   world.register('rpg-visual-test', VisualTestSystem)
+    //   world.register('rpg-performance-monitor', PerformanceMonitor)
+    // }
 
     // Server-only systems
     if (world.isServer) {
@@ -415,32 +413,36 @@ export async function registerSystems(world: World): Promise<void> {
       // DISABLED: TestUISystem may also cause issues
       // world.register('test-ui', TestUISystem)
 
-      // Physics test systems - now supported on both client and server
+      // TEST SYSTEMS - DISABLED FOR PRODUCTION
+      // These create visual cube proxies that interfere with actual 3D models
+      // Tests should be run separately in a test environment, not during normal gameplay
       if (testsEnabled) {
-        // Safe, event-driven test registrations
-        world.register('rpg-test-combat', CombatTestSystem)
-        world.register('rpg-test-aggro', AggroTestSystem)
-        world.register('rpg-test-inventory', InventoryTestSystem)
-        world.register('rpg-test-banking', BankingTestSystem)
-        world.register('rpg-test-store', StoreTestSystem)
-        world.register('rpg-test-resource-gathering', ResourceGatheringTestSystem)
-        world.register('rpg-test-equipment', EquipmentTestSystem)
-        world.register('rpg-test-physics', PhysicsTestSystem)
-        world.register('rpg-loot-drop-test', LootDropTestSystem)
-        world.register('rpg-corpse-test', CorpseTestSystem)
-        world.register('rpg-item-action-test', ItemActionTestSystem)
-        world.register('rpg-fishing-test', FishingTestSystem)
-        world.register('rpg-cooking-test', CookingTestSystem)
-        world.register('rpg-woodcutting-test', WoodcuttingTestSystem)
-        world.register('rpg-firemaking-test', FiremakingTestSystem)
-        world.register('rpg-death-test', DeathTestSystem)
-        world.register('rpg-persistence-test', PersistenceTestSystem)
-        world.register('rpg-skills-test', SkillsTestSystem)
-        world.register('rpg-player-test', PlayerTestSystem)
-        world.register('rpg-physics-integration-test', PhysicsIntegrationTestSystem)
-        world.register('rpg-precision-physics-test', PrecisionPhysicsTestSystem)
-        world.register('rpg-test-runner', TestRunner)
-        world.register('rpg-ui-test', UITestSystem)
+        console.log('[SystemLoader] ⚠️  Test systems DISABLED - they create visual cubes that clutter the scene');
+        console.log('[SystemLoader] To run tests, use a dedicated test environment');
+        
+        // DISABLED: All test systems create visual cubes for validation
+        // They are useful for automated testing but interfere with normal gameplay
+        // 
+        // world.register('rpg-test-combat', CombatTestSystem)
+        // world.register('rpg-test-aggro', AggroTestSystem)
+        // world.register('rpg-test-inventory', InventoryTestSystem)
+        // world.register('rpg-test-banking', BankingTestSystem)
+        // world.register('rpg-test-store', StoreTestSystem)
+        // world.register('rpg-test-resource-gathering', ResourceGatheringTestSystem)
+        // world.register('rpg-test-equipment', EquipmentTestSystem)
+        // world.register('rpg-loot-drop-test', LootDropTestSystem)
+        // world.register('rpg-corpse-test', CorpseTestSystem)
+        // world.register('rpg-item-action-test', ItemActionTestSystem)
+        // world.register('rpg-fishing-test', FishingTestSystem)
+        // world.register('rpg-cooking-test', CookingTestSystem)
+        // world.register('rpg-woodcutting-test', WoodcuttingTestSystem)
+        // world.register('rpg-firemaking-test', FiremakingTestSystem)
+        // world.register('rpg-death-test', DeathTestSystem)
+        // world.register('rpg-persistence-test', PersistenceTestSystem)
+        // world.register('rpg-skills-test', SkillsTestSystem)
+        // world.register('rpg-player-test', PlayerTestSystem)
+        // world.register('rpg-test-runner', TestRunner)
+        // world.register('rpg-ui-test', UITestSystem)
       }
     } else {
       // Removed console.log('[SystemLoader] Server mode - skipping client-only systems')
@@ -486,10 +488,6 @@ export async function registerSystems(world: World): Promise<void> {
       systems.npc = getSystem(world, 'rpg-npc') as NPCSystem
       systems.mobAI = getSystem(world, 'rpg-mob-ai') as MobAISystem
     }
-
-    // VISUAL TEST SYSTEMS - Get instances
-    systems.visualTest = getSystem(world, 'rpg-visual-test') as VisualTestSystem
-
     // Server-only test system instances
     if (world.isServer && testsEnabled) {
       systems.testDatabase = getSystem(world, 'rpg-database-test') as DatabaseTestSystem
@@ -504,7 +502,6 @@ export async function registerSystems(world: World): Promise<void> {
       systems.testStore = getSystem(world, 'rpg-test-store') as StoreTestSystem
       systems.testResourceGathering = getSystem(world, 'rpg-test-resource-gathering') as ResourceGatheringTestSystem
       systems.testEquipment = getSystem(world, 'rpg-test-equipment') as EquipmentTestSystem
-      systems.testPhysics = getSystem(world, 'rpg-test-physics') as PhysicsTestSystem
 
       // New comprehensive test systems
       systems.testLootDrop = getSystem(world, 'rpg-loot-drop-test') as LootDropTestSystem
@@ -526,18 +523,6 @@ export async function registerSystems(world: World): Promise<void> {
     systems.itemSpawner = getSystem(world, 'item-spawner') as ItemSpawnerSystem
     systems.testUI = getSystem(world, 'test-ui') as UITestSystem // Will be undefined on server, which is fine
 
-    // Get test system instances with proper casting
-    if (
-      world.isClient &&
-      (testsEnabled)
-    ) {
-      systems.testPhysicsIntegration = getSystem(
-        world,
-        'rpg-physics-integration-test'
-      ) as PhysicsIntegrationTestSystem
-      systems.testPrecisionPhysics = getSystem(world, 'rpg-precision-physics-test') as PrecisionPhysicsTestSystem
-      systems.testRunner = getSystem(world, 'rpg-test-runner') as TestRunner
-    }
 
   // Set up API for apps to access functionality
   setupAPI(world, systems)
@@ -750,13 +735,6 @@ function setupAPI(world: World, systems: Systems): void {
     getShopItems: () => systems.itemSpawner?.getShopItems(),
     getChestItems: () => systems.itemSpawner?.getChestItems(),
     getItemStats: () => systems.itemSpawner?.getItemStats(),
-    getTestCubes: () => systems.testPhysicsCube?.getTestCubes(),
-    getCubeCount: () => systems.testPhysicsCube?.getCubeCount(),
-    spawnRandomCube: () => systems.testPhysicsCube?.spawnRandomCube(),
-    testCubeInteraction: () => systems.testPhysicsCube?.testCubeInteraction(),
-    getUIElements: () => new Map(), // TestUI system doesn't expose this method
-    getUICount: () => 0, // TestUI system doesn't expose this method
-    createRandomUI: () => null, // TestUI system doesn't expose this method
 
     // Visual Test Systems API
     getTestCombatResults: () => null, // Test systems don't expose getTestResults method
@@ -778,22 +756,8 @@ function setupAPI(world: World, systems: Systems): void {
       resourceGathering: null,
       equipment: null,
       movement: null,
-      physics: null,
-      physicsIntegration: null,
-      precisionPhysics: null, // TODO: Fix syntax errors in PrecisionPhysicsTestSystem
       runner: systems.testRunner?.getTestResults(),
     }),
-
-    // Physics Integration Test API
-    getPhysicsIntegrationResults: () => null,
-    getPrecisionPhysicsResults: () => null, // TODO: Fix syntax errors in PrecisionPhysicsTestSystem
-    runPhysicsIntegrationTests: () => systems.testPhysicsIntegration && world.emit(EventType.PHYSICS_TEST_RUN_ALL),
-    runPrecisionPhysicsTests: () => systems.testPrecisionPhysics && world.emit(EventType.PHYSICS_PRECISION_RUN_ALL),
-    runBallRampTest: () => systems.testPhysicsIntegration && world.emit(EventType.PHYSICS_TEST_BALL_RAMP),
-    runCubeDropTest: () => systems.testPhysicsIntegration && world.emit(EventType.PHYSICS_TEST_CUBE_DROP),
-    runCharacterCollisionTest: () =>
-      systems.testPhysicsIntegration && world.emit(EventType.PHYSICS_TEST_CHARACTER_COLLISION),
-    runProjectileMotionTest: () => systems.testPrecisionPhysics && world.emit(EventType.PHYSICS_PRECISION_PROJECTILE),
 
     // Test Runner API
     runAllTests: () => systems.testRunner && world.emit(EventType.TEST_RUN_ALL),
@@ -978,7 +942,12 @@ function setupAPI(world: World, systems: Systems): void {
 
       // Item pickup actions
       dropItemAtPosition: (item: Item, position: Position3D, playerId?: string) => {
-        world.emit(EventType.ITEM_DROP, { item, position, playerId })
+        // Emit ITEM_SPAWN directly instead of ITEM_DROP (which is for inventory operations)
+        world.emit(EventType.ITEM_SPAWN, { 
+          itemId: item.id, 
+          quantity: item.quantity || 1,
+          position 
+        })
       },
 
       pickupItem: (playerId: string, itemId: string) => {
