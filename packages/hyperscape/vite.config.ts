@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { polyfillNode } from 'esbuild-plugin-polyfill-node'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -34,8 +35,8 @@ export default defineConfig({
   },
   
   define: {
-    'process.env': '{}', // Replace process.env with empty object
-    'process': 'undefined', // Replace process with undefined
+    'process.env': '{}', // Replace process.env with empty object (Privy reads env vars)
+    global: 'globalThis', // Needed for some node polyfills in browser
     // Ensure Privy and Farcaster env vars are exposed
     'import.meta.env.PUBLIC_PRIVY_APP_ID': JSON.stringify(process.env.PUBLIC_PRIVY_APP_ID || ''),
     'import.meta.env.PUBLIC_ENABLE_FARCASTER': JSON.stringify(process.env.PUBLIC_ENABLE_FARCASTER || 'false'),
@@ -88,7 +89,18 @@ export default defineConfig({
     include: ['three', 'react', 'react-dom'],
     exclude: ['@playwright/test'], // Exclude Playwright from optimization
     esbuildOptions: {
-      target: 'esnext' // Support top-level await
+      target: 'esnext', // Support top-level await
+      define: {
+        global: 'globalThis'
+      },
+      plugins: [
+        polyfillNode({
+          polyfills: {
+            buffer: true,
+            process: true
+          }
+        })
+      ]
     }
   },
 }) 

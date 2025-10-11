@@ -170,10 +170,12 @@ export class PlayerSystem extends SystemBase {
 
   async onPlayerEnter(data: PlayerEnterEvent): Promise<void> {
     try {
+      console.log(`[PlayerSystem] onPlayerEnter called for playerId: ${data.playerId}`)
       
       // Check if player already exists in our system
       if (this.players.has(data.playerId)) {
-                return;
+        console.log(`[PlayerSystem] Player ${data.playerId} already exists in system`)
+        return;
       }
 
     // Load player data from database
@@ -181,7 +183,17 @@ export class PlayerSystem extends SystemBase {
     if (this.databaseSystem) {
       const dbData = this.databaseSystem.getPlayer(data.playerId);
       if (dbData) {
+        console.log(`[PlayerSystem] Loaded player from DB:`, {
+          playerId: data.playerId,
+          name: dbData.name,
+          attackLevel: dbData.attackLevel,
+          coins: dbData.coins,
+          positionX: dbData.positionX,
+          positionY: dbData.positionY
+        })
         playerData = PlayerMigration.fromPlayerRow(dbData, data.playerId);
+      } else {
+        console.log(`[PlayerSystem] No DB data found for playerId: ${data.playerId}, creating new`)
       }
     }
 
@@ -249,11 +261,11 @@ export class PlayerSystem extends SystemBase {
   }
 
   async onPlayerLeave(data: PlayerLeaveEvent): Promise<void> {
-      // Only log player leaves if debugging
-      // 
+      console.log(`[PlayerSystem] onPlayerLeave called for playerId: ${data.playerId}`)
       // Save player data before removal
       if (this.databaseSystem && this.players.has(data.playerId)) {
         await this.savePlayerToDatabase(data.playerId);
+        console.log(`[PlayerSystem] Saved player ${data.playerId} on disconnect`)
       }
 
     // Clean up
@@ -604,9 +616,25 @@ export class PlayerSystem extends SystemBase {
     }, this.AUTO_SAVE_INTERVAL)!;
   }
 
+  update(_dt: number): void {
+    // Sync player positions from entities each frame (server only)
+    if (!this.world.network?.isServer) return;
+    
+    for (const [playerId, player] of this.players) {
+      const entity = this.world.entities.get(playerId);
+      if (entity && entity.position) {
+        // Update player object position from entity
+        player.position.x = entity.position.x;
+        player.position.y = entity.position.y;
+        player.position.z = entity.position.z;
+      }
+    }
+  }
+
   private async performAutoSave(): Promise<void> {
     if (!this.databaseSystem) return;
 
+    console.log(`[PlayerSystem] Auto-save: saving ${this.players.size} players`)
     // Save all players
     for (const playerId of this.players.keys()) {
       try {
@@ -657,18 +685,4 @@ export class PlayerSystem extends SystemBase {
     return Math.floor(totalLevel / 4);
   }
 
-  // System lifecycle methods
-  preTick(): void {}
-  preFixedUpdate(): void {}
-  fixedUpdate(_dt: number): void {}
-  postFixedUpdate(): void {}
-  preUpdate(): void {}
-  update(_dt: number): void {
-    // Update system logic
-  }
-  postUpdate(): void {}
-  lateUpdate(): void {}
-  postLateUpdate(): void {}
-  commit(): void {}
-  postTick(): void {}
 }

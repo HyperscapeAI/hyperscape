@@ -3,6 +3,7 @@ import { PlayerLocal } from '../entities/PlayerLocal';
 import { PlayerRemote } from '../entities/PlayerRemote';
 import { PlayerEntity } from '../entities/PlayerEntity';
 import type { ComponentDefinition, EntityConstructor, EntityData, Entities as IEntities, Player, World } from '../types/index';
+import { EventType } from '../types/events';
 import { SystemBase } from './SystemBase';
 import { ServerNetwork } from './ServerNetwork';
 
@@ -154,6 +155,14 @@ export class Entities extends SystemBase implements IEntities {
         if (data.owner !== netId) {
           this.emitTypedEvent('PLAYER_JOINED', { playerId: entity.id, player: entity as PlayerLocal });
         }
+      }
+      
+      // On server, emit PLAYER_REGISTERED for all player entities so systems can initialize
+      if (network?.isServer) {
+        console.log(`[Entities] Server emitting PLAYER_REGISTERED for ${entity.id}`)
+        this.emitTypedEvent('PLAYER_REGISTERED', { playerId: entity.id });
+        // Also emit via world to ensure event reaches all systems
+        this.world.emit(EventType.PLAYER_REGISTERED, { playerId: entity.id });
       }
     }
 

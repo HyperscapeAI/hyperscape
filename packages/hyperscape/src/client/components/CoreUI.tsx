@@ -29,6 +29,7 @@ export function CoreUI({ world }: { world: World }) {
   const [avatar, setAvatar] = useState<{ hash: string; file: File; url: string; onEquip: () => void; onPlace: () => void } | null>(null)
   const [disconnected, setDisconnected] = useState(false)
   const [kicked, setKicked] = useState<string | null>(null)
+  const [characterFlowActive, setCharacterFlowActive] = useState(false)
     useEffect(() => {    
     // Create handlers with proper types
     const handleReady = () => setReady(true)
@@ -58,6 +59,14 @@ export function CoreUI({ world }: { world: World }) {
     world.on(EventType.UI_AVATAR, handleUIAvatar)
     world.on(EventType.UI_KICK, handleUIKick)
     world.on(EventType.NETWORK_DISCONNECTED, handleDisconnected)
+    // Character selection flow (server-flagged)
+    world.on('rpg:character:list', () => setCharacterFlowActive(true))
+    world.on('rpg:character:selected', () => setCharacterFlowActive(false))
+    // If the packet arrived before UI mounted, consult network cache
+    try {
+      const net = (world.network as unknown) as { lastCharacterList?: unknown[] }
+      if (net?.lastCharacterList) setCharacterFlowActive(true)
+    } catch {}
     
     return () => {
       world.off(EventType.READY, handleReady)
@@ -67,6 +76,8 @@ export function CoreUI({ world }: { world: World }) {
       world.off(EventType.UI_AVATAR, handleUIAvatar)
       world.off(EventType.UI_KICK, handleUIKick)
       world.off(EventType.NETWORK_DISCONNECTED, handleDisconnected)
+      world.off('rpg:character:list', () => setCharacterFlowActive(true))
+      world.off('rpg:character:selected', () => setCharacterFlowActive(false))
     }
   }, [])
 
@@ -93,9 +104,10 @@ export function CoreUI({ world }: { world: World }) {
       {ready && <ActionsBlock world={world} />}
       {ready && <Sidebar world={world} ui={ui || { active: false, pane: null }} />}
       {ready && <Chat world={world} />}
-      {ready && <Interface world={world} />}
+      {(ready || characterFlowActive) && <Interface world={world} />}
       {avatar && <AvatarPane key={avatar?.hash} world={world} info={avatar} />}
-      {!ready && <LoadingScreen world={world} />}
+      {!ready && !characterFlowActive && <LoadingScreen world={world} message="Loading world..." />}
+      {characterFlowActive && !ready && <LoadingScreen world={world} message="Entering world..." />}
       {kicked && <KickedOverlay code={kicked} />}
       {ready && isTouch && <TouchBtns world={world} />}
       <div id='core-ui-portal' />

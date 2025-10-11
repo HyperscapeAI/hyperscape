@@ -39,6 +39,13 @@ const names = [
   'resourceGather',
   // Inventory packets
   'inventoryUpdated',
+  // Character selection packets (feature-flagged usage)
+  'characterListRequest',
+  'characterCreate',
+  'characterList',
+  'characterCreated',
+  'characterSelected',
+  'enterWorld',
 ]
 
 const byName: Record<string, PacketInfo> = {}

@@ -14,6 +14,8 @@ import { CircularSpawnArea } from '../managers/spawning/CircularSpawnArea'
 import { PrivyAuthProvider } from './components/PrivyAuthProvider'
 import { LoginScreen } from './components/LoginScreen'
 import { privyAuthManager } from './PrivyAuthManager'
+import { readPacket, writePacket } from '../packets'
+import { CharacterSelectPage } from './components/CharacterSelectPage'
 
 // Farcaster Frame v2
 import { injectFarcasterMetaTags } from './farcaster-frame-config'
@@ -37,8 +39,16 @@ installThreeJSExtensions()
 // Initialize error reporting as early as possible
 
 function App() {
+  // Determine Privy availability early so we can gate initial render
+  const windowEnvAppId = window.env?.PUBLIC_PRIVY_APP_ID
+  const importMetaAppId = typeof import.meta !== 'undefined' ? import.meta.env.PUBLIC_PRIVY_APP_ID : undefined
+  const appId: string = (windowEnvAppId || importMetaAppId || '') as string
+  const privyEnabled: boolean = !!(typeof appId === 'string' && appId.length > 0 && !appId.includes('your-privy-app-id'))
+
   const [isAuthenticated, setIsAuthenticated] = React.useState(false)
   const [authState, setAuthState] = React.useState(privyAuthManager.getState())
+  // Default to showing character page first when Privy is enabled to avoid racing the world mount
+  const [showCharacterPage, setShowCharacterPage] = React.useState<boolean>(privyEnabled)
     
   // Subscribe to auth state changes
   React.useEffect(() => {
@@ -49,6 +59,13 @@ function App() {
     injectFarcasterMetaTags()
     return unsubscribe
   }, [])
+
+  // When auth becomes available (including restored), show pre-world character page first
+  React.useEffect(() => {
+    if (authState.isAuthenticated) setShowCharacterPage(true)
+  }, [authState.isAuthenticated])
+
+  // Pre-world WebSocket is handled inside CharacterSelectPage to avoid duplication
 
   // Initialize player token (legacy fallback)
   React.useEffect(() => {
@@ -84,7 +101,19 @@ function App() {
   const handleAuthenticated = React.useCallback(() => {
     console.log('[App] User authenticated, loading world...')
     setIsAuthenticated(true)
+    setShowCharacterPage(true)
   }, [])
+
+  const handleLogout = React.useCallback(() => {
+    // Immediately clear local auth so UI updates without a second click
+    try { privyAuthManager.clearAuth() } catch {}
+    setIsAuthenticated(false)
+    setShowCharacterPage(false)
+    // Fire and forget provider logout to invalidate Privy session
+    try { (window as unknown as { privyLogout?: () => Promise<void> | void }).privyLogout?.() } catch {}
+  }, [])
+
+  // Pre-world actions are managed by CharacterSelectPage
 
   // Memoize the onSetup callback to prevent re-initialization
   const handleSetup = React.useCallback((world: World, config: unknown) => {
@@ -116,11 +145,7 @@ function App() {
     }
   }, [])
 
-  // Check if Privy is enabled with valid app ID
-  const windowEnvAppId = window.env?.PUBLIC_PRIVY_APP_ID
-  const importMetaAppId = typeof import.meta !== 'undefined' ? import.meta.env.PUBLIC_PRIVY_APP_ID : undefined
-  const appId = windowEnvAppId || importMetaAppId || ''
-  const privyEnabled = appId && appId.length > 0 && !appId.includes('your-privy-app-id')
+  // privyEnabled computed above
 
   // Show login screen if Privy is enabled and user is not authenticated
   if (privyEnabled && !isAuthenticated && !authState.isAuthenticated) {
@@ -131,6 +156,19 @@ function App() {
     )
   }
   
+  // RuneScape-style pre-world character page: always show first when toggled
+  if (showCharacterPage) {
+    return (
+      <div ref={appRef} data-component="app-root">
+        <CharacterSelectPage
+          wsUrl={wsUrl}
+          onPlay={(id) => { if (id) try { localStorage.setItem('selectedCharacterId', id) } catch {}; setShowCharacterPage(false) }}
+          onLogout={handleLogout}
+        />
+      </div>
+    )
+  }
+
   return (
     <div ref={appRef} data-component="app-root">
       <ErrorBoundary>
@@ -169,7 +207,8 @@ function mountApp() {
         const hasContent = rootElement.innerHTML.length > 0
         
         if (hasContent) {
-                                      } else if (attempts < maxAttempts) {
+          return
+        } else if (attempts < maxAttempts) {
           // Try again in the next frame
           console.log(`[App] Waiting for React to render... (attempt ${attempts + 1}/${maxAttempts})`)
           requestAnimationFrame(() => verifyRender(attempts + 1))

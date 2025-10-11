@@ -150,6 +150,26 @@ export class PlayerSpawnSystem extends SystemBase {
       return;
     }
 
+    // Check if entity already exists (character-select mode spawns entity before PLAYER_JOINED)
+    const entity = this.world.entities.get(event.playerId)
+    if (entity && entity.position) {
+      // Entity already spawned by ServerNetwork with loaded position, skip spawn system logic
+      this.logger.info(`[PlayerSpawnSystem] Entity ${event.playerId} already spawned, skipping spawn point generation`)
+      
+      // Still create spawn data to track this player
+      const spawnData: PlayerSpawnData = {
+        playerId: event.playerId,
+        position: new THREE.Vector3(entity.position.x, entity.position.y, entity.position.z),
+        hasStarterEquipment: false,
+        aggroTriggered: false,
+        spawnTime: Date.now()
+      }
+      this.spawnedPlayers.set(event.playerId, spawnData)
+      
+      // Emit spawn complete immediately since entity is already in world
+      this.emitTypedEvent(EventType.PLAYER_SPAWN_COMPLETE, { playerId: event.playerId })
+      return
+    }
 
     const terrain = this.world.getSystem<TerrainSystem>('terrain');
     if (terrain) {
