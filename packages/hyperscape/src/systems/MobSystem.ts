@@ -311,6 +311,16 @@ export class MobSystem extends SystemBase {
     const respawnTime = Date.now() + mob.respawnTime;
     this.respawnTimers.set(data.entityId, respawnTime);
     
+    // Emit combat kill event for XP system
+    if (data.killedBy) {
+      this.emitTypedEvent(EventType.COMBAT_KILL, {
+        attackerId: data.killedBy,
+        targetId: data.entityId,
+        damageDealt: mob.maxHealth, // Total damage dealt to kill the mob
+        attackStyle: 'accurate' // Default attack style, could be enhanced to track actual style
+      });
+    }
+    
     // Emit mob death event with all necessary data for LootSystem
     this.emitTypedEvent(EventType.MOB_DIED, {
       mobId: data.entityId,
