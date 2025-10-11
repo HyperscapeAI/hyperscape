@@ -43,7 +43,7 @@ export class MusicSystem extends SystemBase {
   private recentlyPlayed: Set<string> = new Set();
   private inCombat: boolean = false;
   private fadeInProgress: boolean = false;
-  private initialized: boolean = false;
+  protected initialized: boolean = false;
   private audio: ClientAudio | null = null;
   private loader: ClientLoader | null = null;
   
@@ -54,7 +54,7 @@ export class MusicSystem extends SystemBase {
   private readonly MUSIC_VOLUME = 0.3; // Base music volume
 
   constructor(world: World) {
-    super(world, { name: 'music-system', updatePriority: 0 });
+    super(world, { name: 'music-system', dependencies: {}, autoCleanup: true });
   }
 
   async init(): Promise<void> {
@@ -222,7 +222,7 @@ export class MusicSystem extends SystemBase {
       currentTime + duration / 1000
     );
 
-    await new Promise(resolve => this.createTimer(resolve, duration));
+    await new Promise(resolve => this.createTimer(() => resolve(undefined), duration));
     this.fadeInProgress = false;
   }
 
@@ -241,7 +241,7 @@ export class MusicSystem extends SystemBase {
       currentTime + duration / 1000
     );
 
-    await new Promise(resolve => this.createTimer(resolve, duration));
+    await new Promise(resolve => this.createTimer(() => resolve(undefined), duration));
     
     // Stop and disconnect safely
     try {
@@ -282,7 +282,7 @@ export class MusicSystem extends SystemBase {
       currentTime + duration / 1000
     );
 
-    await new Promise(resolve => this.createTimer(resolve, duration));
+    await new Promise(resolve => this.createTimer(() => resolve(undefined), duration));
     
     // Stop and disconnect old track safely
     try {

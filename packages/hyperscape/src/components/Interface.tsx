@@ -344,6 +344,7 @@ export function Interface({ world }: { world: World }) {
     const typedWorld = world
     typedWorld.on(EventType.UI_UPDATE, handleUIUpdate)
     typedWorld.on(EventType.STATS_UPDATE, handleStatsUpdate)
+    typedWorld.on(EventType.SKILLS_UPDATED, handleStatsUpdate) // Skills updates also trigger stats update
     typedWorld.on(EventType.INVENTORY_UPDATED, handleInventoryUpdate)
     typedWorld.on(EventType.UI_EQUIPMENT_UPDATE, handleEquipmentUpdate)
     typedWorld.on(EventType.BANK_OPEN, handleBankOpen)
@@ -395,6 +396,7 @@ export function Interface({ world }: { world: World }) {
     return () => {
       typedWorld.off(EventType.UI_UPDATE, handleUIUpdate)
       typedWorld.off(EventType.STATS_UPDATE, handleStatsUpdate)
+      typedWorld.off(EventType.SKILLS_UPDATED, handleStatsUpdate)
       typedWorld.off(EventType.INVENTORY_UPDATED, handleInventoryUpdate)
       typedWorld.off(EventType.UI_EQUIPMENT_UPDATE, handleEquipmentUpdate)
       typedWorld.off(EventType.BANK_OPEN, handleBankOpen)

@@ -8,7 +8,6 @@ import { EventType } from '../types/events'
 import { uuid } from '../utils'
 import { SystemBase } from './SystemBase'
 import { PlayerLocal } from '../entities/PlayerLocal'
-import { EventType } from '../types/events'
 
 const _v3_1 = new THREE.Vector3()
 const _quat_1 = new THREE.Quaternion()

@@ -474,9 +474,6 @@ export class InventorySystem extends SystemBase {
     if (!entityManager) {
       throw new Error('[InventorySystem] EntityManager system not found');
     }
-    if (!entityManager) {
-      throw new Error('[InventorySystem] EntityManager not found');
-    }
     
     const entity = entityManager.getEntity(data.entityId);
     if (!entity) {
@@ -496,7 +493,6 @@ export class InventorySystem extends SystemBase {
     if (added) {
       // Destroy item entity
       this.emitTypedEvent(EventType.ENTITY_DEATH, { entityId: data.entityId });
-      
     }
   }
 
