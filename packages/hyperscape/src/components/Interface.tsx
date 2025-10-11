@@ -40,7 +40,13 @@ export function Interface({ world }: { world: World }) {
     coins: number
     combatStyle: 'attack' | 'strength' | 'defense' | 'ranged'
   } | null>(null)
-  const [inventory, setInventory] = useState<InventoryItem[]>([])
+  const [inventory, setInventory] = useState<InventoryItem[] | null>(null)
+  
+  // Debug: log inventory changes
+  useEffect(() => {
+    if (!inventory) return
+    console.log('[Interface] Inventory state updated:', inventory.length, 'items:', inventory.map(i => ({ id: i.id, itemId: i.itemId, slot: i.slot, quantity: i.quantity })))
+  }, [inventory])
   const [equipment, setEquipment] = useState<PlayerEquipmentItems | null>(null)
   const [showInventory, setShowInventory] = useState(false)
   const [showBank, setShowBank] = useState(false)
@@ -76,9 +82,8 @@ export function Interface({ world }: { world: World }) {
   })
 
   useEffect(() => {
-    const localPlayer = world.getPlayer()
-    if (!localPlayer) return
-
+    const getLocal = () => world.getPlayer()
+    // local player may be null until spawned (character select). Always guard accesses.
     // Handle UI updates
     const handleUIUpdate = (data: unknown) => {
       const update = data as {
@@ -86,7 +91,8 @@ export function Interface({ world }: { world: World }) {
         component: 'player' | 'health' | 'inventory' | 'equipment' | 'bank' | 'store'
         data: unknown
       }
-      if (update.playerId !== localPlayer.id) return
+      const lp = getLocal()
+      if (!lp || update.playerId !== lp.id) return
 
       switch (update.component) {
         case 'player':
@@ -139,25 +145,38 @@ export function Interface({ world }: { world: World }) {
         coins: number
         combatStyle: 'attack' | 'strength' | 'defense' | 'ranged'
       }> & { playerId: string }
-      if (data.playerId !== localPlayer.id) return
+      const lp = getLocal(); if (!lp || data.playerId !== lp.id) return
       setPlayerStats(prev => prev ? { ...prev, ...data } : null)
     }
 
     const handleInventoryUpdate = (rawData: unknown) => {
       const data = rawData as { playerId: string; items: InventoryItem[] }
-      if (data.playerId !== localPlayer.id) return
+      if (typeof window !== 'undefined' && (window as any).DEBUG_RPG === '1') {
+        console.log('[Interface] handleInventoryUpdate:', data.playerId, data.items?.length, 'items')
+      }
+      const lp = getLocal(); 
+      if (!lp) {
+        if ((window as any).DEBUG_RPG === '1') console.log('[Interface] No local player yet')
+        return
+      }
+      if (data.playerId !== lp.id) {
+        if ((window as any).DEBUG_RPG === '1') console.log('[Interface] Inventory update for different player:', data.playerId, 'vs', lp.id)
+        return
+      }
+      if ((window as any).DEBUG_RPG === '1') console.log('[Interface] Updating inventory UI with', data.items?.length, 'items')
       setInventory(data.items || [])
     }
 
     const handleEquipmentUpdate = (rawData: unknown) => {
               const data = rawData as { playerId: string; equipment: PlayerEquipmentItems }
-      if (data.playerId !== localPlayer.id) return
+      const lp = getLocal(); if (!lp || data.playerId !== lp.id) return
       setEquipment(data.equipment)
     }
 
     const handleCorpseClick = (rawData: unknown) => {
       const data = rawData as { corpseId: string; playerId: string; lootItems?: InventoryItem[]; position?: { x: number; y: number; z: number } }
-      if (data.playerId !== localPlayer.id) return
+      const lp = getLocal()
+      if (!lp || data.playerId !== lp.id) return
       
       // Get corpse entity to retrieve loot items
       const corpseEntity = world.entities.get(data.corpseId)
@@ -176,28 +195,28 @@ export function Interface({ world }: { world: World }) {
 
     const handleBankOpen = (rawData: unknown) => {
               const data = rawData as BankEntityData & { playerId: string; items: BankItem[] }
-      if (data.playerId !== localPlayer.id) return
+      const lp = getLocal(); if (!lp || data.playerId !== lp.id) return
       setBankData(data)
       setShowBank(true)
     }
 
     const handleBankClose = (rawData: unknown) => {
       const data = rawData as { playerId: string }
-      if (data.playerId !== localPlayer.id) return
+      const lp = getLocal(); if (!lp || data.playerId !== lp.id) return
       setShowBank(false)
       setBankData(null)
     }
 
     const handleStoreOpen = (rawData: unknown) => {
       const data = rawData as StoreData & { playerId: string }
-      if (data.playerId !== localPlayer.id) return
+      const lp = getLocal(); if (!lp || data.playerId !== lp.id) return
       setStoreData(data)
       setShowStore(true)
     }
 
     const handleStoreClose = (rawData: unknown) => {
       const data = rawData as { playerId: string }
-      if (data.playerId !== localPlayer.id) return
+      const lp = getLocal(); if (!lp || data.playerId !== lp.id) return
       setShowStore(false)
       setStoreData(null)
     }
@@ -263,7 +282,8 @@ export function Interface({ world }: { world: World }) {
 
     const handleGatheringStarted = (rawData: unknown) => {
       const data = rawData as { playerId: string; resourceId: string; skill?: string; actionName?: string; duration?: number; action?: string }
-      if (data.playerId !== localPlayer.id) return
+      const lp = getLocal()
+      if (!lp || data.playerId !== lp.id) return
       
       const actionName = data.actionName || data.action || data.skill || 'gathering'
       const resourceType = data.resourceId.includes('tree') ? 'tree' : 
@@ -275,54 +295,48 @@ export function Interface({ world }: { world: World }) {
         action: actionName,
         resourceType,
         startTime: Date.now(),
-        duration: data.duration || 5000 // Default 5 seconds
+        duration: data.duration || 5000
       })
     }
 
     const handleGatheringCompleted = (rawData: unknown) => {
       const data = rawData as { playerId: string }
-      if (data.playerId !== localPlayer.id) return
-      
+      const lp = getLocal()
+      if (!lp || data.playerId !== lp.id) return
       setGatheringState(null)
     }
 
     const handleGatheringStopped = (rawData: unknown) => {
       const data = rawData as { playerId: string }
-      if (data.playerId !== localPlayer.id) return
-      
+      const lp = getLocal()
+      if (!lp || data.playerId !== lp.id) return
       setGatheringState(null)
     }
 
     const handleCombatStarted = (rawData: unknown) => {
       const data = rawData as { attackerId: string; targetId: string }
-      // Handle combat for local player (whether they're attacker or target)
-      if (data.attackerId !== localPlayer.id && data.targetId !== localPlayer.id) return
+      const lp = getLocal()
+      if (!lp) return
+      if (data.attackerId !== lp.id && data.targetId !== lp.id) return
       
-      // Determine which entity is the opponent
-      const opponentId = data.attackerId === localPlayer.id ? data.targetId : data.attackerId
+      const opponentId = data.attackerId === lp.id ? data.targetId : data.attackerId
       const opponentEntity = world.entities.get(opponentId)
-      const opponentData = opponentEntity && (opponentEntity as any).getMobData ? (opponentEntity as any).getMobData() : null
+      const entityWithMobData = opponentEntity as unknown as { getMobData?: () => { name: string; level: number }; name?: string }
+      const opponentData = entityWithMobData?.getMobData ? entityWithMobData.getMobData() : null
       
       setCombatState({
         active: true,
         targetId: opponentId,
-        targetName: opponentData?.name || opponentEntity?.name || 'Enemy',
+        targetName: opponentData?.name || entityWithMobData?.name || 'Enemy',
         targetLevel: opponentData?.level || 1
-      })
-      
-      console.log('[Interface] Combat started:', {
-        localPlayer: localPlayer.id,
-        opponent: opponentId,
-        opponentName: opponentData?.name
       })
     }
 
     const handleCombatEnded = (rawData: unknown) => {
       const data = rawData as { attackerId: string; targetId: string }
-      // End combat if local player is involved
-      if (data.attackerId !== localPlayer.id && data.targetId !== localPlayer.id) return
-      
-      console.log('[Interface] Combat ended for local player')
+      const lp = getLocal()
+      if (!lp) return
+      if (data.attackerId !== lp.id && data.targetId !== lp.id) return
       setCombatState(null)
     }
 
@@ -366,8 +380,18 @@ export function Interface({ world }: { world: World }) {
     }
 
     // Request initial data
-    typedWorld.emit(EventType.UI_REQUEST, { playerId: localPlayer.id })
-
+    const lp = getLocal(); 
+    if (lp) {
+      typedWorld.emit(EventType.UI_REQUEST, { playerId: lp.id })
+      // Also explicitly request inventory update in case early updates were dropped
+      setTimeout(() => {
+        const player = world.getPlayer()
+        if (player) {
+          console.log('[Interface] Requesting inventory update for', player.id)
+          typedWorld.emit(EventType.INVENTORY_REQUEST, { playerId: player.id })
+        }
+      }, 500)
+    }
     return () => {
       typedWorld.off(EventType.UI_UPDATE, handleUIUpdate)
       typedWorld.off(EventType.STATS_UPDATE, handleStatsUpdate)
@@ -462,6 +486,7 @@ export function Interface({ world }: { world: World }) {
 
   return (
     <>
+      {/* Character selection is handled by CharacterSelectPage in client/index.tsx */}
       {/* HUD removed; replaced by minimap/side panel */}
       {/* Skills now lives in right sidebar panel */}
       {/* Inventory/Equipment panel moved to right sidebar */}

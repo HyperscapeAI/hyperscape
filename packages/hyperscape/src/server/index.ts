@@ -367,7 +367,21 @@ async function startServer() {
       root: assetsDir,
       prefix: '/world-assets/',
       decorateReply: false,
-      setHeaders: res => {
+      wildcard: true, // Enable wildcard matching for subdirectories
+      setHeaders: (res, filePath) => {
+        // Debug log for MP3 files
+        if (filePath.endsWith('.mp3')) {
+          fastify.log.info(`[Server] 🎵 Serving MP3: ${filePath}`)
+          res.setHeader('Content-Type', 'audio/mpeg')
+          res.setHeader('Accept-Ranges', 'bytes')
+        } else if (filePath.endsWith('.ogg')) {
+          res.setHeader('Content-Type', 'audio/ogg')
+          res.setHeader('Accept-Ranges', 'bytes')
+        } else if (filePath.endsWith('.wav')) {
+          res.setHeader('Content-Type', 'audio/wav')
+          res.setHeader('Accept-Ranges', 'bytes')
+        }
+        
         // all assets are hashed & immutable so we can use aggressive caching
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable') // 1 year
         res.setHeader('Expires', new Date(Date.now() + 31536000000).toUTCString()) // older browsers
@@ -389,10 +403,20 @@ async function startServer() {
       setHeaders: (res, filePath) => {
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
         res.setHeader('Expires', new Date(Date.now() + 31536000000).toUTCString())
+
+        console.log('DEBUG: filePath', filePath)
         
         // Set proper content type for GLB files
         if (filePath.endsWith('.glb')) {
           res.setHeader('Content-Type', 'model/gltf-binary')
+        }
+        // Set proper content type for audio files
+        else if (filePath.endsWith('.mp3')) {
+          res.setHeader('Content-Type', 'audio/mpeg')
+        } else if (filePath.endsWith('.ogg')) {
+          res.setHeader('Content-Type', 'audio/ogg')
+        } else if (filePath.endsWith('.wav')) {
+          res.setHeader('Content-Type', 'audio/wav')
         }
         
         // Log asset requests to debug loading issues

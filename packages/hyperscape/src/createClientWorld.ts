@@ -11,6 +11,7 @@ import { ClientLoader } from './systems/ClientLoader'
 import { ClientNetwork } from './systems/ClientNetwork'
 import { ClientRuntime } from './systems/ClientRuntime'
 import { ClientInterface } from './systems/ClientInterface'
+import { MusicSystem } from './systems/MusicSystem'
 import { Stage } from './systems/Stage'
 // import { Nametags } from './systems/Nametags'
 // import { Particles } from './systems/Particles'
@@ -73,6 +74,7 @@ export function createClientWorld() {
   world.register('graphics', ClientGraphics);
   world.register('environment', ClientEnvironment);
   world.register('audio', ClientAudio);
+  world.register('music', MusicSystem);
   world.register('controls', ClientInput);
   world.register('actions', ClientActions);
   world.register('client-interface', ClientInterface);

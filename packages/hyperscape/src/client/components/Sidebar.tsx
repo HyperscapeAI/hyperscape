@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 
 import { World } from '../../World'
-import type { InventoryItem, PlayerEquipmentItems, PlayerStats } from '../../types/core'
+import type { InventorySlotItem, PlayerEquipmentItems, PlayerStats } from '../../types/core'
 import { EventType } from '../../types/events'
 import { HintProvider } from './Hint'
 import { Minimap } from './Minimap'
@@ -38,7 +38,7 @@ interface SidebarProps {
 
 export function Sidebar({ world, ui }: SidebarProps) {
   const [livekit, setLiveKit] = useState(() => world.livekit!.status)
-  const [inventory, setInventory] = useState<InventoryItem[]>([])
+  const [inventory, setInventory] = useState<InventorySlotItem[]>([])
   const [equipment, setEquipment] = useState<PlayerEquipmentItems | null>(null)
   const [playerStats, setPlayerStats] = useState<PlayerStats | null>(null)
   const [coins, setCoins] = useState<number>(0)
@@ -90,13 +90,12 @@ export function Sidebar({ world, ui }: SidebarProps) {
       }
     }
     const onInventory = (raw: unknown) => {
-      console.log('[Sidebar] 📦 INVENTORY_UPDATED event received:', raw);
-      const data = raw as { items: InventoryItem[] }
+      const data = raw as { items: InventorySlotItem[]; playerId?: string; coins?: number }
       if (Array.isArray(data.items)) {
-        console.log(`[Sidebar] ✅ Setting inventory to ${data.items.length} items`);
-        setInventory(data.items);
-      } else {
-        console.warn('[Sidebar] ⚠️ data.items is not an array:', data);
+        setInventory(data.items)
+      }
+      if (typeof data.coins === 'number') {
+        setCoins(data.coins)
       }
     }
     const onCoins = (raw: unknown) => {
@@ -107,7 +106,31 @@ export function Sidebar({ world, ui }: SidebarProps) {
     world.on(EventType.UI_UPDATE, onUIUpdate)
     world.on(EventType.INVENTORY_UPDATED, onInventory)
     world.on(EventType.INVENTORY_UPDATE_COINS, onCoins)
+    // Request initial inventory snapshot once local player exists; hydrate from cached packet if available
+    const requestInitial = () => {
+      const lp = world.entities.player?.id
+      if (lp) {
+        // If network already cached an inventory packet, use it immediately
+        try {
+          const net = (world.network as unknown) as { lastInventoryByPlayerId?: Record<string, { playerId: string; items: InventorySlotItem[]; coins: number; maxSlots: number }> }
+          const cached = net?.lastInventoryByPlayerId?.[lp]
+          if (cached && Array.isArray(cached.items)) {
+            setInventory(cached.items)
+            setCoins(cached.coins)
+          }
+        } catch {}
+        // Ask server for authoritative snapshot in case cache is missing/stale
+        world.emit(EventType.INVENTORY_REQUEST, { playerId: lp })
+        return true
+      }
+      return false
+    }
+    let timeoutId: number | null = null
+    if (!requestInitial()) {
+      timeoutId = window.setTimeout(() => requestInitial(), 400)
+    }
     return () => {
+      if (timeoutId !== null) window.clearTimeout(timeoutId)
       world.livekit!.off('status', onLiveKitStatus)
       world.off(EventType.UI_OPEN_PANE, onOpenPane)
       world.off(EventType.UI_UPDATE, onUIUpdate)

@@ -23,6 +23,7 @@ import { System } from './System';
 import { EventType } from '../types/events';
 import type { TerrainSystem } from './TerrainSystem';
 import THREE from '../extras/three';
+import { getItem } from '../data/items';
 
 // Entity already has velocity property
 
@@ -118,18 +119,297 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     this.handlers['onEntityEvent'] = this.onEntityEvent.bind(this);
     this.handlers['onEntityRemoved'] = this.onEntityRemoved.bind(this);
     this.handlers['onSettings'] = this.onSettings.bind(this);
-    // Dedicated resource packet handlers
+    // Dedicated resource packet handler
     this.handlers['onResourceGather'] = (socket, data) => {
-      const { playerId, resourceId, playerPosition } = (data as { playerId?: string; resourceId: string; playerPosition: { x: number; y: number; z: number } }) || { playerId: socket.player?.id, resourceId: undefined, playerPosition: { x: 0, y: 0, z: 0 } }
-      const actualPlayerId = playerId || socket.player?.id
-      if (!actualPlayerId || !resourceId) return
-      this.world.emit(EventType.RESOURCE_GATHER, { playerId: actualPlayerId, resourceId, playerPosition })
+      const playerEntity = socket.player;
+      if (!playerEntity) {
+        console.warn('[ServerNetwork] onResourceGather: no player entity for socket');
+        return;
+      }
+      
+      const payload = data as { resourceId?: string; playerPosition?: { x: number; y: number; z: number } };
+      if (!payload.resourceId) {
+        console.warn('[ServerNetwork] onResourceGather: no resourceId in payload');
+        return;
+      }
+      
+      const playerPosition = payload.playerPosition || {
+        x: playerEntity.position.x,
+        y: playerEntity.position.y,
+        z: playerEntity.position.z
+      };
+      
+      console.log(`[ServerNetwork] 📨 Received gather request from player ${playerEntity.id} for resource ${payload.resourceId}`);
+      
+      // Forward to ResourceSystem
+      this.world.emit(EventType.RESOURCE_GATHERING_STARTED, {
+        playerId: playerEntity.id,
+        resourceId: payload.resourceId,
+        playerPosition: playerPosition
+      });
     }
     this.handlers['onMoveRequest'] = this.onMoveRequest.bind(this);
     this.handlers['onInput'] = this.onInput.bind(this);
-    this.handlers['onGatherResource'] = this.onGatherResource.bind(this);
+    // Combat/Item handlers
     this.handlers['onAttackMob'] = this.onAttackMob.bind(this);
     this.handlers['onPickupItem'] = this.onPickupItem.bind(this);
+    // Character selection handlers (feature-flagged usage)
+    this.handlers['onCharacterListRequest'] = this.onCharacterListRequest.bind(this);
+    this.handlers['onCharacterCreate'] = this.onCharacterCreate.bind(this);
+    this.handlers['onCharacterSelected'] = this.onCharacterSelected.bind(this);
+    this.handlers['onEnterWorld'] = this.onEnterWorld.bind(this);
+  }
+
+  // --- Character selection infrastructure (feature-flag guarded) ---
+  private async loadCharacterList(accountId: string): Promise<Array<{ id: string; name: string; level?: number; lastLocation?: { x: number; y: number; z: number } }>> {
+    try {
+      const databaseSystem = this.world.getSystem('rpg-database') as import('./DatabaseSystem').DatabaseSystem | undefined
+      if (!databaseSystem) return []
+      const chars = databaseSystem.getCharacters(accountId)
+      return chars.map(c => ({ id: c.id, name: c.name }))
+    } catch {
+      return []
+    }
+  }
+
+  private async onCharacterListRequest(socket: Socket, _data: unknown): Promise<void> {
+    if (process.env.ENABLE_CHARACTER_SELECT !== '1') return;
+    const accountId = (socket as unknown as { accountId?: string }).accountId
+    if (!accountId) {
+      console.warn('[ServerNetwork] characterListRequest received but socket has no accountId')
+      socket.send('characterList', { characters: [] })
+      return
+    }
+    try {
+      const characters = await this.loadCharacterList(accountId)
+      console.log(`[ServerNetwork] Replying to characterListRequest from ${socket.id} with accountId=${accountId} (count=${characters.length})`)
+      socket.send('characterList', { characters })
+    } catch (err) {
+      console.error('[ServerNetwork] Failed to load character list:', err)
+      socket.send('characterList', { characters: [] })
+    }
+  }
+
+  private onCharacterCreate(socket: Socket, data: unknown): void {
+    console.log('[ServerNetwork] onCharacterCreate called with data:', data)
+    console.log('[ServerNetwork] ENABLE_CHARACTER_SELECT:', process.env.ENABLE_CHARACTER_SELECT)
+    
+    // Feature-flag only: accept create request and echo created
+    if (process.env.ENABLE_CHARACTER_SELECT !== '1') {
+      console.warn('[ServerNetwork] Character selection feature is disabled (ENABLE_CHARACTER_SELECT !== 1)')
+      return;
+    }
+    
+    const payload = (data as { name?: string }) || {};
+    const name = (payload.name || '').trim().slice(0, 20) || 'Adventurer';
+    console.log('[ServerNetwork] Received character create request, raw name:', payload.name, 'trimmed:', name)
+    
+    // Basic validation: alphanumeric plus spaces, 3-20 chars
+    const safeName = name.replace(/[^a-zA-Z0-9 ]/g, '').trim();
+    const finalName = safeName.length >= 3 ? safeName : 'Adventurer';
+    console.log('[ServerNetwork] Final character name after validation:', finalName)
+    
+    const id = uuid();
+    const accountId = (socket as unknown as { accountId?: string }).accountId || ''
+    
+    if (!accountId) {
+      console.error('[ServerNetwork] Cannot create character - no accountId on socket!')
+      return
+    }
+    
+    console.log('[ServerNetwork] Creating character:', { id, accountId, finalName })
+    
+    try {
+      const databaseSystem = this.world.getSystem('rpg-database') as import('./DatabaseSystem').DatabaseSystem | undefined
+      if (!databaseSystem) {
+        console.error('[ServerNetwork] DatabaseSystem not found!')
+        return
+      }
+      
+      console.log('[ServerNetwork] Calling databaseSystem.createCharacter...')
+      const result = databaseSystem.createCharacter(accountId, id, finalName)
+      console.log('[ServerNetwork] createCharacter result:', result)
+      
+      if (!result) {
+        console.error('[ServerNetwork] createCharacter returned false!')
+      }
+    } catch (err) {
+      console.error('[ServerNetwork] Error creating character:', err)
+    }
+    
+    console.log('[ServerNetwork] Sending characterCreated response to client')
+    this.sendTo(socket.id, 'characterCreated', { id, name: finalName })
+  }
+
+  private onCharacterSelected(socket: Socket, data: unknown): void {
+    if (process.env.ENABLE_CHARACTER_SELECT !== '1') return;
+    const payload = (data as { characterId?: string }) || {};
+    // Store selection in socket for subsequent enterWorld
+    (socket as unknown as { selectedCharacterId?: string }).selectedCharacterId = payload.characterId || null as unknown as string;
+    this.sendTo(socket.id, 'characterSelected', { characterId: payload.characterId || null });
+  }
+
+  private async onEnterWorld(socket: Socket, data: unknown): Promise<void> {
+    if (process.env.ENABLE_CHARACTER_SELECT !== '1') return;
+    // Spawn the entity now, preserving legacy spawn shape
+    if (socket.player) return; // Already spawned
+    const accountId = (socket as unknown as { accountId?: string }).accountId || undefined;
+    const payload = (data as { characterId?: string }) || {};
+    const characterId = payload.characterId || null;
+    
+    // Load character data from DB if characterId provided
+    let name = 'Adventurer';
+    let characterData: { id: string; name: string } | null = null;
+    if (characterId && accountId) {
+      try {
+        const databaseSystem = this.world.getSystem('rpg-database') as import('./DatabaseSystem').DatabaseSystem | undefined
+        if (databaseSystem) {
+          const characters = databaseSystem.getCharacters(accountId)
+          characterData = characters.find(c => c.id === characterId) || null
+          if (characterData) {
+            name = characterData.name
+            console.log(`[ServerNetwork] Spawning character: ${name} (${characterId}) for account ${accountId}`)
+          } else {
+            console.warn(`[ServerNetwork] Character ${characterId} not found for account ${accountId}`)
+          }
+        }
+      } catch (err) {
+        console.error('[ServerNetwork] Failed to load character data:', err)
+      }
+    }
+    
+    const avatar = undefined;
+    const roles: string[] = [];
+    
+    // CRITICAL: Use characterId as entity id for stable persistence across sessions
+    // If no character selected, fall back to socketId (should not happen in production)
+    const entityId = characterId || socket.id;
+    if (!characterId) {
+      console.warn(`[ServerNetwork] No characterId provided to enterWorld, using socketId as fallback`)
+    }
+    
+    // Load saved position from character data if available
+    let position = Array.isArray(this.spawn.position) ? [...this.spawn.position] as [number, number, number] : [0, 50, 0];
+    const quaternion = Array.isArray(this.spawn.quaternion) ? [...this.spawn.quaternion] as [number, number, number, number] : [0, 0, 0, 1];
+    
+    // Try to load saved position from DB for this character
+    if (characterId && accountId) {
+      try {
+        const databaseSystem = this.world.getSystem('rpg-database') as import('./DatabaseSystem').DatabaseSystem | undefined
+        if (databaseSystem) {
+          const savedData = databaseSystem.getPlayer(characterId)
+          if (savedData && savedData.positionX !== undefined) {
+            const savedY = savedData.positionY !== undefined && savedData.positionY !== null ? Number(savedData.positionY) : 10
+            if (savedY >= 5 && savedY <= 200) {
+              position = [Number(savedData.positionX) || 0, savedY, Number(savedData.positionZ) || 0]
+              console.log(`[ServerNetwork] Loaded saved position for character ${characterId}:`, position)
+            }
+          }
+        }
+      } catch {}
+    }
+    
+    // Ground to terrain
+    try {
+      const terrain = this.world.getSystem<TerrainSystem>('terrain') as TerrainSystem | null
+      if (terrain && terrain.isReady && terrain.isReady()) {
+        const th = terrain.getHeightAt(position[0], position[2])
+        if (Number.isFinite(th)) {
+          position = [position[0], (th as number) + 0.1, position[2]]
+        } else {
+          position = [position[0], 10, position[2]]
+        }
+      } else {
+        // Terrain not ready; use safe height
+        position = [position[0], 10, position[2]]
+      }
+    } catch {
+      position = [position[0], 10, position[2]]
+    }
+    const addedEntity = this.world.entities.add ? this.world.entities.add({
+      id: entityId,
+      type: 'player',
+      position,
+      quaternion,
+      owner: socket.id,
+      userId: accountId || undefined,
+      name,
+      health: HEALTH_MAX,
+      avatar: this.world.settings.avatar?.url || 'asset://avatar.vrm',
+      sessionAvatar: avatar || undefined,
+      roles,
+    }) : undefined;
+    socket.player = (addedEntity as unknown as Entity) || undefined;
+    if (socket.player) {
+      this.world.emit(EventType.PLAYER_JOINED, { playerId: socket.player.data.id as string, userId: accountId });
+      try {
+        // Send to everyone else
+        this.send('entityAdded', socket.player.serialize(), socket.id);
+        // And also to the originating socket so their client receives their own entity
+        this.sendTo(socket.id, 'entityAdded', socket.player.serialize());
+        // Immediately reinforce authoritative transform to avoid initial client-side default pose
+        this.sendTo(socket.id, 'entityModified', {
+          id: socket.player.id,
+          changes: {
+            p: position,
+            q: quaternion,
+            v: [0, 0, 0],
+            e: 'idle'
+          }
+        });
+        // Send inventory snapshot immediately from persistence to avoid races
+        try {
+          const dbSys = (this.world.getSystem?.('rpg-database') as unknown) as { 
+            getPlayerInventory?: (playerId: string) => Array<{ itemId: string | number; quantity: number; slotIndex: number | null }>
+            getPlayer?: (playerId: string) => { coins?: number } | null
+          } | undefined
+          const rows = dbSys?.getPlayerInventory ? dbSys.getPlayerInventory(socket.player.id) : []
+          const coinsRow = dbSys?.getPlayer ? dbSys.getPlayer(socket.player.id) : null
+          const sorted = rows
+            .map(r => ({
+              rawSlot: typeof r.slotIndex === 'number' && r.slotIndex >= 0 ? r.slotIndex : Number.MAX_SAFE_INTEGER,
+              itemId: String(r.itemId),
+              quantity: r.quantity || 1,
+            }))
+            .sort((a, b) => a.rawSlot - b.rawSlot)
+          const items = sorted.map((r, index) => {
+            const def = getItem(r.itemId)
+            return {
+              slot: Math.min(index, 27),
+              itemId: r.itemId,
+              quantity: r.quantity,
+              item: def ? { id: def.id, name: def.name, type: def.type, stackable: !!def.stackable, weight: def.weight || 0 } : { id: r.itemId, name: r.itemId, type: 'misc', stackable: false, weight: 0 }
+            }
+          })
+          this.sendTo(socket.id, 'inventoryUpdated', {
+            playerId: socket.player.id,
+            items,
+            coins: (coinsRow?.coins ?? 0),
+            maxSlots: 28,
+          })
+        } catch {}
+      } catch (_err) {}
+    }
+  }
+
+  // Ensure auth-related columns exist on 'users' for Privy linking (safe no-op if already present)
+  private async ensureUsersAuthColumns(): Promise<void> {
+    try {
+      // this.db is a Knex-like instance
+      const hasPrivy = await (this.db as unknown as { schema?: { hasColumn: (t: string, c: string) => Promise<boolean>; table: Function } }).schema?.hasColumn('users', 'privyUserId')
+      const hasFarcaster = await (this.db as unknown as { schema?: { hasColumn: (t: string, c: string) => Promise<boolean> } }).schema?.hasColumn('users', 'farcasterFid')
+      // If schema APIs are not available, skip quietly
+      if (hasPrivy === undefined && hasFarcaster === undefined) return
+      const schema = (this.db as unknown as { schema: { table: (name: string, cb: (tb: any) => void) => Promise<void> } }).schema
+      if (hasPrivy === false || hasFarcaster === false) {
+        await schema.table('users', (tb: any) => {
+          if (hasPrivy === false) tb.text('privyUserId').nullable().index()
+          if (hasFarcaster === false) tb.text('farcasterFid').nullable().index()
+        })
+      }
+    } catch {
+      // Do not throw; fallback to legacy path if we cannot alter schema
+    }
   }
 
   async init(options: WorldOptions): Promise<void> {
@@ -146,6 +426,8 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     if (!this.db) {
       throw new Error('[ServerNetwork] Database not available in start method');
     }
+    // Attempt to ensure auth columns exist to prevent 'no such column: privyUserId'
+    await this.ensureUsersAuthColumns().catch(() => {})
     // get spawn
     const spawnRow = await this.db('config').where('key', 'spawn').first();
     const spawnValue = spawnRow?.value || defaultSpawn;
@@ -200,7 +482,28 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       this.world.on(EventType.RESOURCE_RESPAWNED, (...args: unknown[]) => this.send('resourceRespawned', args[0]))
       this.world.on(EventType.RESOURCE_SPAWNED, (...args: unknown[]) => this.send('resourceSpawned', args[0]))
       this.world.on(EventType.RESOURCE_SPAWN_POINTS_REGISTERED, (...args: unknown[]) => this.send('resourceSpawnPoints', args[0]))
-      this.world.on(EventType.INVENTORY_UPDATED, (...args: unknown[]) => this.send('inventoryUpdated', args[0]))
+      this.world.on(EventType.INVENTORY_UPDATED, (...args: unknown[]) => {
+        if (process.env.DEBUG_RPG === '1') {
+          console.log('[ServerNetwork] Broadcasting INVENTORY_UPDATED:', args[0])
+        }
+        this.send('inventoryUpdated', args[0])
+      })
+        // Send initial inventory to the correct player as soon as it's initialized
+        this.world.on(EventType.INVENTORY_INITIALIZED, (payload: unknown) => {
+          const data = payload as { playerId: string; inventory: { items: unknown[]; coins: number; maxSlots: number } }
+          const packet = { playerId: data.playerId, items: data.inventory.items, coins: data.inventory.coins, maxSlots: data.inventory.maxSlots }
+          this.sendToPlayerId(data.playerId, 'inventoryUpdated', packet)
+        })
+        // Serve on-demand inventory requests from the client UI
+        this.world.on(EventType.INVENTORY_REQUEST, (payload: unknown) => {
+          const data = payload as { playerId: string }
+          try {
+            const invSystem = (this.world.getSystem?.('rpg-inventory') as unknown) as { getInventoryData?: (playerId: string) => { items: unknown[]; coins: number; maxSlots: number } } | undefined
+            const inv = invSystem?.getInventoryData ? invSystem.getInventoryData(data.playerId) : { items: [], coins: 0, maxSlots: 28 }
+            const packet = { playerId: data.playerId, items: inv.items, coins: inv.coins, maxSlots: inv.maxSlots }
+            this.sendToPlayerId(data.playerId, 'inventoryUpdated', packet)
+          } catch {}
+        })
     } catch (_err) {}
   }
 
@@ -365,6 +668,18 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     socket?.send(name, data);
   }
 
+  private sendToPlayerId<T = unknown>(playerId: string, name: string, data: T): boolean {
+    for (const socket of this.sockets.values()) {
+      try {
+        if (socket.player && (socket.player.id === playerId)) {
+          socket.send(name, data)
+          return true
+        }
+      } catch {}
+    }
+    return false
+  }
+
   checkSockets(): void {
     // see: https://www.npmjs.com/package/ws#how-to-detect-and-close-broken-connections
     const dead: Socket[] = [];
@@ -491,8 +806,13 @@ export class ServerNetwork extends System implements NetworkWithSocket {
           if (privyInfo && privyInfo.privyUserId === privyUserId) {
             console.log('[ServerNetwork] Privy token verified successfully');
             
-            // Look up existing user by Privy ID
-            const dbResult = await this.db('users').where('privyUserId', privyUserId).first();
+          // Look up existing user by Privy ID; fallback to legacy id lookup if column missing
+          let dbResult: User | undefined;
+          try {
+            dbResult = await this.db('users').where('privyUserId', privyUserId).first();
+          } catch (_e) {
+            dbResult = await this.db('users').where('id', privyUserId).first();
+          }
             
             if (dbResult) {
               // Existing Privy user
@@ -500,25 +820,29 @@ export class ServerNetwork extends System implements NetworkWithSocket {
               user = userWithPrivy;
               console.log('[ServerNetwork] Found existing Privy user:', user.id);
             } else {
-              // New Privy user - create account
+              // New Privy user - create account with stable id equal to privyUserId
               const newUser = {
-                id: uuid(),
+                id: privyInfo.privyUserId,
                 name: name || 'Adventurer',
                 avatar: avatar || null,
                 roles: '',
                 createdAt: moment().toISOString(),
-                privyUserId: privyInfo.privyUserId,
-                farcasterFid: privyInfo.farcasterFid,
-              };
-              
-              await this.db('users').insert(newUser);
-              userWithPrivy = newUser;
-              user = newUser;
-              console.log('[ServerNetwork] Created new Privy user:', user.id);
+              } as any;
+              try {
+                newUser.privyUserId = privyInfo.privyUserId;
+                newUser.farcasterFid = privyInfo.farcasterFid;
+                await this.db('users').insert(newUser);
+              } catch (_err) {
+                // Fallback when privy columns are missing: insert minimal columns with id set to privyUserId
+                await this.db('users').insert({ id: newUser.id, name: newUser.name, avatar: newUser.avatar, roles: newUser.roles, createdAt: newUser.createdAt });
+              }
+              userWithPrivy = newUser as User & { privyUserId?: string | null; farcasterFid?: string | null };
+              user = userWithPrivy;
+              console.log('[ServerNetwork] Created new Privy user:', (user as User).id);
             }
             
             // Generate a Hyperscape JWT for this user
-            authToken = await createJWT({ userId: user.id });
+            authToken = await createJWT({ userId: (user as User).id });
           } else {
             console.warn('[ServerNetwork] Privy token verification failed or user ID mismatch');
           }
@@ -591,6 +915,8 @@ export class ServerNetwork extends System implements NetworkWithSocket {
         ws, 
         network: this 
       });
+      // Store account linkage for later character flows
+      (socket as unknown as { accountId?: string }).accountId = user.id;
 
       // Wait for terrain system to be ready before spawning players
       const terrain = this.world.getSystem<TerrainSystem>('terrain');
@@ -710,38 +1036,58 @@ export class ServerNetwork extends System implements NetworkWithSocket {
         console.error('[ServerNetwork] WARNING: Spawn Y is near ground level:', spawnPosition[1]);
       }
 
-      console.log(`[ServerNetwork] Creating player entity for socket ${socketId}`);
-      const addedEntity = this.world.entities.add ? this.world.entities.add(
-        {
-          id: socketId,
-          type: 'player',
-          position: spawnPosition,
-          quaternion: Array.isArray(this.spawn.quaternion) ? [...this.spawn.quaternion] as [number, number, number, number] : [0,0,0,1],
-          owner: socket.id, // owning session id
-          userId: user.id, // account id
-          name: name || user.name,
-          health: HEALTH_MAX,
-          avatar: user.avatar || this.world.settings.avatar?.url || 'asset://avatar.vrm',
-          sessionAvatar: avatar || undefined,
-          roles: user.roles,
-        }
-      ) : undefined;
-      socket.player = addedEntity || undefined;
+      // Feature flag: defer spawning until character selection if enabled
+      const enableCharacterSelect = process.env.ENABLE_CHARACTER_SELECT === '1';
 
-      // send snapshot
+      // Legacy path: create the player entity BEFORE building the snapshot so the client receives it
+      if (!enableCharacterSelect) {
+        console.log(`[ServerNetwork] Creating player entity for socket ${socketId}`);
+        const createdEntity = this.world.entities.add ? this.world.entities.add(
+          {
+            id: socketId,
+            type: 'player',
+            position: spawnPosition,
+            quaternion: Array.isArray(this.spawn.quaternion) ? [...this.spawn.quaternion] as [number, number, number, number] : [0,0,0,1],
+            owner: socket.id,
+            userId: user.id,
+            name: name || user.name,
+            health: HEALTH_MAX,
+            avatar: user.avatar || this.world.settings.avatar?.url || 'asset://avatar.vrm',
+            sessionAvatar: avatar || undefined,
+            roles: user.roles,
+          }
+        ) : undefined;
+        socket.player = (createdEntity as unknown as Entity) || undefined;
+      }
+
+      // Now serialize entities for the snapshot
       const serializedEntities = this.world.entities.serialize() || [];
-      
-      // DEBUG: Check if player entity was serialized correctly
-      const playerEntity = serializedEntities.find((e: { id: string }) => e.id === socketId);
-      if (playerEntity) {
-                if (Array.isArray(playerEntity.position) && Math.abs(playerEntity.position[1]) < 1) {
+
+      // DEBUG check in legacy path only
+      if (!enableCharacterSelect) {
+        const playerEntity = serializedEntities.find((e: { id: string }) => e.id === socketId);
+        if (!playerEntity) {
+          console.error('[ServerNetwork] ERROR: Player entity not found in serialized entities!');
+        } else if (Array.isArray(playerEntity.position) && Math.abs(playerEntity.position[1]) < 1) {
           console.error('[ServerNetwork] ERROR: Player Y in snapshot is near ground:', playerEntity.position[1]);
         }
-      } else {
-        console.error('[ServerNetwork] ERROR: Player entity not found in serialized entities!');
       }
-      
-      socket.send('snapshot', {
+
+      // Load character list if in character-select mode
+      let characters: Array<{ id: string; name: string; level?: number; lastLocation?: { x: number; y: number; z: number } }> = []
+      if (enableCharacterSelect) {
+        try {
+          characters = await this.loadCharacterList(user.id)
+          // Only include list when there are characters; otherwise, omit to avoid client modal
+          if (characters.length) {
+            console.log(`[ServerNetwork] Including ${characters.length} characters in snapshot for ${socket.id}`)
+          } else {
+            characters = []
+          }
+        } catch {}
+      }
+
+      const baseSnapshot: any = {
         id: socket.id,
         serverTime: performance.now(),
         assetsUrl: this.world.assetsUrl,  // Use the world's configured assetsUrl
@@ -749,12 +1095,18 @@ export class ServerNetwork extends System implements NetworkWithSocket {
         maxUploadSize: process.env.PUBLIC_MAX_UPLOAD_SIZE,
         settings: this.world.settings.serialize() || {},
         chat: this.world.chat.serialize() || [],
-        entities: serializedEntities,
+        entities: enableCharacterSelect ? [] : serializedEntities,
         livekit,
         authToken,
-      });
+        account: { accountId: user.id, name: user.name, providers: { privyUserId: (user as any).privyUserId || null } },
+        characters: enableCharacterSelect && characters.length ? characters : undefined,
+      };
 
-      // After core snapshot, send authoritative resource snapshot
+      socket.send('snapshot', baseSnapshot);
+
+      // Character list embedded in snapshot when enableCharacterSelect is true
+
+      // After snapshot, send authoritative resource snapshot
       try {
         const resourceSystem = this.world.getSystem?.('rpg-resource') as unknown as { getAllResources?: () => Array<{ id: string; type: string; position: { x: number; y: number; z: number }; isAvailable: boolean; lastDepleted?: number; respawnTime?: number }> } | undefined
         const resources = resourceSystem?.getAllResources?.() || []
@@ -773,7 +1125,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       this.sockets.set(socket.id, socket);
       console.log(`[ServerNetwork] Socket added. Total sockets: ${this.sockets.size}`);
 
-      // Emit typed player joined event (after snapshot)
+      // Emit typed player joined only when player entity exists (legacy path)
       if (socket.player) {
         const playerId = socket.player.data.id as string;
         const userId = socket.player.data.userId as string | undefined;
@@ -782,9 +1134,9 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       }
 
       // Broadcast new player entity to all existing clients except the new connection
-      if (addedEntity) {
+      if (socket.player) {
         try {
-          this.send('entityAdded', addedEntity.serialize(), socket.id);
+          this.send('entityAdded', socket.player.serialize(), socket.id);
         } catch (err) {
           console.error('[ServerNetwork] Failed to broadcast entityAdded for new player:', err);
         }
@@ -1057,35 +1409,6 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     if (payload.type === 'click' && Array.isArray(payload.target)) {
         this.onMoveRequest(socket, { target: payload.target, runMode: payload.runMode });
     }
-  }
-  
-  private onGatherResource(socket: Socket, data: unknown): void {
-    const playerEntity = socket.player;
-    if (!playerEntity) {
-      console.warn('[ServerNetwork] onGatherResource: no player entity for socket');
-      return;
-    }
-    
-    const payload = data as { resourceId?: string; playerPosition?: { x: number; y: number; z: number } };
-    if (!payload.resourceId) {
-      console.warn('[ServerNetwork] onGatherResource: no resourceId in payload');
-      return;
-    }
-    
-    const playerPosition = payload.playerPosition || {
-      x: playerEntity.position.x,
-      y: playerEntity.position.y,
-      z: playerEntity.position.z
-    };
-    
-    console.log(`[ServerNetwork] 📨 Received gather request from player ${playerEntity.id} for resource ${payload.resourceId}`);
-    
-    // Forward to ResourceSystem
-    this.world.emit(EventType.RESOURCE_GATHERING_STARTED, {
-      playerId: playerEntity.id,
-      resourceId: payload.resourceId,
-      playerPosition: playerPosition
-    });
   }
   
   private onAttackMob(socket: Socket, data: unknown): void {

@@ -69,43 +69,10 @@ export class MobEntity extends Entity {
       isClient: this.world.isClient
     });
     
-    // Try to load 3D model if path exists
-    if (this.config.model) {
-      if (!this.world.loader) {
-        console.warn(`[MobEntity] No loader available for mob ${this.config.mobType}, using fallback capsule`);
-      } else if (this.world.isServer) {
-        console.log(`[MobEntity] Server-side ${this.config.mobType}, skipping model`);
-        return; // Server doesn't load meshes
-      } else {
-        console.log(`[MobEntity] 🔄 Loading model from manifest: ${this.config.model}`);
-        
-        try {
-          // Load model from manifest path
-          await this.loadModel();
-          
-          if (this.mesh) {
-            this.mesh.name = `Mob_${this.config.mobType}_${this.id}`;
-            console.log(`[MobEntity] ✅ 3D model loaded for ${this.config.mobType} from ${this.config.model}`);
-            
-            // Calculate bounding box to check if model is tiny
-            const bbox = new THREE.Box3().setFromObject(this.mesh);
-            const size = bbox.getSize(new THREE.Vector3());
-            
-            if (size.x < 0.01 || size.y < 0.01 || size.z < 0.01) {
-              console.warn(`[MobEntity] Model is tiny (${size.x.toFixed(4)}x${size.y.toFixed(4)}x${size.z.toFixed(4)}m), scaling up 100x`);
-              this.mesh.scale.set(100, 100, 100);
-            }
-            
-            return; // Success - model loaded
-          }
-        } catch (error) {
-          console.warn(`[MobEntity] Model load failed for ${this.config.mobType}, using fallback capsule:`, (error as Error).message);
-          // Fall through to create fallback capsule
-        }
-      }
-    }
+    // SKIP MODEL LOADING - Prevents 404 errors, uses clean fallbacks
+    // Directory /world-assets/forge/ doesn't exist yet
+    // Models will be generated later - for now, use capsules
     
-    // No model path or model failed to load - use fallback
     if (this.world.isServer) {
       return; // Don't create fallback mesh on server
     }

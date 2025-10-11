@@ -139,6 +139,7 @@ export class World extends EventEmitter {
   controls?: ClientInput;
   prefs?: ClientInterface;
   audio?: ClientAudio;
+  music?: import('./systems/MusicSystem').MusicSystem;
   monitor?: ClientMonitor & {
     getStats?: () => Promise<{ currentCPU: number; currentMemory: number; maxMemory: number }>;
   };

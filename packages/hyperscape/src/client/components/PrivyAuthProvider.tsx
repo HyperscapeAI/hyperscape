@@ -40,9 +40,17 @@ function PrivyAuthHandler({ children }: { children: React.ReactNode }) {
 
   // Handle logout
   useEffect(() => {
-    const handleLogout = () => {
-      logout()
-      privyAuthManager.clearAuth()
+    const handleLogout = async () => {
+      try {
+        await logout()
+      } catch (err) {
+        console.warn('[PrivyAuthHandler] logout threw, continuing to clear local state:', err)
+      }
+      try {
+        privyAuthManager.clearAuth()
+      } catch (err) {
+        console.warn('[PrivyAuthHandler] clearAuth threw:', err)
+      }
     }
 
     // Expose logout globally for debugging

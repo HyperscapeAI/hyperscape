@@ -166,5 +166,26 @@ export const Migrations: Migration[] = [
     down: async (knex: Knex) => {
       await knex.schema.dropTableIfExists('rpg_items');
     }
+  },
+  {
+    name: 'alter_users_add_privy_columns',
+    up: async (knex: Knex) => {
+      const hasPrivy = await knex.schema.hasColumn('users', 'privyUserId');
+      const hasFarcaster = await knex.schema.hasColumn('users', 'farcasterFid');
+      if (!hasPrivy || !hasFarcaster) {
+        await knex.schema.alterTable('users', table => {
+          if (!hasPrivy) table.string('privyUserId').nullable();
+          if (!hasFarcaster) table.string('farcasterFid').nullable();
+        });
+      }
+      // Create indexes (ignore if already exist)
+      try { await knex.schema.alterTable('users', t => { t.index(['privyUserId'], 'idx_users_privy'); }); } catch {}
+      try { await knex.schema.alterTable('users', t => { t.index(['farcasterFid'], 'idx_users_farcaster'); }); } catch {}
+    },
+    down: async (knex: Knex) => {
+      // Non-destructive down: drop indexes only (keep columns to preserve data)
+      try { await knex.schema.alterTable('users', t => { t.dropIndex(['privyUserId'], 'idx_users_privy'); }); } catch {}
+      try { await knex.schema.alterTable('users', t => { t.dropIndex(['farcasterFid'], 'idx_users_farcaster'); }); } catch {}
+    }
   }
 ];

@@ -3,18 +3,18 @@ import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCenter } 
 import { SortableContext, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import type { InventoryItem } from '../../../types/core'
+import type { InventorySlotItem } from '../../../types/core'
 
 interface InventoryPanelProps {
-  items: InventoryItem[]
+  items: InventorySlotItem[]
   coins: number
   onItemMove?: (fromIndex: number, toIndex: number) => void
-  onItemUse?: (item: InventoryItem, index: number) => void
-  onItemEquip?: (item: InventoryItem) => void
+  onItemUse?: (item: InventorySlotItem, index: number) => void
+  onItemEquip?: (item: InventorySlotItem) => void
 }
 
 interface DraggableItemProps {
-  item: InventoryItem | null
+  item: InventorySlotItem | null
   index: number
   size: number
 }
@@ -48,39 +48,33 @@ function DraggableInventorySlot({ item, index, size }: DraggableItemProps) {
       style={style}
       {...attributes}
       {...listeners}
-      className={`bg-black/35 border border-white/[0.08] rounded flex flex-col items-center justify-center text-[10px] text-white ${item ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
+      className={`relative bg-black/35 border border-white/[0.08] rounded flex items-center justify-center text-white text-[10px] ${item ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
       title={item ? `${item.itemId} (${item.quantity})` : 'Empty slot'}
     >
-      {item ? (
-        <>
-          <div className="text-[10px]">{item.itemId.substring(0, 3)}</div>
-          {item.quantity > 1 && <div className="text-[8px] text-yellow-400">{item.quantity}</div>}
-        </>
-      ) : ''}
+      {item ? item.itemId.substring(0, 3) : ''}
+      {item && item.quantity > 1 ? (
+        <div className="absolute bottom-0.5 right-0.5 bg-black/70 text-yellow-400 font-bold rounded-sm py-0.5 px-1 text-[9px]">
+          {item.quantity}
+        </div>
+      ) : null}
     </div>
   )
 }
 
 export function InventoryPanel({ items, coins, onItemMove, onItemUse, onItemEquip }: InventoryPanelProps) {
-  console.log('[InventoryPanel] Rendered with', items?.length || 0, 'items, coins:', coins);
-  
-  const slots = Array(28).fill(null)
-  items.forEach((item, i) => { if (i < 28) slots[i] = item })
+  const slots: (InventorySlotItem | null)[] = Array(28).fill(null)
+  items.forEach((item, i) => {
+    if (i < 28) slots[i] = item
+  })
   
   const gridRef = useRef<HTMLDivElement | null>(null)
   const [size, setSize] = useState<number>(40)
   const [activeId, setActiveId] = useState<string | null>(null)
-  const [slotItems, setSlotItems] = useState(slots)
+  const [slotItems, setSlotItems] = useState<(InventorySlotItem | null)[]>(slots)
 
   useEffect(() => {
-    console.log('[InventoryPanel] items prop changed, updating slots. New item count:', items?.length || 0);
-    const newSlots = Array(28).fill(null)
-    items.forEach((item, i) => { 
-      if (i < 28) {
-        newSlots[i] = item;
-        console.log(`[InventoryPanel] Slot ${i}:`, item?.itemId || 'empty');
-      }
-    })
+    const newSlots: (InventorySlotItem | null)[] = Array(28).fill(null)
+    items.forEach((item, i) => { if (i < 28) newSlots[i] = item })
     setSlotItems(newSlots)
   }, [items])
 
@@ -165,7 +159,7 @@ export function InventoryPanel({ items, coins, onItemMove, onItemUse, onItemEqui
         <DragOverlay>
           {activeItem ? (
             <div 
-              className="bg-black/35 border border-white/[0.08] rounded flex items-center justify-center text-[10px]"
+              className="bg-black/35 border border-white/[0.08] rounded flex items-center justify-center text-white text-[10px]"
               style={{ width: size, height: size }}
             >
               {activeItem.itemId.substring(0, 3)}

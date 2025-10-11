@@ -253,6 +253,49 @@ export class DatabaseSystem extends SystemBase {
     console.log('DatabaseSystem', 'Database system started')
   }
 
+  // --- Characters API (now the primary player data store) ---
+  getCharacters(accountId: string): Array<{ id: string; name: string }> {
+    try {
+      const rows = this.getDb()
+        .prepare('SELECT id, name FROM rpg_characters WHERE accountId = ? ORDER BY createdAt ASC')
+        .all(accountId) as Array<{ id: string; name: string }>
+      return rows || []
+    } catch {
+      return []
+    }
+  }
+
+  createCharacter(accountId: string, id: string, name: string): boolean {
+    try {
+      // Create character with default stats (same as old rpg_players defaults)
+      this.getDb()
+        .prepare(`INSERT INTO rpg_characters (
+          id, accountId, name, 
+          combatLevel, attackLevel, strengthLevel, defenseLevel, constitutionLevel, rangedLevel,
+          woodcuttingLevel, fishingLevel, firemakingLevel, cookingLevel,
+          attackXp, strengthXp, defenseXp, constitutionXp, rangedXp,
+          woodcuttingXp, fishingXp, firemakingXp, cookingXp,
+          health, maxHealth, coins,
+          positionX, positionY, positionZ,
+          createdAt, lastLogin
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(
+          id, accountId, name,
+          1, 1, 1, 1, 10, 1, // combat, attack, strength, defense, constitution, ranged
+          1, 1, 1, 1, // woodcutting, fishing, firemaking, cooking
+          0, 0, 0, 1154, 0, // XP: attack, strength, defense, constitution, ranged
+          0, 0, 0, 0, // XP: woodcutting, fishing, firemaking, cooking
+          100, 100, 0, // health, maxHealth, coins
+          0, 10, 0, // positionX, positionY (safe default), positionZ
+          Date.now(), Date.now() // createdAt, lastLogin
+        )
+      return true
+    } catch (err) {
+      console.error('[DatabaseSystem] Failed to create character:', err)
+      return false
+    }
+  }
+
   destroy(): void {
     // Close database connection safely
     if (this.db) {
@@ -286,6 +329,11 @@ export class DatabaseSystem extends SystemBase {
     await this.executeMigrationSQL('create_world_chunks_table')
     await this.executeMigrationSQL('create_player_sessions_table')
     await this.executeMigrationSQL('create_chunk_activity_table')
+    await this.executeMigrationSQL('create_characters_table')
+    await this.executeMigrationSQL('expand_characters_table_noop')
+    
+    // Conditionally add columns to rpg_characters if they don't exist
+    await this.ensureCharactersColumns()
 
     // Add missing columns to existing tables
     try {
@@ -317,6 +365,55 @@ export class DatabaseSystem extends SystemBase {
     } catch (_error) {
       // If the table doesn't exist, it will be created with the column
       console.log('DatabaseSystem', 'World chunks table will be created with all columns')
+    }
+  }
+
+  private async ensureCharactersColumns(): Promise<void> {
+    try {
+      const tableInfo = this.getDb().prepare('PRAGMA table_info(rpg_characters)').all() as Array<{ name: string }>
+      const existingColumns = new Set(tableInfo.map(col => col.name))
+      
+      const columnsToAdd = [
+        { name: 'combatLevel', sql: 'ALTER TABLE rpg_characters ADD COLUMN combatLevel INTEGER DEFAULT 1' },
+        { name: 'attackLevel', sql: 'ALTER TABLE rpg_characters ADD COLUMN attackLevel INTEGER DEFAULT 1' },
+        { name: 'strengthLevel', sql: 'ALTER TABLE rpg_characters ADD COLUMN strengthLevel INTEGER DEFAULT 1' },
+        { name: 'defenseLevel', sql: 'ALTER TABLE rpg_characters ADD COLUMN defenseLevel INTEGER DEFAULT 1' },
+        { name: 'constitutionLevel', sql: 'ALTER TABLE rpg_characters ADD COLUMN constitutionLevel INTEGER DEFAULT 10' },
+        { name: 'rangedLevel', sql: 'ALTER TABLE rpg_characters ADD COLUMN rangedLevel INTEGER DEFAULT 1' },
+        { name: 'woodcuttingLevel', sql: 'ALTER TABLE rpg_characters ADD COLUMN woodcuttingLevel INTEGER DEFAULT 1' },
+        { name: 'fishingLevel', sql: 'ALTER TABLE rpg_characters ADD COLUMN fishingLevel INTEGER DEFAULT 1' },
+        { name: 'firemakingLevel', sql: 'ALTER TABLE rpg_characters ADD COLUMN firemakingLevel INTEGER DEFAULT 1' },
+        { name: 'cookingLevel', sql: 'ALTER TABLE rpg_characters ADD COLUMN cookingLevel INTEGER DEFAULT 1' },
+        { name: 'attackXp', sql: 'ALTER TABLE rpg_characters ADD COLUMN attackXp INTEGER DEFAULT 0' },
+        { name: 'strengthXp', sql: 'ALTER TABLE rpg_characters ADD COLUMN strengthXp INTEGER DEFAULT 0' },
+        { name: 'defenseXp', sql: 'ALTER TABLE rpg_characters ADD COLUMN defenseXp INTEGER DEFAULT 0' },
+        { name: 'constitutionXp', sql: 'ALTER TABLE rpg_characters ADD COLUMN constitutionXp INTEGER DEFAULT 1154' },
+        { name: 'rangedXp', sql: 'ALTER TABLE rpg_characters ADD COLUMN rangedXp INTEGER DEFAULT 0' },
+        { name: 'woodcuttingXp', sql: 'ALTER TABLE rpg_characters ADD COLUMN woodcuttingXp INTEGER DEFAULT 0' },
+        { name: 'fishingXp', sql: 'ALTER TABLE rpg_characters ADD COLUMN fishingXp INTEGER DEFAULT 0' },
+        { name: 'firemakingXp', sql: 'ALTER TABLE rpg_characters ADD COLUMN firemakingXp INTEGER DEFAULT 0' },
+        { name: 'cookingXp', sql: 'ALTER TABLE rpg_characters ADD COLUMN cookingXp INTEGER DEFAULT 0' },
+        { name: 'health', sql: 'ALTER TABLE rpg_characters ADD COLUMN health INTEGER DEFAULT 100' },
+        { name: 'maxHealth', sql: 'ALTER TABLE rpg_characters ADD COLUMN maxHealth INTEGER DEFAULT 100' },
+        { name: 'coins', sql: 'ALTER TABLE rpg_characters ADD COLUMN coins INTEGER DEFAULT 0' },
+        { name: 'positionX', sql: 'ALTER TABLE rpg_characters ADD COLUMN positionX REAL DEFAULT 0' },
+        { name: 'positionY', sql: 'ALTER TABLE rpg_characters ADD COLUMN positionY REAL DEFAULT 10' },
+        { name: 'positionZ', sql: 'ALTER TABLE rpg_characters ADD COLUMN positionZ REAL DEFAULT 0' },
+        { name: 'lastLogin', sql: 'ALTER TABLE rpg_characters ADD COLUMN lastLogin INTEGER DEFAULT 0' },
+      ]
+      
+      for (const col of columnsToAdd) {
+        if (!existingColumns.has(col.name)) {
+          try {
+            this.getDb().exec(col.sql)
+            console.log(`[DatabaseSystem] Added column ${col.name} to rpg_characters`)
+          } catch (err) {
+            // Ignore errors (column might have been added by concurrent migration)
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[DatabaseSystem] Failed to ensure rpg_characters columns:', err)
     }
   }
 
@@ -434,6 +531,19 @@ export class DatabaseSystem extends SystemBase {
         SET lastActivity = (strftime('%s', 'now') * 1000) 
         WHERE lastActivity = 0;
       `,
+      create_characters_table: `
+        CREATE TABLE IF NOT EXISTS rpg_characters (
+          id TEXT PRIMARY KEY,
+          accountId TEXT NOT NULL,
+          name TEXT NOT NULL,
+          createdAt INTEGER DEFAULT (strftime('%s','now') * 1000)
+        );
+        CREATE INDEX IF NOT EXISTS idx_characters_account ON rpg_characters(accountId);
+      `,
+      expand_characters_table_noop: `
+        -- Migration handled via post-create column checks below
+        SELECT 1;
+      `,
     }
 
     const sql = migrations[migrationName]
@@ -520,18 +630,22 @@ export class DatabaseSystem extends SystemBase {
     }
   }
 
-  // Player data methods with proper typing
+  // Player data methods with proper typing (now uses rpg_characters as primary table)
   getPlayer(playerId: string): PlayerRow | null {
     try {
+      // Query rpg_characters using characterId (which IS the playerId in character-select mode)
       const result = this.getDb()
-        .prepare(
-          `
-        SELECT * FROM rpg_players WHERE playerId = ?
-      `
-        )
+        .prepare(`SELECT * FROM rpg_characters WHERE id = ?`)
         .get(playerId) as PlayerRow | undefined
 
-      return result || null
+      // Map column names to PlayerRow interface (rpg_characters has slightly different names)
+      if (result) {
+        return {
+          ...result,
+          playerId: String(result.id), // Map id to playerId for compatibility
+        } as unknown as PlayerRow
+      }
+      return null
     } catch (_error) {
       console.error(
         'DatabaseSystem',
@@ -544,12 +658,14 @@ export class DatabaseSystem extends SystemBase {
 
   savePlayer(playerId: string, data: Partial<PlayerRow>): void {
     try {
-      // Check if player exists
+      // Save to rpg_characters using characterId (playerId)
       const existing = this.getPlayer(playerId)
 
       if (existing) {
         this.updatePlayer(playerId, data)
       } else {
+        // Character should already exist from character creation; if not, log warning
+        console.warn(`[DatabaseSystem] Attempted to save non-existent character ${playerId}, creating with defaults`)
         this.createNewPlayer(playerId, data)
       }
     } catch (_error) {
@@ -562,16 +678,26 @@ export class DatabaseSystem extends SystemBase {
   }
 
   private createNewPlayer(playerId: string, data: Partial<PlayerRow>): void {
+    // Insert into rpg_characters (merged table) - accountId is required
+    // If this is called, it means character wasn't created via createCharacter, so we need accountId
+    // For now, use a placeholder; ideally this should never be called in character-select mode
+    const accountId = 'unknown'
     const insertPlayer = this.getDb().prepare(`
-      INSERT INTO rpg_players (
-        playerId, name, combatLevel, attackLevel, strengthLevel, defenseLevel, 
-        constitutionLevel, rangedLevel, attackXp, strengthXp, defenseXp, 
-        constitutionXp, rangedXp, health, maxHealth, coins, positionX, positionY, positionZ
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO rpg_characters (
+        id, accountId, name, 
+        combatLevel, attackLevel, strengthLevel, defenseLevel, constitutionLevel, rangedLevel,
+        woodcuttingLevel, fishingLevel, firemakingLevel, cookingLevel,
+        attackXp, strengthXp, defenseXp, constitutionXp, rangedXp,
+        woodcuttingXp, fishingXp, firemakingXp, cookingXp,
+        health, maxHealth, coins,
+        positionX, positionY, positionZ,
+        createdAt, lastLogin
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     insertPlayer.run(
       playerId,
+      accountId,
       data.name || `Player_${playerId}`,
       data.combatLevel || 1,
       data.attackLevel || 1,
@@ -579,17 +705,21 @@ export class DatabaseSystem extends SystemBase {
       data.defenseLevel || 1,
       data.constitutionLevel || 10,
       data.rangedLevel || 1,
+      1, 1, 1, 1, // woodcutting, fishing, firemaking, cooking
       data.attackXp || 0,
       data.strengthXp || 0,
       data.defenseXp || 0,
       data.constitutionXp || 1154,
       data.rangedXp || 0,
+      0, 0, 0, 0, // woodcutting, fishing, firemaking, cooking XP
       data.health || 100,
       data.maxHealth || 100,
       data.coins || 0,
       data.positionX || 0,
-      data.positionY || 0,
-      data.positionZ || 0
+      data.positionY || 10,
+      data.positionZ || 0,
+      Date.now(),
+      Date.now()
     )
 
     // Initialize starting equipment
@@ -600,7 +730,7 @@ export class DatabaseSystem extends SystemBase {
     const fields: string[] = []
     const values: (string | number)[] = []
 
-    // Build dynamic update query
+    // Build dynamic update query (now targets rpg_characters)
     Object.entries(data).forEach(([key, value]) => {
       if (key !== 'id' && key !== 'playerId' && value !== undefined) {
         fields.push(`${key} = ?`)
@@ -612,7 +742,7 @@ export class DatabaseSystem extends SystemBase {
 
     values.push(playerId)
 
-    const updateQuery = `UPDATE rpg_players SET ${fields.join(', ')} WHERE playerId = ?`
+    const updateQuery = `UPDATE rpg_characters SET ${fields.join(', ')} WHERE id = ?`
     this.getDb()
       .prepare(updateQuery)
       .run(...values)

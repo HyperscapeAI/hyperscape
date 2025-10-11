@@ -122,32 +122,14 @@ export class ResourceEntity extends InteractableEntity {
   }
 
   protected async createMesh(): Promise<void> {
-    // Try to load actual 3D model if available
-    if (this.config.model && this.world.loader && !this.world.isServer) {
-      console.log(`[ResourceEntity] 🔄 Attempting to load 3D model for ${this.config.resourceType}: ${this.config.model}`);
-      
-      try {
-        await this.loadModel();
-        
-        // Success - model loaded
-        if (this.mesh) {
-          this.mesh.name = `Resource_${this.config.resourceType}`;
-          console.log(`[ResourceEntity] ✅ 3D model successfully loaded for ${this.config.resourceType}`);
-          return;
-        }
-      } catch (error) {
-        // Model loading failed - gracefully fall back to primitive
-        console.warn(`[ResourceEntity] ⚠️  3D model failed to load for ${this.config.resourceType}, using fallback primitive:`, (error as Error).message);
-      }
-      
-    } else if (!this.config.model) {
-      console.log(`[ResourceEntity] No model path for ${this.config.resourceType}, using fallback primitive`);
-    } else if (this.world.isServer) {
-      console.log(`[ResourceEntity] Server-side ${this.config.resourceType}, skipping model`);
+    // SKIP MODEL LOADING - Prevents 404 errors
+    // Resources use procedural meshes from ResourceVisualizationSystem instead
+    
+    if (this.world.isServer) {
       return; // Don't create fallback mesh on server
-    } else {
-      console.log(`[ResourceEntity] Loader not available for ${this.config.resourceType}, using fallback primitive`);
     }
+    
+    console.log(`[ResourceEntity] Creating fallback primitive for ${this.config.resourceType}`)
     
     // Fallback: Create basic resource mesh based on type as placeholder
     let geometry: THREE.BufferGeometry;

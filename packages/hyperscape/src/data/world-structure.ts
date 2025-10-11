@@ -137,7 +137,7 @@ export const BIOMES: Record<string, BiomeData> = {
     difficultyLevel: 2,
     terrain: 'forest',
     resources: ['trees'],
-    mobs: ['hobgoblin', 'guard', 'dark_warrior'],
+    mobs: [], // Loaded from JSON manifests - spawn locations defined below in spawnPoints
     fogIntensity: 0.8,
     ambientSound: 'forest_dark',
     colorScheme: {
@@ -154,7 +154,7 @@ export const BIOMES: Record<string, BiomeData> = {
     difficultyLevel: 2,
     terrain: 'corrupted',
     resources: [],
-    mobs: ['guard', 'hobgoblin'],
+    mobs: [], // Loaded from JSON manifests
     fogIntensity: 0.7,
     ambientSound: 'ruins_haunted',
     colorScheme: {
@@ -172,7 +172,7 @@ export const BIOMES: Record<string, BiomeData> = {
     difficultyLevel: 3,
     terrain: 'corrupted',
     resources: [],
-    mobs: ['black_knight', 'dark_ranger'],
+    mobs: [], // Loaded from JSON manifests
     fogIntensity: 0.9,
     ambientSound: 'wasteland_cursed',
     colorScheme: {
@@ -189,7 +189,7 @@ export const BIOMES: Record<string, BiomeData> = {
     difficultyLevel: 3,
     terrain: 'frozen',
     resources: ['fishing_spots'],
-    mobs: ['ice_warrior'],
+    mobs: [], // Loaded from JSON manifests
     fogIntensity: 0.5,
     ambientSound: 'wind_arctic',
     colorScheme: {
@@ -206,7 +206,7 @@ export const BIOMES: Record<string, BiomeData> = {
     difficultyLevel: 3,
     terrain: 'corrupted',
     resources: [],
-    mobs: ['black_knight'],
+    mobs: [], // Loaded from JSON manifests
     fogIntensity: 0.8,
     ambientSound: 'fortress_ominous',
     colorScheme: {

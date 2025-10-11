@@ -46,6 +46,13 @@ const names = [
   'inventoryUpdated',
   // UI feedback packets
   'showToast',
+  // Character selection packets (feature-flagged usage)
+  'characterListRequest',
+  'characterCreate',
+  'characterList',
+  'characterCreated',
+  'characterSelected',
+  'enterWorld',
 ]
 
 const byName: Record<string, PacketInfo> = {}

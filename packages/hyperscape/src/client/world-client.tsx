@@ -23,36 +23,37 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
     }
   }, [])
   
+  // Create world immediately so network can connect and deliver characterList
   const world = useMemo(() => {
     console.log('[Client] Creating new world instance')
-    const world = createClientWorld()
+    const w = createClientWorld()
     console.log('[Client] World instance created')
     
     // Expose world for browser debugging
     if (typeof window !== 'undefined') {
-      (window as any).world = world;
+      (window as any).world = w;
       
       // Install simple debug commands
       (window as any).debug = {
         // Teleport camera to see mobs at Y=40+
         seeHighEntities: () => {
-          if (world.camera) {
-            world.camera.position.set(10, 50, 10);
-            world.camera.lookAt(0, 40, 0);
+          if (w.camera) {
+            w.camera.position.set(10, 50, 10);
+            w.camera.lookAt(0, 40, 0);
             console.log('📷 Camera moved to Y=50, looking at Y=40');
           }
         },
         // Teleport to ground level
         seeGround: () => {
-          if (world.camera) {
-            world.camera.position.set(10, 5, 10);
-            world.camera.lookAt(0, 0, 0);
+          if (w.camera) {
+            w.camera.position.set(10, 5, 10);
+            w.camera.lookAt(0, 0, 0);
             console.log('📷 Camera moved to ground level');
           }
         },
         // List all mobs with positions
         mobs: () => {
-          const entityManager = world.getSystem('rpg-entity-manager');
+          const entityManager = w.getSystem('rpg-entity-manager');
           if (!entityManager) return;
           const mobs: Array<{ name: string; position: number[]; hasMesh: boolean; meshVisible: boolean | undefined }> = [];
           for (const [id, entity] of (entityManager as any).getAllEntities()) {
@@ -72,21 +73,19 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
       console.log('🛠️  Debug commands ready: debug.seeHighEntities(), debug.seeGround(), debug.mobs()');
     }
     
-    return world
+    return w
   }, [])
-  const [ui, setUI] = useState(world.ui?.state || { visible: true, active: false, app: null, pane: null })
+  const defaultUI = { visible: true, active: false, app: null, pane: null }
+  const [ui, setUI] = useState(defaultUI)
   useEffect(() => {
     const handleUI = (data: unknown) => {
-      // Handle UI state update - expecting full UI state
-      if (data && typeof data === 'object') {
-        setUI(data as typeof ui)
-      }
+      if (data && typeof data === 'object') setUI(data as typeof ui)
     }
     world.on(EventType.UI_UPDATE, handleUI)
     return () => {
       world.off(EventType.UI_UPDATE, handleUI)
     }
-  }, [])
+  }, [world])
 
   // Handle window resize to update Three.js canvas
   useEffect(() => {
@@ -117,7 +116,6 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
         console.log('[Client] Waiting for viewport/ui refs...')
         return
       }
-      
       console.log('[Client] Starting world initialization...')
             
       const baseEnvironment = {
@@ -221,7 +219,7 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
           inset: 0;
           pointer-events: none;
           user-select: none;
-          display: ${ui.visible ? 'block' : 'none'};
+          display: ${ui.visible ? 'block' : 'block'};
           overflow: hidden;
           z-index: 10;
         }

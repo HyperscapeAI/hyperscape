@@ -466,6 +466,24 @@ export class EntityInteractionSystem extends SystemBase {
     const localPlayer = this.world.getPlayer();
     if (!localPlayer) return;
     
+    console.log('[EntityInteractionSystem] Resource action triggered:', action, resourceId);
+    
+    // Send network packet to server to start gathering
+    if (this.world.network?.send) {
+      this.world.network.send('resourceGather', {
+        resourceId,
+        playerPosition: {
+          x: localPlayer.position.x,
+          y: localPlayer.position.y,
+          z: localPlayer.position.z
+        }
+      });
+      console.log('[EntityInteractionSystem] Sent resourceGather packet to server');
+    } else {
+      console.warn('[EntityInteractionSystem] No network.send available for resource gathering');
+    }
+    
+    // Also emit local event for immediate feedback
     this.emitTypedEvent(EventType.RESOURCE_ACTION, {
       playerId: localPlayer.id,
       resourceId,

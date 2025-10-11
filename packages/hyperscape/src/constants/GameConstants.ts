@@ -74,11 +74,9 @@ export const GATHERING_CONSTANTS = {
 } as const;
 
 // === MOB SYSTEM ===
+// Mob stats (HP, damage, etc.) are loaded from world/assets/manifests/mobs.json
+// Only system-level constants here, no mob-specific data
 export const MOB_CONSTANTS = {
-  GOBLIN_HEALTH: 50,
-  GOBLIN_DAMAGE: 8,
-  HOBGOBLIN_HEALTH: 80,
-  HOBGOBLIN_DAMAGE: 12,
   SPAWN_RADIUS: 20,
   MAX_MOBS_PER_AREA: 10,
   MOB_RESPAWN_TIME: 30000, // 30 seconds
