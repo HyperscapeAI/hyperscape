@@ -32,6 +32,18 @@ export class EntityInteractionSystem extends SystemBase {
   private longPressTimer: NodeJS.Timeout | null = null;
   private readonly LONG_PRESS_DURATION = 500;
   
+  // Debouncing for pickup requests to prevent duplicates
+  private recentPickupRequests = new Map<string, number>();
+  private readonly PICKUP_DEBOUNCE_TIME = 1000; // 1 second
+  
+  // Debouncing for attack requests to prevent duplicates
+  private recentAttackRequests = new Map<string, number>();
+  private readonly ATTACK_DEBOUNCE_TIME = 1000; // 1 second
+  
+  // Debouncing for resource gathering requests to prevent duplicates
+  private recentResourceRequests = new Map<string, number>();
+  private readonly RESOURCE_DEBOUNCE_TIME = 1000; // 1 second
+  
   constructor(world: World) {
     super(world, { 
       name: 'entity-interaction', 
@@ -252,6 +264,27 @@ export class EntityInteractionSystem extends SystemBase {
           enabled: true,
           handler: () => {
             console.log('[EntityInteractionSystem] Pickup action triggered for', target.id);
+            
+            // Check for debouncing to prevent duplicate pickup requests
+            const pickupKey = `${playerId}:${target.id}`;
+            const now = Date.now();
+            const lastRequest = this.recentPickupRequests.get(pickupKey);
+            
+            if (lastRequest && (now - lastRequest) < this.PICKUP_DEBOUNCE_TIME) {
+              console.log(`[EntityInteractionSystem] Debounced duplicate pickup request for ${target.id}`);
+              return;
+            }
+            
+            // Record this pickup request
+            this.recentPickupRequests.set(pickupKey, now);
+            
+            // Clean up old entries (older than 5 seconds)
+            for (const [key, timestamp] of this.recentPickupRequests.entries()) {
+              if (now - timestamp > 5000) {
+                this.recentPickupRequests.delete(key);
+              }
+            }
+            
             if (this.world.network?.send) {
               this.world.network.send('pickupItem', { itemId: target.id });
               console.log('[EntityInteractionSystem] Sent pickupItem packet to server');
@@ -366,6 +399,27 @@ export class EntityInteractionSystem extends SystemBase {
           enabled: isAlive,
           handler: () => {
             console.log('[EntityInteractionSystem] Attack action triggered for mob:', target.id);
+            
+            // Check for debouncing to prevent duplicate attack requests
+            const attackKey = `${playerId}:${target.id}`;
+            const now = Date.now();
+            const lastRequest = this.recentAttackRequests.get(attackKey);
+            
+            if (lastRequest && (now - lastRequest) < this.ATTACK_DEBOUNCE_TIME) {
+              console.log(`[EntityInteractionSystem] Debounced duplicate attack request for ${target.id}`);
+              return;
+            }
+            
+            // Record this attack request
+            this.recentAttackRequests.set(attackKey, now);
+            
+            // Clean up old entries (older than 5 seconds)
+            for (const [key, timestamp] of this.recentAttackRequests.entries()) {
+              if (now - timestamp > 5000) {
+                this.recentAttackRequests.delete(key);
+              }
+            }
+            
             if (this.world.network?.send) {
               this.world.network.send('attackMob', {
                 mobId: target.id,
@@ -374,14 +428,13 @@ export class EntityInteractionSystem extends SystemBase {
               console.log('[EntityInteractionSystem] Sent attackMob packet to server');
             } else {
               console.warn('[EntityInteractionSystem] No network.send available for attack');
+              // Fallback for single-player
+              this.emitTypedEvent(EventType.COMBAT_ATTACK_REQUEST, {
+                playerId,
+                targetId: target.id,
+                attackType: AttackType.MELEE
+              });
             }
-            // Also emit local event for immediate feedback
-            this.emitTypedEvent(EventType.COMBAT_ATTACK_REQUEST, {
-              playerId,
-              targetId: target.id,
-              attackType: AttackType.MELEE
-            });
-            console.log('[EntityInteractionSystem] Emitted COMBAT_ATTACK_REQUEST event');
           }
         });
         actions.push({
@@ -468,6 +521,26 @@ export class EntityInteractionSystem extends SystemBase {
     
     console.log('[EntityInteractionSystem] Resource action triggered:', action, resourceId);
     
+    // Check for debouncing to prevent duplicate resource requests
+    const resourceKey = `${localPlayer.id}:${resourceId}`;
+    const now = Date.now();
+    const lastRequest = this.recentResourceRequests.get(resourceKey);
+    
+    if (lastRequest && (now - lastRequest) < this.RESOURCE_DEBOUNCE_TIME) {
+      console.log(`[EntityInteractionSystem] Debounced duplicate resource request for ${resourceId}`);
+      return;
+    }
+    
+    // Record this resource request
+    this.recentResourceRequests.set(resourceKey, now);
+    
+    // Clean up old entries (older than 5 seconds)
+    for (const [key, timestamp] of this.recentResourceRequests.entries()) {
+      if (now - timestamp > 5000) {
+        this.recentResourceRequests.delete(key);
+      }
+    }
+    
     // Send network packet to server to start gathering
     if (this.world.network?.send) {
       this.world.network.send('resourceGather', {
@@ -481,14 +554,13 @@ export class EntityInteractionSystem extends SystemBase {
       console.log('[EntityInteractionSystem] Sent resourceGather packet to server');
     } else {
       console.warn('[EntityInteractionSystem] No network.send available for resource gathering');
+      // Fallback for single-player
+      this.emitTypedEvent(EventType.RESOURCE_ACTION, {
+        playerId: localPlayer.id,
+        resourceId,
+        action
+      });
     }
-    
-    // Also emit local event for immediate feedback
-    this.emitTypedEvent(EventType.RESOURCE_ACTION, {
-      playerId: localPlayer.id,
-      resourceId,
-      action
-    });
   }
 
   private walkTo(position: Position3D): void {

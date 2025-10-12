@@ -489,8 +489,10 @@ export class InventorySystem extends SystemBase {
       itemId,
       quantity
     });
+    console.log(`[InventorySystem] Picked up item: ${itemId} - ${quantity}x, added: ${added}`);
     
     if (added) {
+      console.log(`[InventorySystem] Destroying item entity: ${data.entityId}`);
       // Destroy item entity
       this.emitTypedEvent(EventType.ENTITY_DEATH, { entityId: data.entityId });
     }

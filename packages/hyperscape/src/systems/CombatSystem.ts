@@ -327,12 +327,20 @@ export class CombatSystem extends SystemBase {
       }
       
       const entity = this.getEntity(targetId, 'player');
-      if (!entity) return;
+      if (!entity) {
+        console.error(`[CombatSystem] Player entity not found for ${targetId}`);
+        return;
+      }
+      
+      console.log(`[CombatSystem] Player ${targetId} health before damage: ${entity.getHealth()}`);
       
       const damaged = playerSystem.damagePlayer(targetId, damage, attackerId);
       if (!damaged) {
+        console.error(`[CombatSystem] Failed to damage player ${targetId}`);
         return;
       }
+      
+      console.log(`[CombatSystem] Player ${targetId} health after damage: ${entity.getHealth()}`);
       
       // Show damage message to player
       try {
@@ -349,18 +357,24 @@ export class CombatSystem extends SystemBase {
     } else if (targetType === 'mob') {
       // For mobs, use the mob system to handle damage
       if (!this.mobSystem) {
+        console.error('[CombatSystem] MobSystem not found!');
         return;
       }
       
       // Get mob instance from mob system
       const mobInstance = this.mobSystem.getMob(targetId) as MobInstance;
       if (!mobInstance) {
+        console.error(`[CombatSystem] Mob instance not found for ${targetId}`);
         return;
       }
+      
+      console.log(`[CombatSystem] Mob ${targetId} health before damage: ${mobInstance.health}`);
       
       // Apply damage through mob system or directly to mob instance
       const newHealth = Math.max(0, mobInstance.health - damage);
       mobInstance.health = newHealth;
+      
+      console.log(`[CombatSystem] Mob ${targetId} health after damage: ${mobInstance.health}`);
       
       // Check if mob died
       if (newHealth <= 0 && mobInstance.isAlive) {
@@ -571,6 +585,11 @@ export class CombatSystem extends SystemBase {
 
   private getEntity(entityId: string, entityType: string): Entity | MobEntity | null {
     if (entityType === 'mob') {
+      console.log(`[CombatSystem] Getting mob entity: ${entityId}`);
+      const allEntities = this.world.entities;
+      for (const entity of allEntities.values()) {
+        console.log(`[CombatSystem] Entity: ${entity.id} - ${entity.type}`);
+      }
       const entity = this.world.entities.get(entityId);
       if (!entity) {
         console.warn(`[CombatSystem] Mob entity not found: ${entityId}`);
@@ -678,8 +697,8 @@ export class CombatSystem extends SystemBase {
     
     // Calculate and apply damage
     const damage = combatState.weaponType === AttackType.RANGED
-      ? this.calculateRangedDamage(attacker, target)
-      : this.calculateMeleeDamage(attacker, target);
+    ? this.calculateRangedDamage(attacker, target)
+    : this.calculateMeleeDamage(attacker, target);
     
     console.log(`[CombatSystem] 💥 Damage calculated: ${damage} (${combatState.weaponType})`);
     
@@ -764,18 +783,25 @@ export class CombatSystem extends SystemBase {
       const healthComponent = player.getComponent('health');
       if (healthComponent?.data) {
         const health = healthComponent.data as { current: number; isDead?: boolean };
+        console.log(`[CombatSystem] Player ${player.id} health check: ${health.current}, isDead: ${health.isDead}`);
         return health.current > 0 && !health.isDead;
       }
-      return player.getHealth() > 0;
+      const playerHealth = player.getHealth();
+      console.log(`[CombatSystem] Player ${player.id} health check (fallback): ${playerHealth}`);
+      return playerHealth > 0;
     }
     
     if (entityType === 'mob') {
       // Check mob health
       const mob = entity as MobEntity;
       if (mob.getMobData) {
-        return mob.getMobData().health > 0;
+        const mobData = mob.getMobData();
+        console.log(`[CombatSystem] Mob ${mob.id} health check: ${mobData.health}`);
+        return mobData.health > 0;
       }
-      return mob.getHealth() > 0;
+      const mobHealth = mob.getHealth();
+      console.log(`[CombatSystem] Mob ${mob.id} health check (fallback): ${mobHealth}`);
+      return mobHealth > 0;
     }
     
     return false;

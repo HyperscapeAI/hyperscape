@@ -19,6 +19,10 @@ export class InteractionSystem extends System {
   private readonly dragThresholdPx: number = 5;
   private readonly maxClickDistance: number = 100;
   
+  // Debouncing for pickup requests to prevent duplicates
+  private recentPickupRequests = new Map<string, number>();
+  private readonly PICKUP_DEBOUNCE_TIME = 1000; // 1 second
+  
   constructor(world: World) {
     super(world);
   }
@@ -102,6 +106,58 @@ export class InteractionSystem extends System {
     
     this.handleMoveRequest(_mouse);
   }
+
+  private getEntityAtPosition(screenX: number, screenY: number): { 
+    id: string; 
+    type: string; 
+    name: string; 
+    entity: any;
+    position: { x: number; y: number; z: number };
+  } | null {
+    if (!this.canvas || !this.world.camera || !this.world.stage?.scene) return null;
+    
+    const rect = this.canvas.getBoundingClientRect();
+    const x = ((screenX - rect.left) / rect.width) * 2 - 1;
+    const y = -((screenY - rect.top) / rect.height) * 2 + 1;
+    
+    _raycaster.setFromCamera(_mouse.set(x, y), this.world.camera);
+    
+    // Raycast against all scene objects
+    const intersects = _raycaster.intersectObjects(this.world.stage.scene.children, true);
+    
+    // Check intersections in priority order
+    for (const intersect of intersects) {
+      if (intersect.distance > 200) continue;
+      
+      // Traverse up to find entity userData
+      let obj: THREE.Object3D | null = intersect.object;
+      while (obj) {
+        const userData = obj.userData;
+        const entityId = userData?.entityId || userData?.mobId || userData?.resourceId;
+        
+        if (entityId) {
+          // Found an entity - get it from world
+          const entity = this.world.entities.get(entityId);
+          if (entity) {
+            const worldPos = new THREE.Vector3();
+            obj.getWorldPosition(worldPos);
+            
+            return {
+              id: entityId,
+              type: entity.type || userData.type || 'unknown',
+              name: entity.name || userData.name || 'Entity',
+              entity,
+              position: { x: worldPos.x, y: worldPos.y, z: worldPos.z }
+            };
+          }
+        }
+        
+        obj = obj.parent as THREE.Object3D | null;
+      }
+    }
+    
+    return null;
+  }
   
   private clearTarget(): void {
     if (this.targetMarker) {
@@ -126,16 +182,53 @@ export class InteractionSystem extends System {
     if (event.button !== 0) return; // Left click only
     if (!this.canvas || !this.world.camera) return;
     
-    // Always handle left-click movement even if another system prevented default
-    
-    // Now prevent default for our handling
-    event.preventDefault();
-    
     // Calculate mouse position
     const rect = this.canvas.getBoundingClientRect();
     _mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     _mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     
+    // Check if click is on an entity first
+    const entityAtClick = this.getEntityAtPosition(event.clientX, event.clientY);
+    if (entityAtClick) {
+      // Click is on an entity - trigger interaction instead of movement
+      event.preventDefault();
+      event.stopPropagation();
+      
+      const localPlayer = this.world.getPlayer();
+      if (localPlayer) {
+        // Check for debouncing to prevent duplicate pickup requests
+        const pickupKey = `${localPlayer.id}:${entityAtClick.id}`;
+        const now = Date.now();
+        const lastRequest = this.recentPickupRequests.get(pickupKey);
+        
+        if (lastRequest && (now - lastRequest) < this.PICKUP_DEBOUNCE_TIME) {
+          console.log(`[InteractionSystem] Debounced duplicate pickup request for ${entityAtClick.id}`);
+          return;
+        }
+        
+        // Record this pickup request
+        this.recentPickupRequests.set(pickupKey, now);
+        
+        // Clean up old entries (older than 5 seconds)
+        for (const [key, timestamp] of this.recentPickupRequests.entries()) {
+          if (now - timestamp > 5000) {
+            this.recentPickupRequests.delete(key);
+          }
+        }
+        
+        // Emit entity interaction event
+        this.world.emit(EventType.ENTITY_INTERACT, {
+          entityId: entityAtClick.id,
+          playerId: localPlayer.id,
+          action: 'pickup' // Default action for items
+        });
+        console.log(`[InteractionSystem] Triggered interaction with ${entityAtClick.type} ${entityAtClick.id}`);
+        return;
+      }
+    }
+    
+    // No entity at click position - handle as movement
+    event.preventDefault();
     this.handleMoveRequest(_mouse, event.shiftKey);
   };
 

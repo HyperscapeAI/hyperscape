@@ -252,9 +252,24 @@ export class EntityManager extends SystemBase {
   }
 
   destroyEntity(entityId: string): boolean {
-    const entity = this.entities.get(entityId);
-    if (!entity) return false;
+    const entity = this.getEntity(entityId);
+    if (!entity) {
+      console.log(`[EntityManager] Entity not found: ${entityId}`);
+      return false;
+    }
     
+    console.log(`[EntityManager] Destroying entity: ${entityId}`);
+    
+    // Send entityRemoved packet to all clients before destroying
+    const network = this.world.network;
+    if (network && network.isServer) {
+      try {
+        network.send('entityRemoved', entityId);
+        console.log(`[EntityManager] Sent entityRemoved packet for: ${entityId}`);
+      } catch (error) {
+        console.warn(`[EntityManager] Failed to send entityRemoved packet for ${entityId}:`, error);
+      }
+    }
     
     // Call entity destroy method
     entity.destroy();
@@ -273,11 +288,21 @@ export class EntityManager extends SystemBase {
       entityType: entity.type
     });
     
+    console.log(`[EntityManager] Entity destroyed: ${entityId}`);
     return true;
   }
 
   getEntity(entityId: string): Entity | undefined {
-    return this.entities.get(entityId);
+    const entity = this.entities.get(entityId);
+    if (entity) {
+      return entity;
+    }
+    for (const e of this.entities.values()) {
+      //console.log(`[EntityManager] Entity: ${e.id} - ${e.type} - ${entityId}, is same: ${e.id === entityId}`);
+      if (e.id === entityId) {
+        return e;
+      }
+    }
   }
   
   /**
@@ -310,9 +335,9 @@ export class EntityManager extends SystemBase {
   }
 
   private async handleInteractionRequest(data: { entityId: string; playerId: string; interactionType?: string }): Promise<void> {
-    const entity = this.entities.get(data.entityId);
+    const entity = this.getEntity(data.entityId);
     if (!entity) {
-            return;
+      return;
     }
     await entity.handleInteraction({
       ...data,
@@ -323,7 +348,7 @@ export class EntityManager extends SystemBase {
   }
 
   private handleMoveRequest(data: { entityId: string; position: { x: number; y: number; z: number } }): void {
-    const entity = this.entities.get(data.entityId);
+    const entity = this.getEntity(data.entityId);
     if (!entity) {
             return;
     }
@@ -336,7 +361,7 @@ export class EntityManager extends SystemBase {
   }
 
   private handlePropertyRequest(data: { entityId: string; propertyName: string; value: unknown }): void {
-    const entity = this.entities.get(data.entityId);
+    const entity = this.getEntity(data.entityId);
     if (!entity) {
             return;
     }
@@ -408,7 +433,7 @@ export class EntityManager extends SystemBase {
   }
 
   private handleItemPickup(data: { entityId: string; playerId: string }): void {
-    const entity = this.entities.get(data.entityId);
+    const entity = this.getEntity(data.entityId);
     if (!entity) {
             return;
     }
