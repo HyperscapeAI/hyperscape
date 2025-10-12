@@ -142,15 +142,10 @@ export class MobSystem extends SystemBase {
 
   private spawnAllMobs(): void {
     for (const [spawnId, spawnData] of this.spawnPoints.entries()) {
-      // Emit spawn request instead of directly spawning
-      // This allows EntityManager to handle the actual entity creation
-      this.emitTypedEvent(EventType.MOB_SPAWN_REQUEST, {
-        mobType: spawnData.config.type,
-        position: spawnData.position,
-        level: spawnData.config.level,
-        name: spawnData.config.name,
-        customId: `mob_${spawnId}_${Date.now()}`
-      });
+      // CRITICAL FIX: Call spawnMobInternal directly instead of emitting events
+      // This ensures consistent ID generation and proper EntityManager integration
+      const customId = `mob_${spawnId}_${Date.now()}`;
+      this.spawnMobInternal(customId, spawnData.config, spawnData.position);
     }
   }
 
@@ -162,102 +157,38 @@ export class MobSystem extends SystemBase {
     // Ground mob to terrain - use Infinity to allow any initial height difference
     const groundedPosition = groundToTerrain(this.world, position, 0.5, Infinity);
     
-    const mobId = `mob_${spawnId}_${Date.now()}`;
+    // Use spawnId directly as mobId to ensure consistency
+    const mobId = spawnId;
     
-    const mobData: MobInstance = {
-      id: mobId,
-      type: config.type,
-      name: config.name,
-      description: config.description || `A ${config.name}`,
-      difficultyLevel: config.difficultyLevel || 1,
-      mobType: config.type,
-      behavior: config.behavior || {
-        aggressive: config.isAggressive,
-        aggroRange: config.aggroRange,
-        chaseRange: config.aggroRange * 2,
-        returnToSpawn: true,
-        ignoreLowLevelPlayers: false,
-        levelThreshold: 10
-      },
-      drops: config.drops || [],
-      spawnBiomes: config.spawnBiomes || ['plains'],
-      modelPath: config.modelPath || `/models/mobs/${config.type}.glb`,
-      animationSet: config.animationSet || {
-        idle: 'idle',
-        walk: 'walk', 
-        attack: 'attack',
-        death: 'death'
-      },
-      respawnTime: config.respawnTime,
-      xpReward: config.xpReward || config.level * 10,
-      level: config.level,
-      health: (config.stats?.constitution || 10) * 10, // Health = Constitution * 10 per GDD
-      maxHealth: (config.stats?.constitution || 10) * 10,
-      position: { x: groundedPosition.x, y: groundedPosition.y, z: groundedPosition.z },
-      isAlive: true,
-      isAggressive: config.isAggressive,
-      aggroRange: config.aggroRange,
-      aiState: 'idle' as const,
-      homePosition: { x: groundedPosition.x, y: groundedPosition.y, z: groundedPosition.z },
-      spawnLocation: { x: groundedPosition.x, y: groundedPosition.y, z: groundedPosition.z },
-      equipment: {
-        weapon: config.equipment?.weapon ? {
-          id: 1,
-          name: config.equipment.weapon.name || 'Basic Weapon',
-          type: config.equipment.weapon.type === 'ranged' ? AttackType.RANGED : AttackType.MELEE
-        } : null,
-        armor: config.equipment?.armor ? {
-          id: 1,
-          name: config.equipment.armor.name || 'Basic Armor'
-        } : null
-      },
-      lootTable: config.lootTable,
-      lastAI: Date.now(),
-      stats: {
-        level: config.level, 
-        health: (config.stats?.constitution || 10) * 10,
-        attack: config.stats?.attack || 1, 
-        strength: config.stats?.strength || 1, 
-        defense: config.stats?.defense || 1, 
-        constitution: config.stats?.constitution || 10, 
-        ranged: config.stats?.ranged || 1 
-      },
-      target: null,
-      wanderRadius: 5 // Default wander radius
-    };
-
-    this.mobs.set(mobId, mobData);
+    // CRITICAL FIX: Use EntityManager directly instead of creating MobInstance
+    // This ensures the mob is properly synchronized to clients
+    console.log(`[MobSystem] Spawning mob via EntityManager: ${mobId} (${config.type})`);
     
-    // EntityManager will emit MOB_SPAWNED after creating the entity
-    // We don't need to emit it here anymore
-    
-    // Wait for entity to be created by EntityManager
-    await new Promise<void>((resolve) => {
-      const checkInterval = setInterval(() => {
-        const entity = this.world.entities.get(mobId);
-        if (entity) {
-          clearInterval(checkInterval);
-          resolve();
-        }
-      }, 10);
+    try {
+      await this.entityManager.handleMobSpawn({
+        mobType: config.type,
+        position: groundedPosition,
+        level: config.level || 1,
+        name: config.name,
+        customId: mobId
+      });
       
-      // Timeout after 2 seconds
-      setTimeout(() => {
-        clearInterval(checkInterval);
-        resolve();
-      }, 2000);
-    });
-    
-    return mobId;
+      console.log(`[MobSystem] ✅ Successfully spawned mob via EntityManager: ${mobId}`);
+      return mobId;
+    } catch (error) {
+      console.error(`[MobSystem] ❌ Failed to spawn mob via EntityManager: ${mobId}`, error);
+      return null;
+    }
   }
 
-  private spawnMobAtLocation(data: { mobType: string; position: { x: number; y: number; z: number } }): void {
+  private spawnMobAtLocation(data: { mobType: string; position: { x: number; y: number; z: number }; customId?: string }): void {
     const config = this.MOB_CONFIGS[data.mobType];
     if (!config) {
       return;
     }
 
-    const spawnId = `custom_${Date.now()}_${++this.mobIdCounter}`;
+    // Use provided customId or generate a consistent one
+    const spawnId = data.customId || `custom_${Date.now()}_${++this.mobIdCounter}`;
     this.spawnMobInternal(spawnId, config, data.position);
   }
 

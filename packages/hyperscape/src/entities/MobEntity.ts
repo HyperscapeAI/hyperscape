@@ -377,8 +377,13 @@ export class MobEntity extends Entity {
   takeDamage(damage: number, attackerId: string): void {
     if (this.config.aiState === MobAIState.DEAD) return;
 
+    console.log(`[MobEntity] takeDamage called: ${this.id} taking ${damage} damage from ${attackerId}`);
+    console.log(`[MobEntity] Health before: ${this.config.currentHealth}/${this.config.maxHealth}`);
+
     this.config.currentHealth = Math.max(0, this.config.currentHealth - damage);
     
+    console.log(`[MobEntity] Health after: ${this.config.currentHealth}/${this.config.maxHealth}`);
+
     // Update userData
     if (this.mesh?.userData) {
       const userData = this.mesh.userData as MeshUserData;
@@ -405,6 +410,7 @@ export class MobEntity extends Entity {
     }
 
     this.markNetworkDirty();
+    console.log(`[MobEntity] Marked ${this.id} as network dirty after taking damage`);
   }
 
   private die(killerId: string): void {
@@ -512,6 +518,11 @@ export class MobEntity extends Entity {
         material.color.setHex(0xffff00); // Yellow
       } else {
         material.color.setHex(0xff0000); // Red
+      }
+      
+      // Debug logging for health bar updates
+      if (this.world.isClient) {
+        console.log(`[MobEntity] Health bar update: ${this.id} - ${this.config.currentHealth}/${this.config.maxHealth} (${(healthPercent * 100).toFixed(1)}%)`);
       }
     }
 

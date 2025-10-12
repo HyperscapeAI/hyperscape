@@ -355,56 +355,58 @@ export class CombatSystem extends SystemBase {
         console.error('[CombatSystem] Error showing damage message:', error);
       }
     } else if (targetType === 'mob') {
-      // For mobs, use the mob system to handle damage
-      if (!this.mobSystem) {
-        console.error('[CombatSystem] MobSystem not found!');
+      // For mobs, get the entity from EntityManager and use its takeDamage method
+      const mobEntity = this.world.entities.get(targetId) as MobEntity;
+      if (!mobEntity) {
+        console.error(`[CombatSystem] Mob entity not found for ${targetId}`);
         return;
       }
       
-      // Get mob instance from mob system
-      const mobInstance = this.mobSystem.getMob(targetId) as MobInstance;
-      if (!mobInstance) {
-        console.error(`[CombatSystem] Mob instance not found for ${targetId}`);
-        return;
-      }
-      
-      console.log(`[CombatSystem] Mob ${targetId} health before damage: ${mobInstance.health}`);
-      
-      // Apply damage through mob system or directly to mob instance
-      const newHealth = Math.max(0, mobInstance.health - damage);
-      mobInstance.health = newHealth;
-      
-      console.log(`[CombatSystem] Mob ${targetId} health after damage: ${mobInstance.health}`);
-      
-      // Check if mob died
-      if (newHealth <= 0 && mobInstance.isAlive) {
-        mobInstance.isAlive = false;
-        console.log(`[CombatSystem] 💀 Mob ${targetId} has been slain by ${attackerId}!`);
+      // Check if the mob has a takeDamage method (MobEntity)
+      if (typeof mobEntity.takeDamage === 'function') {
+        console.log(`[CombatSystem] Applying ${damage} damage to mob ${targetId} via takeDamage method`);
+        mobEntity.takeDamage(damage, attackerId);
+      } else {
+        // Fallback for entities without takeDamage method
+        const currentHealth = mobEntity.getProperty('health') as { current: number; max: number } | number;
+        const healthValue = typeof currentHealth === 'number' ? currentHealth : currentHealth.current;
+        const maxHealth = typeof currentHealth === 'number' ? 100 : currentHealth.max;
         
-        // Emit mob died event
-        this.emitTypedEvent(EventType.MOB_DIED, {
-          mobId: targetId,
-          mobType: mobInstance.type,
-          position: mobInstance.homePosition,
-          level: mobInstance.stats.level,
-          killedBy: attackerId
-        });
+        console.log(`[CombatSystem] Mob ${targetId} health before damage: ${healthValue}`);
         
-        // Show victory message to player
-        this.emitTypedEvent(EventType.UI_MESSAGE, {
-          playerId: attackerId,
-          message: `You have defeated the ${mobInstance.name || mobInstance.type}!`,
-          type: 'success'
-        });
+        const newHealth = Math.max(0, healthValue - damage);
+        
+        if (typeof currentHealth === 'number') {
+          mobEntity.setProperty('health', newHealth);
+        } else {
+          mobEntity.setProperty('health', { current: newHealth, max: maxHealth });
+        }
+        
+        console.log(`[CombatSystem] Mob ${targetId} health after damage: ${newHealth}`);
+        
+        // Check if mob died
+        if (newHealth <= 0) {
+          console.log(`[CombatSystem] 💀 Mob ${targetId} has been slain by ${attackerId}!`);
+          
+          const mobType = mobEntity.getProperty('mobType') || 'unknown';
+          const level = mobEntity.getProperty('level') || 1;
+          const position = mobEntity.getPosition();
+          
+          this.emitTypedEvent(EventType.MOB_DIED, {
+            mobId: targetId,
+            mobType: mobType,
+            position: position,
+            level: level,
+            killedBy: attackerId
+          });
+          
+          this.emitTypedEvent(EventType.UI_MESSAGE, {
+            playerId: attackerId,
+            message: `You have defeated the ${mobEntity.getProperty('name') || mobType}!`,
+            type: 'success'
+          });
+        }
       }
-      
-      // Emit mob damaged event
-      this.emitTypedEvent(EventType.MOB_DAMAGED, {
-        mobId: targetId,
-        damage,
-        remainingHealth: newHealth,
-        attackerId
-      });
     } else {
       return;
     }
@@ -585,11 +587,6 @@ export class CombatSystem extends SystemBase {
 
   private getEntity(entityId: string, entityType: string): Entity | MobEntity | null {
     if (entityType === 'mob') {
-      console.log(`[CombatSystem] Getting mob entity: ${entityId}`);
-      const allEntities = this.world.entities;
-      for (const entity of allEntities.values()) {
-        console.log(`[CombatSystem] Entity: ${entity.id} - ${entity.type}`);
-      }
       const entity = this.world.entities.get(entityId);
       if (!entity) {
         console.warn(`[CombatSystem] Mob entity not found: ${entityId}`);

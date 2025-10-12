@@ -136,6 +136,7 @@ export class EntityManager extends SystemBase {
   }
 
   update(deltaTime: number): void {
+    
     // Update all entities that need updates
     this.entitiesNeedingUpdate.forEach(entityId => {
       const entity = this.entities.get(entityId);
@@ -245,6 +246,19 @@ export class EntityManager extends SystemBase {
       position: config.position,
       entityData: entity.getNetworkData()
     } as EntitySpawnedEvent);
+    
+    // CRITICAL FIX: Broadcast new entity to all connected clients
+    if (this.world.isServer) {
+      const network = this.world.network;
+      if (network && typeof network.send === 'function') {
+        try {
+          network.send('entityAdded', entity.serialize());
+          console.log(`[EntityManager] 📡 Broadcasted new ${config.type} entity to all clients: ${config.id}`);
+        } catch (error) {
+          console.warn(`[EntityManager] Failed to broadcast entity ${config.id}:`, error);
+        }
+      }
+    }
     
     console.log(`[EntityManager] ✅ Successfully spawned and registered ${config.type} entity: ${config.name}`);
     
@@ -451,7 +465,7 @@ export class EntityManager extends SystemBase {
     });
   }
 
-  private async handleMobSpawn(data: MobSpawnData): Promise<void> {
+  async handleMobSpawn(data: MobSpawnData): Promise<void> {
         
     // Validate required data
     let position = data.position;
@@ -495,8 +509,14 @@ export class EntityManager extends SystemBase {
     const mobDataFromDB = getMobById(mobType);
     const modelPath = mobDataFromDB?.modelPath || `/assets/models/mobs/${mobType}.glb`;
     
+    // CRITICAL FIX: Always use the provided customId to ensure client/server ID consistency
+    // Only generate a new ID if customId is not provided (fallback case)
+    console.log(`[EntityManager] Spawning mob: ${mobType} with customId: ${data.customId}`);
+    const mobId = data.customId || `mob_${this.nextEntityId++}`;
+    console.log(`[EntityManager] Final mob ID: ${mobId}`);
+    
     const config: MobEntityConfig = {
-      id: data.customId || `mob_${this.nextEntityId++}`,
+      id: mobId,
       name: `Mob: ${data.name || mobType || 'Unknown'} (Lv${level})`,
       type: EntityType.MOB,
       position: position,
@@ -629,6 +649,11 @@ export class EntityManager extends SystemBase {
       return;
     }
     
+    // Debug logging
+    if (this.networkDirtyEntities.size > 0) {
+      console.log(`[EntityManager] 📡 Sending network updates for ${this.networkDirtyEntities.size} entities:`, Array.from(this.networkDirtyEntities));
+    }
+    
     const network = this.world.network as { send?: (method: string, data: unknown, excludeId?: string) => void };
     
     if (!network || !network.send) {
@@ -646,6 +671,11 @@ export class EntityManager extends SystemBase {
         
         // Get network data from entity (includes health and other properties)
         const networkData = entity.getNetworkData();
+        
+        console.log(`[EntityManager] 📡 Sending entityModified for ${entityId}:`, {
+          position: [pos.x, pos.y, pos.z],
+          networkData: networkData
+        });
         
         // Send entityModified packet with position/rotation changes
         // Call directly on network object to preserve 'this' context

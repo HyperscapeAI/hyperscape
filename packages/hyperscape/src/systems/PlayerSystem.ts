@@ -604,7 +604,10 @@ export class PlayerSystem extends SystemBase {
 
   damagePlayer(playerId: string, amount: number, _source?: string): boolean {
     const player = this.players.get(playerId);
-    if (!player || !player.alive) return false;
+    if (!player || !player.alive) {
+      console.log(`[PlayerSystem] Player ${playerId} is not alive or not found, players: ${JSON.stringify(this.players, null, 2)}`);
+      return false;
+    }
 
     player.health.current = Math.max(0, player.health.current - amount);
 
