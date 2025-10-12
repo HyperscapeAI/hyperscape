@@ -1,0 +1,11 @@
+{
+  "createdAt": "2025-10-12T01:00:55.973Z",
+  "seeds": [
+    "bronze-sword",
+    "steel-sword",
+    "wood-bow",
+    "bronze-shield",
+    "leather-body",
+    "adventurer-avatar"
+  ]
+}
