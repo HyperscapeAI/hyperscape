@@ -29,6 +29,17 @@
     "drops": [
       { "itemId": "coins", "quantity": 5, "chance": 1.0, "isGuaranteed": true }
     ],
+    "lootTable": {
+      "guaranteedDrops": [
+        { "itemId": "coins", "quantity": 10, "chance": 1.0 }
+      ],
+      "commonDrops": [],
+      "uncommonDrops": [
+        { "itemId": "bronze_sword", "quantity": 1, "chance": 0.1 },
+        { "itemId": "bronze_helmet", "quantity": 1, "chance": 0.05 }
+      ],
+      "rareDrops": []
+    },
     "spawnBiomes": ["mistwood_valley", "goblin_wastes"],
     "modelPath": "/world-assets/forge/goblin/goblin_rigged.glb",
     "respawnTime": 900000,
