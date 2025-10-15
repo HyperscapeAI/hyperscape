@@ -45,7 +45,7 @@
   "license": "MIT",
   "dependencies": {
     "@mediapipe/hands": "^0.4.1675469240",
-    "@react-three/drei": "^9.109.5",
+    "@react-three/drei": "^10.7.6",
     "@react-three/fiber": "^8.16.8",
     "@tensorflow-models/hand-pose-detection": "^2.0.1",
     "@tensorflow/tfjs": "^4.22.0",
