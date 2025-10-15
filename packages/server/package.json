@@ -69,7 +69,7 @@
     "@typescript-eslint/parser": "^8.38.0",
     "@vitest/coverage-v8": "^1.6.0",
     "@vitest/ui": "^1.6.0",
-    "chokidar": "^3.6.0",
+    "chokidar": "^4.0.3",
     "esbuild": "^0.25.5",
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.1.0",
