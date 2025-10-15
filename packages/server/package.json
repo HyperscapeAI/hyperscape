@@ -71,7 +71,7 @@
     "@vitest/ui": "^1.6.0",
     "chokidar": "^3.6.0",
     "esbuild": "^0.25.5",
-    "eslint": "^8.57.0",
+    "eslint": "^9.37.0",
     "eslint-config-prettier": "^9.1.0",
     "playwright": "^1.54.2",
     "prettier": "^3.6.2",
