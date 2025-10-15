@@ -124,9 +124,9 @@
     "@tailwindcss/postcss": "^4.1.14",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/lodash-es": "^4.17.12",
-    "@types/node": "^22.9.3",
-    "@types/react": "^18.3.23",
-    "@types/react-dom": "^18.3.7",
+    "@types/node": "^24.7.2",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
     "@types/source-map-support": "^0.5.10",
     "@types/webxr": "^0.5.22",
     "@typescript-eslint/eslint-plugin": "^8.38.0",
@@ -160,8 +160,8 @@
     "vitest": "^1.6.0"
   },
   "peerDependencies": {
-    "@types/react": "^18.3.23",
-    "@types/react-dom": "^18.3.7"
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2"
   },
   "engines": {
     "npm": ">=10.0.0",
