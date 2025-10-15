@@ -61,7 +61,7 @@
     "nanoid": "^5.0.6",
     "postprocessing": "^6.36.4",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react-dom": "^19.2.0",
     "styled-components": "^6.1.19",
     "three": "^0.180.0",
     "three-custom-shader-material": "^6.3.7",
