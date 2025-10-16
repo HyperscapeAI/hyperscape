@@ -133,7 +133,7 @@ export class DockerManager {
    * @public
    */
   async startPostgres(): Promise<void> {
-    
+
     const { stdout } = await execAsync(
       `docker ps -a --filter "name=^/${this.config.containerName}$" --format "{{.Names}}"`
     )
