@@ -1,0 +1,452 @@
+[
+  {
+    "id": "goblin",
+    "name": "Goblin",
+    "type": "humanoid",
+    "mobType": "humanoid",
+    "description": "Small green humanoids with crude weapons. The classic first enemy.",
+    "difficultyLevel": 1,
+    "level": 2,
+    "stats": {
+      "level": 2,
+      "health": 5,
+      "maxHealth": 5,
+      "attack": 1,
+      "strength": 1,
+      "defense": 1,
+      "ranged": 1,
+      "constitution": 5
+    },
+    "behavior": {
+      "aggressive": true,
+      "aggroRange": 3,
+      "chaseRange": 8,
+      "returnToSpawn": true,
+      "ignoreLowLevelPlayers": false,
+      "levelThreshold": 1
+    },
+    "attackSpeed": 1.8,
+    "moveSpeed": 4.5,
+    "combatRange": 1.5,
+    "lootTable": {
+      "guaranteedDrops": [
+        {
+          "itemId": "coins",
+          "quantity": 10,
+          "chance": 1.0
+        }
+      ],
+      "commonDrops": [],
+      "uncommonDrops": [
+        {
+          "itemId": "bronze_sword",
+          "quantity": 1,
+          "chance": 0.1
+        },
+        {
+          "itemId": "bronze_helmet",
+          "quantity": 1,
+          "chance": 0.05
+        }
+      ],
+      "rareDrops": []
+    },
+    "spawnBiomes": [
+      "mistwood_valley",
+      "goblin_wastes"
+    ],
+    "modelPath": "asset://models/goblin/goblin_rigged.glb",
+    "respawnTime": 900000,
+    "xpReward": 8
+  },
+  {
+    "id": "bandit",
+    "name": "Desperate Bandit",
+    "type": "humanoid",
+    "mobType": "humanoid",
+    "description": "Humans who turned to crime after the Calamity",
+    "difficultyLevel": 1,
+    "level": 3,
+    "stats": {
+      "level": 3,
+      "health": 8,
+      "attack": 2,
+      "strength": 2,
+      "defense": 1,
+      "ranged": 1,
+      "constitution": 8,
+      "maxHealth": 8
+    },
+    "behavior": {
+      "aggressive": true,
+      "aggroRange": 4,
+      "chaseRange": 10,
+      "returnToSpawn": true,
+      "ignoreLowLevelPlayers": true,
+      "levelThreshold": 5
+    },
+    "attackSpeed": 1.6,
+    "moveSpeed": 5.0,
+    "combatRange": 2.0,
+    "spawnBiomes": [
+      "mistwood_valley",
+      "goblin_wastes",
+      "northern_plains"
+    ],
+    "modelPath": "asset://models/thug/thug_rigged.glb",
+    "respawnTime": 900000,
+    "xpReward": 12,
+    "lootTable": {
+      "guaranteedDrops": [
+        {
+          "itemId": "coins",
+          "quantity": 8,
+          "chance": 1.0
+        }
+      ],
+      "commonDrops": [],
+      "uncommonDrops": [],
+      "rareDrops": []
+    }
+  },
+  {
+    "id": "barbarian",
+    "name": "Barbarian Warrior",
+    "type": "humanoid",
+    "mobType": "humanoid",
+    "description": "Primitive humans living in the wilderness",
+    "difficultyLevel": 1,
+    "level": 4,
+    "stats": {
+      "level": 4,
+      "health": 12,
+      "attack": 3,
+      "strength": 4,
+      "defense": 2,
+      "ranged": 1,
+      "constitution": 12,
+      "maxHealth": 12
+    },
+    "behavior": {
+      "aggressive": true,
+      "aggroRange": 5,
+      "chaseRange": 12,
+      "returnToSpawn": true,
+      "ignoreLowLevelPlayers": false,
+      "levelThreshold": 5
+    },
+    "attackSpeed": 1.4,
+    "moveSpeed": 5.5,
+    "combatRange": 2.5,
+    "spawnBiomes": [
+      "goblin_wastes",
+      "northern_plains"
+    ],
+    "modelPath": "asset://models/human/human_rigged.glb",
+    "respawnTime": 900000,
+    "xpReward": 18,
+    "lootTable": {
+      "guaranteedDrops": [
+        {
+          "itemId": "coins",
+          "quantity": 12,
+          "chance": 1.0
+        }
+      ],
+      "commonDrops": [],
+      "uncommonDrops": [],
+      "rareDrops": []
+    }
+  },
+  {
+    "id": "hobgoblin",
+    "name": "Hobgoblin",
+    "type": "humanoid",
+    "mobType": "humanoid",
+    "description": "Larger, militaristic cousins of goblins",
+    "difficultyLevel": 2,
+    "level": 8,
+    "stats": {
+      "level": 8,
+      "health": 25,
+      "attack": 8,
+      "strength": 7,
+      "defense": 6,
+      "ranged": 3,
+      "constitution": 25,
+      "maxHealth": 25
+    },
+    "behavior": {
+      "aggressive": true,
+      "aggroRange": 6,
+      "chaseRange": 15,
+      "returnToSpawn": true,
+      "ignoreLowLevelPlayers": false,
+      "levelThreshold": 5
+    },
+    "attackSpeed": 1.2,
+    "moveSpeed": 4.8,
+    "combatRange": 2.0,
+    "spawnBiomes": [
+      "darkwood_forest",
+      "corrupted_ruins"
+    ],
+    "modelPath": "asset://models/troll/troll_rigged.glb",
+    "respawnTime": 900000,
+    "xpReward": 35,
+    "lootTable": {
+      "guaranteedDrops": [
+        {
+          "itemId": "coins",
+          "quantity": 25,
+          "chance": 1.0
+        }
+      ],
+      "commonDrops": [],
+      "uncommonDrops": [],
+      "rareDrops": []
+    }
+  },
+  {
+    "id": "guard",
+    "name": "Corrupted Guard",
+    "type": "humanoid",
+    "mobType": "humanoid",
+    "description": "Former kingdom soldiers serving dark masters",
+    "difficultyLevel": 2,
+    "level": 10,
+    "stats": {
+      "level": 10,
+      "health": 30,
+      "attack": 10,
+      "strength": 8,
+      "defense": 8,
+      "ranged": 5,
+      "constitution": 30,
+      "maxHealth": 30
+    },
+    "behavior": {
+      "aggressive": true,
+      "aggroRange": 7,
+      "chaseRange": 15,
+      "returnToSpawn": true,
+      "ignoreLowLevelPlayers": false,
+      "levelThreshold": 5
+    },
+    "attackSpeed": 1.3,
+    "moveSpeed": 4.5,
+    "combatRange": 2.0,
+    "spawnBiomes": [
+      "darkwood_forest",
+      "corrupted_ruins"
+    ],
+    "modelPath": "asset://models/human/human_rigged.glb",
+    "respawnTime": 900000,
+    "xpReward": 45,
+    "lootTable": {
+      "guaranteedDrops": [
+        {
+          "itemId": "coins",
+          "quantity": 35,
+          "chance": 1.0
+        }
+      ],
+      "commonDrops": [],
+      "uncommonDrops": [],
+      "rareDrops": []
+    }
+  },
+  {
+    "id": "dark_warrior",
+    "name": "Dark Warrior",
+    "type": "humanoid",
+    "mobType": "humanoid",
+    "description": "Warriors who embraced darkness after the Calamity",
+    "difficultyLevel": 2,
+    "level": 12,
+    "stats": {
+      "level": 12,
+      "health": 35,
+      "attack": 12,
+      "strength": 12,
+      "defense": 8,
+      "ranged": 6,
+      "constitution": 35,
+      "maxHealth": 35
+    },
+    "behavior": {
+      "aggressive": true,
+      "aggroRange": 8,
+      "chaseRange": 20,
+      "returnToSpawn": true,
+      "ignoreLowLevelPlayers": false,
+      "levelThreshold": 10
+    },
+    "attackSpeed": 1.1,
+    "moveSpeed": 5.2,
+    "combatRange": 2.5,
+    "spawnBiomes": [
+      "darkwood_forest"
+    ],
+    "modelPath": "asset://models/imp/imp_rigged.glb",
+    "respawnTime": 900000,
+    "xpReward": 55,
+    "lootTable": {
+      "guaranteedDrops": [
+        {
+          "itemId": "coins",
+          "quantity": 45,
+          "chance": 1.0
+        }
+      ],
+      "commonDrops": [],
+      "uncommonDrops": [],
+      "rareDrops": []
+    }
+  },
+  {
+    "id": "black_knight",
+    "name": "Black Knight",
+    "type": "humanoid",
+    "mobType": "humanoid",
+    "description": "Elite dark warriors in pitch-black armor",
+    "difficultyLevel": 3,
+    "level": 20,
+    "stats": {
+      "level": 20,
+      "health": 60,
+      "attack": 20,
+      "strength": 18,
+      "defense": 15,
+      "ranged": 8,
+      "constitution": 60,
+      "maxHealth": 60
+    },
+    "behavior": {
+      "aggressive": true,
+      "aggroRange": 10,
+      "chaseRange": 25,
+      "returnToSpawn": true,
+      "ignoreLowLevelPlayers": false,
+      "levelThreshold": 15
+    },
+    "attackSpeed": 0.9,
+    "moveSpeed": 4.0,
+    "combatRange": 3.0,
+    "spawnBiomes": [
+      "blasted_lands",
+      "black_knight_fortress"
+    ],
+    "modelPath": "asset://models/human/human_rigged.glb",
+    "respawnTime": 900000,
+    "xpReward": 100,
+    "lootTable": {
+      "guaranteedDrops": [
+        {
+          "itemId": "coins",
+          "quantity": 100,
+          "chance": 1.0
+        }
+      ],
+      "commonDrops": [],
+      "uncommonDrops": [],
+      "rareDrops": []
+    }
+  },
+  {
+    "id": "ice_warrior",
+    "name": "Ice Warrior",
+    "type": "undead",
+    "mobType": "undead",
+    "description": "Ancient warriors of Valorhall, frozen but still fighting",
+    "difficultyLevel": 3,
+    "level": 18,
+    "stats": {
+      "level": 18,
+      "health": 80,
+      "attack": 15,
+      "strength": 12,
+      "defense": 20,
+      "ranged": 5,
+      "constitution": 80,
+      "maxHealth": 80
+    },
+    "behavior": {
+      "aggressive": true,
+      "aggroRange": 8,
+      "chaseRange": 15,
+      "returnToSpawn": true,
+      "ignoreLowLevelPlayers": false,
+      "levelThreshold": 10
+    },
+    "attackSpeed": 1.5,
+    "moveSpeed": 3.5,
+    "combatRange": 2.5,
+    "spawnBiomes": [
+      "northern_reaches"
+    ],
+    "modelPath": "asset://models/human/human_rigged.glb",
+    "respawnTime": 900000,
+    "xpReward": 90,
+    "lootTable": {
+      "guaranteedDrops": [
+        {
+          "itemId": "coins",
+          "quantity": 120,
+          "chance": 1.0
+        }
+      ],
+      "commonDrops": [],
+      "uncommonDrops": [],
+      "rareDrops": []
+    }
+  },
+  {
+    "id": "dark_ranger",
+    "name": "Dark Ranger",
+    "type": "humanoid",
+    "mobType": "humanoid",
+    "description": "Master bowmen who turned to darkness",
+    "difficultyLevel": 3,
+    "level": 22,
+    "stats": {
+      "level": 22,
+      "health": 50,
+      "attack": 12,
+      "strength": 10,
+      "defense": 12,
+      "ranged": 25,
+      "constitution": 50,
+      "maxHealth": 50
+    },
+    "behavior": {
+      "aggressive": true,
+      "aggroRange": 12,
+      "chaseRange": 20,
+      "returnToSpawn": true,
+      "ignoreLowLevelPlayers": false,
+      "levelThreshold": 10
+    },
+    "attackSpeed": 2.0,
+    "moveSpeed": 5.5,
+    "combatRange": 8.0,
+    "spawnBiomes": [
+      "blasted_lands"
+    ],
+    "modelPath": "asset://models/human/human_rigged.glb",
+    "respawnTime": 900000,
+    "xpReward": 110,
+    "lootTable": {
+      "guaranteedDrops": [
+        {
+          "itemId": "coins",
+          "quantity": 150,
+          "chance": 1.0
+        }
+      ],
+      "commonDrops": [],
+      "uncommonDrops": [],
+      "rareDrops": []
+    }
+  }
+]

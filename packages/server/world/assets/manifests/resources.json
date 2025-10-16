@@ -1,0 +1,17 @@
+[
+  {
+    "id": "tree_normal",
+    "name": "Tree",
+    "type": "tree",
+    "resourceType": "tree",
+    "modelPath": "asset://models/tree/tree.glb",
+    "harvestSkill": "woodcutting",
+    "requiredLevel": 1,
+    "harvestTime": 3000,
+    "respawnTime": 60000,
+    "harvestYield": [
+      { "itemId": "logs", "quantity": 1, "chance": 1.0 }
+    ]
+  }
+]
+

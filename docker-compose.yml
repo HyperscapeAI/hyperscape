@@ -1,0 +1,213 @@
+# Hyperscape Development Environment - Docker Compose
+# Complete stack for local development with hot-reload
+
+version: '3.9'
+
+services:
+  # ====================================
+  # PostgreSQL Database
+  # ====================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: hyperscape-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/scripts/validate-postgres-env.sh:/usr/local/bin/validate-postgres-env.sh:ro
+    entrypoint: ["/usr/local/bin/validate-postgres-env.sh"]
+    command: ["postgres", "-c", "max_connections=200", "-c", "shared_buffers=256MB"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - hyperscape-network
+    restart: unless-stopped
+
+  # ====================================
+  # CDN (Nginx for static assets)
+  # ====================================
+  cdn:
+    build:
+      context: ./packages/server/docker/cdn
+      dockerfile: Dockerfile
+    container_name: hyperscape-cdn
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./packages/server/world/assets:/usr/share/nginx/html/assets:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - hyperscape-network
+    restart: unless-stopped
+
+  # ====================================
+  # Shared Package (builds first)
+  # ====================================
+  shared:
+    build:
+      context: .
+      dockerfile: packages/shared/Dockerfile
+      target: development
+    container_name: hyperscape-shared
+    volumes:
+      # Mount source for hot reload
+      - ./packages/shared/src:/app/packages/shared/src:ro
+      - ./packages/shared/types:/app/packages/shared/types:ro
+      # Shared build output (used by server and client)
+      - shared-build:/app/packages/shared/build
+      # Prevent node_modules conflicts
+      - shared-node-modules:/app/packages/shared/node_modules
+    networks:
+      - hyperscape-network
+    restart: unless-stopped
+
+  # ====================================
+  # Server (Game Backend)
+  # ====================================
+  server:
+    build:
+      context: .
+      dockerfile: packages/server/Dockerfile.dev
+      target: development
+    container_name: hyperscape-server
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=${PORT:-5555}
+      - WORLD=${WORLD:-world}
+      - JWT_SECRET=${JWT_SECRET}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - ADMIN_CODE=${ADMIN_CODE:-}
+      - SAVE_INTERVAL=${SAVE_INTERVAL:-60}
+      - PUBLIC_WS_URL=${PUBLIC_WS_URL:-ws://localhost:5555/ws}
+      - PUBLIC_API_URL=${PUBLIC_API_URL:-http://localhost:5555/api}
+      - PUBLIC_PLAYER_COLLISION=${PUBLIC_PLAYER_COLLISION:-false}
+      - PUBLIC_MAX_UPLOAD_SIZE=${PUBLIC_MAX_UPLOAD_SIZE:-12}
+      - PUBLIC_CDN_URL=http://cdn:8080
+      - LIVEKIT_URL=${LIVEKIT_URL:-}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:-}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:-}
+      - PRIVY_APP_ID=${PRIVY_APP_ID:-}
+      - PRIVY_APP_SECRET=${PRIVY_APP_SECRET:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - MESHY_API_KEY=${MESHY_API_KEY:-}
+      - AI_GATEWAY_API_KEY=${AI_GATEWAY_API_KEY:-}
+      - AI_GATEWAY_BASE_URL=${AI_GATEWAY_BASE_URL:-https://ai-gateway.vercel.sh/v1}
+      - AI_GATEWAY_SMALL_MODEL=${AI_GATEWAY_SMALL_MODEL:-gpt-4o-mini}
+      - AI_GATEWAY_LARGE_MODEL=${AI_GATEWAY_LARGE_MODEL:-gpt-4o}
+      - AI_GATEWAY_EMBEDDING_MODEL=${AI_GATEWAY_EMBEDDING_MODEL:-text-embedding-3-small}
+      - AI_GATEWAY_IMAGE_MODEL=${AI_GATEWAY_IMAGE_MODEL:-dall-e-3}
+      - AI_GATEWAY_IMAGE_DESCRIPTION_MODEL=${AI_GATEWAY_IMAGE_DESCRIPTION_MODEL:-gpt-4o-mini}
+      - AI_GATEWAY_EXPERIMENTAL_TELEMETRY=${AI_GATEWAY_EXPERIMENTAL_TELEMETRY:-false}
+      # SQLite config removed - using PostgreSQL via DATABASE_URL
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - DEBUG_RPG=${DEBUG_RPG:-0}
+      - HYPERSCAPE_ASSETS_URL=${HYPERSCAPE_ASSETS_URL:-https://assets.hyperscape.io}
+      - PLUGIN_PATH=${PLUGIN_PATH:-}
+      - SYSTEMS_PATH=${SYSTEMS_PATH:-}
+    ports:
+      - "${PORT:-5555}:5555"
+    volumes:
+      # Mount source for hot reload
+      - ./packages/server/src:/app/packages/server/src:ro
+      - ./packages/server/world:/app/packages/server/world
+      # Mount shared build (read-only)
+      - shared-build:/app/packages/shared/build:ro
+      # Prevent node_modules conflicts
+      - server-node-modules:/app/packages/server/node_modules
+      # Mount assets
+      - ./assets:/app/assets:ro
+      # Mount validation script
+      - ./docker/scripts/validate-server-env.sh:/usr/local/bin/validate-server-env.sh:ro
+    entrypoint: ["/usr/local/bin/validate-server-env.sh"]
+    command: ["bun", "run", "dev:server"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      cdn:
+        condition: service_healthy
+      shared:
+        condition: service_started
+    networks:
+      - hyperscape-network
+    restart: unless-stopped
+
+  # ====================================
+  # Client (Vite Dev Server with HMR)
+  # ====================================
+  client:
+    build:
+      context: .
+      dockerfile: packages/client/Dockerfile.dev
+      target: development
+    container_name: hyperscape-client
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PUBLIC_WS_URL=${PUBLIC_WS_URL:-ws://localhost:5555/ws}
+      - PUBLIC_API_URL=${PUBLIC_API_URL:-http://localhost:5555/api}
+      - PUBLIC_CDN_URL=${PUBLIC_CDN_URL:-http://localhost:8080}
+      - PUBLIC_PRIVY_APP_ID=${PUBLIC_PRIVY_APP_ID:-}
+      - PUBLIC_ENABLE_FARCASTER=${PUBLIC_ENABLE_FARCASTER:-false}
+      - PUBLIC_FC_APP_ID=${PUBLIC_FC_APP_ID:-}
+      - PUBLIC_STARTER_ITEMS=${PUBLIC_STARTER_ITEMS:-}
+      - TERRAIN_SEED=${TERRAIN_SEED:-0}
+      - DEBUG_RPG=${DEBUG_RPG:-0}
+      - VITE_OPENAI_API_KEY=${VITE_OPENAI_API_KEY:-}
+      - VITE_MESHY_API_KEY=${VITE_MESHY_API_KEY:-}
+      - VITE_IMAGE_SERVER_URL=${VITE_IMAGE_SERVER_URL:-http://localhost:3001}
+      - VITE_GENERATION_API_URL=${VITE_GENERATION_API_URL:-http://localhost:3000/api}
+    ports:
+      - "3333:3333"
+    volumes:
+      # Mount source for HMR
+      - ./packages/client/src:/app/packages/client/src:ro
+      - ./packages/client/public:/app/packages/client/public:ro
+      # Mount shared build (read-only)
+      - shared-build:/app/packages/shared/build:ro
+      # Prevent node_modules conflicts
+      - client-node-modules:/app/packages/client/node_modules
+    depends_on:
+      - server
+      - cdn
+      - shared
+    networks:
+      - hyperscape-network
+    restart: unless-stopped
+
+# ====================================
+# Named Volumes
+# ====================================
+volumes:
+  postgres-data:
+    name: hyperscape-postgres-data
+  shared-build:
+    name: hyperscape-shared-build
+  shared-node-modules:
+    name: hyperscape-shared-node-modules
+  server-node-modules:
+    name: hyperscape-server-node-modules
+  client-node-modules:
+    name: hyperscape-client-node-modules
+
+# ====================================
+# Networks
+# ====================================
+networks:
+  hyperscape-network:
+    name: hyperscape-network
+    driver: bridge

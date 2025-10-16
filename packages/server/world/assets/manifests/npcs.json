@@ -1,0 +1,62 @@
+[
+  {
+    "id": "bank_clerk",
+    "name": "Bank Clerk",
+    "type": "npc",
+    "npcType": "bank",
+    "description": "A helpful bank clerk who manages deposits and withdrawals",
+    "modelPath": "asset://models/human/human_rigged.glb",
+    "iconPath": "asset://icons/npcs/bank_clerk.png",
+    "services": ["banking"],
+    "dialogueLines": [
+      "Welcome to the bank!",
+      "How may I help you today?",
+      "Your items are safe with us."
+    ]
+  },
+  {
+    "id": "shopkeeper",
+    "name": "Shopkeeper",
+    "type": "npc",
+    "npcType": "store",
+    "description": "A friendly merchant who buys and sells items",
+    "modelPath": "asset://models/human/human_rigged.glb",
+    "iconPath": "asset://icons/npcs/shopkeeper.png",
+    "services": ["buy_items", "sell_items"],
+    "dialogueLines": [
+      "Welcome to my shop!",
+      "Looking to buy or sell?",
+      "I have the best prices around!"
+    ]
+  },
+  {
+    "id": "quest_giver",
+    "name": "Quest Giver",
+    "type": "npc",
+    "npcType": "quest_giver",
+    "description": "A mysterious figure with tasks for brave adventurers",
+    "modelPath": "asset://models/human/human_rigged.glb",
+    "iconPath": "asset://icons/npcs/quest_giver.png",
+    "services": ["quests"],
+    "dialogueLines": [
+      "Greetings, adventurer!",
+      "I have a task for you.",
+      "Are you brave enough?"
+    ]
+  },
+  {
+    "id": "skill_trainer",
+    "name": "Skill Trainer",
+    "type": "npc",
+    "npcType": "trainer",
+    "description": "A master craftsman who can teach you new skills",
+    "modelPath": "asset://models/human/human_rigged.glb",
+    "iconPath": "asset://icons/npcs/skill_trainer.png",
+    "services": ["training"],
+    "dialogueLines": [
+      "Ready to learn?",
+      "Practice makes perfect!",
+      "Let me show you the way."
+    ]
+  }
+]

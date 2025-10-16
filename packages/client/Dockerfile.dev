@@ -1,0 +1,109 @@
+# Development Dockerfile for Hyperscape Client
+# Includes Vite dev server with HMR (Hot Module Replacement)
+
+FROM oven/bun:1-slim AS base
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    ca-certificates \
+    python3 \
+    make \
+    g++ \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# ====================================
+# Stage: Dependencies
+# ====================================
+FROM base AS deps
+
+# Copy root package files
+COPY package.json bun.lockb* ./
+COPY turbo.json ./
+
+# Copy package.json files for workspace
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/client/package.json ./packages/client/
+COPY packages/physx-js-webidl/package.json ./packages/physx-js-webidl/
+
+# Install dependencies
+# Note: If you have truly optional packages, declare them in package.json's optionalDependencies
+RUN bun install
+
+# ====================================
+# Stage: Development
+# ====================================
+FROM deps AS development
+
+WORKDIR /app
+
+# Copy shared package (built by shared container)
+COPY packages/shared ./packages/shared
+
+# Copy PhysX assets (if they exist)
+# Note: PhysX WASM files will be available from node_modules after bun install
+RUN mkdir -p packages/physx-js-webidl/dist && \
+    if [ -d node_modules/@hyperscape/physx-js-webidl/dist ]; then \
+        cp -r node_modules/@hyperscape/physx-js-webidl/dist/* packages/physx-js-webidl/dist/ 2>/dev/null || true; \
+    fi
+
+# Copy client source
+COPY packages/client ./packages/client
+
+# Create necessary directories
+RUN mkdir -p packages/client/dist
+
+# Expose Vite dev server port
+EXPOSE 3333
+
+# Health check for Vite dev server
+HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
+  CMD curl -f http://localhost:3333 || exit 1
+
+# Run Vite in dev mode with HMR
+# Note: Vite needs --host 0.0.0.0 to be accessible from outside container
+CMD ["bun", "run", "dev:client"]
+
+# ====================================
+# Stage: Builder
+# ====================================
+FROM deps AS builder
+
+WORKDIR /app
+
+# Copy source code
+COPY packages/shared ./packages/shared
+COPY packages/client ./packages/client
+
+# Copy PhysX assets (if they exist)
+RUN mkdir -p packages/physx-js-webidl/dist && \
+    if [ -d node_modules/@hyperscape/physx-js-webidl/dist ]; then \
+        cp -r node_modules/@hyperscape/physx-js-webidl/dist/* packages/physx-js-webidl/dist/ 2>/dev/null || true; \
+    fi
+
+# Build the client
+RUN cd packages/client && bun run build
+
+# ====================================
+# Stage: Production (with nginx)
+# ====================================
+FROM nginx:alpine AS production
+
+# Install curl for healthcheck
+RUN apk add --no-cache curl
+
+# Copy built static files
+COPY --from=builder /app/packages/client/dist /usr/share/nginx/html
+
+# Copy custom nginx configuration (if needed)
+# COPY packages/client/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

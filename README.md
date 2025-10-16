@@ -60,10 +60,32 @@ This is a **real, playable RPG** with:
 
 ## 🚀 **How to Play**
 
-### 1. Start the Game
+### Option 1: Docker Development (Recommended ⭐)
+
+**Perfect for: New contributors, team collaboration, clean isolated setup**
+
+```bash
+# Just 3 commands to start:
+git clone <repository-url> && cd hyperscape
+cp .env.docker.example .env
+./docker-dev.sh start
+
+# Then open: http://localhost:3333
+```
+
+**What you get:**
+- ✅ Zero local dependencies (only Docker needed)
+- ✅ Hot-reload for all packages (code changes reflect instantly)
+- ✅ Full stack running (client, server, database, CDN)
+- ✅ Consistent environment across team
+- ✅ Easy cleanup (`./docker-dev.sh clean`)
+
+**📖 Complete guide**: See **[DOCKER.md](DOCKER.md)** for full documentation, troubleshooting, and team workflow
+
+### Option 2: Local Development
 ```bash
 npm install        # Install dependencies
-npm run build      # Build all packages  
+npm run build      # Build all packages
 npm start          # Start the RPG server
 ```
 

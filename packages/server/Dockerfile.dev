@@ -1,0 +1,111 @@
+# Development Dockerfile for Hyperscape Server
+# Includes hot-reload and development tools
+
+FROM oven/bun:1-slim AS base
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    ca-certificates \
+    python3 \
+    make \
+    g++ \
+    git \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# ====================================
+# Stage: Dependencies
+# ====================================
+FROM base AS deps
+
+# Copy root package files
+COPY package.json bun.lockb* ./
+COPY turbo.json ./
+
+# Copy package.json files for all dependencies
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/server/package.json ./packages/server/
+COPY packages/physx-js-webidl/package.json ./packages/physx-js-webidl/
+
+# Install all dependencies (including devDependencies for development)
+# Note: Optional dependencies like better-sqlite3 and canvas should be in package.json's optionalDependencies
+RUN bun install
+
+# ====================================
+# Stage: Development
+# ====================================
+FROM deps AS development
+
+WORKDIR /app
+
+# Copy shared package (built by shared container)
+COPY packages/shared ./packages/shared
+
+# Copy PhysX assets (if they exist)
+# Note: PhysX WASM files will be available from node_modules after bun install
+RUN mkdir -p assets/web && \
+    mkdir -p packages/physx-js-webidl/dist && \
+    if [ -d node_modules/@hyperscape/physx-js-webidl/dist ]; then \
+        cp -r node_modules/@hyperscape/physx-js-webidl/dist/* assets/web/ 2>/dev/null || true; \
+        cp -r node_modules/@hyperscape/physx-js-webidl/dist/* packages/physx-js-webidl/dist/ 2>/dev/null || true; \
+    fi
+
+# Copy server source
+COPY packages/server ./packages/server
+
+# Create build directories
+RUN mkdir -p packages/server/build
+
+# Expose WebSocket/HTTP port
+EXPOSE 5555
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
+  CMD curl -f http://localhost:5555/status || exit 1
+
+# Run in development mode with hot reload
+CMD ["bun", "run", "dev:server"]
+
+# ====================================
+# Stage: Builder
+# ====================================
+FROM deps AS builder
+
+WORKDIR /app
+
+# Copy source code
+COPY packages/shared ./packages/shared
+COPY packages/server ./packages/server
+COPY packages/physx-js-webidl/dist ./packages/physx-js-webidl/dist
+
+# Build the server
+RUN cd packages/server && bun run build
+
+# ====================================
+# Stage: Production
+# ====================================
+FROM base AS production
+
+WORKDIR /app
+
+# Copy built server
+COPY --from=builder /app/packages/server/dist ./packages/server/dist
+COPY --from=builder /app/packages/server/package.json ./packages/server/
+
+# Copy node_modules (production only)
+COPY --from=builder /app/node_modules ./node_modules
+
+# Copy assets
+COPY --from=builder /app/assets ./assets
+
+ENV NODE_ENV=production
+
+EXPOSE 5555
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:5555/status || exit 1
+
+CMD ["bun", "run", "start"]
