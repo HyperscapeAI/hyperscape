@@ -13,6 +13,14 @@ interface InteractionAction {
   handler: () => void;
 }
 
+interface PendingResourceAction {
+  resourceId: string;
+  action: string;
+  startTime: number;
+  targetDistance: number;
+  interactionDistance: number;
+}
+
 const _raycaster = new THREE.Raycaster();
 const _mouse = new THREE.Vector2();
 
@@ -52,6 +60,10 @@ export class InteractionSystem extends System {
   private recentResourceRequests = new Map<string, number>();
   private readonly RESOURCE_DEBOUNCE_TIME = 1000; // 1 second
   
+  // Pending resource actions (managed in update loop instead of setTimeout)
+  private pendingResourceActions = new Map<string, PendingResourceAction>();
+  private readonly PENDING_ACTION_TIMEOUT = 5000; // 5 seconds max wait
+  
   constructor(world: World) {
     super(world);
   }
@@ -84,6 +96,44 @@ export class InteractionSystem extends System {
     
     // Create target marker (visual indicator)
     this.createTargetMarker();
+  }
+  
+  override destroy(): void {
+    // Clear pending resource actions
+    this.pendingResourceActions.clear();
+    
+    // Clear long press timer if active
+    if (this.longPressTimer) {
+      clearTimeout(this.longPressTimer);
+      this.longPressTimer = null;
+    }
+    
+    // Remove event listeners
+    if (this.canvas) {
+      this.canvas.removeEventListener('click', this.onCanvasClick, false);
+      this.canvas.removeEventListener('contextmenu', this.onContextMenu, true);
+      this.canvas.removeEventListener('mousemove', this.onMouseMove, false);
+      this.canvas.removeEventListener('mousedown', this.onMouseDown, true);
+      this.canvas.removeEventListener('mouseup', this.onMouseUp, false);
+      this.canvas.removeEventListener('touchstart', this.onTouchStart, true);
+      this.canvas.removeEventListener('touchend', this.onTouchEnd, true);
+    }
+    
+    // Unsubscribe from world events
+    this.world.off(EventType.CAMERA_TAP, this.onCameraTap);
+    
+    // Clean up target marker
+    if (this.targetMarker) {
+      this.targetMarker.geometry.dispose();
+      const material = this.targetMarker.material;
+      if (material instanceof THREE.Material) {
+        material.dispose();
+      }
+      this.targetMarker = null;
+    }
+    
+    // Call parent cleanup
+    super.destroy();
   }
   
   private createTargetMarker(): void {
@@ -517,6 +567,54 @@ export class InteractionSystem extends System {
         }
       }
     }
+    
+    // Process pending resource actions
+    this.processPendingResourceActions();
+  }
+  
+  private processPendingResourceActions(): void {
+    const localPlayer = this.world.getPlayer();
+    if (!localPlayer) return;
+    
+    const now = Date.now();
+    const toRemove: string[] = [];
+    
+    for (const [key, pending] of this.pendingResourceActions.entries()) {
+      // Check if action has timed out
+      if (now - pending.startTime > this.PENDING_ACTION_TIMEOUT) {
+        console.warn(`[InteractionSystem] Pending action timed out for ${pending.action}`);
+        toRemove.push(key);
+        continue;
+      }
+      
+      // Get resource entity and check if still exists
+      const resourceEntity = this.world.entities.get(pending.resourceId);
+      if (!resourceEntity) {
+        console.warn(`[InteractionSystem] Resource no longer exists: ${pending.resourceId}`);
+        toRemove.push(key);
+        continue;
+      }
+      
+      // Recompute distance each frame
+      const resourcePos = resourceEntity.position;
+      const playerPos = localPlayer.position;
+      const distance = Math.sqrt(
+        Math.pow(resourcePos.x - playerPos.x, 2) + 
+        Math.pow(resourcePos.z - playerPos.z, 2)
+      );
+      
+      // Check if within interaction range (with 0.5m tolerance)
+      if (distance <= pending.interactionDistance + 0.5) {
+        console.log(`[InteractionSystem] ✓ Reached resource, executing ${pending.action} (distance: ${distance.toFixed(1)}m)`);
+        this.executeResourceAction(pending.resourceId, pending.action);
+        toRemove.push(key);
+      }
+    }
+    
+    // Clean up processed/timed out actions
+    for (const key of toRemove) {
+      this.pendingResourceActions.delete(key);
+    }
   }
   
   // === CONTEXT MENU METHODS (merged from EntityInteractionSystem) ===
@@ -922,21 +1020,15 @@ export class InteractionSystem extends System {
       
       this.walkTo(targetPos);
       
-      // Schedule the resource action to execute after walking
-      setTimeout(() => {
-        // Re-check distance after walking
-        const newDistance = Math.sqrt(
-          Math.pow(resourcePos.x - localPlayer.position.x, 2) + 
-          Math.pow(resourcePos.z - localPlayer.position.z, 2)
-        );
-        
-        if (newDistance <= interactionDistance + 0.5) {
-          // Close enough now - execute the action
-          this.executeResourceAction(resourceId, action);
-        } else {
-          console.warn('[InteractionSystem] Still too far after walking, skipping action');
-        }
-      }, 2000); // Wait 2 seconds for walking
+      // Add to pending actions - will be processed in update() loop
+      const pendingKey = `${localPlayer.id}:${resourceId}`;
+      this.pendingResourceActions.set(pendingKey, {
+        resourceId,
+        action,
+        startTime: Date.now(),
+        targetDistance,
+        interactionDistance
+      });
       
       return;
     }

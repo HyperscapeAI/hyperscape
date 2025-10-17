@@ -39,6 +39,8 @@ The validation hook automatically:
 - **context-hook.sh** - Pre-edit context retrieval and monorepo awareness
 - **mem0-hook.sh** - The hook script that interfaces with mem0.ai API
 - **validate-hook.sh** - The hook script that validates files against rules
+- **plugin/** - Plugin definition directory (canonical location for commands)
+- **commands/** - Command pointer files (reference plugin/commands/ for actual content)
 
 ## Setup
 
@@ -383,8 +385,25 @@ To improve this integration:
 4. Add memory importance scoring
 5. Create a dashboard for viewing stored memories
 
+## File Organization
+
+### Command Files
+Command definitions follow a canonical location pattern:
+
+- **Canonical Location**: `.claude/plugin/commands/` - Authoritative versions used by the plugin
+- **Pointer Files**: `.claude/commands/` - Lightweight pointers for backward compatibility
+
+All updates should be made to files in `.claude/plugin/commands/`. The files in `.claude/commands/` are pointer files that reference the canonical versions.
+
+### Available Commands
+- `/memorize` - Analyze codebase and store comprehensive memories
+- `/remember` - Store explicit memories for future sessions  
+- `/update-rules` - Synchronize Cursor rules with team practices
+
+See [plugin/commands/commands.md](plugin/commands/commands.md) for full command documentation.
+
 ---
 
-**Last Updated**: October 16, 2025
+**Last Updated**: October 17, 2025
 **mem0.ai API Version**: v1 (store), v2 (search)
 **Claude Code Version**: 1.7+ (hooks support)

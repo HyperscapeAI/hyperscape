@@ -1,3 +1,12 @@
+---
+description: Analyze codebase and store comprehensive memory notes about project structure, systems, and patterns
+---
+
+<!-- 
+  CANONICAL LOCATION: This is the authoritative version used by the Claude plugin.
+  Any duplicate at .claude/commands/memorize.md is a symlink/pointer to this file.
+-->
+
 # Memorize Command
 
 Analyze the codebase and create comprehensive memory notes about the project structure, systems, patterns, and recent changes.

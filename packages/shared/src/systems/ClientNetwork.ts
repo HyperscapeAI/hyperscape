@@ -879,8 +879,8 @@ export class ClientNetwork extends SystemBase {
     
     // Update the ResourceEntity visual
     const entity = this.world.entities.get(data.resourceId);
-    if (entity && typeof (entity as unknown as { updateFromNetwork?: (data: Record<string, unknown>) => void }).updateFromNetwork === 'function') {
-      (entity as unknown as { updateFromNetwork: (data: Record<string, unknown>) => void }).updateFromNetwork({ depleted: true });
+    if (entity && 'updateFromNetwork' in entity && typeof entity.updateFromNetwork === 'function') {
+      entity.updateFromNetwork({ depleted: true });
     }
     
     // Also emit the event for other systems

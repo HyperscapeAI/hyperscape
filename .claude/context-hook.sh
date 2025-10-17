@@ -14,9 +14,17 @@ if [ -f "$(dirname "$0")/../../.env" ]; then
 fi
 
 # Configuration
-PROJECT_ROOT="/Users/home/scape/hyperscape"
-MEM0_API_KEY="${MEM0_API_KEY:-m0-1a25M3lc7JFqFyZNLKVjTJB0odXK2mRzEkyM9uiQ}"
-MEM0_API_URL="https://api.mem0.ai"
+# Configuration (from environment)
+PROJECT_ROOT="${PROJECT_ROOT:-.}"
+MEM0_API_KEY="${MEM0_API_KEY}"
+MEM0_API_URL="${MEM0_API_URL:-https://api.mem0.ai}"
+
+# Validate required configuration
+if [ -z "$MEM0_API_KEY" ]; then
+  log "ERROR: MEM0_API_KEY environment variable must be set"
+  echo '{"allow": false, "error": "Missing MEM0_API_KEY"}'
+  exit 1
+fi
 
 # Extract relevant data
 TOOL_NAME=$(echo "$INPUT" | jq -r '.toolName // empty')
@@ -29,6 +37,46 @@ USER_ID=$(git config user.email 2>/dev/null || echo "hyperscape-dev")
 # Log function
 log() {
   echo "[context-hook] $1" >&2
+}
+
+# Function to check required dependencies
+check_dependencies() {
+  local required_tools=(
+    "curl"
+    "jq"
+    "git"
+    "find"
+    "grep"
+    "sed"
+    "basename"
+    "dirname"
+    "cat"
+    "head"
+    "cut"
+    "sort"
+  )
+  
+  local missing_tools=()
+  
+  for tool in "${required_tools[@]}"; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+      missing_tools+=("$tool")
+      log "ERROR: Required tool '$tool' is not installed or not in PATH"
+    fi
+  done
+  
+  if [ ${#missing_tools[@]} -gt 0 ]; then
+    local missing_list=$(printf ", %s" "${missing_tools[@]}")
+    missing_list=${missing_list:2}  # Remove leading ", "
+    
+    log "ERROR: Missing required tools: $missing_list"
+    log "Please install the missing tools and ensure they are in your PATH"
+    
+    echo "{\"allow\": false, \"error\": \"Missing required dependencies: $missing_list\"}"
+    exit 1
+  fi
+  
+  log "All required dependencies are available"
 }
 
 # Function to search memories
@@ -127,7 +175,7 @@ EOF
 
   # Find type definitions
   echo "Type definitions:"
-  find packages -name "types.ts" -o -name "types" -type d 2>/dev/null | head -5 | while read f; do
+  find packages \( -name "types.ts" -o -name "types" \) -type d 2>/dev/null | head -5 | while read f; do
     echo "  📘 $f"
   done
   echo ""
@@ -239,6 +287,9 @@ EOF
 
 # Main logic
 main() {
+  # Check all required dependencies before proceeding
+  check_dependencies
+  
   # Only run for Edit, Write, and Task tools
   if [ "$TOOL_NAME" != "Edit" ] && [ "$TOOL_NAME" != "Write" ] && [ "$TOOL_NAME" != "Task" ]; then
     echo '{"allow": true}'

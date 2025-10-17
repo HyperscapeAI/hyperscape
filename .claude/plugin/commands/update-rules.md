@@ -1,3 +1,12 @@
+---
+description: Update workspace Cursor rules based on development patterns and decisions
+---
+
+<!-- 
+  CANONICAL LOCATION: This is the authoritative version used by the Claude plugin.
+  Any duplicate at .claude/commands/update-rules.md is a symlink/pointer to this file.
+-->
+
 # Update Rules Command
 
 Analyze stored memories and automatically update or create rules in `.cursor/rules/` to reflect learned patterns, decisions, and best practices.

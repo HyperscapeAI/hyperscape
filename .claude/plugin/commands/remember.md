@@ -1,3 +1,12 @@
+---
+description: Store an explicit memory for future sessions using mem0.ai integration
+---
+
+<!-- 
+  CANONICAL LOCATION: This is the authoritative version used by the Claude plugin.
+  Any duplicate at .claude/commands/remember.md is a symlink/pointer to this file.
+-->
+
 # Remember Command
 
 Store an explicit memory that you want Claude to remember for future sessions.

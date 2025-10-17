@@ -57,7 +57,7 @@ Three powerful commands for memory management:
 
 ### Manual Installation
 
-1. Ensure you have the `.claude-plugin/` directory in your project root
+1. Ensure you have the `.claude/plugin/` directory in your project root
 2. Add the mem0.ai API key to your `.env` file:
    ```bash
    MEM0_API_KEY=your-api-key-here
@@ -67,14 +67,13 @@ Three powerful commands for memory management:
 ## Plugin Structure
 
 ```
-.claude-plugin/
-├── plugin.json           # Plugin metadata and configuration
-├── hooks/
-│   └── hooks.json       # Hook event mappings
-├── README.md            # This file
-└── CHANGELOG.md         # Version history
-
-.claude/                 # Hook scripts location
+.claude/
+├── plugin/
+│   ├── plugin.json      # Plugin metadata and configuration
+│   ├── hooks/
+│   │   └── hooks.json   # Hook event mappings
+│   ├── README.md        # This file
+│   └── CHANGELOG.md     # Version history
 ├── context-hook.sh      # PreToolUse: Context awareness
 ├── mem0-hook.sh         # UserPromptSubmit/SessionEnd/Stop: Memory
 ├── validate-hook.sh     # PostToolUse: Rule validation

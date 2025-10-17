@@ -369,7 +369,7 @@ Hyperscape world integration service that enables agents to:
     // Check for RPG systems and load RPG actions/providers dynamically
     await this.loadRPGExtensions();
 
-    // Wait for player entity to be created by server snapshot
+    // Check player entity availability (appearance polling will handle initialization)
     if (this.world.entities?.player) {
       const appearance = this.world.entities.player.data.appearance;
       console.debug("[Appearance] Current appearance data available");
