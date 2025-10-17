@@ -490,10 +490,11 @@ export class InventorySystem extends SystemBase {
       return;
     }
     
-    // Get itemId from event data (passed from ItemEntity.handleInteraction) or from entity properties
-    const itemId = data.itemId || entity.getProperty('itemId') as string;
+    // ALWAYS use entity's itemId property (authoritative on server)
+    // Never trust client-provided itemId as it could be the entity ID instead
+    const itemId = entity.getProperty('itemId') as string;
     const quantity = entity.getProperty('quantity') as number || 1;
-    
+
     if (!itemId) {
       Logger.systemError('InventorySystem', `No itemId found for entity ${data.entityId}`, new Error(`No itemId found for entity ${data.entityId}`));
       return;

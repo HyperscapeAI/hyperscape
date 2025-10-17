@@ -305,7 +305,7 @@ export class InteractionSystem extends System {
           }
           
           if (this.world.network?.send) {
-            this.world.network.send('pickupItem', { itemId: target.id });
+            this.world.network.send('pickupItem', { entityId: target.id });
           } else {
             console.warn('[InteractionSystem] No network.send available for pickup');
             // Fallback for single-player
@@ -648,7 +648,7 @@ export class InteractionSystem extends System {
             }
             
             if (this.world.network?.send) {
-              this.world.network.send('pickupItem', { itemId: target.id });
+              this.world.network.send('pickupItem', { entityId: target.id });
             } else {
               console.warn('[InteractionSystem] No network.send available for pickup');
               // Fallback for single-player

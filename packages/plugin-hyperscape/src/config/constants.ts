@@ -3,15 +3,50 @@
  * All configurable values should be defined here to avoid hardcoding
  */
 
+/**
+ * Helper function to ensure WebSocket URL has correct path
+ */
+function normalizeWsUrl(url: string) {
+  // Add /ws suffix if not present
+  if (!url.endsWith('/ws')) {
+    return url.endsWith('/') ? `${url}ws` : `${url}/ws`;
+  }
+  return url;
+}
+
+/**
+ * Get WebSocket URL from environment, checking multiple variable names
+ */
+function getDefaultWsUrl() {
+  // Check WS_URL first (preferred)
+  if (process.env.WS_URL) {
+    const url = normalizeWsUrl(process.env.WS_URL);
+    console.info(`[NETWORK_CONFIG] Using WS_URL: ${url}`);
+    return url;
+  }
+
+  // Check HYPERSCAPE_WS_URL as fallback
+  if (process.env.HYPERSCAPE_WS_URL) {
+    const url = normalizeWsUrl(process.env.HYPERSCAPE_WS_URL);
+    console.info(`[NETWORK_CONFIG] Using HYPERSCAPE_WS_URL: ${url}`);
+    return url;
+  }
+
+  // Default to remote server
+  const url = "wss://chill.hyperscape.xyz/ws";
+  console.info(`[NETWORK_CONFIG] Using default remote server: ${url}`);
+  return url;
+}
+
 // Network Configuration
 export const NETWORK_CONFIG = {
-  DEFAULT_WS_URL: process.env.WS_URL || "wss://chill.hyperscape.xyz/ws",
+  DEFAULT_WS_URL: getDefaultWsUrl(),
   DEFAULT_API_BASE: process.env.API_BASE || "http://localhost:5555",
   RETRY_DELAY_MS: parseInt(process.env.RETRY_DELAY_MS || "5000"),
   CONNECTION_TIMEOUT_MS: parseInt(process.env.CONNECTION_TIMEOUT_MS || "10000"),
   UPLOAD_TIMEOUT_MS: parseInt(process.env.UPLOAD_TIMEOUT_MS || "30000"),
   MAX_UPLOAD_SIZE_MB: parseInt(process.env.MAX_UPLOAD_SIZE_MB || "10"),
-} as const;
+};
 
 // Agent Behavior Configuration
 export const AGENT_CONFIG = {
@@ -30,7 +65,7 @@ export const AGENT_CONFIG = {
   RANDOM_WALK_MAX_DISTANCE: parseInt(
     process.env.RANDOM_WALK_MAX_DISTANCE || "7",
   ),
-} as const;
+};
 
 // Controls Configuration
 export const CONTROLS_CONFIG = {
@@ -42,7 +77,7 @@ export const CONTROLS_CONFIG = {
   ACTION_DEFAULT_DURATION_MS: parseInt(
     process.env.ACTION_DURATION_MS || "5555",
   ),
-} as const;
+};
 
 // Game Configuration
 export const GAME_CONFIG = {
@@ -51,13 +86,13 @@ export const GAME_CONFIG = {
   OBSERVATION_DURATION_MS: parseInt(
     process.env.OBSERVATION_DURATION_MS || "5555",
   ),
-} as const;
+};
 
 // Voice Configuration
 export const VOICE_CONFIG = {
   SAMPLE_RATE: parseInt(process.env.VOICE_SAMPLE_RATE || "48000"),
   TRANSCRIPTION_DEBOUNCE_MS: parseInt(process.env.VOICE_DEBOUNCE_MS || "1500"),
-} as const;
+};
 
 // Testing Configuration
 export const TEST_CONFIG = {
@@ -65,7 +100,7 @@ export const TEST_CONFIG = {
   WAIT_DURATION_MS: parseInt(process.env.TEST_WAIT_MS || "5555"),
   LONG_WAIT_DURATION_MS: parseInt(process.env.TEST_LONG_WAIT_MS || "5000"),
   GAME_DURATION_MS: parseInt(process.env.TEST_GAME_DURATION_MS || "300000"), // 5 minutes
-} as const;
+};
 
 // Visual Configuration
 export const VISUAL_CONFIG = {
@@ -73,7 +108,7 @@ export const VISUAL_CONFIG = {
   VICTIM_COLOR: parseInt(process.env.VICTIM_COLOR || "0x0000ff"),
   BODY_COLOR: parseInt(process.env.BODY_COLOR || "0x333333"),
   UI_Z_INDEX: parseInt(process.env.UI_Z_INDEX || "10000"),
-} as const;
+};
 
 // 3D Graphics Configuration
 export const GRAPHICS_CONFIG = {
@@ -85,7 +120,7 @@ export const GRAPHICS_CONFIG = {
   RENDER_TARGET_WIDTH: parseInt(process.env.RENDER_TARGET_WIDTH || "2048"),
   RENDER_TARGET_HEIGHT: parseInt(process.env.RENDER_TARGET_HEIGHT || "1024"),
   TEXTURE_SIZE: parseInt(process.env.TEXTURE_SIZE || "1024"),
-} as const;
+};
 
 // Development flags
 export const DEV_CONFIG = {
@@ -93,4 +128,4 @@ export const DEV_CONFIG = {
   ENABLE_PERFORMANCE_MONITORING:
     process.env.ENABLE_PERFORMANCE_MONITORING === "true",
   USE_MOCK_WORLD: process.env.USE_MOCK_WORLD === "true",
-} as const;
+};

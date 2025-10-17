@@ -123,6 +123,9 @@ import { EventType, Socket, System, THREE, addRole, dbHelpers, getItem, hasRole,
 import type { Vector3 } from 'three';
 import { isPrivyEnabled, verifyPrivyToken } from './privy-auth';
 import { createJWT, verifyJWT } from './utils';
+import { createCharacterWallet } from './privy-wallet-manager';
+import * as schema from './db/schema';
+import { eq } from 'drizzle-orm';
 
 // SocketInterface is the extended ServerSocket type
 type SocketInterface = ServerSocket;
@@ -293,13 +296,39 @@ export class ServerNetwork extends System implements NetworkWithSocket {
   }
 
   // --- Character selection infrastructure (feature-flag guarded) ---
-  private async loadCharacterList(accountId: string): Promise<Array<{ id: string; name: string; level?: number; lastLocation?: { x: number; y: number; z: number } }>> {
+  private async loadCharacterList(accountId: string): Promise<Array<{
+    id: string;
+    name: string;
+    level?: number;
+    lastLocation?: { x: number; y: number; z: number };
+    walletAddress?: string | null;
+    walletChainType?: string | null;
+  }>> {
     try {
+      // Use drizzleDb to fetch wallet info along with character data
+      const serverWorld = this.world as { drizzleDb?: import('drizzle-orm/node-postgres').NodePgDatabase<typeof schema> };
+      const drizzleDb = serverWorld.drizzleDb;
+
+      if (drizzleDb) {
+        const chars = await drizzleDb.select({
+          id: schema.characters.id,
+          name: schema.characters.name,
+          walletAddress: schema.characters.walletAddress,
+          walletChainType: schema.characters.walletChainType,
+        })
+          .from(schema.characters)
+          .where(eq(schema.characters.accountId, accountId));
+
+        return chars;
+      }
+
+      // Fallback to DatabaseSystem (without wallet info)
       const databaseSystem = this.world.getSystem('database') as import('./DatabaseSystem').DatabaseSystem | undefined
       if (!databaseSystem) return []
       const chars = await databaseSystem.getCharactersAsync(accountId)
       return chars.map(c => ({ id: c.id, name: c.name }))
-    } catch {
+    } catch (err) {
+      console.error('[ServerNetwork] Error loading character list:', err);
       return []
     }
   }
@@ -366,18 +395,89 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       }
       
       const result = await databaseSystem.createCharacter(accountId, id, finalName)
-      
+
       if (!result) {
         console.error('[ServerNetwork] ❌ createCharacter returned false - character may already exist')
-        this.sendTo(socket.id, 'showToast', { 
-          message: 'Character creation failed', 
-          type: 'error' 
+        this.sendTo(socket.id, 'showToast', {
+          message: 'Character creation failed',
+          type: 'error'
         })
         return
       }
-      
-      console.log('[ServerNetwork] ✅ Character creation successful, sending response');
-      
+
+      console.log('[ServerNetwork] ✅ Character creation successful');
+
+      // Create wallet for the new character (optional - won't block character creation)
+      try {
+        const serverWorld = this.world as { drizzleDb?: import('drizzle-orm/node-postgres').NodePgDatabase<typeof schema> };
+        const drizzleDb = serverWorld.drizzleDb;
+
+        if (drizzleDb) {
+          console.log('[ServerNetwork] 💰 Attempting to create wallet for character:', id);
+
+          // Get user's privyUserId from the users table
+          const user = await drizzleDb.select({
+            privyUserId: schema.users.privyUserId,
+          })
+            .from(schema.users)
+            .where(eq(schema.users.id, accountId))
+            .limit(1);
+
+          const privyUserId = user[0]?.privyUserId;
+
+          if (privyUserId) {
+            // Calculate next HD index for this user's characters
+            const existingChars = await drizzleDb.select({
+              walletHdIndex: schema.characters.walletHdIndex,
+            })
+              .from(schema.characters)
+              .where(eq(schema.characters.accountId, accountId));
+
+            const hdIndices = existingChars
+              .map(c => c.walletHdIndex)
+              .filter((idx): idx is number => idx !== null);
+            const nextHdIndex = hdIndices.length > 0 ? Math.max(...hdIndices) + 1 : 0;
+
+            console.log('[ServerNetwork] 💰 Creating wallet with HD index:', nextHdIndex);
+
+            // Create the wallet via Privy API
+            const walletData = await createCharacterWallet({
+              privyUserId,
+              characterId: id,
+              chainType: 'ethereum',
+              hdIndex: nextHdIndex,
+            });
+
+            if (walletData) {
+              // Update character with wallet info
+              await drizzleDb.update(schema.characters)
+                .set({
+                  walletAddress: walletData.walletAddress,
+                  walletId: walletData.walletId,
+                  walletChainType: walletData.chainType,
+                  walletHdIndex: walletData.hdIndex,
+                  walletCreatedAt: Date.now(),
+                  walletMetadata: JSON.stringify(walletData.metadata || {}),
+                })
+                .where(eq(schema.characters.id, id));
+
+              console.log('[ServerNetwork] ✅ Wallet created successfully:', walletData.walletAddress);
+            } else {
+              console.warn('[ServerNetwork] ⚠️ Wallet creation returned null - Privy may not be configured');
+            }
+          } else {
+            console.log('[ServerNetwork] ℹ️ No privyUserId found for user, skipping wallet creation');
+          }
+        } else {
+          console.warn('[ServerNetwork] ⚠️ drizzleDb not available, skipping wallet creation');
+        }
+      } catch (walletErr) {
+        // Wallet creation failure should NOT block character creation
+        console.error('[ServerNetwork] ⚠️ Wallet creation failed, but character was created:', walletErr);
+      }
+
+      console.log('[ServerNetwork] ✅ Sending response to client');
+
     } catch (err) {
       console.error('[ServerNetwork] ❌ EXCEPTION in createCharacter:', err)
       this.sendTo(socket.id, 'showToast', { 
@@ -1254,21 +1354,25 @@ export class ServerNetwork extends System implements NetworkWithSocket {
           : [0, 50, 0];
       }
       
+      console.log(`[ServerNetwork] 📍 Spawn position BEFORE terrain check for ${name}:`, spawnPosition);
+
       // Ground spawn position to terrain height
       const terrainSystem = this.world.getSystem('terrain') as InstanceType<typeof TerrainSystem> | null;
-      
+
       // Check if terrain system is ready using its isReady() method
       if (terrainSystem && terrainSystem.isReady && terrainSystem.isReady()) {
         const terrainHeight = terrainSystem.getHeightAt(spawnPosition[0], spawnPosition[2]);
+        console.log(`[ServerNetwork] 🏔️ Terrain height at [${spawnPosition[0]}, ${spawnPosition[2]}]:`, terrainHeight);
 
         if (Number.isFinite(terrainHeight) && terrainHeight > -100 && terrainHeight < 1000) {
           // Always use terrain height, even for saved positions (in case terrain changed)
           spawnPosition[1] = terrainHeight + 0.1;
+          console.log(`[ServerNetwork] ✅ Using terrain height: ${terrainHeight} + 0.1 = ${spawnPosition[1]}`);
         } else {
           // Invalid terrain height - use safe default
           console.error(`[ServerNetwork] TerrainSystem.getHeightAt returned invalid height: ${terrainHeight} at x=${spawnPosition[0]}, z=${spawnPosition[2]}`);
-          console.error(`[ServerNetwork] Using safe spawn height Y=10`);
-          spawnPosition[1] = 10; // Safe default height
+          console.error(`[ServerNetwork] Using safe spawn height Y=50`);
+          spawnPosition[1] = 50; // Safe default height (well above terrain)
         }
       } else {
         // Terrain not ready yet - use safe default height

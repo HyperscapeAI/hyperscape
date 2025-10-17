@@ -771,6 +771,576 @@ async function startServer() {
     return reply.send({ success: true, logged: true })
   })
 
+  // In-memory challenge store (for production, use Redis)
+  const agentChallenges = new Map<string, { userId: string, expiresAt: number }>()
+
+  // Step 1: Create agent authorization challenge (authenticated user only)
+  fastify.post('/api/agent/challenge', async (request, reply) => {
+    try {
+      // User must be authenticated via Privy to create challenge
+      const authHeader = request.headers.authorization
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return reply.status(401).send({
+          success: false,
+          error: 'Not authenticated',
+        })
+      }
+
+      const privyToken = authHeader.slice(7)
+
+      // Verify Privy token to get userId
+      const appId = process.env.PRIVY_APP_ID
+      const appSecret = process.env.PRIVY_APP_SECRET
+
+      if (!appId || !appSecret) {
+        return reply.status(500).send({
+          success: false,
+          error: 'Privy not configured',
+        })
+      }
+
+      const PrivyAuth = await import('@privy-io/server-auth')
+      const { PrivyClient } = PrivyAuth
+      const client = new PrivyClient(appId, appSecret)
+
+      const verifiedClaims = await client.verifyAuthToken(privyToken)
+      const userId = verifiedClaims.userId
+
+      if (!userId) {
+        return reply.status(401).send({
+          success: false,
+          error: 'Invalid token',
+        })
+      }
+
+      // Generate random challenge code (6 characters, easy to type)
+      const challengeCode = Math.random().toString(36).substring(2, 8).toUpperCase()
+      const expiresAt = Date.now() + (5 * 60 * 1000) // 5 minutes
+
+      // Store challenge
+      agentChallenges.set(challengeCode, { userId, expiresAt })
+
+      // Clean up expired challenges
+      for (const [code, data] of agentChallenges.entries()) {
+        if (data.expiresAt < Date.now()) {
+          agentChallenges.delete(code)
+        }
+      }
+
+      fastify.log.info(`[Agent Challenge] Created for user ${userId}: ${challengeCode}`)
+
+      return reply.send({
+        success: true,
+        challengeCode,
+        expiresIn: '5 minutes',
+        expiresAt,
+      })
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      fastify.log.error('[Agent Challenge] Error:', error)
+      return reply.status(401).send({
+        success: false,
+        error: 'Failed to create challenge',
+        details: errorMsg,
+      })
+    }
+  })
+
+  // Step 2: Exchange challenge for agent token (agent presents code)
+  fastify.post('/api/agent/token', async (request, reply) => {
+    try {
+      const { challengeCode } = request.body as { challengeCode?: string }
+
+      if (!challengeCode) {
+        return reply.status(400).send({
+          success: false,
+          error: 'Challenge code required',
+        })
+      }
+
+      // Look up challenge
+      const challenge = agentChallenges.get(challengeCode.toUpperCase())
+
+      if (!challenge) {
+        return reply.status(401).send({
+          success: false,
+          error: 'Invalid or expired challenge code',
+        })
+      }
+
+      // Check if expired
+      if (challenge.expiresAt < Date.now()) {
+        agentChallenges.delete(challengeCode.toUpperCase())
+        return reply.status(401).send({
+          success: false,
+          error: 'Challenge code expired',
+        })
+      }
+
+      // Generate scoped JWT token for agent
+      const jwt = await import('jsonwebtoken')
+      const jwtSecret = process.env.JWT_SECRET || 'hyperscape-dev-secret'
+
+      const agentToken = jwt.sign(
+        {
+          userId: challenge.userId,
+          type: 'agent',
+          // Limited scopes - agent can ONLY authenticate and play
+          scopes: [
+            'game:connect',      // Connect to game server
+            'game:play',         // Play the game
+            'character:read',    // Read character data
+            'character:control'  // Control character in-game
+          ],
+          // Explicitly NO wallet/financial permissions
+          restrictions: [
+            'no_wallet_access',   // Cannot access wallet
+            'no_fund_transfer',   // Cannot transfer funds
+            'no_privy_auth',      // Cannot use for Privy login
+            'no_account_modify'   // Cannot modify account settings
+          ],
+          createdAt: Date.now(),
+          tokenVersion: 1,
+        },
+        jwtSecret,
+        {
+          expiresIn: '365d',
+          issuer: 'hyperscape-server',
+          audience: 'hyperscape-agent'
+        }
+      )
+
+      // Delete challenge after use (one-time use only)
+      agentChallenges.delete(challengeCode.toUpperCase())
+
+      fastify.log.info(`[Agent Token] Generated for user ${challenge.userId} via challenge ${challengeCode}`)
+
+      return reply.send({
+        success: true,
+        token: agentToken,
+        userId: challenge.userId,
+        expiresIn: '365d',
+        scopes: ['game:connect', 'game:play', 'character:read', 'character:control'],
+        restrictions: ['no_wallet_access', 'no_fund_transfer', 'no_privy_auth', 'no_account_modify'],
+      })
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      fastify.log.error('[Agent Token] Error:', error)
+      return reply.status(500).send({
+        success: false,
+        error: 'Failed to generate token',
+        details: errorMsg,
+      })
+    }
+  })
+
+  // Agent management endpoints
+  // In-memory agent store (for production, use database)
+  const agents = new Map<string, {
+    id: string
+    name: string
+    characterFile: string
+    status: 'stopped' | 'active' | 'error'
+    isRunning: boolean
+    playerId: string | null
+    createdAt: number
+    userId: string
+  }>()
+
+  // GET /api/agents - List all agents for authenticated user
+  fastify.get('/api/agents', async (request, reply) => {
+    try {
+      const authHeader = request.headers.authorization
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return reply.status(401).send({
+          success: false,
+          error: 'Not authenticated',
+        })
+      }
+
+      const privyToken = authHeader.slice(7)
+      const appId = process.env.PRIVY_APP_ID
+      const appSecret = process.env.PRIVY_APP_SECRET
+
+      if (!appId || !appSecret) {
+        return reply.status(500).send({
+          success: false,
+          error: 'Privy not configured',
+        })
+      }
+
+      const PrivyAuth = await import('@privy-io/server-auth')
+      const { PrivyClient } = PrivyAuth
+      const client = new PrivyClient(appId, appSecret)
+      const verifiedClaims = await client.verifyAuthToken(privyToken)
+      const userId = verifiedClaims.userId
+
+      // Filter agents for this user
+      const userAgents = Array.from(agents.values()).filter(agent => agent.userId === userId)
+
+      return reply.send({
+        success: true,
+        agents: userAgents,
+      })
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      fastify.log.error('[Agents] Error listing agents:', error)
+      return reply.status(500).send({
+        success: false,
+        error: 'Failed to list agents',
+        details: errorMsg,
+      })
+    }
+  })
+
+  // GET /api/agents/stats - Get agent statistics
+  fastify.get('/api/agents/stats', async (request, reply) => {
+    try {
+      const authHeader = request.headers.authorization
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return reply.status(401).send({
+          success: false,
+          error: 'Not authenticated',
+        })
+      }
+
+      const privyToken = authHeader.slice(7)
+      const appId = process.env.PRIVY_APP_ID
+      const appSecret = process.env.PRIVY_APP_SECRET
+
+      if (!appId || !appSecret) {
+        return reply.status(500).send({
+          success: false,
+          error: 'Privy not configured',
+        })
+      }
+
+      const PrivyAuth = await import('@privy-io/server-auth')
+      const { PrivyClient } = PrivyAuth
+      const client = new PrivyClient(appId, appSecret)
+      const verifiedClaims = await client.verifyAuthToken(privyToken)
+      const userId = verifiedClaims.userId
+
+      // Calculate stats for this user
+      const userAgents = Array.from(agents.values()).filter(agent => agent.userId === userId)
+      const stats = {
+        totalAgents: userAgents.length,
+        activeAgents: userAgents.filter(a => a.status === 'active').length,
+        stoppedAgents: userAgents.filter(a => a.status === 'stopped').length,
+        errorAgents: userAgents.filter(a => a.status === 'error').length,
+      }
+
+      return reply.send({
+        success: true,
+        stats,
+      })
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      fastify.log.error('[Agents] Error fetching stats:', error)
+      return reply.status(500).send({
+        success: false,
+        error: 'Failed to fetch stats',
+        details: errorMsg,
+      })
+    }
+  })
+
+  // POST /api/agents - Create new agent
+  fastify.post('/api/agents', async (request, reply) => {
+    try {
+      const authHeader = request.headers.authorization
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return reply.status(401).send({
+          success: false,
+          error: 'Not authenticated',
+        })
+      }
+
+      const privyToken = authHeader.slice(7)
+      const appId = process.env.PRIVY_APP_ID
+      const appSecret = process.env.PRIVY_APP_SECRET
+
+      if (!appId || !appSecret) {
+        return reply.status(500).send({
+          success: false,
+          error: 'Privy not configured',
+        })
+      }
+
+      const PrivyAuth = await import('@privy-io/server-auth')
+      const { PrivyClient } = PrivyAuth
+      const client = new PrivyClient(appId, appSecret)
+      const verifiedClaims = await client.verifyAuthToken(privyToken)
+      const userId = verifiedClaims.userId
+
+      const { name, characterTemplate } = request.body as { name?: string; characterTemplate?: string }
+
+      if (!name || !name.trim()) {
+        return reply.status(400).send({
+          success: false,
+          error: 'Agent name required',
+        })
+      }
+
+      // Generate agent ID
+      const agentId = `agent_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
+
+      // Create agent entry
+      const agent = {
+        id: agentId,
+        name: name.trim(),
+        characterFile: characterTemplate || 'default.json',
+        status: 'stopped' as const,
+        isRunning: false,
+        playerId: null,
+        createdAt: Date.now(),
+        userId,
+      }
+
+      agents.set(agentId, agent)
+
+      fastify.log.info(`[Agents] Created agent ${agentId} for user ${userId}`)
+
+      return reply.send({
+        success: true,
+        agent,
+      })
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      fastify.log.error('[Agents] Error creating agent:', error)
+      return reply.status(500).send({
+        success: false,
+        error: 'Failed to create agent',
+        details: errorMsg,
+      })
+    }
+  })
+
+  // POST /api/agents/:id/start - Start an agent
+  fastify.post('/api/agents/:id/start', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string }
+      const agent = agents.get(id)
+
+      if (!agent) {
+        return reply.status(404).send({
+          success: false,
+          error: 'Agent not found',
+        })
+      }
+
+      // Update agent status
+      agent.status = 'active'
+      agent.isRunning = true
+
+      fastify.log.info(`[Agents] Started agent ${id}`)
+
+      return reply.send({
+        success: true,
+        agent,
+      })
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      fastify.log.error('[Agents] Error starting agent:', error)
+      return reply.status(500).send({
+        success: false,
+        error: 'Failed to start agent',
+        details: errorMsg,
+      })
+    }
+  })
+
+  // POST /api/agents/:id/stop - Stop an agent
+  fastify.post('/api/agents/:id/stop', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string }
+      const agent = agents.get(id)
+
+      if (!agent) {
+        return reply.status(404).send({
+          success: false,
+          error: 'Agent not found',
+        })
+      }
+
+      // Update agent status
+      agent.status = 'stopped'
+      agent.isRunning = false
+
+      fastify.log.info(`[Agents] Stopped agent ${id}`)
+
+      return reply.send({
+        success: true,
+        agent,
+      })
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      fastify.log.error('[Agents] Error stopping agent:', error)
+      return reply.status(500).send({
+        success: false,
+        error: 'Failed to stop agent',
+        details: errorMsg,
+      })
+    }
+  })
+
+  // DELETE /api/agents/:id - Delete an agent
+  fastify.delete('/api/agents/:id', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string }
+      const agent = agents.get(id)
+
+      if (!agent) {
+        return reply.status(404).send({
+          success: false,
+          error: 'Agent not found',
+        })
+      }
+
+      agents.delete(id)
+
+      fastify.log.info(`[Agents] Deleted agent ${id}`)
+
+      return reply.send({
+        success: true,
+      })
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      fastify.log.error('[Agents] Error deleting agent:', error)
+      return reply.status(500).send({
+        success: false,
+        error: 'Failed to delete agent',
+        details: errorMsg,
+      })
+    }
+  })
+
+  // POST /api/agents/:id/token - Generate token for agent
+  fastify.post('/api/agents/:id/token', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string }
+      const agent = agents.get(id)
+
+      if (!agent) {
+        return reply.status(404).send({
+          success: false,
+          error: 'Agent not found',
+        })
+      }
+
+      // Generate scoped JWT token for agent
+      const jwt = await import('jsonwebtoken')
+      const jwtSecret = process.env.JWT_SECRET || 'hyperscape-dev-secret'
+
+      const agentToken = jwt.sign(
+        {
+          userId: agent.userId,
+          agentId: id,
+          type: 'agent',
+          scopes: [
+            'game:connect',
+            'game:play',
+            'character:read',
+            'character:control'
+          ],
+          restrictions: [
+            'no_wallet_access',
+            'no_fund_transfer',
+            'no_privy_auth',
+            'no_account_modify'
+          ],
+          createdAt: Date.now(),
+          tokenVersion: 1,
+        },
+        jwtSecret,
+        {
+          expiresIn: '365d',
+          issuer: 'hyperscape-server',
+          audience: 'hyperscape-agent'
+        }
+      )
+
+      fastify.log.info(`[Agents] Generated token for agent ${id}`)
+
+      return reply.send({
+        success: true,
+        token: agentToken,
+        expiresIn: '365d',
+      })
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      fastify.log.error('[Agents] Error generating token:', error)
+      return reply.status(500).send({
+        success: false,
+        error: 'Failed to generate token',
+        details: errorMsg,
+      })
+    }
+  })
+
+  // Get character wallet info (READ-ONLY, safe for agent tokens)
+  fastify.get('/api/character/:id/wallet', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string }
+
+      // Verify authentication (accepts both agent tokens and user tokens)
+      const authHeader = request.headers.authorization
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return reply.status(401).send({
+          success: false,
+          error: 'Not authenticated',
+        })
+      }
+
+      // Import schema dynamically
+      const { characters } = await import('./db/schema.js')
+      const { eq } = await import('drizzle-orm')
+
+      // Query character wallet (READ-ONLY)
+      const character = await drizzleDb.select({
+        walletAddress: characters.walletAddress,
+        walletChainType: characters.walletChainType,
+        walletHdIndex: characters.walletHdIndex,
+      })
+        .from(characters)
+        .where(eq(characters.id, id))
+        .limit(1)
+
+      if (!character || character.length === 0) {
+        return reply.status(404).send({
+          success: false,
+          error: 'Character not found',
+        })
+      }
+
+      if (!character[0].walletAddress) {
+        return reply.status(404).send({
+          success: false,
+          error: 'Character does not have a wallet',
+        })
+      }
+
+      fastify.log.info(`[Wallet] Read-only query for character ${id}`)
+
+      // Return ONLY public info - no private keys or signing capabilities
+      return reply.send({
+        success: true,
+        address: character[0].walletAddress,
+        chainType: character[0].walletChainType || 'ethereum',
+        hdIndex: character[0].walletHdIndex,
+        readOnly: true, // Always read-only via API
+      })
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      fastify.log.error('[Wallet] Error:', error)
+      return reply.status(500).send({
+        success: false,
+        error: 'Failed to get wallet info',
+        details: errorMsg,
+      })
+    }
+  })
+
   fastify.setErrorHandler((err, _req, reply) => {
     fastify.log.error(err)
     reply.status(500).send()

@@ -3,6 +3,7 @@ import {
   type IAgentRuntime,
   type Memory,
   type State,
+  type ProviderResult,
   logger,
 } from '@elizaos/core'
 
@@ -33,6 +34,10 @@ export const factsProvider: Provider = {
       if (!facts || facts.length === 0) {
         return {
           text: 'No facts stored yet. This is a new conversation.',
+          values: {
+            factCount: 0,
+            hasFacts: false,
+          },
           data: {
             factCount: 0,
             hasFacts: false,
@@ -89,6 +94,10 @@ export const factsProvider: Provider = {
       if (!hasAnyFacts) {
         return {
           text: 'No facts stored yet. This is a new conversation.',
+          values: {
+            factCount: 0,
+            hasFacts: false,
+          },
           data: {
             factCount: 0,
             hasFacts: false,
@@ -107,6 +116,11 @@ export const factsProvider: Provider = {
 
       return {
         text,
+        values: {
+          factCount: facts.length,
+          hasFacts: true,
+          success: true,
+        },
         data: {
           factCount: facts.length,
           hasFacts: true,
@@ -123,6 +137,11 @@ export const factsProvider: Provider = {
       logger.error('[FACTS_PROVIDER] Error retrieving facts:', errorMsg)
       return {
         text: 'Error retrieving facts. Proceeding without fact context.',
+        values: {
+          factCount: 0,
+          hasFacts: false,
+          success: false,
+        },
         data: {
           factCount: 0,
           hasFacts: false,

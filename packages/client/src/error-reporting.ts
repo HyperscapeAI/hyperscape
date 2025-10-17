@@ -137,11 +137,12 @@ class ErrorReportingService {
    * @public
    */
   public async reportError(errorData: ErrorReport) {
-    // Construct URL - use PUBLIC_API_URL if set, otherwise default to localhost:5555 in dev
-    const baseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:5555';
-    const endpoint = `${baseUrl}/api${this.endpoint}`;
-    
-    const response = await fetch(endpoint, {
+    try {
+      // Construct URL - use PUBLIC_API_URL if set, otherwise default to localhost:5555 in dev
+      const baseUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:5555';
+      const endpoint = `${baseUrl}/api${this.endpoint}`;
+
+      const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -154,11 +155,15 @@ class ErrorReportingService {
       })
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to report error: ${response.status} ${response.statusText}`);
-    }
+      if (!response.ok) {
+        throw new Error(`Failed to report error: ${response.status} ${response.statusText}`);
+      }
 
-    return response.json();
+      return response.json();
+    } catch (error) {
+      // Silently fail - don't report errors about error reporting (prevents infinite loops)
+      console.warn('[ErrorReporting] Failed to report error to server:', error);
+    }
   }
 
   /**

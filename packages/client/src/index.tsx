@@ -116,6 +116,7 @@ function App() {
   const [authState, setAuthState] = React.useState(privyAuthManager.getState())
   // Default to showing character page first when Privy is enabled to avoid racing the world mount
   const [showCharacterPage, setShowCharacterPage] = React.useState<boolean>(privyEnabled)
+  const [shouldOpenAgentPanel, setShouldOpenAgentPanel] = React.useState<boolean>(false)
     
   // Subscribe to auth state changes
   React.useEffect(() => {
@@ -212,7 +213,7 @@ function App() {
       <div ref={appRef} data-component="app-root">
         <CharacterSelectPage
           wsUrl={wsUrl}
-          onPlay={(id) => { 
+          onPlay={(id) => {
             if (id) {
               localStorage.setItem('selectedCharacterId', id)
             }
@@ -227,7 +228,11 @@ function App() {
   return (
     <div ref={appRef} data-component="app-root">
       <ErrorBoundary>
-        <Client wsUrl={wsUrl} onSetup={handleSetup} />
+        <Client
+          wsUrl={wsUrl}
+          onSetup={handleSetup}
+          initialOpenAgentPanel={shouldOpenAgentPanel}
+        />
       </ErrorBoundary>
     </div>
   )

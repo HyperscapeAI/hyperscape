@@ -73,6 +73,7 @@ import { hyperscapeScenePerceptionAction } from "./actions/perception";
 import { hyperscapeEditEntityAction } from "./actions/build";
 import { replyAction } from "./actions/reply";
 import { ignoreAction } from "./actions/ignore";
+import { linkAgentAction } from "./actions/linkAgent";
 // RPG actions are loaded dynamically when RPG systems are detected
 // import { chopTreeAction } from "./actions/chopTree";
 // import { catchFishAction } from "./actions/catchFish";
@@ -86,6 +87,9 @@ import { hyperscapeActionsProvider } from "./providers/actions";
 import { characterProvider } from "./providers/character";
 import { bankingProvider } from "./providers/banking";
 import { hyperscapeSkillProvider } from "./providers/skills";
+import { combatProvider } from "./providers/combat";
+import { inventoryProvider } from "./providers/inventory";
+import { movementProvider } from "./providers/movement";
 // Dynamic skill providers are loaded when RPG systems detect specific skills are available
 // import { woodcuttingSkillProvider } from "./providers/skills/woodcutting";
 // import { fishingSkillProvider } from "./providers/skills/fishing";
@@ -129,6 +133,8 @@ export const hyperscapePlugin: Plugin = {
   services: [HyperscapeService],
   events: hyperscapeEvents,
   actions: [
+    // Agent authentication
+    linkAgentAction,
     // Core world interaction actions
     hyperscapeScenePerceptionAction,
     hyperscapeGotoEntityAction,
@@ -150,6 +156,10 @@ export const hyperscapePlugin: Plugin = {
     characterProvider,
     hyperscapeSkillProvider,
     bankingProvider,
+    // State providers - expose real-time game state to LLM
+    combatProvider,
+    inventoryProvider,
+    movementProvider,
     // Dynamic skill providers are loaded when their systems are detected
     // (woodcuttingSkillProvider, fishingSkillProvider, etc.)
   ],

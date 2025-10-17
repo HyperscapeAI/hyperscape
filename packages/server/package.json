@@ -44,6 +44,8 @@
   ],
   "dependencies": {
     "@hyperscape/shared": "workspace:*",
+    "@elizaos/core": "^1.2.9",
+    "@elizaos/plugin-hyperscape": "workspace:*",
     "@fastify/compress": "^8.0.1",
     "@fastify/cors": "^10.0.1",
     "@fastify/multipart": "^9.0.1",

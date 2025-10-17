@@ -3,6 +3,7 @@ import type {
   IAgentRuntime,
   Memory,
   Provider,
+  ProviderResult,
   State,
 } from "@elizaos/core";
 import {

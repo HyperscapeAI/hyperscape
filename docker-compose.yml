@@ -1,0 +1,72 @@
+services:
+  # PostgreSQL - Hyperscape game server database
+  postgres:
+    image: postgres:16-alpine
+    container_name: hyperscape-postgres
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: hyperscape
+      POSTGRES_PASSWORD: hyperscape_dev
+      POSTGRES_DB: hyperscape
+    command: postgres -c max_connections=200 -c shared_buffers=256MB
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hyperscape"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - hyperscape
+
+  # PostgreSQL - ElizaOS AI agent database (separate instance with pgvector)
+  postgres-eliza:
+    image: pgvector/pgvector:pg16
+    container_name: hyperscape-eliza-postgres
+    ports:
+      - "${ELIZA_POSTGRES_PORT:-5433}:5432"
+    environment:
+      POSTGRES_USER: eliza
+      POSTGRES_PASSWORD: eliza_dev
+      POSTGRES_DB: eliza
+    command: postgres -c max_connections=100 -c shared_buffers=128MB
+    volumes:
+      - postgres-eliza-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eliza"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - hyperscape
+
+  # CDN - Local nginx server for serving static game assets
+  cdn:
+    build:
+      context: ./packages/server/docker/cdn
+      dockerfile: Dockerfile
+    container_name: hyperscape-cdn
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./packages/server/.assets-repo:/usr/share/nginx/html:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - hyperscape
+
+networks:
+  hyperscape:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  postgres-eliza-data:

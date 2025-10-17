@@ -20,6 +20,29 @@ expect.extend(matchers);
 
 // Global test setup
 beforeAll(async () => {
+  // Set up complete window mock for PGLite and ElizaOS
+  if (typeof window === 'undefined') {
+    (global as any).window = {
+      location: {
+        pathname: '/test',
+        href: 'http://localhost/test',
+        search: '',
+        hash: '',
+        protocol: 'http:',
+        host: 'localhost',
+        hostname: 'localhost',
+        port: '',
+        origin: 'http://localhost',
+      },
+      navigator: {
+        userAgent: 'Node.js Test Environment',
+      },
+      encodeURIComponent: globalThis.encodeURIComponent,
+      decodeURIComponent: globalThis.decodeURIComponent,
+      document: {},
+    };
+  }
+
   // Set up global test environment
   global.File = class MockFile extends Blob {
     name: string;

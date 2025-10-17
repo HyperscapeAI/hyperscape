@@ -78,3 +78,45 @@ export function isResourceSystem(obj: unknown): obj is ResourceSystem {
     typeof system.getAllResources === 'function'
   )
 }
+
+/**
+ * Skill data structure for player skills
+ */
+export interface SkillData {
+  level: number
+  xp: number
+}
+
+/**
+ * Inventory item structure
+ */
+export interface InventoryItem {
+  itemId: string
+  quantity: number
+}
+
+/**
+ * Inventory data structure
+ */
+export interface InventoryData {
+  items: InventoryItem[]
+}
+
+/**
+ * Player data structure with skills and inventory
+ */
+export interface PlayerData {
+  skills: Record<string, SkillData>
+  inventory: InventoryData
+}
+
+/**
+ * Resource spot with state tracking
+ */
+export interface ResourceSpotWithState extends ResourceItem {
+  distance: number
+  state: string
+  depletedAt?: number
+  respawnAt?: number
+  gatheringStartedAt?: number
+}

@@ -8,9 +8,10 @@ export { System }
 interface ClientProps {
   wsUrl?: string
   onSetup?: (world: InstanceType<typeof World>, config: unknown) => void
+  initialOpenAgentPanel?: boolean
 }
 
-export function Client({ wsUrl, onSetup }: ClientProps) {
+export function Client({ wsUrl, onSetup, initialOpenAgentPanel }: ClientProps) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const uiRef = useRef<HTMLDivElement>(null)
   
@@ -147,13 +148,16 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
         'ws://localhost:5555/ws'
       
       
-      // Always use absolute CDN URL for all assets
-      const cdnUrl = import.meta.env.PUBLIC_CDN_URL || 'http://localhost:8080';
-      const assetsUrl = `${cdnUrl}/`
-      
-      
+      // Use CDN URL from env, or empty string to serve through Vite proxy (same origin)
+      const cdnUrl = import.meta.env.PUBLIC_CDN_URL || '';
+      const assetsUrl = cdnUrl ? `${cdnUrl}/` : '/'  // Empty = serve from same origin (Vite proxy)
+
+      console.log('[WorldClient] 🌐 CDN URL from import.meta.env.PUBLIC_CDN_URL:', import.meta.env.PUBLIC_CDN_URL);
+      console.log('[WorldClient] 🌐 Final cdnUrl:', cdnUrl);
+      console.log('[WorldClient] 🌐 Final assetsUrl:', assetsUrl);
+
       // Make CDN URL available globally for PhysX loading
-      ;(window as Window & { __CDN_URL?: string }).__CDN_URL = cdnUrl
+      ;(window as Window & { __CDN_URL?: string }).__CDN_URL = cdnUrl || window.location.origin
 
       const config = {
         viewport,
@@ -223,7 +227,7 @@ export function Client({ wsUrl, onSetup }: ClientProps) {
       `}</style>
       <div className='App__viewport' ref={viewportRef} data-component="viewport">
         <div className='App__ui' ref={uiRef} data-component="ui">
-          <CoreUI world={world} />
+          <CoreUI world={world} initialOpenAgentPanel={initialOpenAgentPanel} />
         </div>
       </div>
     </div>

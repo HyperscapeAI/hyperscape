@@ -8,7 +8,7 @@ yarn.lock
 dist/
 build/
 *.tsbuildinfo
-
+.eliza/
 # Documentation
 packages/docs-site/build/
 packages/docs-site/docs/api/
@@ -30,6 +30,8 @@ test-*.png
 # IDE
 .vscode/
 .idea/
+.cursor/
+.claude/
 *.swp
 *.swo
 *~
@@ -47,8 +49,14 @@ tmp/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+.eliza/
 
 .turbo.claude-plugin/
 
 assets/
 .turbo/
+
+.kluster
+
+
+.cursor/rules/kluster-code-verify.mdc

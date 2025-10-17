@@ -19,6 +19,7 @@ export default defineConfig(({ mode }) => {
   console.log('[Vite Config] Loaded env from workspace:', workspaceRoot)
   console.log('[Vite Config] Loaded env from client:', clientDir)
   console.log('[Vite Config] PUBLIC_PRIVY_APP_ID:', env.PUBLIC_PRIVY_APP_ID ? `${env.PUBLIC_PRIVY_APP_ID.substring(0, 10)}...` : 'NOT SET')
+  console.log('[Vite Config] PUBLIC_CDN_URL:', env.PUBLIC_CDN_URL || 'NOT SET (will use fallback: http://localhost:8080)')
   
   return {
   plugins: [
@@ -155,9 +156,11 @@ export default defineConfig(({ mode }) => {
     'process.env.PUBLIC_STARTER_ITEMS': JSON.stringify(env.PUBLIC_STARTER_ITEMS || ''),
     'process.env.TERRAIN_SEED': JSON.stringify(env.TERRAIN_SEED || '0'),
     'process.env.VITEST': 'undefined', // Not in browser
-    
-    // Note: import.meta.env.PUBLIC_* variables are auto-exposed by Vite (via envPrefix above)
-    // We don't need to manually define them here - Vite handles it automatically
+
+    // Explicitly define import.meta.env variables for CDN and other public configs
+    'import.meta.env.PUBLIC_CDN_URL': JSON.stringify(env.PUBLIC_CDN_URL || 'http://localhost:8080'),
+    'import.meta.env.PUBLIC_WS_URL': JSON.stringify(env.PUBLIC_WS_URL || 'ws://localhost:5555/ws'),
+    'import.meta.env.PUBLIC_API_URL': JSON.stringify(env.PUBLIC_API_URL || 'http://localhost:5555/api')
   },
   server: {
     port: Number(env.VITE_PORT) || 3333,

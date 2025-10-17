@@ -3,6 +3,7 @@ import {
   type IAgentRuntime,
   type Memory,
   type State,
+  type ProviderResult,
   logger,
 } from '@elizaos/core'
 
@@ -33,6 +34,11 @@ export const boredomProvider: Provider = {
       if (!engagementMemories || engagementMemories.length === 0) {
         return {
           text: 'No engagement data available yet. Assume neutral engagement.',
+          values: {
+            engagementLevel: 'medium',
+            engagementScore: 50,
+            hasData: false,
+          },
           data: {
             level: 'medium',
             score: 50,
@@ -46,6 +52,11 @@ export const boredomProvider: Provider = {
       if (!latest) {
         return {
           text: 'No engagement data available yet. Assume neutral engagement.',
+          values: {
+            engagementLevel: 'medium',
+            engagementScore: 50,
+            hasData: false,
+          },
           data: {
             level: 'medium',
             score: 50,
@@ -115,6 +126,12 @@ export const boredomProvider: Provider = {
 
       return {
         text,
+        values: {
+          engagementLevel: level,
+          engagementScore: score,
+          engagementTrend: trend,
+          hasData: true,
+        },
         data: {
           level,
           score,
@@ -129,6 +146,11 @@ export const boredomProvider: Provider = {
       logger.error('[BOREDOM_PROVIDER] Error retrieving engagement data:', errorMsg)
       return {
         text: 'Error retrieving engagement data. Assume neutral engagement.',
+        values: {
+          engagementLevel: 'medium',
+          engagementScore: 50,
+          hasData: false,
+        },
         data: {
           level: 'medium',
           score: 50,

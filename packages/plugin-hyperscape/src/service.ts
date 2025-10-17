@@ -90,6 +90,7 @@ import {
   type NetworkSystem,
   type World,
   type Player,
+  EventType as HyperscapeEventType,
 } from "@hyperscape/shared";
 import { promises as fsPromises } from "fs";
 import path from "path";
@@ -146,6 +147,7 @@ const moduleDirPath = getModuleDirectory();
 const LOCAL_AVATAR_PATH = `${moduleDirPath}/avatars/avatar.vrm`;
 
 import { AGENT_CONFIG, NETWORK_CONFIG } from "./config/constants";
+import { AgentWalletAuthManager } from "./wallet-auth";
 
 type ChatSystem = Chat;
 
@@ -198,6 +200,15 @@ Hyperscape world integration service that enables agents to:
   private behaviorManager: BehaviorManager | null = null;
   private buildManager: BuildManager | null = null;
   private dynamicActionLoader: DynamicActionLoader | null = null;
+  private walletAuthManager: AgentWalletAuthManager | null = null;
+
+  // Event handlers
+  private worldEventBridge: import("./handlers/world-event-bridge").WorldEventBridge | null = null;
+  private entityEventHandler: import("./handlers/entity-event-handler").EntityEventHandler | null = null;
+  private resourceEventHandler: import("./handlers/resource-event-handler").ResourceEventHandler | null = null;
+  private combatEventHandler: import("./handlers/combat-event-handler").CombatEventHandler | null = null;
+  private playerEventHandler: import("./handlers/player-event-handler").PlayerEventHandler | null = null;
+  private systemEventHandler: import("./handlers/system-event-handler").SystemEventHandler | null = null;
 
   // Network state
   private maxRetries = 3;
@@ -223,6 +234,27 @@ Hyperscape world integration service that enables agents to:
 
   public getWorld(): World | null {
     return this.world;
+  }
+
+  // Event handler getters for providers
+  public getEntityEventHandler() {
+    return this.entityEventHandler;
+  }
+
+  public getResourceEventHandler() {
+    return this.resourceEventHandler;
+  }
+
+  public getCombatEventHandler() {
+    return this.combatEventHandler;
+  }
+
+  public getPlayerEventHandler() {
+    return this.playerEventHandler;
+  }
+
+  public getSystemEventHandler() {
+    return this.systemEventHandler;
   }
 
   constructor(runtime: IAgentRuntime) {
@@ -339,6 +371,21 @@ Hyperscape world integration service that enables agents to:
     this.buildManager = new BuildManager(this.runtime);
     this.dynamicActionLoader = new DynamicActionLoader(this.runtime);
 
+    // Initialize event handlers
+    const { WorldEventBridge } = await import("./handlers/world-event-bridge");
+    const { EntityEventHandler } = await import("./handlers/entity-event-handler");
+    const { ResourceEventHandler } = await import("./handlers/resource-event-handler");
+    const { CombatEventHandler } = await import("./handlers/combat-event-handler");
+    const { PlayerEventHandler } = await import("./handlers/player-event-handler");
+    const { SystemEventHandler } = await import("./handlers/system-event-handler");
+
+    this.worldEventBridge = new WorldEventBridge(this.runtime, this.world, this);
+    this.entityEventHandler = new EntityEventHandler(this.runtime, this.world);
+    this.resourceEventHandler = new ResourceEventHandler(this.runtime, this.world);
+    this.combatEventHandler = new CombatEventHandler(this.runtime, this.world);
+    this.playerEventHandler = new PlayerEventHandler(this.runtime, this.world);
+    this.systemEventHandler = new SystemEventHandler(this.runtime, this.world);
+
     // Initialize world systems using the real world instance
     const livekit = new AgentLiveKit(this.world);
     this.world.systems.push(livekit);
@@ -392,9 +439,14 @@ Hyperscape world integration service that enables agents to:
     // Check for RPG systems and load RPG actions/providers dynamically
     await this.loadRPGExtensions();
 
-    // Access appearance data for validation
-    const appearance = this.world.entities.player.data.appearance;
-    console.debug("[Appearance] Current appearance data available");
+    // Store connection config for later wallet initialization
+    (this as { _pendingWalletInit?: { wsUrl: string; authToken?: string } })._pendingWalletInit = {
+      wsUrl: config.wsUrl,
+      authToken: config.authToken
+    };
+
+    // Note: Wallet initialization happens in initializeWalletAuth() after player entity is created
+    // The player entity doesn't exist yet - it's created when snapshot is received from server
   }
 
   /**
@@ -447,6 +499,69 @@ Hyperscape world integration service that enables agents to:
     }
   }
 
+  /**
+   * Initialize wallet authentication for the agent
+   *
+   * Called after player entity is created (PLAYER_JOINED event).
+   * Fetches wallet info from server and stores in runtime for provider access.
+   *
+   * @param playerId - The player/character ID
+   */
+  async initializeWalletAuth(playerId: string): Promise<void> {
+    try {
+      const pendingInit = (this as { _pendingWalletInit?: { wsUrl: string; authToken?: string } })._pendingWalletInit;
+
+      if (!pendingInit) {
+        console.debug('[HyperscapeService] No pending wallet init config');
+        return;
+      }
+
+      const { wsUrl, authToken } = pendingInit;
+
+      if (!authToken) {
+        console.debug('[HyperscapeService] No auth token for wallet init');
+        return;
+      }
+
+      console.info(`[HyperscapeService] 💰 Initializing wallet for character ${playerId}...`);
+
+      this.walletAuthManager = new AgentWalletAuthManager();
+      const walletInitialized = await this.walletAuthManager.initialize(
+        this.runtime,
+        playerId,
+        wsUrl,
+        authToken
+      );
+
+      if (walletInitialized) {
+        const walletInfo = this.walletAuthManager.getWalletInfo();
+        const walletAddress = this.walletAuthManager.getWalletAddress();
+
+        console.info(`[HyperscapeService] ✅ Agent wallet initialized: ${walletAddress}`);
+        console.info(`[HyperscapeService] Wallet chain: ${walletInfo?.wallet.chainType}, HD index: ${walletInfo?.wallet.hdIndex}`);
+
+        // Store wallet info in runtime for provider access
+        (this.runtime as { walletAddress?: string }).walletAddress = walletAddress;
+        (this.runtime as { walletChainType?: string }).walletChainType = walletInfo?.wallet.chainType;
+        (this.runtime as { characterWalletInfo?: unknown }).characterWalletInfo = walletInfo;
+      } else {
+        console.info('[HyperscapeService] ℹ️ Character does not have a wallet (this is optional)');
+      }
+
+      // Clear pending init
+      delete (this as { _pendingWalletInit?: { wsUrl: string; authToken?: string } })._pendingWalletInit;
+    } catch (walletErr) {
+      console.warn('[HyperscapeService] ⚠️ Wallet initialization failed (non-critical):', walletErr);
+    }
+  }
+
+  /**
+   * Get wallet info for providers
+   */
+  getWalletInfo() {
+    return this.walletAuthManager?.getWalletInfo() || null;
+  }
+
   private subscribeToHyperscapeEvents(): void {
     this.world.off("disconnect");
 
@@ -463,6 +578,14 @@ Hyperscape world integration service that enables agents to:
     });
 
     this.startChatSubscription();
+
+    // Start world event bridge to handle all Hyperscape world events
+    if (this.worldEventBridge) {
+      this.worldEventBridge.start();
+      console.info("[HyperscapeService] World event bridge started");
+    } else {
+      console.warn("[HyperscapeService] World event bridge not initialized");
+    }
   }
 
   private async uploadCharacterAssets(): Promise<{
@@ -674,6 +797,29 @@ Hyperscape world integration service that enables agents to:
     this.isServiceConnected = false;
 
     this.stopAppearancePolling();
+
+    // Stop event handlers
+    if (this.worldEventBridge) {
+      this.worldEventBridge.stop();
+      console.info("[Hyperscape Cleanup] Stopped world event bridge");
+    }
+
+    // Clear event handler state
+    if (this.entityEventHandler) {
+      this.entityEventHandler.clear();
+    }
+    if (this.resourceEventHandler) {
+      this.resourceEventHandler.clear();
+    }
+    if (this.combatEventHandler) {
+      this.combatEventHandler.clear();
+    }
+    if (this.playerEventHandler) {
+      this.playerEventHandler.clear();
+    }
+    if (this.systemEventHandler) {
+      this.systemEventHandler.clear();
+    }
 
     if (this.world) {
       console.info("[Hyperscape Cleanup] Calling world.disconnect() and world.destroy()...");

@@ -6,8 +6,14 @@
 
 import { readPacket, writePacket, storage } from "@hyperscape/shared";
 import React from "react";
+import { GetAgentToken } from "./GetAgentToken";
 
-type Character = { id: string; name: string };
+type Character = {
+  id: string;
+  name: string;
+  walletAddress?: string | null;
+  walletChainType?: string | null;
+};
 
 // Music preference manager - syncs with game prefs
 const getMusicEnabled = (): boolean => {
@@ -445,9 +451,32 @@ export function CharacterSelectPage({
                         onClick={() => selectCharacter(c.id)}
                         className="w-full px-4 py-2 text-center bg-black/40 hover:bg-black/50 focus:outline-none focus:ring-1 ring-yellow-400/60 rounded-sm"
                       >
-                        <span className="font-semibold text-yellow-300 text-xl">
-                          {c.name}
-                        </span>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="font-semibold text-yellow-300 text-xl">
+                            {c.name}
+                          </span>
+                          {c.walletAddress && (
+                            <div className="flex items-center gap-2 text-xs">
+                              <span className="text-white/60">💰</span>
+                              <span
+                                className="font-mono text-white/80 hover:text-white cursor-pointer"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText(c.walletAddress!);
+                                }}
+                                title={`${c.walletAddress} (click to copy)`}
+                              >
+                                {c.walletAddress.slice(0, 6)}...
+                                {c.walletAddress.slice(-4)}
+                              </span>
+                              {c.walletChainType && (
+                                <span className="text-white/50 capitalize">
+                                  ({c.walletChainType})
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </button>
                       <GoldRule thick className="pointer-events-none" />
                     </div>
@@ -580,7 +609,16 @@ export function CharacterSelectPage({
               {!wsReady && (
                 <div className="text-xs opacity-60 mt-3">Connecting…</div>
               )}
-              <div className="mt-10 flex justify-center">
+
+              {/* Agent Token Generator */}
+              <div className="mt-8 max-w-sm mx-auto">
+                <div className="border border-yellow-500/30 rounded-lg p-4 bg-black/20">
+                  <div className="text-sm font-semibold mb-3 text-yellow-200">🤖 AI Agent Token</div>
+                  <GetAgentToken />
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-center">
                 <button
                   className="w-full max-w-sm px-6 py-3 rounded text-white text-lg bg-white/10 hover:bg-white/15 border border-white/20"
                   onClick={onLogout}

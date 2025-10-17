@@ -3,6 +3,7 @@ import {
   type IAgentRuntime,
   type Memory,
   type State,
+  type ProviderResult,
   logger,
 } from '@elizaos/core'
 
@@ -107,6 +108,12 @@ Use this information for:
 
       return {
         text,
+        values: {
+          currentTime: localTime,
+          timeOfDay,
+          timestamp,
+          success: true,
+        },
         data: {
           utc: utcTime,
           iso: isoTime,
@@ -130,6 +137,9 @@ Use this information for:
       logger.error('[TIME_PROVIDER] Error generating time context:', errorMsg)
       return {
         text: 'Error retrieving time information.',
+        values: {
+          success: false,
+        },
         data: {
           error: errorMsg,
         },

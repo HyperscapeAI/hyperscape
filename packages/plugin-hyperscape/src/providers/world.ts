@@ -25,7 +25,7 @@ export type { HyperscapeEntity, HyperscapeWorld };
 export const hyperscapeProvider: Provider = {
   name: "HYPERSCAPE_WORLD_STATE",
   description:
-    "Provides current entity positions/rotations and agent state in the connected Hyperscape world.",
+    "Provides current entity positions/rotations, agent state, and real-time spawn/despawn alerts in the connected Hyperscape world.",
   dynamic: true,
   get: async (
     runtime: IAgentRuntime,
@@ -51,6 +51,9 @@ export const hyperscapeProvider: Provider = {
     const elizaRoomId = createUniqueUuid(runtime, currentWorldId);
     const entities = world.entities.items;
     const agentId = world.entities.player!.id;
+
+    // Get entity event handler for spawn/despawn alerts
+    const entityEventHandler = service!.getEntityEventHandler()!;
 
     const allEntityIds: string[] = [];
     const categorizedEntities: Record<string, string[]> = {};
@@ -184,6 +187,26 @@ export const hyperscapeProvider: Provider = {
       ? `### Your Last Response\n${lastResponseText}\n\n_Do not repeat this unless someone asks again._\n\n### Your Last Action\n${JSON.stringify(lastActions, null, 2)}`
       : `### Your Last Response\nNo recent message.\n\n### Your Last Action\n${JSON.stringify(lastActions, null, 2)}`;
 
+    // Get recent entity spawns/despawns from event handler
+    const recentSpawns = entityEventHandler.getRecentSpawns(10);
+    const recentDespawns = entityEventHandler.getRecentDespawns(10);
+
+    const spawnsList = recentSpawns.map(spawn => {
+      const timeSince = Math.floor((Date.now() - spawn.timestamp) / 1000);
+      return `  - ${spawn.name || spawn.type || spawn.id} spawned ${timeSince}s ago`;
+    }).join("\n");
+
+    const despawnsList = recentDespawns.map(despawn => {
+      const timeSince = Math.floor((Date.now() - despawn.timestamp) / 1000);
+      return `  - ${despawn.name || despawn.type || despawn.id} despawned ${timeSince}s ago`;
+    }).join("\n");
+
+    const entityActivityText = (recentSpawns.length > 0 || recentDespawns.length > 0)
+      ? `\n## Recent Entity Activity\n` +
+        (recentSpawns.length > 0 ? `### New Spawns (${recentSpawns.length})\n${spawnsList}\n` : "") +
+        (recentDespawns.length > 0 ? `### Recent Despawns (${recentDespawns.length})\n${despawnsList}` : "")
+      : "";
+
     const formattedText = [
       "# Hyperscape World State",
       `\n## Current UTC Time\n${utcTimeString}`,
@@ -191,9 +214,10 @@ export const hyperscapeProvider: Provider = {
       `${categorizedSummary}`,
       `\n${actionText}`,
       `\n${equipText}`,
+      entityActivityText,
       `\n${chatText}`,
       `\n${agentMemoryText}`,
-    ].join("\n");
+    ].filter(Boolean).join("\n");
 
     return {
       text: formattedText,

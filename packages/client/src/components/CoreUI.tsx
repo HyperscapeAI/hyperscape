@@ -17,7 +17,7 @@ import { Sidebar } from './Sidebar'
 // Type for icon components
 type IconComponent = React.ComponentType<{ size?: number | string }>
 
-export function CoreUI({ world }: { world: World }) {
+export function CoreUI({ world, initialOpenAgentPanel }: { world: World; initialOpenAgentPanel?: boolean }) {
   const ref = useRef<HTMLDivElement | null>(null)
   const [ready, setReady] = useState(false)
   const [_player, setPlayer] = useState(() => world.entities.player)
@@ -100,7 +100,11 @@ export function CoreUI({ world }: { world: World }) {
       {disconnected && <Disconnected />}
       {<Toast world={world} />}
       {ready && <ActionsBlock world={world} />}
-      {ready && <Sidebar world={world} ui={ui || { active: false, pane: null }} />}
+      {ready && <Sidebar
+        world={world}
+        ui={ui || { active: false, pane: null }}
+        initialOpenWindows={initialOpenAgentPanel ? new Set(['agents']) : undefined}
+      />}
       {ready && <Chat world={world} />}
       {ready && <ActionProgressBar world={world} />}
       {avatar && <AvatarPane key={avatar?.hash} world={world} info={avatar} />}

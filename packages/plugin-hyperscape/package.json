@@ -3,7 +3,7 @@
   "description": "Connect ElizaOS agents to 3D Hyperscape worlds",
   "version": "1.0.6",
   "type": "module",
-  "private": true,
+  "private": false,
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",

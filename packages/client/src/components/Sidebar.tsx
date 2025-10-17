@@ -15,6 +15,8 @@ import { CombatPanel } from './panels/CombatPanel'
 import { EquipmentPanel } from './panels/EquipmentPanel'
 import { SettingsPanel } from './panels/SettingsPanel'
 import { AccountPanel } from './panels/AccountPanel'
+import { DatabasePanel } from './panels/DatabasePanel'
+import { AgentManagementPanel } from './panels/AgentManagementPanel'
 
 const _mainSectionPanes = ['prefs']
 
@@ -34,9 +36,10 @@ interface SidebarProps {
     active: boolean
     pane: string | null
   }
+  initialOpenWindows?: Set<string>
 }
 
-export function Sidebar({ world, ui: _ui }: SidebarProps) {
+export function Sidebar({ world, ui: _ui, initialOpenWindows }: SidebarProps) {
   const [livekit, setLiveKit] = useState(() => world.livekit!.status)
   const [inventory, setInventory] = useState<InventorySlotItem[]>([])
   const [equipment, setEquipment] = useState<PlayerEquipmentItems | null>(null)
@@ -44,9 +47,9 @@ export function Sidebar({ world, ui: _ui }: SidebarProps) {
   const [coins, setCoins] = useState<number>(0)
   const [minimapCollapsed, setMinimapCollapsed] = useState<boolean>(false)
   const [isMobile, setIsMobile] = useState<boolean>(false)
-  
+
   // Track which windows are open
-  const [openWindows, setOpenWindows] = useState<Set<string>>(new Set())
+  const [openWindows, setOpenWindows] = useState<Set<string>>(initialOpenWindows || new Set())
   
   const toggleWindow = (windowId: string) => {
     setOpenWindows(prev => {
@@ -218,6 +221,12 @@ export function Sidebar({ world, ui: _ui }: SidebarProps) {
             onClick={() => toggleWindow('account')}
           />
           <MenuButton
+            icon="🤖"
+            label="AI Agents"
+            active={openWindows.has('agents')}
+            onClick={() => toggleWindow('agents')}
+          />
+          <MenuButton
             icon="⚔️"
             label="Combat"
             active={openWindows.has('combat')}
@@ -247,7 +256,13 @@ export function Sidebar({ world, ui: _ui }: SidebarProps) {
             active={openWindows.has('prefs')}
             onClick={() => toggleWindow('prefs')}
           />
-          
+          <MenuButton
+            icon="📊"
+            label="Database"
+            active={openWindows.has('database')}
+            onClick={() => toggleWindow('database')}
+          />
+
           {/* Voice/VR controls */}
           <div className="h-4" />
           {livekit.available && world.livekit?.room && (
@@ -285,7 +300,18 @@ export function Sidebar({ world, ui: _ui }: SidebarProps) {
             <AccountPanel world={world} />
           </GameWindow>
         )}
-        
+
+        {openWindows.has('agents') && (
+          <GameWindow
+            title="AI Agent Management"
+            onClose={() => closeWindow('agents')}
+            defaultX={window.innerWidth - 420}
+            defaultY={80}
+          >
+            <AgentManagementPanel world={world} />
+          </GameWindow>
+        )}
+
         {openWindows.has('combat') && (
           <GameWindow
             title="Combat"
@@ -338,6 +364,17 @@ export function Sidebar({ world, ui: _ui }: SidebarProps) {
             defaultY={100}
           >
             <SettingsPanel world={world} />
+          </GameWindow>
+        )}
+
+        {openWindows.has('database') && (
+          <GameWindow
+            title="Database Monitor"
+            onClose={() => closeWindow('database')}
+            defaultX={window.innerWidth - 400}
+            defaultY={100}
+          >
+            <DatabasePanel world={world} />
           </GameWindow>
         )}
       </div>

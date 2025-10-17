@@ -1,23 +1,36 @@
-import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
+} from "@elizaos/core";
 import { addHeader, ChannelType } from "@elizaos/core";
 
 /**
- * Character provider object.
- * @typedef {Object} Provider
- * @property {string} name - The name of the provider ("CHARACTER").
- * @property {string} description - Description of the character information.
- * @property {Function} get - Async function to get character information.
- */
-/**
- * Provides character information.
- * @param {IAgentRuntime} runtime - The agent runtime.
- * @param {Memory} message - The message memory.
- * @param {State} state - The state of the character.
- * @returns {Object} Object containing values, data, and text sections.
+ * Character Provider
+ *
+ * Provides character information including bio, personality, style, topics,
+ * and example conversations. This is a standard provider (always loaded) that
+ * gives the agent core awareness of its personality and behavior guidelines.
+ *
+ * @type {Provider}
+ * @property {string} name - The name of the provider ("CHARACTER")
+ * @property {string} description - Description of the character information
+ * @property {boolean} dynamic - Standard provider (always loaded)
+ * @property {number} position - The position of the provider (1)
+ * @property {Function} get - Asynchronous function to get character information
+ *
+ * @param {IAgentRuntime} runtime - The agent runtime
+ * @param {Memory} message - The message memory
+ * @param {State} state - The state of the character
+ * @returns {Object} Object containing values, data, and text sections
  */
 export const characterProvider: Provider = {
   name: "CHARACTER",
   description: "Character information",
+  dynamic: false,
+  position: 1,
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     const character = runtime.character;
 
@@ -171,6 +184,15 @@ export const characterProvider: Provider = {
       ? characterPostExamples
       : characterMessageExamples;
 
+    // Get wallet information if available
+    const walletAddress = (runtime as { walletAddress?: string }).walletAddress;
+    const walletChainType = (runtime as { walletChainType?: string }).walletChainType;
+    const hasWallet = !!walletAddress;
+
+    const walletInfo = hasWallet
+      ? `\n\n# Wallet Information\n${character.name} has an embedded wallet on ${walletChainType || "Ethereum"}:\nAddress: ${walletAddress}\n\nThis wallet is for on-chain identity and future economic activities. You can check balances and display the address, but cannot sign transactions.`
+      : "";
+
     const values = {
       agentName,
       bio,
@@ -183,6 +205,9 @@ export const characterProvider: Provider = {
       examples,
       characterPostExamples,
       characterMessageExamples,
+      walletAddress,
+      walletChainType,
+      hasWallet,
     };
 
     const data = {
@@ -193,10 +218,13 @@ export const characterProvider: Provider = {
       directions,
       examples,
       system,
+      walletAddress,
+      walletChainType,
+      hasWallet,
     };
 
     // Combine all text sections
-    const text = [bio, topicSentence, topics, directions, examples, system]
+    const text = [bio, topicSentence, topics, directions, examples, system, walletInfo]
       .filter(Boolean)
       .join("\n\n");
 

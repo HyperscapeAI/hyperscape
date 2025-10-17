@@ -133,25 +133,38 @@ export const entities = pgTable('entities', {
 
 /**
  * Characters Table - Player character progression and state
- * 
+ *
  * This is the core persistence table for all character data including:
  * - Combat stats (attack, strength, defense, constitution, ranged)
  * - Gathering skills (woodcutting, fishing, firemaking, cooking)
  * - Experience points (XP) for all skills
  * - Health, coins, and position
  * - Login tracking (createdAt, lastLogin)
- * 
+ * - Embedded wallet (per-character/agent authentication)
+ *
  * **Design**:
  * - Each user (account) can have multiple characters
  * - character.id is the primary key (UUID)
  * - accountId links to users.id
  * - All levels default to 1, constitution defaults to 10
  * - Constitution XP starts at 1154 (level 10)
- * 
+ *
  * **Skills**:
  * Combat: attack, strength, defense, constitution (health), ranged
  * Gathering: woodcutting, fishing, firemaking, cooking
- * 
+ *
+ * **Embedded Wallet (Privy)**:
+ * - walletAddress: Ethereum/blockchain address (unique, indexed)
+ * - walletId: Privy wallet ID for API operations
+ * - walletChainType: ethereum, solana, bitcoin, etc. (default: ethereum)
+ * - walletHdIndex: Hierarchical deterministic wallet index
+ * - walletCreatedAt: When the wallet was generated
+ * - walletMetadata: JSON for additional wallet data (policies, signers, etc.)
+ *
+ * Each character/agent gets its own embedded wallet for independent on-chain identity,
+ * enabling agent-specific transactions, NFTs, and autonomous economic activity.
+ * User maintains custody through master Privy account.
+ *
  * **Foreign Keys**:
  * - inventory, equipment, sessions, chunkActivity all reference characters.id
  * - CASCADE DELETE ensures cleanup when character is deleted
@@ -198,8 +211,17 @@ export const characters = pgTable('characters', {
   positionZ: real('positionZ').default(0),
   
   lastLogin: bigint('lastLogin', { mode: 'number' }).default(0),
+
+  // Privy Embedded Wallet (per-character/agent)
+  walletAddress: text('walletAddress').unique(),
+  walletId: text('walletId'),
+  walletChainType: text('walletChainType').default('ethereum'),
+  walletHdIndex: integer('walletHdIndex'),
+  walletCreatedAt: bigint('walletCreatedAt', { mode: 'number' }),
+  walletMetadata: text('walletMetadata'),
 }, (table) => ({
   accountIdx: index('idx_characters_account').on(table.accountId),
+  walletIdx: index('idx_characters_wallet').on(table.walletAddress),
 }));
 
 /**
