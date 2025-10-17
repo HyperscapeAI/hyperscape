@@ -223,31 +223,45 @@ export class ClientNetwork extends SystemBase {
       this.id = null;
     }
     
-    // Try to get Privy token first, fall back to legacy auth token
-    let authToken = ''
-    let privyUserId = ''
-    
+    // Build WebSocket URL with query parameters
+    // NOTE: Authentication now primarily uses HttpOnly cookies (set by /api/auth/privy endpoint)
+    // Query params are kept for backward compatibility and fallback scenarios
+    let url = wsUrl
+    const queryParams: string[] = []
+
+    // Add name and avatar if provided
+    if (name) queryParams.push(`name=${encodeURIComponent(name)}`)
+    if (avatar) queryParams.push(`avatar=${encodeURIComponent(avatar)}`)
+
+    // Backward compatibility: Check localStorage for legacy tokens
+    // This allows old clients to still work during migration period
     if (typeof localStorage !== 'undefined') {
-      const privyToken = localStorage.getItem('privy_auth_token')
+      const legacyToken = localStorage.getItem('privy_auth_token')
       const privyId = localStorage.getItem('privy_user_id')
-      
-      if (privyToken && privyId) {
-        authToken = privyToken
-        privyUserId = privyId
+
+      if (legacyToken) {
+        console.warn('[ClientNetwork] Using legacy localStorage auth token - this will be deprecated')
+        queryParams.push(`authToken=${legacyToken}`)
+        if (privyId) {
+          queryParams.push(`privyUserId=${encodeURIComponent(privyId)}`)
+        }
       } else {
-        // Fall back to legacy auth token
-        // Strong type assumption - storage.get returns unknown, we expect string
-        const legacyToken = storage?.get('authToken')
-        authToken = (legacyToken as string) || ''
+        // Check legacy storage system
+        const legacyStorageToken = storage?.get('authToken')
+        if (legacyStorageToken) {
+          console.warn('[ClientNetwork] Using legacy storage auth token - this will be deprecated')
+          queryParams.push(`authToken=${legacyStorageToken}`)
+        }
       }
     }
-    
-    let url = `${wsUrl}?authToken=${authToken}`
-    if (privyUserId) url += `&privyUserId=${encodeURIComponent(privyUserId)}`
-    if (name) url += `&name=${encodeURIComponent(name)}`
-    if (avatar) url += `&avatar=${encodeURIComponent(avatar)}`
-    
-    // console.debug('[ClientNetwork] Connecting to WebSocket:', url)
+
+    // Append query params if any
+    if (queryParams.length > 0) {
+      url += '?' + queryParams.join('&')
+    }
+
+    console.log('[ClientNetwork] Connecting to WebSocket - auth will be validated via HttpOnly cookies')
+    // console.debug('[ClientNetwork] WebSocket URL:', url)
     
     return new Promise((resolve, reject) => {
       this.ws = new WebSocket(url)

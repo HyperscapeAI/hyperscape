@@ -1,0 +1,282 @@
+---
+globs: packages/shared/src/systems/*.ts
+alwaysApply: false
+---
+# ECS Systems Development Rules
+
+## Core System Patterns
+
+### System Lifecycle
+Every system extends `SystemBase` and follows this lifecycle:
+1. **Constructor** - Declare dependencies
+2. **init()** - Subscribe to events, set up state
+3. **start()** - Begin update loops, spawn initial entities
+4. **update(dt)** - Process per-frame logic
+5. **destroy()** - Clean up resources, timers, subscriptions
+
+### Example System Structure
+```typescript
+export class InventorySystem extends SystemBase {
+  private playerInventories = new Map<PlayerID, PlayerInventory>();
+  private saveInterval?: NodeJS.Timeout;
+
+  constructor(world: World) {
+    super(world, {
+      name: 'inventory',
+      dependencies: {
+        required: [],
+        optional: ['ui', 'equipment', 'player', 'database']
+      },
+      autoCleanup: true
+    });
+  }
+
+  async init(): Promise<void> {
+    // Subscribe to events
+    this.subscribe(EventType.PLAYER_REGISTERED, async (data) => {
+      await this.loadPersistedInventory(data.playerId);
+    });
+  }
+
+  start(): void {
+    if (this.world.isServer) {
+      this.startAutoSave();
+    }
+  }
+
+  destroy(): void {
+    // Clean up intervals
+    if (this.saveInterval) {
+      clearInterval(this.saveInterval);
+    }
+    // Call parent cleanup
+    super.destroy();
+  }
+}
+```
+
+## Key Patterns from Memories
+
+### 1. InventorySystem Patterns
+- **Storage**: `Map<PlayerID, PlayerInventory>` for O(1) lookup
+- **Auto-save**: Every 30 seconds via interval timer
+- **Server-authoritative**: Client receives updates via `network.send('inventoryUpdated', data)`
+- **28 slots**: RuneScape-style inventory with stackable items
+- **Events**: Emit `INVENTORY_UPDATED` for UI synchronization
+
+```typescript
+// Memory: InventorySystem manages 28-slot inventory with auto-save
+private startAutoSave(): void {
+  this.saveInterval = this.createInterval(() => {
+    this.performAutoSave();
+  }, 30000); // 30 seconds
+}
+```
+
+### 2. CombatSystem Patterns
+- **Auto-attack loop**: Continuous attacks while in range
+- **Combat states**: Track active combat sessions in Map
+- **Range checks**: Validate melee/ranged distance before damage
+- **Cooldowns**: Attack speed based on weapon/mob stats
+- **Server-authoritative**: All damage calculations on server
+
+```typescript
+// Memory: CombatSystem handles auto-attack with cooldowns
+private processAutoAttack(combatState: CombatData, now: number): void {
+  const attackSpeed = this.getAttackSpeed(combatState.attackerId);
+  const timeSinceLastAttack = now - combatState.lastAttackTime;
+
+  if (timeSinceLastAttack < attackSpeed) {
+    return; // Still on cooldown
+  }
+
+  // Execute attack...
+}
+```
+
+### 3. InteractionSystem Patterns
+- **Click-to-move**: Server-authoritative movement with visual marker
+- **Context menus**: Right-click for items/resources/mobs/NPCs
+- **Debouncing**: 1 second cooldown to prevent duplicate requests
+- **Raycasting**: Three.js raycaster for entity detection
+
+```typescript
+// Memory: InteractionSystem uses debouncing for interactions
+const pickupKey = `${playerId}:${targetId}`;
+const now = Date.now();
+const lastRequest = this.recentPickupRequests.get(pickupKey);
+
+if (lastRequest && (now - lastRequest) < this.PICKUP_DEBOUNCE_TIME) {
+  return; // Prevent duplicate
+}
+
+this.recentPickupRequests.set(pickupKey, now);
+```
+
+### 4. ResourceSystem Patterns
+- **Drop tables**: Map of resource type to drops with chances
+- **Skill checks**: Success rates based on skill level
+- **Respawning**: Timer-based resource regeneration
+- **Integration**: TerrainSystem spawns resources via events
+
+```typescript
+// Memory: ResourceSystem uses drop tables for gathering
+private readonly RESOURCE_DROPS = new Map<string, ResourceDrop[]>([
+  ['tree_normal', [
+    {
+      itemId: 'logs',
+      quantity: 1,
+      chance: 1.0,
+      xpAmount: 25
+    }
+  ]]
+]);
+```
+
+## System Communication
+
+### Event-Driven Architecture
+Systems communicate through typed events, not direct calls:
+
+```typescript
+// ✅ Good - event-based communication
+this.emitTypedEvent(EventType.INVENTORY_UPDATED, {
+  playerId: playerId,
+  items: items,
+  coins: coins
+});
+
+// ❌ Avoid - direct system calls
+const uiSystem = world.getSystem('ui');
+uiSystem.updateInventory(playerId, items);
+```
+
+### System Dependencies
+Declare dependencies in constructor:
+- **required**: System won't start without these
+- **optional**: System works better with these but can function alone
+
+```typescript
+constructor(world: World) {
+  super(world, {
+    name: 'combat',
+    dependencies: {
+      required: ['entity-manager'],
+      optional: ['mob', 'player']
+    },
+    autoCleanup: true
+  });
+}
+```
+
+## Server vs Client Logic
+
+### Server-Only Patterns
+- Run validation and authoritative logic
+- Persist data to database
+- Broadcast state changes to all clients
+
+```typescript
+start(): void {
+  if (this.world.isServer) {
+    this.startAutoSave();
+    this.createInterval(() => this.updateGathering(), 500);
+  }
+}
+```
+
+### Client-Only Patterns
+- Handle UI updates
+- Manage visual effects
+- Send requests to server (never modify game state locally)
+
+```typescript
+start(): void {
+  if (!this.world.isServer) {
+    // Client-side visual effects only
+    this.setupParticleEffects();
+  }
+}
+```
+
+## Performance Best Practices
+
+### Use Intervals from SystemBase
+The `createInterval()` method ensures proper cleanup:
+
+```typescript
+// ✅ Good - auto-cleanup on destroy
+this.createInterval(() => this.tick(), 1000);
+
+// ❌ Avoid - manual cleanup required
+setInterval(() => this.tick(), 1000);
+```
+
+### Batch Database Operations
+```typescript
+// ✅ Good - batch save multiple players
+for (const playerId of this.playerInventories.keys()) {
+  const inv = this.getOrCreateInventory(playerId);
+  db.savePlayerInventory(playerId, inv.items);
+}
+
+// ❌ Avoid - save after each change
+this.addItem(playerId, itemId, quantity);
+db.savePlayerInventory(playerId, this.getInventory(playerId));
+```
+
+### Early Return for Invalid Data
+```typescript
+// ✅ Good - validate early
+if (!playerId || !itemId) {
+  Logger.systemError('InventorySystem', 'Invalid data', new Error());
+  return false;
+}
+
+// Process with confidence that data is valid...
+```
+
+## Common Gotchas
+
+### 1. Auto-Cleanup
+- Always call `super.destroy()` in your destroy method
+- Use `createInterval()` and `createTimeout()` for auto-cleanup
+- SystemBase will handle event unsubscription
+
+### 2. Event Subscriptions
+- Use `this.subscribe()` not `world.on()` for auto-cleanup
+- Type your event payloads
+- Handle missing data gracefully
+
+### 3. System Initialization Order
+- Don't assume other systems exist in constructor
+- Check for system availability in init() or start()
+- Use optional dependencies for non-critical systems
+
+## Testing Systems
+
+### Real World Testing
+```typescript
+// ✅ Good - test with real Hyperscape world
+const world = await createTestWorld();
+const inventorySystem = world.getSystem<InventorySystem>('inventory');
+
+// Add item and verify
+inventorySystem.addItem({ playerId, itemId: 'logs', quantity: 1 });
+const inventory = inventorySystem.getInventory(playerId);
+expect(inventory.items).toHaveLength(1);
+```
+
+### Visual Testing
+Use color proxies for visual verification:
+- Red (players), Green (mobs), Blue (items), Yellow (resources)
+
+## References
+
+- Memory: "InventorySystem manages 28-slot inventory with auto-save every 30s"
+- Memory: "CombatSystem handles auto-attack loop, server-authoritative"
+- Memory: "InteractionSystem uses debouncing (1s) for interactions"
+- Memory: "ECS Architecture: Systems have init(), start(), update(dt), destroy() lifecycle"
+- Source: packages/shared/src/systems/InventorySystem.ts
+- Source: packages/shared/src/systems/CombatSystem.ts
+- Source: packages/shared/src/systems/InteractionSystem.ts

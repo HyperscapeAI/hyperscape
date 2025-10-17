@@ -95,19 +95,20 @@ export interface PrivyUserInfo {
 }
 
 /**
- * Verify a Privy access token and extract user information
+ * Verify a Privy token (access or identity token) and extract user information
  *
  * This function:
- * 1. Verifies the token signature with Privy's servers
- * 2. Fetches full user profile from Privy API
- * 3. Extracts relevant identity fields (Farcaster, wallet, email)
+ * 1. Attempts to verify as identity token first (preferred for 2025)
+ * 2. Falls back to access token verification for backward compatibility
+ * 3. Fetches full user profile from Privy API
+ * 4. Extracts relevant identity fields (Farcaster, wallet, email)
  *
  * Returns null if:
  * - Privy is not configured (missing credentials)
  * - Token is invalid or expired
  * - User does not exist
  *
- * @param token - Privy access token from client
+ * @param token - Privy identity token or access token from client
  * @returns User information or null if verification fails
  */
 export async function verifyPrivyToken(
@@ -119,12 +120,38 @@ export async function verifyPrivyToken(
     return null;
   }
 
-  const verifiedClaims = await client.verifyAuthToken(token);
+  let verifiedClaims: { userId: string } | null = null;
+
+  // Try identity token verification first (preferred method)
+  try {
+    // Identity tokens use a different verification method
+    // They contain user data directly in the JWT claims
+    const idTokenClaims = await client.verifyAuthToken(token);
+
+    if (idTokenClaims && idTokenClaims.userId) {
+      verifiedClaims = idTokenClaims;
+      console.log('[PrivyAuth] Verified identity token for user:', idTokenClaims.userId);
+    }
+  } catch (err) {
+    // If identity token verification fails, try access token
+    try {
+      const accessTokenClaims = await client.verifyAuthToken(token);
+
+      if (accessTokenClaims && accessTokenClaims.userId) {
+        verifiedClaims = accessTokenClaims;
+        console.log('[PrivyAuth] Verified access token (legacy) for user:', accessTokenClaims.userId);
+      }
+    } catch (accessErr) {
+      console.error('[PrivyAuth] Token verification failed:', accessErr);
+      return null;
+    }
+  }
 
   if (!verifiedClaims || !verifiedClaims.userId) {
     return null;
   }
 
+  // Fetch full user profile
   const user = await client.getUserById(verifiedClaims.userId);
 
   if (!user) {

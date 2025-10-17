@@ -30,15 +30,30 @@
  * **Referenced by**: Nearly all server files (ServerNetwork, DatabaseSystem, index.ts, etc.)
  */
 
-import type { Entity } from '@hyperscape/shared';
-
 // ============================================================================
 // RE-EXPORTS FROM SHARED
 // ============================================================================
 // Import commonly used shared types for convenience
 
-/** Database interface for legacy Knex-style queries */
-export type { SystemDatabase } from '@hyperscape/shared';
+/** Database interface for Knex-style queries */
+export type SystemDatabase = (table: string) => {
+  where: (key: string, value: unknown) => {
+    first: () => Promise<unknown>
+    update: (data: Record<string, unknown>) => Promise<number>
+    delete: () => Promise<number>
+  }
+  select: (columns?: string | string[]) => {
+    where: (key: string, value: unknown) => {
+      first: () => Promise<unknown>
+    }
+  }
+  insert: (data: Record<string, unknown> | Record<string, unknown>[]) => Promise<void>
+  update: (data: Record<string, unknown>) => Promise<number>
+  delete: () => Promise<number>
+  first: () => Promise<unknown>
+  then: <T>(onfulfilled: (value: unknown[]) => T) => Promise<T>
+  catch: <T>(onrejected: (reason: unknown) => T) => Promise<T>
+}
 
 // ============================================================================
 // DATABASE ROW TYPES
@@ -157,13 +172,9 @@ export { dbHelpers, isDatabaseInstance } from '@hyperscape/shared'
 // ============================================================================
 // Types for WebSocket connections and network handling
 
-// Socket base class - re-export from shared
-import { Socket } from '@hyperscape/shared'
-export type { Socket } from '@hyperscape/shared'
-
 /**
  * Node.js WebSocket type with server-specific methods
- * 
+ *
  * Extends the standard WebSocket interface with Node.js ws library methods
  * like ping(), terminate(), and event handlers.
  */
@@ -173,13 +184,25 @@ export type NodeWebSocket = WebSocket & {
   terminate: () => void
 }
 
+// Base Socket interface (defines what Socket class implements)
+export interface SocketLike {
+  id: string
+  ws: NodeWebSocket
+  player: unknown
+  send: (data: unknown) => void
+  sendPacket: (type: string, data: unknown) => void
+  disconnect: () => void
+  close: () => void
+  ping: () => void
+  alive: boolean
+}
+
 // Extended Socket type with server-specific properties
-export interface ServerSocket extends Socket {
-  player: any;
-  // Base Socket properties from Socket class
+export interface ServerSocket extends SocketLike {
+  player: unknown
   ws: NodeWebSocket
   network: NetworkWithSocket
-  
+
   // Server-specific extensions
   accountId?: string
   selectedCharacterId?: string
@@ -260,8 +283,13 @@ export interface ChatMessage {
   channel?: string
 }
 
-// Re-export WorldOptions from shared
-export type { WorldOptions } from '@hyperscape/shared'
+// WorldOptions type - options for world initialization
+export interface WorldOptions {
+  db?: SystemDatabase
+  storage?: unknown
+  assetsUrl?: string
+  assetsDir?: string
+}
 
 /**
  * Resource entity (tree, rock, etc.) for gathering systems

@@ -123,6 +123,7 @@ import { EventType, Socket, System, THREE, addRole, dbHelpers, getItem, hasRole,
 import type { Vector3 } from 'three';
 import { isPrivyEnabled, verifyPrivyToken } from './privy-auth';
 import { createJWT, verifyJWT } from './utils';
+import { isAgentAuthEnabled, verifyAgentToken } from './agent-auth';
 
 // SocketInterface is the extended ServerSocket type
 type SocketInterface = ServerSocket;
@@ -238,8 +239,8 @@ export class ServerNetwork extends System implements NetworkWithSocket {
   // const qDelta = quatSubtract(currentQuaternion, last.q);
   // Quantize and send qDelta, update last
 
-  constructor(world: World) {
-    super(world);
+  constructor(world: unknown) {
+    super(world as InstanceType<typeof import('@hyperscape/shared').World>);
     this.id = 0;
     this.ids = -1;
     this.sockets = new Map();
@@ -511,7 +512,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       sessionAvatar: avatar || undefined,
       roles,
     }) : undefined;
-      socket.player = addedEntity as Entity || undefined;
+      socket.player = addedEntity || undefined;
     if (socket.player) {
       this.world.emit(EventType.PLAYER_JOINED, { playerId: socket.player.data.id as string, player: socket.player as unknown as import('@hyperscape/shared').PlayerLocal });
       try {
@@ -903,10 +904,10 @@ export class ServerNetwork extends System implements NetworkWithSocket {
    * 
    * @public
    */
-  enqueue(socket: SocketInterface | Socket, method: string, data: unknown): void {
+  enqueue(socket: SocketInterface, method: string, data: unknown): void {
     if (method === 'onChatAdded') {
     }
-    this.queue.push([socket as SocketInterface, method, data]);
+    this.queue.push([socket, method, data]);
   }
 
   /**
@@ -924,8 +925,8 @@ export class ServerNetwork extends System implements NetworkWithSocket {
    * 
    * @public
    */
-  onDisconnect(socket: SocketInterface | Socket, code?: number | string): void {
-    // Cast to SocketInterface since we know it has the properties we need
+  onDisconnect(socket: SocketInterface, code?: number | string): void {
+    // SocketInterface already has all properties we need
     const serverSocket = socket as SocketInterface
     // Handle socket disconnection
     console.log(`[ServerNetwork] 🔌 Socket ${serverSocket.id} disconnected with code:`, code, {
@@ -1049,6 +1050,36 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     return this.world.settings.public || this.isAdmin(player);
   }
 
+  /**
+   * Parse cookies from WebSocket connection headers
+   *
+   * WebSocket upgrade requests include cookies in the Cookie header,
+   * but they're not automatically parsed like in HTTP requests.
+   */
+  private parseCookiesFromWebSocket(ws: NodeWebSocket): Record<string, string> {
+    try {
+      // Access the raw HTTP request that was upgraded to WebSocket
+      const req = (ws as { upgradeReq?: { headers?: { cookie?: string } } }).upgradeReq;
+      const cookieHeader = req?.headers?.cookie;
+
+      if (!cookieHeader) {
+        return {};
+      }
+
+      // Parse cookie header into key-value pairs
+      return cookieHeader.split(';').reduce((acc, cookie) => {
+        const [key, value] = cookie.trim().split('=');
+        if (key && value) {
+          acc[key] = decodeURIComponent(value);
+        }
+        return acc;
+      }, {} as Record<string, string>);
+    } catch (err) {
+      console.error('[ServerNetwork] Failed to parse cookies from WebSocket:', err);
+      return {};
+    }
+  }
+
   async onConnection(ws: NodeWebSocket, params: ConnectionParams): Promise<void> {
     try {
       // Validate websocket parameter
@@ -1067,8 +1098,17 @@ export class ServerNetwork extends System implements NetworkWithSocket {
         return;
       }
 
-      // check connection params
-      let authToken = params.authToken;
+      // Extract auth token from cookies first (preferred method), then fall back to query params
+      const cookies = this.parseCookiesFromWebSocket(ws);
+      let authToken = cookies['privy-id-token'] || params.authToken;
+
+      // Log authentication method for debugging
+      if (cookies['privy-id-token']) {
+        console.log('[ServerNetwork] Using HttpOnly cookie for authentication (secure)');
+      } else if (params.authToken) {
+        console.warn('[ServerNetwork] Using query param for authentication (legacy - will be deprecated)');
+      }
+
       const name = params.name;
       const avatar = params.avatar;
       const privyUserId = (params as { privyUserId?: string }).privyUserId;
@@ -1137,7 +1177,34 @@ export class ServerNetwork extends System implements NetworkWithSocket {
         }
       }
       
-      // Fall back to legacy JWT authentication if Privy didn't work
+      // Try agent authentication if enabled and Privy didn't work
+      if (!user && authToken && isAgentAuthEnabled()) {
+        try {
+          const agentInfo = await verifyAgentToken(authToken, this.db);
+          if (agentInfo) {
+            console.log('[ServerNetwork] Agent authenticated:', {
+              agentId: agentInfo.agentId,
+              agentName: agentInfo.agentName,
+              runtimeId: agentInfo.runtimeId,
+            });
+
+            // Load agent user from database
+            const dbResult = await this.db('users').where('id', agentInfo.agentId).first();
+            if (dbResult) {
+              user = dbResult as User;
+
+              // Add agent-specific metadata
+              (user as User & { isAgent?: boolean; runtimeId?: string }).isAgent = true;
+              (user as User & { isAgent?: boolean; runtimeId?: string }).runtimeId = agentInfo.runtimeId;
+            }
+          }
+        } catch (err) {
+          console.error('[ServerNetwork] Agent authentication error:', err);
+          // Fall through to legacy authentication
+        }
+      }
+
+      // Fall back to legacy JWT authentication if nothing else worked
       if (!user && authToken) {
         try {
           const jwtPayload = await verifyJWT(authToken);
@@ -1725,7 +1792,6 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     
     
     // Forward to InventorySystem with entityId (required) and itemId (optional)
-    // @ts-expect-error - EventMap updated to require entityId, optional itemId (type cache lag)
     this.world.emit(EventType.ITEM_PICKUP, {
       playerId: playerEntity.id,
       entityId,

@@ -50,6 +50,8 @@
  * **Referenced by**: wrangler.toml (Cloudflare deployment config)
  */
 
+// Cloudflare Containers types (optional package, used in Cloudflare deployments)
+// @ts-ignore - Optional dependency, may not be installed in all environments
 import { Container, getRandom } from '@cloudflare/containers'
 
 // ============================================================================
@@ -176,11 +178,13 @@ export default {
     
     // ===== HEALTH CHECK (Edge level) =====
     if (url.pathname === '/health') {
+      // Cast to CloudflareRequest to access cf property
+      const cfRequest = request as Request & { cf?: { colo?: string } }
       return Response.json({
         status: 'healthy',
         layer: 'cloudflare-edge',
         timestamp: new Date().toISOString(),
-        region: request.cf?.colo || 'unknown'
+        region: cfRequest.cf?.colo || 'unknown'
       })
     }
     

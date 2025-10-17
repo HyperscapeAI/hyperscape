@@ -141,6 +141,11 @@ import { ServerNetwork } from './ServerNetwork'
 import { DatabaseSystem } from './DatabaseSystem'
 import type { NodeWebSocket } from './types'
 
+// Security middleware imports
+import { registerRateLimiting, getRateLimitConfig } from './middleware/rate-limit'
+import { registerCookies, setAuthCookie, getAuthCookie, clearAllAuthCookies } from './middleware/cookies'
+import { registerCsrfProtection, issueCSRFToken } from './middleware/csrf'
+
 // JSON value type for proper typing
 type JSONValue = string | number | boolean | null | JSONValue[] | { [key: string]: JSONValue }
 
@@ -267,11 +272,12 @@ async function startServer() {
   world.register('network', ServerNetwork);
   
   // Make PostgreSQL pool and Drizzle DB available for DatabaseSystem to use
-  world.pgPool = pgPool
-  world.drizzleDb = drizzleDb
+  // These are dynamically added properties, not in the World type definition
+  (world as unknown as { pgPool: typeof pgPool }).pgPool = pgPool;
+  (world as unknown as { drizzleDb: typeof drizzleDb }).drizzleDb = drizzleDb
 
   // Set up default environment model
-  world.settings.model = {
+  (world as unknown as { settings: { model: { url: string } } }).settings.model = {
     url: 'asset://world/base-environment.glb',
   }
 
@@ -327,8 +333,8 @@ async function startServer() {
           entityToAdd.quaternion = [0, Math.sin(halfY), 0, Math.cos(halfY)] 
         }
 
-        // Add entity
-        world.entities.add!(entityToAdd, true)
+        // Add entity (world.entities is dynamically added at runtime)
+        (world as unknown as { entities: { add: (entity: unknown, persist: boolean) => void } }).entities.add(entityToAdd, true)
       }
     }
   }
@@ -350,6 +356,41 @@ async function startServer() {
     credentials: true,
     methods: ['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS'],
   })
+
+  // ============================================================================
+  // SECURITY MIDDLEWARE REGISTRATION
+  // ============================================================================
+  // Register security middleware in the correct order:
+  // 1. Cookies (required for CSRF)
+  // 2. CSRF Protection
+  // 3. Rate Limiting
+
+  try {
+    // Register cookie handling (required for HttpOnly auth cookies and CSRF)
+    await registerCookies(fastify)
+    fastify.log.info('[Server] ✅ Cookie middleware registered')
+  } catch (error) {
+    fastify.log.error('[Server] ❌ Failed to register cookie middleware:', error)
+    throw error
+  }
+
+  try {
+    // Register CSRF protection (depends on cookies)
+    await registerCsrfProtection(fastify)
+    fastify.log.info('[Server] ✅ CSRF protection registered')
+  } catch (error) {
+    fastify.log.error('[Server] ❌ Failed to register CSRF protection:', error)
+    throw error
+  }
+
+  try {
+    // Register rate limiting
+    await registerRateLimiting(fastify)
+    fastify.log.info('[Server] ✅ Rate limiting registered')
+  } catch (error) {
+    fastify.log.error('[Server] ❌ Failed to register rate limiting:', error)
+    throw error
+  }
 
   // Temporarily disable compression to debug "premature close" errors
   // TODO: Re-enable compression after fixing the issue
@@ -586,7 +627,8 @@ async function startServer() {
       
       // Handle network connection
       const query = req.query as Record<string, JSONValue>
-      world.network.onConnection!(ws, query)
+      const network = (world as unknown as { network: { onConnection: (ws: unknown, query: unknown) => void } }).network
+      network.onConnection(ws, query)
     })
   }
 
@@ -602,6 +644,175 @@ async function startServer() {
       socket.close?.()
     }
     return reply.send({ ok: true })
+  })
+
+  // Agent authentication endpoint (with strict rate limiting)
+  fastify.post('/api/agent/auth', {
+    config: {
+      rateLimit: getRateLimitConfig('strict'), // 3 requests per hour per IP
+    },
+  }, async (req, reply) => {
+    try {
+      const { registerAgent } = await import('./agent-auth')
+      const body = req.body as {
+        agentName: string
+        runtimeId?: string
+        privyUserId?: string
+        requestedPermissions?: string[]
+        metadata?: Record<string, string | number>
+      }
+
+      // Get database from world
+      const network = world.network as unknown as import('./types').ServerNetworkWithSockets
+      const db = network.db
+
+      // Register agent and get credentials
+      const authResponse = await registerAgent(db, {
+        agentName: body.agentName,
+        runtimeId: body.runtimeId,
+        privyUserId: body.privyUserId,
+        requestedPermissions: body.requestedPermissions,
+        metadata: {
+          ...body.metadata,
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+        },
+      })
+
+      fastify.log.info({ agentId: authResponse.agentInfo.agentId }, '[API] Agent authenticated')
+
+      return reply.send(authResponse)
+    } catch (error) {
+      fastify.log.error({ error }, '[API] Agent authentication failed')
+      return reply.code(500).send({
+        error: 'Agent authentication failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      })
+    }
+  })
+
+  // Privy authentication endpoint - exchanges identity token for HttpOnly cookie
+  fastify.post('/api/auth/privy', {
+    config: {
+      rateLimit: getRateLimitConfig('auth'), // 5 requests per 15 minutes per IP
+    },
+  }, async (req, reply) => {
+    try {
+      const { verifyPrivyToken } = await import('./privy-auth')
+      const body = req.body as {
+        identityToken: string
+        name?: string
+        avatar?: string
+      }
+
+      if (!body.identityToken) {
+        return reply.code(400).send({
+          error: 'Missing identity token',
+          message: 'identityToken is required in request body',
+        })
+      }
+
+      // Verify Privy identity token
+      const privyInfo = await verifyPrivyToken(body.identityToken)
+
+      if (!privyInfo) {
+        return reply.code(401).send({
+          error: 'Invalid token',
+          message: 'Failed to verify Privy identity token',
+        })
+      }
+
+      // Get database from world
+      const network = world.network as unknown as import('./types').ServerNetworkWithSockets
+      const db = network.db
+
+      // Look up or create user in database
+      const { createJWT } = await import('./utils')
+      const existingUserResult = await db('users')
+        .where('privyUserId', privyInfo.privyUserId)
+        .first()
+
+      let userId: string
+
+      if (existingUserResult) {
+        // Existing user
+        userId = existingUserResult.id
+      } else {
+        // New user - create account
+        userId = privyInfo.privyUserId
+        const timestamp = new Date().toISOString()
+
+        const newUser: {
+          id: string
+          name: string
+          avatar: string | null
+          roles: string
+          createdAt: string
+          privyUserId?: string
+          farcasterFid?: string
+        } = {
+          id: userId,
+          name: body.name || 'Adventurer',
+          avatar: body.avatar || null,
+          roles: '',
+          createdAt: timestamp,
+        }
+
+        try {
+          newUser.privyUserId = privyInfo.privyUserId
+          if (privyInfo.farcasterFid) {
+            newUser.farcasterFid = privyInfo.farcasterFid
+          }
+          await db('users').insert(newUser)
+        } catch (_err) {
+          // Fallback without optional fields if schema doesn't support them
+          await db('users').insert({
+            id: newUser.id,
+            name: newUser.name,
+            avatar: newUser.avatar,
+            roles: newUser.roles,
+            createdAt: newUser.createdAt,
+          })
+        }
+      }
+
+      // Generate Hyperscape JWT token (1 hour expiry for humans)
+      const hyperscapeToken = await createJWT({ userId })
+
+      // Set HttpOnly cookie with the token
+      setAuthCookie(reply, hyperscapeToken)
+
+      // Issue CSRF token for state-changing requests
+      const csrfToken = await issueCSRFToken(req, reply)
+
+      fastify.log.info({
+        userId,
+        privyUserId: privyInfo.privyUserId,
+      }, '[API] Privy authentication successful - HttpOnly cookie set')
+
+      // Return success with CSRF token (cookie is set automatically)
+      return reply.send({
+        success: true,
+        userId,
+        csrfToken,
+        message: 'Authentication successful - credentials stored in HttpOnly cookie',
+      })
+    } catch (error) {
+      fastify.log.error({ error }, '[API] Privy authentication failed')
+      return reply.code(500).send({
+        error: 'Authentication failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      })
+    }
+  })
+
+  // Logout endpoint - clears authentication cookies
+  fastify.post('/api/auth/logout', async (_req, reply) => {
+    clearAllAuthCookies(reply)
+    return reply.send({
+      success: true,
+      message: 'Logged out successfully',
+    })
   })
 
   const publicEnvs: Record<string, string> = {}
@@ -711,7 +922,8 @@ async function startServer() {
 
   // Action API endpoints
   fastify.get('/api/actions', async (_request: FastifyRequest, reply: FastifyReply) => {
-    const actions = world.actionRegistry!.getAll()
+    const actionRegistry = (world as unknown as { actionRegistry: { getAll: () => unknown[] } }).actionRegistry
+    const actions = actionRegistry.getAll()
     return reply.send({
       success: true,
       actions: actions.map((action: Record<string, unknown>) => ({
@@ -729,7 +941,8 @@ async function startServer() {
       playerId: query?.playerId,
       ...query,
     }
-    const actions = world.actionRegistry!.getAvailable(context)
+    const actionRegistry = (world as unknown as { actionRegistry: { getAvailable: (context: unknown) => unknown[] } }).actionRegistry
+    const actions = actionRegistry.getAvailable(context)
     return reply.send({
       success: true,
       actions: actions.map((action: { name: string }) => action.name),
@@ -747,7 +960,8 @@ async function startServer() {
       ...query,
     }
 
-    const result = await world.actionRegistry!.execute(actionName, context, params)
+    const actionRegistry = (world as unknown as { actionRegistry: { execute: (name: string, context: unknown, params: unknown) => Promise<unknown> } }).actionRegistry
+    const result = await actionRegistry.execute(actionName, context, params)
     return reply.send({
       success: true,
       result,

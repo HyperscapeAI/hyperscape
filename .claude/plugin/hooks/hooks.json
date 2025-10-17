@@ -1,0 +1,57 @@
+{
+  "PreToolUse": [
+    {
+      "matcher": "Edit|Write|Task",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "../.claude/context-hook.sh"
+        }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "matcher": "Edit|Write|NotebookEdit",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "../.claude/validate-hook.sh"
+        }
+      ]
+    }
+  ],
+  "UserPromptSubmit": [
+    {
+      "matcher": "*",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "../.claude/mem0-hook.sh"
+        }
+      ]
+    }
+  ],
+  "SessionEnd": [
+    {
+      "matcher": "*",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "../.claude/mem0-hook.sh"
+        }
+      ]
+    }
+  ],
+  "Stop": [
+    {
+      "matcher": "*",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "../.claude/mem0-hook.sh"
+        }
+      ]
+    }
+  ]
+}

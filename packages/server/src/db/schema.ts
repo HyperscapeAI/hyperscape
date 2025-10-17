@@ -77,7 +77,7 @@
  */
 
 import { pgTable, text, integer, bigint, real, timestamp, serial, unique, index } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 
 /**
  * Config Table - Server configuration settings
@@ -92,15 +92,19 @@ export const config = pgTable('config', {
 
 /**
  * Users Table - Account authentication and authorization
- * 
+ *
  * Stores user accounts with authentication providers and roles.
- * Supports multiple auth methods (Privy, JWT, anonymous).
- * 
+ * Supports multiple auth methods (Privy, JWT, anonymous, agent).
+ *
  * Key columns:
  * - `id` - Unique user ID (often matches privyUserId for Privy users)
  * - `privyUserId` - Privy authentication ID (unique, indexed)
  * - `farcasterFid` - Farcaster Frame ID if linked (indexed)
- * - `roles` - Comma-separated roles (e.g., "admin,builder")
+ * - `roles` - Comma-separated roles (e.g., "admin,builder,agent")
+ * - `runtimeId` - ElizaOS runtime ID for AI agents
+ * - `ownerId` - User ID that owns this agent (for AI agents)
+ * - `isActive` - Whether this user/agent is active (for deactivation)
+ * - `permissions` - Comma-separated permissions for agents
  */
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
@@ -110,9 +114,15 @@ export const users = pgTable('users', {
   avatar: text('avatar'),
   privyUserId: text('privyUserId').unique(),
   farcasterFid: text('farcasterFid'),
+  // Agent-specific fields
+  runtimeId: text('runtimeId'),
+  ownerId: text('ownerId'),
+  isActive: integer('isActive').default(1), // 1 = active, 0 = deactivated
+  permissions: text('permissions'),
 }, (table) => ({
   privyIdx: index('idx_users_privy').on(table.privyUserId),
   farcasterIdx: index('idx_users_farcaster').on(table.farcasterFid),
+  runtimeIdx: index('idx_users_runtime').on(table.runtimeId),
 }));
 
 /**
@@ -463,4 +473,3 @@ export const chunkActivityRelations = relations(chunkActivity, ({ one }) => ({
  * Example: default(sql`(EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT`)
  * This converts PostgreSQL's NOW() to milliseconds since epoch.
  */
-import { sql } from 'drizzle-orm';

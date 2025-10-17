@@ -22,7 +22,8 @@ coverage/
 *.log
 test-*.json
 test-*.png
-
+.eliza/
+ 
 # Environment
 .env
 .env.local
@@ -52,3 +53,6 @@ tmp/
 
 assets/
 .turbo/
+
+.cursor/rules/kluster-code-verify.mdc
+.kluster

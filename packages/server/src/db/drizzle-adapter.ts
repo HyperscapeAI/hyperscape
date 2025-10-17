@@ -74,7 +74,7 @@
 
 import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import type { SystemDatabase } from '@hyperscape/shared';
+import type { SystemDatabase } from '../types';
 import * as schema from './schema';
 
 /**

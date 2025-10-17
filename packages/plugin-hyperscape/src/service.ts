@@ -87,6 +87,7 @@ import {
   ClientInput,
   Entity,
   loadPhysX,
+  createNodeClientWorld,
   type NetworkSystem,
   type World,
   type Player,
@@ -121,7 +122,6 @@ import type {
   ContentInstance,
   Position,
   RigidBody,
-  WorldConfig,
 } from "./types/core-types";
 
 /**
@@ -139,7 +139,6 @@ interface EntityData {
 }
 
 import type { NetworkEventData } from "./types/event-types";
-import type { MockWorldConfig } from "./types/hyperscape-types";
 import { getModuleDirectory, hashFileBuffer } from "./utils";
 
 const moduleDirPath = getModuleDirectory();
@@ -291,45 +290,23 @@ Hyperscape world integration service that enables agents to:
     this._currentWorldId = config.worldId;
     this.appearanceHash = null;
 
-    // Create real Hyperscape world connection
+    // Create real Hyperscape world connection with proper binary protocol
     console.info(
-      "[HyperscapeService] Creating real Hyperscape world connection",
+      "[HyperscapeService] Creating headless Node.js client world with binary protocol",
     );
 
-    // Create mock DOM elements for headless operation
-    const mockElement = {
-      appendChild: () => {},
-      removeChild: () => {},
-      offsetWidth: 1920,
-      offsetHeight: 1080,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      style: {},
-    };
+    // Create headless client world with proper ClientNetwork system
+    this.world = createNodeClientWorld();
 
-    // Initialize the world with proper configuration
-    const hyperscapeConfig: WorldConfig = {
+    // Initialize world with server connection
+    await this.world.init({
       wsUrl: config.wsUrl,
-      viewport: mockElement,
-      ui: mockElement,
       initialAuthToken: config.authToken,
-      loadPhysX,
       assetsUrl:
         process.env.HYPERSCAPE_ASSETS_URL || "https://assets.hyperscape.io",
-      physics: true,
-      networkRate: 60,
-    };
+    });
 
-    // Create a minimal world with the basic structure we need
-    const mockConfig: MockWorldConfig = {
-      worldId: config.worldId,
-      name: `world-${config.worldId}`,
-      assets: ["https://assets.hyperscape.io"],
-      physics: hyperscapeConfig.physics,
-    };
-    this.world = this.createWorld(mockConfig);
-
-    console.info("[HyperscapeService] Created real Hyperscape world instance");
+    console.info("[HyperscapeService] Headless client world initialized and connected");
 
     this.playwrightManager = new PlaywrightManager(this.runtime);
     this.emoteManager = new EmoteManager(this.runtime);
@@ -392,9 +369,13 @@ Hyperscape world integration service that enables agents to:
     // Check for RPG systems and load RPG actions/providers dynamically
     await this.loadRPGExtensions();
 
-    // Access appearance data for validation
-    const appearance = this.world.entities.player.data.appearance;
-    console.debug("[Appearance] Current appearance data available");
+    // Wait for player entity to be created by server snapshot
+    if (this.world.entities?.player) {
+      const appearance = this.world.entities.player.data.appearance;
+      console.debug("[Appearance] Current appearance data available");
+    } else {
+      console.debug("[Appearance] Waiting for server to create player entity");
+    }
   }
 
   /**
@@ -1033,406 +1014,5 @@ Hyperscape world integration service that enables agents to:
   getRPGStateManager(): RPGStateManager | null {
     // Return RPG state manager for testing
     return null;
-  }
-
-  /**
-   * Create a minimal world implementation with proper physics
-   */
-  private createWorld(config: MockWorldConfig): World {
-    console.info("[MinimalWorld] Creating minimal world with physics");
-
-    const minimalWorld: Partial<World> = {
-      // Core world properties
-      systems: [],
-
-      // Configuration
-      assetsUrl: config.assets?.[0] || "https://assets.hyperscape.io",
-
-      // Physics system - 'as any' cast acceptable here (test mock context)
-      // Note: This is a minimal mock world for testing only, not production code
-      physics: {
-        enabled: true,
-        gravity: { x: 0, y: -9.81, z: 0 },
-        timeStep: 1 / 60,
-        world: null, // Will be set after PhysX loads
-        controllers: new Map<string, CharacterController>(),
-        rigidBodies: new Map<string, any>(),
-
-        // Physics helper methods
-        createRigidBody: (
-          _type: "static" | "dynamic" | "kinematic",
-          _position?: Vector3,
-          _rotation?: Quaternion,
-        ): RigidBody => {
-          const _velocity = new Vector3();
-          const _angularVelocity = new Vector3();
-          return {
-            type: _type,
-            position: _position,
-            rotation: _rotation,
-            velocity: _velocity,
-            angularVelocity: _angularVelocity,
-            mass: 1,
-            applyForce: (force: Vector3) => {
-            },
-            applyImpulse: (impulse: Vector3) => {
-            },
-            setLinearVelocity: (velocity: Vector3) => {
-            },
-            setAngularVelocity: (velocity: Vector3) => {
-            },
-          };
-        },
-
-        createCharacterController: (
-          options: CharacterControllerOptions & {
-            id?: string;
-            position?: Position;
-            maxSpeed?: number;
-          },
-        ) => {
-          const controllerId = options.id || `controller-${Date.now()}`;
-
-          // Create simple position objects that satisfy the Vector3 interface
-          const createVector3 = (
-            x: number = 0,
-            y: number = 0,
-            z: number = 0,
-          ): Vector3 => {
-            return { x, y, z } as Vector3;
-          };
-
-          // Create controller instance with options
-          const controller = new CharacterController(controllerId, options);
-
-          // Override position if provided
-          if (options.position) {
-            controller.setPosition(options.position);
-          }
-          controller.isGrounded = true;
-
-          // Override move method with custom physics logic
-          const originalMove = controller.move.bind(controller);
-          controller.move = (displacement: Position) => {
-              const dt = minimalWorld.physics!.timeStep;
-
-              // Apply horizontal movement (velocity-based)
-              controller.velocity.x = displacement.x;
-              controller.velocity.z = displacement.z;
-
-              // Apply gravity if not grounded
-              if (!controller.isGrounded) {
-                controller.velocity.y += minimalWorld.physics!.gravity.y * dt;
-              }
-
-              // Update position based on velocity
-              controller.position.x += controller.velocity.x * dt;
-              controller.position.y += controller.velocity.y * dt;
-              controller.position.z += controller.velocity.z * dt;
-
-              // Ground check (simple)
-              if (controller.position.y <= 0) {
-                controller.position.y = 0;
-                controller.velocity.y = 0;
-                controller.isGrounded = true;
-              } else {
-                controller.isGrounded = false;
-              }
-            };
-
-          // Override jump method with custom logic
-          controller.jump = () => {
-            if (controller.isGrounded) {
-              controller.velocity.y = 10.0; // Jump velocity
-              controller.isGrounded = false;
-            }
-          };
-
-          // Store controller for physics updates
-          minimalWorld.physics!.controllers.set(controllerId, controller);
-
-          return controller;
-        },
-
-        // Physics simulation step
-        step: (deltaTime: number) => {
-          // Simple physics simulation
-          for (const [id, controller] of minimalWorld.physics!.controllers) {
-            // Update entity position based on physics
-            const entity =
-              minimalWorld.entities!.items.get(id) ||
-              minimalWorld.entities!.players.get(id);
-            if (entity && entity.position) {
-              entity.position.x = controller.position.x;
-              entity.position.y = controller.position.y;
-              entity.position.z = controller.position.z;
-
-              if (entity.base && entity.position) {
-                entity.position.x = controller.position.x;
-                entity.position.y = controller.position.y;
-                entity.position.z = controller.position.z;
-              }
-            }
-          }
-        },
-      } as any,
-
-      // Network system
-      network: {
-        id: `network-${Date.now()}`,
-        isClient: true,
-        isServer: false,
-        send: (type: string, data?: NetworkEventData) => {
-        },
-        upload: async (file: File) => {
-          return Promise.resolve(`uploaded-${Date.now()}`);
-        },
-        disconnect: async () => {
-          return Promise.resolve();
-        },
-        maxUploadSize: 10 * 1024 * 1024,
-      } as any,
-
-      // Chat system with proper typing
-      chat: {
-        msgs: [] as ChatMessage[],
-        listeners: [] as Array<(msgs: ChatMessage[]) => void>,
-        add: (msg: ChatMessage, broadcast?: boolean) => {
-          minimalWorld.chat!.msgs.push(msg);
-          // Notify listeners
-          const chatListeners = minimalWorld.chat!.listeners;
-          for (const listener of chatListeners) {
-            listener(minimalWorld.chat!.msgs);
-          }
-        },
-        subscribe: ((callback: (msgs: ChatMessage[]) => void) => {
-          const chatListeners = minimalWorld.chat!.listeners;
-          chatListeners.push(callback);
-          const subscription = {
-            unsubscribe: () => {
-              const index = chatListeners.indexOf(callback);
-              if (index >= 0) {
-                chatListeners.splice(index, 1);
-              }
-            },
-            get active() {
-              return chatListeners.indexOf(callback) >= 0;
-            },
-          };
-          return subscription;
-        }) as any,
-      } as any,
-
-      // Events system - 'as any' cast acceptable here (test mock context)
-      // Note: Real world has properly typed event system, this is minimal mock only
-      events: Object.assign(
-        function <T extends string | symbol>(event: T) {
-          // Default listener getter for compatibility
-          return (minimalWorld.events as any).__listeners?.get(event) || [];
-        },
-        {
-          listeners: new Map<string, ((data: unknown) => void)[]>() as any,
-          __listeners: new Map<
-            string | symbol,
-            Set<(...args: unknown[]) => void>
-          >(),
-          emit: function <T extends string | symbol>(
-            event: T,
-            ...args: unknown[]
-          ): boolean {
-            const listeners = this.__listeners.get(event);
-            if (listeners) {
-              for (const listener of listeners) {
-                listener(...args);
-              }
-            }
-            return true;
-          },
-          on: function <T extends string | symbol>(
-            event: T,
-            fn: (...args: unknown[]) => void,
-            _context?: unknown,
-          ) {
-            if (!this.__listeners.has(event)) {
-              this.__listeners.set(event, new Set());
-            }
-            this.__listeners.get(event)!.add(fn);
-            return this;
-          },
-          off: function <T extends string | symbol>(
-            event: T,
-            fn?: (...args: unknown[]) => void,
-            _context?: unknown,
-            _once?: boolean,
-          ) {
-            if (fn) {
-              const listeners = this.__listeners.get(event);
-              if (listeners) {
-                listeners.delete(fn);
-              }
-            } else {
-              this.__listeners.delete(event);
-            }
-            return this;
-          },
-        },
-      ) as any,
-
-      // Entities system - minimal mock for testing
-      // Note: Real world has full entity system with proper types, this is minimal mock
-      entities: {
-        player: null,
-        players: new Map(),
-        items: new Map(),
-        add: ((data: EntityData | Entity, local?: boolean) => {
-          // Handle both Entity objects and EntityData
-          let entity: Entity;
-          if (!(data instanceof Entity)) {
-            // Create a mock entity if data is EntityData
-            entity = {
-              id: data.id || `entity-${Date.now()}`,
-              type: data.type || "generic",
-              position: data.position || { x: 0, y: 0, z: 0 },
-              data: data,
-            } as Entity;
-          } else {
-            entity = data;
-          }
-          minimalWorld.entities!.items.set(entity.id, entity);
-          return entity;
-        }) as ((data: EntityData | Entity, local?: boolean) => Entity),
-        remove: (entityId: string) => {
-          minimalWorld.entities!.items.delete(entityId);
-          minimalWorld.entities!.players.delete(entityId);
-          return true;
-        },
-        getPlayer: () => {
-          return minimalWorld.entities!.player;
-        },
-        getLocalPlayer: () => minimalWorld.entities!.player,
-        getPlayers: () => Array.from(minimalWorld.entities!.players.values()),
-      } as any,
-
-      // Initialize method
-      init: async (initConfig?: Partial<MockWorldConfig>) => {
-
-        const playerId = `player-${Date.now()}`;
-
-        // Create physics character controller for player
-        const characterController =
-          minimalWorld.physics!.createCharacterController({
-            id: playerId,
-            position: { x: 0, y: 0, z: 0 } as Vector3,
-            radius: 0.5,
-            height: 1.8,
-            maxSpeed: 5.0,
-          });
-
-        minimalWorld.physics!.controllers.set(playerId, characterController);
-
-        // Create basic player entity - 'as any' cast acceptable (test mock context)
-        minimalWorld.entities!.player = {
-          id: playerId,
-          type: "player",
-          data: {
-            id: playerId,
-            type: "player",
-            name: "TestPlayer",
-            appearance: {},
-          },
-          base: {
-            position: { x: 0, y: 0, z: 0 } as Vector3,
-            quaternion: { x: 0, y: 0, z: 0, w: 1 } as Quaternion,
-            scale: { x: 1, y: 1, z: 1 } as Vector3,
-          },
-          position: { x: 0, y: 0, z: 0 },
-
-          // Physics-based movement methods
-          move: (displacement: Position) => {
-            const controller = minimalWorld.physics!.controllers.get(playerId);
-            if (controller && controller.move) {
-              controller.move(displacement);
-            }
-          },
-
-          // Walk toward a specific position
-          walkToward: (targetPosition: Position, speed: number = 5) => {
-            const currentPos = minimalWorld.entities!.player!.position!;
-            const controller = minimalWorld.physics!.controllers?.get(playerId) as ControllerInterface | undefined;
-            if (controller && controller.walkToward) {
-              const direction = {
-                x: targetPosition.x - currentPos.x,
-                y: 0,
-                z: targetPosition.z - currentPos.z,
-              };
-              return controller.walkToward(direction, speed);
-            }
-            return currentPos;
-          },
-
-          // Teleport (instant position change) - kept for compatibility
-          teleport: (options: TeleportOptions) => {
-            if (options.position) {
-              // Update both entity and physics controller
-              Object.assign(
-                minimalWorld.entities!.player!.position!,
-                options.position,
-              );
-              Object.assign(
-                minimalWorld.entities!.player!.position,
-                options.position,
-              );
-
-              const controller =
-                minimalWorld.physics!.controllers.get(playerId);
-              if (controller && controller.setPosition) {
-                controller.setPosition(options.position);
-              }
-            }
-          },
-
-          modify: (data: EntityModificationData) => {
-            Object.assign(minimalWorld.entities!.player!.data, data);
-          },
-
-          setSessionAvatar: (url: string) => {
-            const player = minimalWorld.entities!.player as { data?: { appearance?: PlayerAppearance } } | undefined;
-            if (player && player.data) {
-              player.data.appearance = player.data.appearance || {};
-              player.data.appearance.avatar = url;
-            }
-          },
-        } as Player; // Typed as Player instead of any
-
-        // Start physics simulation loop
-        if (minimalWorld.physics?.enabled) {
-          setInterval(() => {
-            minimalWorld.physics!.step(minimalWorld.physics!.timeStep);
-          }, minimalWorld.physics.timeStep * 1000); // Convert to milliseconds
-        }
-
-        return Promise.resolve();
-      },
-
-      // Disconnect network
-      disconnect: async () => {
-        if (minimalWorld.network && 'disconnect' in minimalWorld.network) {
-          const networkWithDisconnect = minimalWorld.network as NetworkSystem & { disconnect: () => Promise<void> };
-          await networkWithDisconnect.disconnect();
-        }
-      },
-
-      // Cleanup
-      destroy: () => {
-        minimalWorld.systems = [];
-        minimalWorld.entities!.players.clear();
-        minimalWorld.entities!.items.clear();
-        (minimalWorld.events as any).__listeners?.clear();
-        (minimalWorld.events as any).listeners?.clear();
-        (minimalWorld.chat as any).listeners = [];
-      },
-    };
-
-    return minimalWorld as World;
   }
 }
