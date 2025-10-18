@@ -57,6 +57,7 @@
 import { createJWT, verifyJWT } from './utils';
 import type { User, SystemDatabase } from './types';
 import { uuid } from '@hyperscape/shared';
+import { RateLimiterMemory } from 'rate-limiter-flexible';
 
 /**
  * Agent token expiry time in seconds (5 minutes for enhanced security)
@@ -67,6 +68,15 @@ const AGENT_TOKEN_EXPIRY = parseInt(process.env.AGENT_TOKEN_EXPIRY || '300', 10)
  * Check if agent authentication is enabled
  */
 const AGENT_AUTH_ENABLED = process.env.AGENT_AUTH_ENABLED !== 'false';
+
+/**
+ * Rate limiter for agent registration
+ * Prevents abuse by limiting registration attempts
+ */
+const agentRegistrationLimiter = new RateLimiterMemory({
+  points: parseInt(process.env.AGENT_REGISTRATION_LIMIT || '10', 10), // 10 registrations
+  duration: parseInt(process.env.AGENT_REGISTRATION_WINDOW || '900', 10), // per 15 minutes (900 seconds)
+});
 
 /**
  * Agent authentication information
@@ -163,14 +173,16 @@ class AgentAuthAuditEntry {
 }
 
 /**
- * In-memory audit log (in production, this should go to a proper logging system)
+ * In-memory audit log (for quick access to recent entries)
+ * NOTE: Also persisted to database for durability
  */
 const auditLog: AgentAuthAuditEntry[] = [];
 
 /**
- * Logs an agent authentication event
+ * Logs an agent authentication event to both memory and persistent storage
  */
-function logAgentAuthEvent(entry: AgentAuthAuditEntry): void {
+async function logAgentAuthEvent(entry: AgentAuthAuditEntry, db?: SystemDatabase): Promise<void> {
+  // Add to in-memory cache
   auditLog.push(entry);
 
   // Also log to console for debugging
@@ -184,6 +196,27 @@ function logAgentAuthEvent(entry: AgentAuthAuditEntry): void {
   // Keep only last 1000 entries in memory
   if (auditLog.length > 1000) {
     auditLog.shift();
+  }
+
+  // Persist to database if available
+  if (db) {
+    try {
+      await db('agent_audit_logs').insert({
+        timestamp: entry.timestamp,
+        event_type: entry.eventType,
+        agent_id: entry.agentId,
+        agent_name: entry.agentName || null,
+        runtime_id: entry.runtimeId || null,
+        owner_id: entry.ownerId || null,
+        privy_user_id: entry.privyUserId || null,
+        metadata: entry.metadata ? JSON.stringify(entry.metadata) : null,
+        success: entry.success,
+        error_message: entry.errorMessage || null,
+      });
+    } catch (error) {
+      // Log but don't fail the auth flow if audit logging fails
+      console.error('[AgentAuth] Failed to persist audit log:', error);
+    }
   }
 }
 
@@ -201,6 +234,28 @@ export async function registerAgent(
   db: SystemDatabase,
   request: AgentAuthRequest
 ): Promise<AgentAuthResponse> {
+  // Rate limiting - derive key from IP address or runtime ID
+  const rateLimitKey = request.metadata?.ipAddress || request.runtimeId || 'anonymous';
+
+  try {
+    await agentRegistrationLimiter.consume(rateLimitKey);
+  } catch (rateLimiterError) {
+    // Rate limit exceeded
+    const errorEntry = Object.assign(new AgentAuthAuditEntry(), {
+      timestamp: new Date().toISOString(),
+      eventType: 'agent_registered' as const,
+      agentId: 'rate_limited',
+      agentName: request.agentName,
+      runtimeId: request.runtimeId,
+      metadata: request.metadata,
+      success: false,
+      errorMessage: 'Rate limit exceeded for agent registration',
+    });
+    await logAgentAuthEvent(errorEntry, db);
+
+    throw new Error('Rate limit exceeded. Too many agent registration attempts. Please try again later.');
+  }
+
   try {
     // Generate unique agent ID
     const agentId = `agent_${uuid()}`;
@@ -209,6 +264,53 @@ export async function registerAgent(
     // Default permissions for agents
     const defaultPermissions = ['chat', 'move', 'perceive', 'interact'];
     const permissions = request.requestedPermissions || defaultPermissions;
+
+    // Check for existing agent with same runtimeId to avoid duplicates
+    if (request.runtimeId) {
+      const existing = await db('users')
+        .where('runtimeId', request.runtimeId)
+        .where('roles', 'agent')
+        .first();
+
+      if (existing) {
+        console.info(`[AgentAuth] Found existing agent for runtimeId ${request.runtimeId}, reusing: ${existing.id}`);
+
+        // Generate new token for existing agent
+        const token = await createJWT(
+          {
+            userId: existing.id,
+            type: 'agent',
+            runtimeId: request.runtimeId,
+            permissions: existing.permissions ? existing.permissions.split(',') : permissions,
+          },
+          AGENT_TOKEN_EXPIRY
+        );
+
+        const expiresAt = new Date(Date.now() + AGENT_TOKEN_EXPIRY * 1000).toISOString();
+        const wsUrl = process.env.HYPERSCAPE_WS_URL || 'ws://localhost:5555/ws';
+
+        const agentInfo = Object.assign(new AgentAuthInfo(), {
+          agentId: existing.id,
+          agentName: existing.name,
+          runtimeId: existing.runtimeId || undefined,
+          ownerId: existing.privyUserId || existing.ownerId || undefined,
+          privyUserId: existing.privyUserId || undefined,
+          role: 'agent' as const,
+          permissions: existing.permissions ? existing.permissions.split(',') : permissions,
+          createdAt: new Date(existing.createdAt),
+          isActive: existing.isActive !== false,
+        });
+
+        const response = Object.assign(new AgentAuthResponse(), {
+          token,
+          agentInfo,
+          expiresAt,
+          wsUrl,
+        });
+
+        return response;
+      }
+    }
 
     // Create agent user account
     const agentUser: User = {
@@ -259,7 +361,7 @@ export async function registerAgent(
       metadata: request.metadata,
       success: true,
     });
-    logAgentAuthEvent(auditEntry);
+    await logAgentAuthEvent(auditEntry, db);
 
     // Create agent info instance
     const agentInfo = Object.assign(new AgentAuthInfo(), {
@@ -296,7 +398,7 @@ export async function registerAgent(
       success: false,
       errorMessage: error instanceof Error ? error.message : 'Unknown error',
     });
-    logAgentAuthEvent(failureEntry);
+    await logAgentAuthEvent(failureEntry, db);
 
     throw error;
   }
@@ -328,7 +430,7 @@ export async function verifyAgentToken(
         success: false,
         errorMessage: 'Invalid token payload',
       });
-      logAgentAuthEvent(entry);
+      await logAgentAuthEvent(entry, db);
       return null;
     }
 
@@ -341,7 +443,7 @@ export async function verifyAgentToken(
         success: false,
         errorMessage: 'Not an agent token',
       });
-      logAgentAuthEvent(entry);
+      await logAgentAuthEvent(entry, db);
       return null;
     }
 
@@ -365,12 +467,12 @@ export async function verifyAgentToken(
         success: false,
         errorMessage: 'Agent not found in database',
       });
-      logAgentAuthEvent(entry);
+      await logAgentAuthEvent(entry, db);
       return null;
     }
 
-    // Check if agent is active
-    if (agentRecord.isActive === false) {
+    // Check if agent is active (treat any non-truthy value as inactive)
+    if (!agentRecord.isActive) {
       const entry = Object.assign(new AgentAuthAuditEntry(), {
         timestamp: new Date().toISOString(),
         eventType: 'agent_auth_failed' as const,
@@ -378,7 +480,7 @@ export async function verifyAgentToken(
         success: false,
         errorMessage: 'Agent is deactivated',
       });
-      logAgentAuthEvent(entry);
+      await logAgentAuthEvent(entry, db);
       return null;
     }
 
@@ -392,7 +494,7 @@ export async function verifyAgentToken(
       privyUserId: agentRecord.privyUserId || undefined,
       success: true,
     });
-    logAgentAuthEvent(successEntry);
+    await logAgentAuthEvent(successEntry, db);
 
     // Parse permissions
     const permissions = typeof agentRecord.permissions === 'string'
@@ -421,7 +523,7 @@ export async function verifyAgentToken(
       success: false,
       errorMessage: error instanceof Error ? error.message : 'Token verification failed',
     });
-    logAgentAuthEvent(errorEntry);
+    await logAgentAuthEvent(errorEntry, db);
 
     return null;
   }
@@ -454,7 +556,9 @@ export async function deactivateAgent(
     agentId,
     success: true,
   });
-  logAgentAuthEvent(entry);
+  // Note: db not passed here as we don't have access to it in this function signature
+  // Consider updating signature if persistent logging is needed for deactivation
+  await logAgentAuthEvent(entry);
 }
 
 /**

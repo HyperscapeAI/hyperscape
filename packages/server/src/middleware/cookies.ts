@@ -126,6 +126,19 @@ export function setAuthCookie(
   token: string,
   options: CookieOptions = {}
 ): void {
+  // Validate token before setting
+  if (!token || typeof token !== 'string' || token.trim().length === 0) {
+    console.error('[Cookies] Invalid auth token provided - cannot set cookie');
+    throw new Error('Invalid auth token: must be a non-empty string');
+  }
+
+  // Basic JWT format validation (should have 3 parts separated by dots)
+  const jwtParts = token.split('.');
+  if (jwtParts.length !== 3 || jwtParts.some(part => part.length === 0)) {
+    console.error('[Cookies] Invalid JWT format - expected 3 parts');
+    throw new Error('Invalid JWT format');
+  }
+
   const cookieOptions = { ...DEFAULT_AUTH_COOKIE_OPTIONS, ...options };
 
   reply.setCookie(COOKIE_NAMES.PRIVY_ID_TOKEN, token, cookieOptions);
@@ -178,6 +191,18 @@ export function setCsrfCookie(
   token: string,
   options: CookieOptions = {}
 ): void {
+  // Validate CSRF token before setting
+  if (!token || typeof token !== 'string' || token.trim().length === 0) {
+    console.error('[Cookies] Invalid CSRF token provided - cannot set cookie');
+    throw new Error('Invalid CSRF token: must be a non-empty string');
+  }
+
+  // CSRF tokens should be at least 16 characters for security
+  if (token.length < 16) {
+    console.error('[Cookies] CSRF token too short - minimum 16 characters');
+    throw new Error('CSRF token too short: minimum 16 characters required');
+  }
+
   const cookieOptions = { ...DEFAULT_CSRF_COOKIE_OPTIONS, ...options };
 
   reply.setCookie(COOKIE_NAMES.CSRF_TOKEN, token, cookieOptions);
@@ -223,11 +248,28 @@ export function setSessionCookie(
   sessionId: string,
   options: CookieOptions = {}
 ): void {
+  // Validate session ID before setting
+  if (!sessionId || typeof sessionId !== 'string' || sessionId.trim().length === 0) {
+    console.error('[Cookies] Invalid session ID provided - cannot set cookie');
+    throw new Error('Invalid session ID: must be a non-empty string');
+  }
+
+  // Session IDs should be at least 16 characters for security
+  if (sessionId.length < 16) {
+    console.error('[Cookies] Session ID too short - minimum 16 characters');
+    throw new Error('Session ID too short: minimum 16 characters required');
+  }
+
   const cookieOptions = { ...DEFAULT_AUTH_COOKIE_OPTIONS, ...options };
 
   reply.setCookie(COOKIE_NAMES.HYPERSCAPE_SESSION, sessionId, cookieOptions);
 
-  console.log('[Cookies] Set session cookie:', sessionId);
+  // Don't log the full session ID in production to avoid leaking it
+  const maskedSessionId = process.env.NODE_ENV === 'production'
+    ? `${sessionId.substring(0, 4)}...${sessionId.substring(sessionId.length - 4)}`
+    : sessionId;
+
+  console.log('[Cookies] Set session cookie:', maskedSessionId);
 }
 
 /**

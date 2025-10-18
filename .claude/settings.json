@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/context-hook.sh"
+            "command": "/Users/home/scape/hyperscape/.claude/context-hook.sh"
           }
         ]
       }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/mem0-hook.sh"
+            "command": "/Users/home/scape/hyperscape/.claude/mem0-hook.sh"
           }
         ]
       }
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/mem0-hook.sh"
+            "command": "/Users/home/scape/hyperscape/.claude/mem0-hook.sh"
           }
         ]
       }
@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/mem0-hook.sh"
+            "command": "/Users/home/scape/hyperscape/.claude/mem0-hook.sh"
           }
         ]
       }
@@ -50,7 +50,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/validate-hook.sh"
+            "command": "/Users/home/scape/hyperscape/.claude/validate-hook.sh"
           }
         ]
       }

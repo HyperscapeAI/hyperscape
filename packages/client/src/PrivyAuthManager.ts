@@ -132,7 +132,26 @@ export class PrivyAuthManager {
         throw new Error(errorData.message || 'Failed to authenticate with server')
       }
 
-      const data = await response.json() as { csrfToken: string; userId: string }
+      // Validate response before using
+      const rawData: unknown = await response.json()
+
+      // Type guard to validate response structure
+      if (!rawData || typeof rawData !== 'object') {
+        throw new Error('Invalid response format from server')
+      }
+
+      const dataObj = rawData as Record<string, unknown>
+
+      if (
+        !Object.prototype.hasOwnProperty.call(dataObj, 'csrfToken') ||
+        !Object.prototype.hasOwnProperty.call(dataObj, 'userId') ||
+        typeof dataObj.csrfToken !== 'string' ||
+        typeof dataObj.userId !== 'string'
+      ) {
+        throw new Error('Response missing required fields: csrfToken and userId must be strings')
+      }
+
+      const data = { csrfToken: dataObj.csrfToken, userId: dataObj.userId }
 
       // Update state with user info and CSRF token
       // NOTE: The actual auth token is now in an HttpOnly cookie, not in state
@@ -239,6 +258,70 @@ export class PrivyAuthManager {
   }
 
   /**
+   * Ensures a CSRF token exists by fetching from server if missing
+   *
+   * Called automatically during restoration if CSRF token is not in localStorage.
+   * Fetches a new CSRF token from the server using the HttpOnly cookie for auth.
+   *
+   * @returns Promise that resolves when CSRF token is fetched and updated
+   *
+   * @public
+   */
+  async ensureCsrfToken(): Promise<void> {
+    // If we already have a CSRF token, no need to fetch
+    if (this.state.csrfToken) {
+      return
+    }
+
+    // Only fetch if we have a userId (user is authenticated)
+    if (!this.state.privyUserId) {
+      throw new Error('Cannot fetch CSRF token: user not authenticated')
+    }
+
+    try {
+      const serverUrl = import.meta.env.HYPERSCAPE_SERVER_URL || window.location.origin
+      const response = await fetch(`${serverUrl}/api/auth/csrf`, {
+        method: 'GET',
+        credentials: 'include', // Include cookies for authentication
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch CSRF token: ${response.status}`)
+      }
+
+      const rawData: unknown = await response.json()
+
+      // Validate response structure
+      if (!rawData || typeof rawData !== 'object') {
+        throw new Error('Invalid CSRF response format')
+      }
+
+      const dataObj = rawData as Record<string, unknown>
+
+      if (
+        !Object.prototype.hasOwnProperty.call(dataObj, 'csrfToken') ||
+        typeof dataObj.csrfToken !== 'string'
+      ) {
+        throw new Error('CSRF response missing csrfToken field')
+      }
+
+      // Update state with fetched CSRF token
+      this.updateState({
+        csrfToken: dataObj.csrfToken,
+      })
+
+      // Store in localStorage for next session
+      localStorage.setItem('csrf_token', dataObj.csrfToken)
+
+      console.log('[PrivyAuthManager] CSRF token fetched and updated')
+    } catch (error) {
+      console.error('[PrivyAuthManager] Failed to fetch CSRF token:', error)
+      // Don't clear auth state - the error is logged and can be retried
+      throw error
+    }
+  }
+
+  /**
    * Gets the Privy user ID
    * 
    * @returns The user ID or null if not authenticated
@@ -335,14 +418,24 @@ export class PrivyAuthManager {
       console.warn('[PrivyAuthManager] Removed legacy token from localStorage - tokens are now in HttpOnly cookies')
     }
 
-    if (userId && csrfToken) {
+    // Restore authentication if userId exists, even without CSRF token
+    if (userId) {
       this.updateState({
         isAuthenticated: true, // Tentative - will be verified server-side
         privyUserId: userId,
         privyToken: null, // Tokens are in HttpOnly cookies
         farcasterFid: fid,
-        csrfToken,
+        csrfToken: csrfToken || null, // May be null if cookie not yet returned
       })
+
+      // If CSRF token is missing, try to fetch it
+      if (!csrfToken) {
+        console.log('[PrivyAuthManager] Restoring without CSRF token - will fetch')
+        this.ensureCsrfToken().catch((error) => {
+          console.warn('[PrivyAuthManager] Failed to fetch CSRF token:', error)
+          // Don't clear auth state - just log the error
+        })
+      }
     }
 
     return { token: null, userId, csrfToken }

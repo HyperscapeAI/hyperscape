@@ -450,6 +450,17 @@ Hyperscape world integration service that enables agents to:
    * - Visual config: Entity colors, UI themes, assets
    * - State managers: Per-player state tracking
    *
+   * **Important Limitations:**
+   * - Actions, providers, and evaluators are managed by ElizaOS core and persist after unload
+   * - These components cannot be dynamically unregistered from the runtime
+   * - Repeated load/unload cycles will accumulate registrations in memory
+   * - Naming conflicts may occur if the same pack is loaded multiple times
+   *
+   * **Recommendations:**
+   * - Avoid repeated load/unload cycles; prefer loading once at startup
+   * - Use unique, versioned names for actions/providers/evaluators
+   * - Only unload content packs when absolutely necessary
+   *
    * @param pack - The content pack to load
    * @param runtime - Optional runtime override (defaults to service runtime)
    */
@@ -472,6 +483,11 @@ Hyperscape world integration service that enables agents to:
         `[HyperscapeService] Cannot load content pack: No world connected`,
       );
     }
+
+    // Track registered items for cleanup on failure
+    const registeredActions: string[] = [];
+    const registeredProviders: string[] = [];
+    const registeredEvaluators: string[] = [];
 
     try {
       // Execute onLoad hook if provided
@@ -505,6 +521,7 @@ Hyperscape world integration service that enables agents to:
         for (const action of pack.actions) {
           try {
             await targetRuntime.registerAction(action);
+            registeredActions.push(action.name);
             logger.info(`[HyperscapeService] Registered action: ${action.name}`);
           } catch (error) {
             logger.error(
@@ -521,6 +538,7 @@ Hyperscape world integration service that enables agents to:
         for (const provider of pack.providers) {
           try {
             targetRuntime.registerProvider(provider);
+            registeredProviders.push(provider.name);
             logger.info(`[HyperscapeService] Registered provider: ${provider.name}`);
           } catch (error) {
             logger.error(
@@ -537,6 +555,7 @@ Hyperscape world integration service that enables agents to:
         for (const evaluator of pack.evaluators) {
           try {
             targetRuntime.registerEvaluator(evaluator);
+            registeredEvaluators.push(evaluator.name);
             logger.info(`[HyperscapeService] Registered evaluator: ${evaluator.name}`);
           } catch (error) {
             logger.error(
@@ -548,9 +567,16 @@ Hyperscape world integration service that enables agents to:
         }
       }
 
-      // Initialize state manager
+      // Initialize state manager (verify player exists first)
       if (pack.stateManager) {
-        const playerId = world.entities.player!.data.id as string;
+        const player = world.entities?.player;
+        if (!player || !player.data || !player.data.id) {
+          throw new Error(
+            `[HyperscapeService] Cannot initialize state manager: Player entity not available`,
+          );
+        }
+
+        const playerId = player.data.id as string;
         pack.stateManager.initPlayerState(playerId);
         logger.info(`[HyperscapeService] Initialized state manager for player: ${playerId}`);
       }
@@ -564,12 +590,33 @@ Hyperscape world integration service that enables agents to:
         error,
       );
 
-      // Cleanup on failure
+      // Cleanup on failure - unregister all partially registered items
+      // Note: ElizaOS core doesn't support unregistration, so we log warnings
+      if (registeredActions.length > 0) {
+        logger.warn(
+          `[HyperscapeService] ${registeredActions.length} actions were registered but cannot be unregistered: ${registeredActions.join(', ')}`,
+        );
+      }
+
+      if (registeredProviders.length > 0) {
+        logger.warn(
+          `[HyperscapeService] ${registeredProviders.length} providers were registered but cannot be unregistered: ${registeredProviders.join(', ')}`,
+        );
+      }
+
+      if (registeredEvaluators.length > 0) {
+        logger.warn(
+          `[HyperscapeService] ${registeredEvaluators.length} evaluators were registered but cannot be unregistered: ${registeredEvaluators.join(', ')}`,
+        );
+      }
+
+      // Cleanup initialized systems
       const systems = this.activeGameSystems.get(pack.id);
       if (systems) {
         for (const system of systems) {
           try {
             system.cleanup();
+            logger.info(`[HyperscapeService] Cleaned up system: ${system.name}`);
           } catch (cleanupError) {
             logger.error(
               `[HyperscapeService] Failed to cleanup system ${system.name}:`,
@@ -587,6 +634,22 @@ Hyperscape world integration service that enables agents to:
   /**
    * Unload a content pack from the service
    *
+   * **Important Limitations:**
+   * - Actions, providers, and evaluators are managed by ElizaOS core and **cannot** be unregistered
+   * - These components will persist in memory after unload
+   * - Only systems and state managers are properly cleaned up
+   * - Repeated unload/load cycles will accumulate actions/providers/evaluators in memory
+   *
+   * **Consequences:**
+   * - Memory accumulation: Each load adds more actions/providers/evaluators to the runtime
+   * - Naming conflicts: Reloading with same names may cause conflicts
+   * - Confusion: Active actions list will include unloaded pack actions
+   *
+   * **Mitigations:**
+   * - Avoid repeated load/unload cycles
+   * - Use unique, versioned names for components (e.g., "rpg_v1_attack")
+   * - Restart the agent runtime to fully clear unloaded packs
+   *
    * @param packId - ID of the content pack to unload
    */
   async unloadContentPack(packId: string): Promise<void> {
@@ -598,6 +661,19 @@ Hyperscape world integration service that enables agents to:
     }
 
     logger.info(`[HyperscapeService] Unloading content pack: ${pack.name}`);
+
+    // Warn if pack has persistent registrations
+    const hasPersistentRegistrations =
+      (pack.actions && pack.actions.length > 0) ||
+      (pack.providers && pack.providers.length > 0) ||
+      (pack.evaluators && pack.evaluators.length > 0);
+
+    if (hasPersistentRegistrations) {
+      logger.warn(
+        `[HyperscapeService] Content pack "${pack.name}" has actions/providers/evaluators that cannot be unregistered. ` +
+        `These will persist in the runtime after unload. To fully remove, restart the agent.`
+      );
+    }
 
     const world = this.getWorld();
 

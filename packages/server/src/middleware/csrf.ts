@@ -34,6 +34,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import fastifyCsrf from '@fastify/csrf-protection';
 import { getCsrfCookie, setCsrfCookie } from './cookies';
+import { timingSafeEqual } from 'crypto';
 
 /**
  * CSRF token header name
@@ -176,8 +177,18 @@ export function verifyCsrfToken(request: FastifyRequest, token: string): boolean
       return false;
     }
 
-    // Timing-safe comparison
-    return token === cookieToken;
+    // Timing-safe comparison to prevent timing attacks
+    // First check lengths match
+    if (token.length !== cookieToken.length) {
+      return false;
+    }
+
+    // Convert to Buffers for timing-safe comparison
+    const tokenBuffer = Buffer.from(token, 'utf8');
+    const cookieBuffer = Buffer.from(cookieToken, 'utf8');
+
+    // Use crypto.timingSafeEqual for constant-time comparison
+    return timingSafeEqual(tokenBuffer, cookieBuffer);
   } catch (err) {
     console.error('[CSRF] Error verifying CSRF token:', err);
     return false;

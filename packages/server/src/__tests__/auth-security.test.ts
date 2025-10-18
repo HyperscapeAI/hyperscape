@@ -295,24 +295,24 @@ describe('Phase 2 Security Features', () => {
 });
 
 describe('Middleware Registration', () => {
-  test('should have registered cookie middleware', () => {
+  test('should have registered cookie middleware', async () => {
     // This is a smoke test - just verify imports work
-    const cookies = require('../middleware/cookies');
+    const cookies = await import('../middleware/cookies');
     expect(cookies.registerCookies).toBeDefined();
     expect(cookies.setAuthCookie).toBeDefined();
     expect(cookies.getAuthCookie).toBeDefined();
     console.log('✅ Cookie middleware exports are available');
   });
 
-  test('should have registered rate limit middleware', () => {
-    const rateLimit = require('../middleware/rate-limit');
+  test('should have registered rate limit middleware', async () => {
+    const rateLimit = await import('../middleware/rate-limit');
     expect(rateLimit.registerRateLimiting).toBeDefined();
     expect(rateLimit.AUTH_RATE_LIMIT_CONFIG).toBeDefined();
     console.log('✅ Rate limit middleware exports are available');
   });
 
-  test('should have registered CSRF middleware', () => {
-    const csrf = require('../middleware/csrf');
+  test('should have registered CSRF middleware', async () => {
+    const csrf = await import('../middleware/csrf');
     expect(csrf.registerCsrfProtection).toBeDefined();
     expect(csrf.issueCSRFToken).toBeDefined();
     console.log('✅ CSRF middleware exports are available');

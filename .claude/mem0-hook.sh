@@ -8,14 +8,22 @@ set -e
 # Read the hook input JSON from stdin
 INPUT=$(cat)
 
-# Load environment variables
-if [ -f "$(dirname "$0")/../../.env" ]; then
-  source "$(dirname "$0")/../../.env"
+# Load environment variables from .claude/.env
+SCRIPT_DIR="$(dirname "$0")"
+if [ -f "$SCRIPT_DIR/.env" ]; then
+  source "$SCRIPT_DIR/.env"
 fi
 
 # mem0.ai API configuration
-MEM0_API_KEY="${MEM0_API_KEY:-m0-1a25M3lc7JFqFyZNLKVjTJB0odXK2mRzEkyM9uiQ}"
+MEM0_API_KEY="${MEM0_API_KEY}"
 MEM0_API_URL="https://api.mem0.ai"
+
+# Validate required configuration
+if [ -z "$MEM0_API_KEY" ]; then
+  echo "[mem0-hook] ERROR: MEM0_API_KEY environment variable must be set" >&2
+  echo "[mem0-hook] Please add MEM0_API_KEY to your .env file" >&2
+  exit 1
+fi
 
 # Extract relevant data from the hook input
 HOOK_EVENT=$(echo "$INPUT" | jq -r '.hookEvent // empty')
@@ -60,12 +68,18 @@ store_memory() {
       version: "v2"
     }')
 
-  # Store the memory
-  curl -s --request POST \
+  # Store the memory with proper error handling
+  RESPONSE=$(curl -sS --fail --request POST \
     --url "$MEM0_API_URL/v1/memories/" \
-    --header "Authorization: Token $MEM0_API_KEY" \
+    --header "Authorization: Token ***" \
     --header "Content-Type: application/json" \
-    --data "$PAYLOAD" > /dev/null 2>&1 || log "Failed to store memory"
+    --data "$PAYLOAD" 2>&1)
+  EXIT_CODE=$?
+
+  if [ $EXIT_CODE -ne 0 ]; then
+    log "Failed to store memory (curl exit code: $EXIT_CODE)"
+    log "Response: ${RESPONSE:0:200}" # Log first 200 chars, avoiding token exposure
+  fi
 }
 
 # Function to search memories

@@ -394,15 +394,15 @@ export const chunkActivity = pgTable('chunk_activity', {
 
 /**
  * Storage Table - Generic key-value persistence
- * 
+ *
  * Provides simple key-value storage for systems that need to persist state.
  * Used by the Storage system for miscellaneous data that doesn't fit other tables.
- * 
+ *
  * Key columns:
  * - `key` - Unique identifier (primary key)
  * - `value` - Arbitrary data (JSON string)
  * - `updatedAt` - Last modification timestamp
- * 
+ *
  * Usage examples:
  * - System preferences
  * - Feature flags
@@ -413,6 +413,52 @@ export const storage = pgTable('storage', {
   value: text('value').notNull(),
   updatedAt: bigint('updatedAt', { mode: 'number' }).default(sql`(EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT`),
 });
+
+/**
+ * Agent Audit Logs Table - Authentication and authorization event tracking
+ *
+ * Persistent storage for all agent authentication events including:
+ * - Agent registration and creation
+ * - Token verification and authentication
+ * - Agent deactivation
+ * - Failed authentication attempts
+ *
+ * Key columns:
+ * - `id` - Unique log entry ID (auto-incrementing)
+ * - `timestamp` - ISO 8601 timestamp of the event
+ * - `event_type` - Type of event (agent_registered, agent_authenticated, etc.)
+ * - `agent_id` - Agent identifier (may be 'unknown' for failed attempts)
+ * - `agent_name` - Agent display name (nullable)
+ * - `runtime_id` - ElizaOS runtime ID (nullable)
+ * - `owner_id` - User ID that owns this agent (nullable)
+ * - `privy_user_id` - Privy user ID of owner (nullable)
+ * - `metadata` - JSON string with additional context (IP, user agent, etc.)
+ * - `success` - Whether the event succeeded (true/false)
+ * - `error_message` - Error description for failed events (nullable)
+ *
+ * Design notes:
+ * - Used for security auditing and breach detection
+ * - Indexed on agent_id and timestamp for fast lookups
+ * - In-memory cache maintained separately (last 1000 entries)
+ * - All authentication events are logged here for durability
+ */
+export const agentAuditLogs = pgTable('agent_audit_logs', {
+  id: serial('id').primaryKey(),
+  timestamp: text('timestamp').notNull(),
+  event_type: text('event_type').notNull(),
+  agent_id: text('agent_id').notNull(),
+  agent_name: text('agent_name'),
+  runtime_id: text('runtime_id'),
+  owner_id: text('owner_id'),
+  privy_user_id: text('privy_user_id'),
+  metadata: text('metadata'),
+  success: integer('success').notNull(), // 1 = success, 0 = failure
+  error_message: text('error_message'),
+}, (table) => ({
+  agentIdx: index('idx_agent_audit_agent').on(table.agent_id),
+  timestampIdx: index('idx_agent_audit_timestamp').on(table.timestamp),
+  eventTypeIdx: index('idx_agent_audit_event_type').on(table.event_type),
+}));
 
 /**
  * ============================================================================

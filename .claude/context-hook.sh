@@ -8,12 +8,17 @@ set -e
 # Read the hook input JSON from stdin
 INPUT=$(cat)
 
-# Load environment variables
-if [ -f "$(dirname "$0")/../../.env" ]; then
-  source "$(dirname "$0")/../../.env"
+# Load environment variables from .claude/.env
+SCRIPT_DIR="$(dirname "$0")"
+if [ -f "$SCRIPT_DIR/.env" ]; then
+  source "$SCRIPT_DIR/.env"
 fi
 
-# Configuration
+# Log function (define before first use)
+log() {
+  echo "[context-hook] $1" >&2
+}
+
 # Configuration (from environment)
 PROJECT_ROOT="${PROJECT_ROOT:-.}"
 MEM0_API_KEY="${MEM0_API_KEY}"
@@ -33,11 +38,6 @@ TOOL_DESCRIPTION=$(echo "$INPUT" | jq -r '.description // empty')
 
 # Get user ID
 USER_ID=$(git config user.email 2>/dev/null || echo "hyperscape-dev")
-
-# Log function
-log() {
-  echo "[context-hook] $1" >&2
-}
 
 # Function to check required dependencies
 check_dependencies() {
@@ -175,7 +175,7 @@ EOF
 
   # Find type definitions
   echo "Type definitions:"
-  find packages \( -name "types.ts" -o -name "types" \) -type d 2>/dev/null | head -5 | while read f; do
+  find packages \( -name "types.ts" -type f -o -name "types" -type d \) 2>/dev/null | head -5 | while read f; do
     echo "  📘 $f"
   done
   echo ""
@@ -183,7 +183,7 @@ EOF
   # Find test files if this is a source file
   if [[ ! "$target_file" =~ test ]]; then
     echo "Related test files:"
-    find packages -name "*${base_name}*.test.ts" -o -name "*${base_name}*.spec.ts" 2>/dev/null | head -3 | while read f; do
+    find packages \( -name "*${base_name}*.test.ts" -o -name "*${base_name}*.spec.ts" \) 2>/dev/null | head -3 | while read f; do
       echo "  🧪 $f"
     done
     echo ""
