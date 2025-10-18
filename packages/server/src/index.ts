@@ -810,11 +810,8 @@ async function startServer() {
   // Logout endpoint - clears authentication cookies
   fastify.post('/api/auth/logout', {
     config: {
-      rateLimit: {
-        max: 5, // max 5 logout requests
-        timeWindow: '1 minute'
-      }
-    }
+      rateLimit: getRateLimitConfig('auth'), // 5 requests per 15 minutes per IP
+    },
   }, async (_req, reply) => {
     clearAllAuthCookies(reply)
     return reply.send({
