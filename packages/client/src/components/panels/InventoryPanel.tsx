@@ -8,6 +8,7 @@ import type { InventorySlotItem } from '@hyperscape/shared'
 interface InventoryPanelProps {
   items: InventorySlotItem[]
   coins: number
+  world?: any
   onItemMove?: (fromIndex: number, toIndex: number) => void
   onItemUse?: (item: InventorySlotItem, index: number) => void
   onItemEquip?: (item: InventorySlotItem) => void
@@ -35,8 +36,9 @@ function DraggableInventorySlot({ item, index, size }: DraggableItemProps) {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
+    borderColor: 'rgba(242, 208, 138, 0.3)',
   }
-  
+
   // Debug: log what we're trying to render
   if (item) {
   }
@@ -47,12 +49,33 @@ function DraggableInventorySlot({ item, index, size }: DraggableItemProps) {
       style={style}
       {...attributes}
       {...listeners}
-      className={`relative bg-black/35 border border-white/[0.08] rounded flex items-center justify-center text-white text-[10px] ${item ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
+      className={`relative bg-black/35 border rounded flex items-center justify-center text-white text-[10px] ${item ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
       title={item ? `${item.itemId} (${item.quantity})` : 'Empty slot'}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        if (!item) return
+        const items = [
+          { id: 'drop', label: `Drop ${item.itemId}`, enabled: true },
+          { id: 'examine', label: 'Examine', enabled: true },
+        ]
+        const evt = new CustomEvent('contextmenu', {
+          detail: {
+            target: {
+              id: `inventory_slot_${index}`,
+              type: 'inventory',
+              name: item.itemId,
+            },
+            mousePosition: { x: e.clientX, y: e.clientY },
+            items,
+          },
+        })
+        window.dispatchEvent(evt)
+      }}
     >
       {item ? item.itemId.substring(0, 3) : ''}
       {item && item.quantity > 1 ? (
-        <div className="absolute bottom-0.5 right-0.5 bg-black/70 text-yellow-400 font-bold rounded-sm py-0.5 px-1 text-[9px]">
+        <div className="absolute bottom-0.5 right-0.5 bg-black/70 font-bold rounded-sm py-0.5 px-1 text-[9px]" style={{ color: '#f2d08a' }}>
           {item.quantity}
         </div>
       ) : null}
@@ -60,10 +83,13 @@ function DraggableInventorySlot({ item, index, size }: DraggableItemProps) {
   )
 }
 
-export function InventoryPanel({ items, coins, onItemMove, onItemUse: _onItemUse, onItemEquip: _onItemEquip }: InventoryPanelProps) {
+export function InventoryPanel({ items, coins, world, onItemMove, onItemUse: _onItemUse, onItemEquip: _onItemEquip }: InventoryPanelProps) {
   const slots: (InventorySlotItem | null)[] = Array(28).fill(null)
-  items.forEach((item, i) => {
-    if (i < 28) slots[i] = item
+  items.forEach((item) => {
+    const s = (item as { slot?: number }).slot
+    if (typeof s === 'number' && s >= 0 && s < 28) {
+      slots[s] = item
+    }
   })
   
   const gridRef = useRef<HTMLDivElement | null>(null)
@@ -72,8 +98,37 @@ export function InventoryPanel({ items, coins, onItemMove, onItemUse: _onItemUse
   const [slotItems, setSlotItems] = useState<(InventorySlotItem | null)[]>(slots)
 
   useEffect(() => {
+    const onCtxSelect = (evt: Event) => {
+      const ce = evt as CustomEvent<{ actionId: string; targetId: string }>
+      const target = ce.detail?.targetId || ''
+      if (!target.startsWith('inventory_slot_')) return
+      const slotIndex = parseInt(target.replace('inventory_slot_', ''), 10)
+      if (Number.isNaN(slotIndex)) return
+      const it = slotItems[slotIndex]
+      if (!it) return
+      if (ce.detail.actionId === 'drop') {
+        try {
+          world?.network?.dropItem?.(it.itemId, slotIndex, it.quantity || 1)
+        } catch {
+          world?.network?.send?.('dropItem', { itemId: it.itemId, slot: slotIndex, quantity: it.quantity || 1 })
+        }
+      }
+      if (ce.detail.actionId === 'examine') {
+        world?.emit?.('@ui:toast', { message: `It's a ${it.itemId}.`, type: 'info' })
+      }
+    }
+    window.addEventListener('contextmenu:select', onCtxSelect as EventListener)
+    return () => window.removeEventListener('contextmenu:select', onCtxSelect as EventListener)
+  }, [slotItems, world])
+
+  useEffect(() => {
     const newSlots: (InventorySlotItem | null)[] = Array(28).fill(null)
-    items.forEach((item, i) => { if (i < 28) newSlots[i] = item })
+    items.forEach((item) => {
+      const s = (item as { slot?: number }).slot
+      if (typeof s === 'number' && s >= 0 && s < 28) {
+        newSlots[s] = item
+      }
+    })
     setSlotItems(newSlots)
   }, [items])
 
@@ -156,18 +211,28 @@ export function InventoryPanel({ items, coins, onItemMove, onItemUse: _onItemUse
 
         <DragOverlay>
           {activeItem ? (
-            <div 
-              className="bg-black/35 border border-white/[0.08] rounded flex items-center justify-center text-white text-[10px]"
-              style={{ width: size, height: size }}
+            <div
+              className="bg-black/35 border rounded flex items-center justify-center text-white text-[10px]"
+              style={{
+                width: size,
+                height: size,
+                borderColor: 'rgba(242, 208, 138, 0.3)',
+              }}
             >
               {activeItem.itemId.substring(0, 3)}
             </div>
           ) : null}
         </DragOverlay>
 
-        <div className="mt-2.5 flex justify-between items-center bg-black/35 border border-white/[0.08] rounded-md py-2 px-2.5 text-gray-200 text-[13px]">
+        <div
+          className="mt-2.5 flex justify-between items-center bg-black/35 border rounded-md py-2 px-2.5 text-[13px]"
+          style={{
+            borderColor: 'rgba(242, 208, 138, 0.3)',
+            color: '#f2d08a',
+          }}
+        >
           <span>Coins</span>
-          <span className="text-yellow-400 font-bold">{coins.toLocaleString()} gp</span>
+          <span className="font-bold">{coins.toLocaleString()} gp</span>
         </div>
       </div>
     </DndContext>

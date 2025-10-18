@@ -49,10 +49,12 @@ tmp/
 *.sqlite-shm
 *.sqlite-wal
 
-.turbo.claude-plugin/
-
-assets/
+# Build and cache directories
 .turbo/
+.claude-plugin/
+
+# Assets (generated/temporary)
+assets/
 
 .cursor/rules/kluster-code-verify.mdc
 .kluster

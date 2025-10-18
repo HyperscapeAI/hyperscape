@@ -100,7 +100,6 @@
  * **Referenced by**: index.ts (world.register('network', ServerNetwork))
  */
 
-import { isNumber } from 'lodash-es';
 import moment from 'moment';
 
 import type { 
@@ -292,6 +291,8 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     // Combat/Item handlers
     this.handlers['onAttackMob'] = this.onAttackMob.bind(this);
     this.handlers['onPickupItem'] = this.onPickupItem.bind(this);
+    // Inventory drop handler
+    this.handlers['onDropItem'] = this.onDropItem.bind(this);
     // Character selection handlers (feature-flagged usage)
     this.handlers['onCharacterListRequest'] = this.onCharacterListRequest.bind(this);
     this.handlers['onCharacterCreate'] = this.onCharacterCreate.bind(this);
@@ -1091,7 +1092,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       // check player limit
       // Check player limit setting
       const playerLimit = this.world.settings.playerLimit;
-      if (isNumber(playerLimit) && playerLimit > 0 && this.sockets.size >= playerLimit) {
+      if (typeof playerLimit === 'number' && playerLimit > 0 && this.sockets.size >= playerLimit) {
         const packet = writePacket('kick', 'player_limit');
         ws.send(packet);
         ws.close();
@@ -1172,7 +1173,12 @@ export class ServerNetwork extends System implements NetworkWithSocket {
             console.warn('[ServerNetwork] Privy token verification failed or user ID mismatch');
           }
         } catch (err) {
-          console.error('[ServerNetwork] Privy authentication error:', err);
+          // JWT expiration is expected behavior, not an error
+          if (err instanceof Error && err.message.includes('exp')) {
+            console.warn('[ServerNetwork] Privy token expired - user needs to re-authenticate');
+          } else {
+            console.error('[ServerNetwork] Privy authentication error:', err);
+          }
           // Fall through to legacy authentication
         }
       }
@@ -1782,20 +1788,60 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     
     const payload = data as { itemId?: string; entityId?: string };
     
+    // The client sends the entity ID as 'itemId' in the payload
     // entityId is the world entity ID (required), itemId is the item definition (optional)
-    const entityId = payload.entityId || payload.itemId; // Fallback for backward compatibility
+    const entityId = payload.itemId; // Client sends entity ID as 'itemId'
     
     if (!entityId) {
       console.warn('[ServerNetwork] onPickupItem: no entityId in payload');
       return;
     }
     
+    // Server-side distance validation
+    const entityManager = this.world.getSystem('entity-manager');
+    if (entityManager) {
+      const itemEntity = entityManager.getEntity(entityId);
+      if (itemEntity) {
+        const distance = Math.sqrt(
+          Math.pow(playerEntity.position.x - itemEntity.position.x, 2) +
+          Math.pow(playerEntity.position.z - itemEntity.position.z, 2)
+        );
+        
+        const pickupRange = 2.5; // Slightly larger than client range to account for movement
+        if (distance > pickupRange) {
+          console.warn(`[ServerNetwork] Player ${playerEntity.id} tried to pickup item ${entityId} from too far away (${distance.toFixed(2)}m > ${pickupRange}m)`);
+          return;
+        }
+      }
+    }
     
     // Forward to InventorySystem with entityId (required) and itemId (optional)
     this.world.emit(EventType.ITEM_PICKUP, {
       playerId: playerEntity.id,
       entityId,
-      itemId: payload.itemId
+      itemId: undefined // Will be extracted from entity properties
+    });
+  }
+
+  private onDropItem(socket: SocketInterface, data: unknown): void {
+    const playerEntity = socket.player;
+    if (!playerEntity) {
+      console.warn('[ServerNetwork] onDropItem: no player entity for socket');
+      return;
+    }
+    const payload = data as { itemId?: string; slot?: number; quantity?: number };
+    if (!payload?.itemId) {
+      console.warn('[ServerNetwork] onDropItem: missing itemId');
+      return;
+    }
+    const quantity = Math.max(1, Number(payload.quantity) || 1);
+    // Basic sanity: clamp quantity to 1000 to avoid abuse
+    const q = Math.min(quantity, 1000);
+    this.world.emit(EventType.ITEM_DROP, {
+      playerId: playerEntity.id,
+      itemId: payload.itemId,
+      quantity: q,
+      slot: payload.slot
     });
   }
 
