@@ -226,7 +226,7 @@ export class MultiAgentManager extends EventEmitter {
 
         // Create chat message for broadcasting
         const chatMessage: ChatMessage = {
-          id: createUniqueUuid(runtime, `message-${agent.runtime.agentId}-${Date.now()}`) as UUID,
+          id: createUniqueUuid(agent.runtime, `message-${agent.runtime.agentId}-${Date.now()}`) as UUID,
           from: agent.name,
           userId: agent.runtime.agentId,
           username: agent.name,

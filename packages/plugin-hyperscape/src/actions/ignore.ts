@@ -37,7 +37,6 @@ export const ignoreAction: Action = {
   name: "IGNORE",
   similes: ["STOP_TALKING", "STOP_CHATTING", "STOP_CONVERSATION"],
   validate: async (_runtime: IAgentRuntime, _message: Memory) => {
-    logger.info("[IGNORE] Validating IGNORE action - always returns true");
     return true;
   },
   description:

@@ -1,16 +1,34 @@
--- Migration: Convert agents.isActive from INTEGER to BOOLEAN
+-- Migration: Convert users.isActive from INTEGER to BOOLEAN
 -- Description: Changes isActive column from INTEGER (SQLite-style) to native BOOLEAN
 -- Date: 2025-10-18
+-- DEPRECATED: This migration has been superseded by 0003_fix_schema_types_and_indexes.sql
+-- Keeping for reference only.
 
--- Convert agents.isActive from INTEGER to BOOLEAN
--- Step 1: Add new column with BOOLEAN type
-ALTER TABLE agents ADD COLUMN isActive_new BOOLEAN NOT NULL DEFAULT true;
+-- This migration was originally written for "agents" table but should target "users" table
+-- See migration 0003 for the correct implementation
 
--- Step 2: Copy data, converting INTEGER to BOOLEAN (1 = true, 0/NULL = false)
-UPDATE agents SET isActive_new = (isActive = 1 OR isActive IS NULL);
+-- Original (incorrect) migration below:
+-- ALTER TABLE agents ADD COLUMN isActive_new BOOLEAN NOT NULL DEFAULT true;
+-- UPDATE agents SET isActive_new = (isActive = 1 OR isActive IS NULL);
+-- ALTER TABLE agents DROP COLUMN isActive;
+-- ALTER TABLE agents RENAME COLUMN isActive_new TO isActive;
 
--- Step 3: Drop old INTEGER column
-ALTER TABLE agents DROP COLUMN isActive;
-
--- Step 4: Rename new column to original name
-ALTER TABLE agents RENAME COLUMN isActive_new TO isActive;
+-- ROLLBACK INSTRUCTIONS:
+-- To rollback this migration, run the following SQL commands in order:
+--
+-- 1. Create temporary INTEGER column with data from BOOLEAN column
+-- ALTER TABLE agents ADD COLUMN isActive_temp INTEGER NOT NULL DEFAULT 1;
+--
+-- 2. Copy BOOLEAN values to INTEGER using explicit mapping (TRUE=1, FALSE=0)
+-- UPDATE agents SET isActive_temp = CASE WHEN isActive THEN 1 ELSE 0 END;
+--
+-- 3. Drop the BOOLEAN column
+-- ALTER TABLE agents DROP COLUMN isActive;
+--
+-- 4. Rename temporary column back to isActive
+-- ALTER TABLE agents RENAME COLUMN isActive_temp TO isActive;
+--
+-- IMPORTANT: Test this rollback on a copy of production data first to verify:
+-- - No data loss occurs during boolean-to-integer conversion
+-- - All boolean values are correctly mapped (TRUE→1, FALSE→0)
+-- - NULL handling is correct (should not occur with NOT NULL constraint)

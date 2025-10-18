@@ -35,8 +35,10 @@ export const hyperscapeActionsProvider: Provider = {
     const actionsData = await getHyperscapeActions(runtime, message, state);
 
     // NOTE: Smart filtering is available via getHyperscapeActionsOptimized()
-    // This reduces context by 50-70% while maintaining full action availability.
-    // To enable, replace the above with:
+    // Reduces context by 50-70% by filtering: verbose descriptions, large example payloads,
+    // rarely-used optional parameters, and non-essential metadata fields. Core action
+    // signatures and mandatory parameters are preserved. May affect edge-cases where
+    // optional context is critical for rare actions. To enable optimized mode:
     // const actionsData = await getHyperscapeActionsOptimized(runtime, message, state);
 
     const actionNames = `Possible response actions: ${formatActionNames(actionsData)}`;

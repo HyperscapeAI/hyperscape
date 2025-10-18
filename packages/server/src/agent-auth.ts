@@ -60,6 +60,7 @@ import { uuid } from '@hyperscape/shared';
 import { RateLimiterMemory, RateLimiterRedis } from 'rate-limiter-flexible';
 import Redis from 'ioredis';
 import { elizaLogger } from '@elizaos/core';
+import { z } from 'zod';
 
 /**
  * Agent token expiry time in seconds (5 minutes for enhanced security)
@@ -78,6 +79,23 @@ const AGENT_TOKEN_EXPIRY = (() => {
  * Check if agent authentication is enabled
  */
 const AGENT_AUTH_ENABLED = process.env.AGENT_AUTH_ENABLED !== 'false';
+
+/**
+ * Canonical list of allowed permissions for agents
+ *
+ * This is the authoritative list of valid permissions that can be granted to agents.
+ * Any requested permissions not in this list will be rejected.
+ */
+const ALLOWED_AGENT_PERMISSIONS = [
+  'chat',
+  'move',
+  'perceive',
+  'interact',
+  'trade',
+  'craft',
+  'attack',
+  'build',
+] as const;
 
 /**
  * Redis client for distributed rate limiting (production)
@@ -153,11 +171,29 @@ const agentRegistrationLimiter = (() => {
       });
 })();
 
-// Warn if using in-memory rate limiting in production
+// Enforce Redis requirement in production (unless explicitly opted out)
 if (!redisClient && process.env.NODE_ENV === 'production') {
+  const allowInMemory = process.env.ALLOW_IN_MEMORY_RATE_LIMIT === 'true';
+
+  if (!allowInMemory) {
+    // Redis is required for production - throw error
+    elizaLogger.error(
+      '[AgentAuth] Redis is required for production deployments. ' +
+      'In-memory rate limiting does NOT work correctly with multiple server instances. ' +
+      'Each instance has its own rate limit counter, allowing attackers to bypass limits.'
+    );
+    throw new Error(
+      'Redis required for production. Set REDIS_URL environment variable. ' +
+      'Example: REDIS_URL=redis://localhost:6379 ' +
+      'To override this check (UNSAFE for multi-instance), set ALLOW_IN_MEMORY_RATE_LIMIT=true'
+    );
+  }
+
+  // User explicitly opted in to unsafe in-memory rate limiting
   elizaLogger.warn(
-    '⚠️  [AgentAuth] Using in-memory rate limiting in production! ' +
+    '⚠️  [AgentAuth] UNSAFE: Using in-memory rate limiting in production! ' +
     'This is NOT secure for multi-instance deployments. ' +
+    'Rate limits can be bypassed by distributing requests across instances. ' +
     'Set REDIS_URL environment variable to enable distributed rate limiting.'
   );
 }
@@ -366,12 +402,84 @@ export async function registerAgent(
         .first();
 
       if (existing) {
-        // Validate ownership - agents cannot be claimed by different users
-        if (request.privyUserId !== existing.privyUserId) {
+        // Check if agent is active (treat false, 0, or null as inactive)
+        const isActive = existing.isActive === true || existing.isActive === 1;
+        if (!isActive) {
+          throw new Error('Agent is deactivated and cannot be reused');
+        }
+
+        // Ownership validation logic:
+        // - If existing agent has privyUserId set, require ownership match
+        // - If existing agent has no privyUserId but request has one, allow claiming
+        // - If request has no privyUserId but existing has one, reject reuse
+        const existingOwner = existing.privyUserId;
+        const requestOwner = request.privyUserId;
+
+        if (existingOwner && requestOwner && existingOwner !== requestOwner) {
+          // Agent belongs to a different user - reject
           throw new Error('Agent belongs to different user');
         }
 
+        if (!requestOwner && existingOwner) {
+          // Anonymous request trying to reuse an owned agent - reject
+          throw new Error('Cannot reuse owned agent without authentication');
+        }
+
+        // If agent has no owner and request has owner, claim it
+        if (!existingOwner && requestOwner) {
+          elizaLogger.info(`[AgentAuth] Claiming unclaimed agent ${existing.id} for user ${requestOwner}`);
+          // Update ownership in database
+          await db('users')
+            .where('id', existing.id)
+            .update({
+              privyUserId: requestOwner,
+              ownerId: requestOwner,
+            });
+          // Update existing record for response
+          existing.privyUserId = requestOwner;
+          existing.ownerId = requestOwner;
+        }
+
         elizaLogger.info(`[AgentAuth] Found existing agent for runtimeId ${request.runtimeId}, reusing: ${existing.id}`);
+
+        // Parse existing permissions (handle both JSON array and comma-separated string for backward compatibility)
+        const rawExistingPermissions = (() => {
+          if (!existing.permissions) return [];
+
+          // Try parsing as JSON first
+          try {
+            const parsed = JSON.parse(existing.permissions);
+            if (Array.isArray(parsed)) return parsed as string[];
+          } catch {
+            // Fall back to comma-separated string
+          }
+
+          // Handle comma-separated string
+          if (typeof existing.permissions === 'string') {
+            return existing.permissions.split(',').filter(Boolean);
+          }
+
+          return [];
+        })();
+
+        // Filter existing permissions against canonical allowed list
+        const validExistingPermissions = rawExistingPermissions.filter(
+          (perm) => ALLOWED_AGENT_PERMISSIONS.includes(perm as typeof ALLOWED_AGENT_PERMISSIONS[number])
+        );
+
+        // Intersect with requested permissions (or use defaults if none requested)
+        const requestedPerms = request.requestedPermissions || permissions;
+        const validRequestedPermissions = requestedPerms.filter(
+          (perm) => ALLOWED_AGENT_PERMISSIONS.includes(perm as typeof ALLOWED_AGENT_PERMISSIONS[number])
+        );
+
+        // Use intersection of valid existing and valid requested permissions
+        // If no valid permissions remain, fall back to defaults
+        const existingPermissions = validExistingPermissions.length > 0
+          ? validExistingPermissions.filter((perm) => validRequestedPermissions.includes(perm))
+          : validRequestedPermissions.length > 0
+          ? validRequestedPermissions
+          : permissions;
 
         // Generate new token for existing agent
         const token = await createJWT(
@@ -379,7 +487,7 @@ export async function registerAgent(
             userId: existing.id,
             type: 'agent',
             runtimeId: request.runtimeId,
-            permissions: existing.permissions ? existing.permissions.split(',') : permissions,
+            permissions: existingPermissions,
           },
           AGENT_TOKEN_EXPIRY
         );
@@ -394,7 +502,7 @@ export async function registerAgent(
           ownerId: existing.privyUserId || existing.ownerId || undefined,
           privyUserId: existing.privyUserId || undefined,
           role: 'agent' as const,
-          permissions: existing.permissions ? existing.permissions.split(',') : permissions,
+          permissions: existingPermissions,
           createdAt: new Date(existing.createdAt),
           isActive: existing.isActive !== false,
         });
@@ -425,8 +533,8 @@ export async function registerAgent(
       runtimeId: request.runtimeId || null,
       ownerId: request.privyUserId || null, // Set owner to the privy user creating this agent
       privyUserId: request.privyUserId || null, // Also set privyUserId for the agent itself
-      isActive: 1, // 1 = active (database expects integer, not boolean)
-      permissions: permissions.join(','),
+      isActive: true,
+      permissions: JSON.stringify(permissions),
     };
 
     // Use UPSERT to handle race conditions where agent might already exist
@@ -437,8 +545,8 @@ export async function registerAgent(
       .merge({
         ownerId: request.privyUserId || null,
         privyUserId: request.privyUserId || null,
-        permissions: permissions.join(','),
-        isActive: 1
+        permissions: JSON.stringify(permissions),
+        isActive: true
       });
 
     // Generate short-lived JWT token
@@ -527,13 +635,45 @@ export interface AgentRecord {
   ownerId: string | null;
   /** Privy user ID of owner (nullable) */
   privyUserId: string | null;
-  /** Whether agent is active (1=active, 0=inactive, null treated as inactive) */
+  /** Whether agent is active (boolean) */
   isActive: boolean | number | null;
-  /** Comma-separated permissions string */
+  /** Permissions as JSON array string or comma-separated string (for backward compatibility) */
   permissions: string;
   /** Creation timestamp */
   createdAt: number;
 }
+
+/**
+ * Zod schema for runtime validation of agent database records
+ *
+ * Validates that database records match expected structure before use.
+ * Catches data corruption, schema mismatches, and type coercion issues.
+ */
+const AgentRecordSchema = z.object({
+  /** Unique agent ID (required string) */
+  id: z.string(),
+
+  /** Agent display name (required string) */
+  name: z.string(),
+
+  /** ElizaOS runtime ID (nullable string) */
+  runtimeId: z.string().nullable().optional(),
+
+  /** Owner's user ID (nullable string) */
+  ownerId: z.string().nullable().optional(),
+
+  /** Privy user ID of owner (nullable string) */
+  privyUserId: z.string().nullable().optional(),
+
+  /** Whether agent is active (boolean, number, or null - handle database type variations) */
+  isActive: z.union([z.boolean(), z.number(), z.null()]).optional(),
+
+  /** Permissions string (nullable) */
+  permissions: z.string().nullable().optional(),
+
+  /** Creation timestamp (string or number) */
+  createdAt: z.union([z.string(), z.number()]),
+});
 
 /**
  * Verifies an agent JWT token and returns agent information
@@ -578,19 +718,11 @@ export async function verifyAgentToken(
       return null;
     }
 
-    // Load agent from database
-    const agentRecord = await db('users').where('id', payload.userId as string).first() as {
-      id: string
-      name: string
-      runtimeId: string | null | undefined
-      ownerId: string | null | undefined
-      privyUserId: string | null | undefined
-      isActive: boolean | number | null | undefined
-      permissions: string | null | undefined
-      createdAt: string
-    } | undefined;
+    // Load agent from database (raw, unvalidated row)
+    const rawRow = await db('users').where('id', payload.userId as string).first();
 
-    if (!agentRecord) {
+    // Handle missing row case
+    if (!rawRow) {
       const entry = Object.assign(new AgentAuthAuditEntry(), {
         timestamp: new Date().toISOString(),
         eventType: 'agent_auth_failed' as const,
@@ -599,8 +731,34 @@ export async function verifyAgentToken(
         errorMessage: 'Agent not found in database',
       });
       await logAgentAuthEvent(entry, db);
+      elizaLogger.warn('[AgentAuth] Agent record not found in database', {
+        agentId: payload.userId,
+      });
       return null;
     }
+
+    // Runtime validation with Zod - catches data corruption and type mismatches
+    const parseResult = AgentRecordSchema.safeParse(rawRow);
+
+    if (!parseResult.success) {
+      // Validation failed - log error and reject auth
+      const entry = Object.assign(new AgentAuthAuditEntry(), {
+        timestamp: new Date().toISOString(),
+        eventType: 'agent_auth_failed' as const,
+        agentId: payload.userId as string,
+        success: false,
+        errorMessage: 'Agent record failed validation',
+      });
+      await logAgentAuthEvent(entry, db);
+      elizaLogger.error('[AgentAuth] Agent record validation failed', {
+        agentId: payload.userId,
+        errors: parseResult.error.errors,
+      });
+      return null;
+    }
+
+    // Use validated data
+    const agentRecord = parseResult.data;
 
     // Check if agent is active (handle both boolean and integer types)
     if (agentRecord.isActive === false || agentRecord.isActive === 0 || agentRecord.isActive === null) {
@@ -627,10 +785,25 @@ export async function verifyAgentToken(
     });
     await logAgentAuthEvent(successEntry, db);
 
-    // Parse permissions
-    const permissions = typeof agentRecord.permissions === 'string'
-      ? agentRecord.permissions.split(',').filter(Boolean)
-      : ['chat', 'move', 'perceive', 'interact'];
+    // Parse permissions (handle both JSON array and comma-separated string for backward compatibility)
+    const permissions = (() => {
+      if (!agentRecord.permissions) return ['chat', 'move', 'perceive', 'interact'];
+
+      // Try parsing as JSON first
+      try {
+        const parsed = JSON.parse(agentRecord.permissions);
+        if (Array.isArray(parsed)) return parsed as string[];
+      } catch {
+        // Fall back to comma-separated string
+      }
+
+      // Handle comma-separated string
+      if (typeof agentRecord.permissions === 'string') {
+        return agentRecord.permissions.split(',').filter(Boolean);
+      }
+
+      return ['chat', 'move', 'perceive', 'interact'];
+    })();
 
     // Create and return AgentAuthInfo instance
     const authInfo = Object.assign(new AgentAuthInfo(), {
@@ -679,7 +852,7 @@ export async function deactivateAgent(
 ): Promise<void> {
   await db('users')
     .where('id', agentId)
-    .update({ isActive: 0 }); // 0 = inactive (database expects integer, not boolean)
+    .update({ isActive: false });
 
   const entry = Object.assign(new AgentAuthAuditEntry(), {
     timestamp: new Date().toISOString(),

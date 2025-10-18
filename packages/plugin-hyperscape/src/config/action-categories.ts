@@ -106,7 +106,7 @@ export function getActionsInCategory(category: ActionCategory): readonly string[
 /**
  * Get all action names across multiple categories
  */
-export function getActionsInCategories(categories: ActionCategory[]): string[] {
+export function getActionsInCategories(categories: ActionCategory[]): readonly string[] {
   return categories.flatMap(category => ACTION_CATEGORIES[category])
 }
 
@@ -115,5 +115,5 @@ export function getActionsInCategories(categories: ActionCategory[]): string[] {
  */
 export function isActionInCategory(actionName: string, category: ActionCategory): boolean {
   const actions = ACTION_CATEGORIES[category]
-  return actions.includes(actionName)
+  return (actions as readonly string[]).includes(actionName)
 }

@@ -101,10 +101,10 @@ async function executeNavigationWithEvents(
     };
 
     const timeout = setTimeout(() => {
-      cleanup();
       const errorMsg = `Navigation timeout after ${timeoutMs}ms`;
       logger.error(`[GOTO] ${errorMsg}`);
-      reject(new Error(errorMsg));
+      cleanup();
+      resolve({ success: false, error: errorMsg });
     }, timeoutMs);
 
     world.on(NAVIGATION_COMPLETED, completionHandler);
@@ -114,10 +114,10 @@ async function executeNavigationWithEvents(
     try {
       startNavigation();
     } catch (error) {
-      cleanup();
       const errorMsg = error instanceof Error ? error.message : String(error);
       logger.error(`[GOTO] Failed to start navigation: ${errorMsg}`);
-      reject(error);
+      cleanup();
+      resolve({ success: false, error: errorMsg });
     }
   });
 }
@@ -249,11 +249,11 @@ export const hyperscapeGotoEntityAction: Action = {
           };
         }
 
-        const targetEntity = world.entities.items.get(parameter.entityId);
+        const targetEntity = world.entities.items.get(entityId);
 
         // Handle case where entity was deleted/despawned after navigation started
         if (!targetEntity) {
-          logger.warn(`[GOTO] Target entity ${parameter.entityId} not found after navigation - may have been deleted`);
+          logger.warn(`[GOTO] Target entity ${entityId} not found after navigation - may have been deleted`);
 
           const missingEntityResponse = {
             text: `Reached the location, but the entity is no longer there.`,
@@ -270,12 +270,12 @@ export const hyperscapeGotoEntityAction: Action = {
             values: {
               success: true,
               navigationType: "entity",
-              targetEntity: parameter.entityId,
+              targetEntity: entityId,
               entityMissing: true
             },
             data: {
               action: "HYPERSCAPE_GOTO_ENTITY",
-              targetEntityId: parameter.entityId,
+              targetEntityId: entityId,
               entityMissing: true
             },
           };

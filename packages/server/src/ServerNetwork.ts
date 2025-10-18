@@ -134,6 +134,18 @@ export interface AgentUser extends User {
 // SocketInterface is the extended ServerSocket type
 type SocketInterface = ServerSocket;
 
+/**
+ * Interface for WebSocket with upgradeReq property
+ * Used to safely access HTTP headers from WebSocket upgrade request
+ */
+interface WebSocketWithUpgradeReq extends NodeWebSocket {
+  upgradeReq: {
+    headers: {
+      cookie?: string;
+    };
+  };
+}
+
 // Entity already has velocity property
 
 const SAVE_INTERVAL = parseInt(process.env.SAVE_INTERVAL || '60'); // seconds
@@ -902,22 +914,16 @@ export class ServerNetwork extends System implements NetworkWithSocket {
 
   /**
    * Adds a message to the outgoing queue for batched sending
-   * 
+   *
    * Instead of sending messages immediately, they're queued and sent in batches
    * during flush(). This reduces network overhead and improves performance.
-   * 
+   *
    * @param socket - The socket to send the message to
    * @param method - The packet method name (e.g., 'snapshot', 'entityAdded')
    * @param data - The packet payload
-   * 
+   *
    * @public
    */
-  // Define packet data types for better type safety
-  type PacketData =
-    | { type: 'spawn'; data: unknown }
-    | { type: 'move'; data: unknown }
-    | { type: string; data: unknown };
-
   enqueue(socket: SocketInterface, method: string, data: unknown): void {
     if (method === 'onChatAdded') {
     }
@@ -926,45 +932,43 @@ export class ServerNetwork extends System implements NetworkWithSocket {
 
   /**
    * Handles player disconnection and cleanup
-   * 
+   *
    * Performs cleanup when a player disconnects:
    * - Saves player data to database (position, stats, inventory, equipment)
    * - Ends the player session record
    * - Removes socket from tracking
    * - Destroys player entity
    * - Broadcasts entity removal to other clients
-   * 
+   *
    * @param socket - The socket that disconnected
    * @param code - WebSocket close code (optional, for logging)
-   * 
+   *
    * @public
    */
   onDisconnect(socket: SocketInterface, code?: number | string): void {
-    // SocketInterface already has all properties we need
-    const serverSocket = socket as SocketInterface
     // Handle socket disconnection
-    console.log(`[ServerNetwork] 🔌 Socket ${serverSocket.id} disconnected with code:`, code, {
-      hadPlayer: !!serverSocket.player,
-      playerId: serverSocket.player?.id,
+    console.log(`[ServerNetwork] 🔌 Socket ${socket.id} disconnected with code:`, code, {
+      hadPlayer: !!socket.player,
+      playerId: socket.player?.id,
       stackTrace: new Error().stack?.split('\n').slice(1, 4).join('\n')
     });
-    
+
     // Remove socket from our tracking
-    this.sockets.delete(serverSocket.id);
-    
+    this.sockets.delete(socket.id);
+
     // Clean up any socket-specific resources
-    if (serverSocket.player) {
+    if (socket.player) {
     // Emit typed player left event
     this.world.emit(EventType.PLAYER_LEFT, {
-      playerId: serverSocket.player.id
+      playerId: socket.player.id
     });
-      
+
       // Remove player entity from world
       if (this.world.entities?.remove) {
-        this.world.entities.remove(serverSocket.player.id);
+        this.world.entities.remove(socket.player.id);
       }
       // Broadcast entity removal to all remaining clients
-      this.send('entityRemoved', serverSocket.player.id);
+      this.send('entityRemoved', socket.player.id);
     }
   }
 
@@ -1048,20 +1052,30 @@ export class ServerNetwork extends System implements NetworkWithSocket {
 
   /**
    * Checks if a player has builder role
-   * 
+   *
    * Builder role grants access to world editing abilities:
    * - Entity placement and modification
    * - Terrain editing
    * - Chat clearing
    * - Environmental controls
-   * 
+   *
    * @param player - The player entity or player data to check
    * @returns true if player has builder or admin role (admin implies builder)
-   * 
+   *
    * @public
    */
   isBuilder(player: InstanceType<typeof Entity> | { data?: { roles?: string[] } }): boolean {
     return this.world.settings.public || this.isAdmin(player);
+  }
+
+  /**
+   * Type guard to check if WebSocket has upgradeReq with headers
+   *
+   * @param ws - The WebSocket to check
+   * @returns true if ws has upgradeReq.headers property
+   */
+  private isWebSocketWithUpgradeReq(ws: NodeWebSocket): ws is WebSocketWithUpgradeReq {
+    return !!(ws as WebSocketWithUpgradeReq).upgradeReq?.headers;
   }
 
   /**
@@ -1073,8 +1087,11 @@ export class ServerNetwork extends System implements NetworkWithSocket {
   private parseCookiesFromWebSocket(ws: NodeWebSocket): Record<string, string> {
     try {
       // Access the raw HTTP request that was upgraded to WebSocket
-      const req = (ws as { upgradeReq?: { headers?: { cookie?: string } } }).upgradeReq;
-      const cookieHeader = req?.headers?.cookie;
+      // Type guard to check if ws has upgradeReq with headers
+      if (!this.isWebSocketWithUpgradeReq(ws)) {
+        return {};
+      }
+      const cookieHeader = ws.upgradeReq.headers.cookie;
 
       if (!cookieHeader) {
         return {};

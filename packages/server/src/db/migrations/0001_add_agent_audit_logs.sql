@@ -41,11 +41,12 @@ CREATE TABLE IF NOT EXISTS "agent_audit_logs" (
 );
 
 -- Create indexes for fast lookups
-CREATE INDEX IF NOT EXISTS "idx_agent_audit_agent" ON "agent_audit_logs" USING btree ("agent_id");
+-- Note: idx_agent_audit_agent and idx_agent_audit_event_type are redundant
+-- as they are covered by composite indexes below
 CREATE INDEX IF NOT EXISTS "idx_agent_audit_timestamp" ON "agent_audit_logs" USING btree ("timestamp");
-CREATE INDEX IF NOT EXISTS "idx_agent_audit_event_type" ON "agent_audit_logs" USING btree ("event_type");
 
 -- Create composite indexes for common query patterns
+-- These composite indexes are more efficient than single-column indexes
 CREATE INDEX IF NOT EXISTS "idx_audit_agent_time" ON "agent_audit_logs" (agent_id, timestamp DESC);
 CREATE INDEX IF NOT EXISTS "idx_audit_event_success" ON "agent_audit_logs" (event_type, success);
 CREATE INDEX IF NOT EXISTS "idx_audit_composite" ON "agent_audit_logs" (agent_id, event_type, timestamp DESC);

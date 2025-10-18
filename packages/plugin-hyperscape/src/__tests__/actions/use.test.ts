@@ -7,8 +7,9 @@
 
 import { describe, it, expect } from "vitest";
 import { useAction } from "../../actions/use";
-import { createMockRuntime, toUUID } from "../../types/test-mocks";
 import type { Memory, State, Content } from "@elizaos/core";
+import { createMockRuntime } from "../setup";
+import { toUUID } from "../../types/test-mocks";
 
 describe("USE Action", () => {
   describe("validate", () => {

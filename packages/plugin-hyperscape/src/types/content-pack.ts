@@ -20,6 +20,14 @@ export interface IContentPack {
   // State management
   stateManager?: IStateManager;
 
+  // Loading behavior
+  /**
+   * If true, allows this content pack to replace existing actions/providers with the same name.
+   * When false (default), loading will fail if any duplicate names are detected.
+   * Use with caution - overriding existing actions may break dependent functionality.
+   */
+  forceOverride?: boolean;
+
   // Lifecycle hooks
   onLoad?: (runtime: IAgentRuntime, world: World) => Promise<void>;
   onUnload?: (runtime: IAgentRuntime, world: World) => Promise<void>;

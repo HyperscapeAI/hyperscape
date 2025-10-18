@@ -20,6 +20,7 @@ interface PendingResourceAction {
   startTime: number;
   targetDistance: number;
   interactionDistance: number;
+  warned?: boolean;
 }
 
 const _raycaster = new THREE.Raycaster();
@@ -63,7 +64,10 @@ export class InteractionSystem extends System {
 
   // Pending resource actions (managed in update loop instead of setTimeout)
   private pendingResourceActions = new Map<string, PendingResourceAction>();
-  private readonly PENDING_ACTION_TIMEOUT = 5000; // 5 seconds max wait
+  // Dynamic timeout: could be computed per action using resource distance and player walk speed
+  // For now, using a conservative default to handle longer walks to resources
+  private readonly PENDING_ACTION_TIMEOUT = 10000; // 10 seconds max wait
+  private readonly MAX_PENDING_ACTIONS_PER_PLAYER = 5; // Prevent spam by limiting pending actions per player
 
   // Auto-pickup tracking
   private pendingPickups = new Map<string, { itemId: string; position: Position3D }>();
@@ -73,7 +77,7 @@ export class InteractionSystem extends System {
   }
   
   // Bound method reference for proper cleanup
-  private onEntityModifiedBound!: (data: { id: string; changes: { e?: string; p?: number[] } }) => void;
+  private onEntityModifiedBound: (data: { id: string; changes: { e?: string; p?: number[] } }) => void = this.onEntityModified.bind(this);
 
   override start(): void {
     this.canvas = this.world.graphics?.renderer?.domElement ?? null;
@@ -88,7 +92,6 @@ export class InteractionSystem extends System {
     this.onMouseUp = this.onMouseUp.bind(this);
     this.onTouchStart = this.onTouchStart.bind(this);
     this.onTouchEnd = this.onTouchEnd.bind(this);
-    this.onEntityModifiedBound = this.onEntityModified.bind(this);
 
     // Add event listeners with capture phase for context menu priority
     this.canvas.addEventListener('click', this.onCanvasClick, false);
@@ -112,6 +115,11 @@ export class InteractionSystem extends System {
   override destroy(): void {
     // Clear pending resource actions
     this.pendingResourceActions.clear();
+
+    // Clear debounce maps
+    this.recentPickupRequests.clear();
+    this.recentAttackRequests.clear();
+    this.recentResourceRequests.clear();
 
     // Clear long press timer if active
     if (this.longPressTimer) {
@@ -326,12 +334,7 @@ export class InteractionSystem extends System {
     // Clear any pending resource actions for this player
     const localPlayer = this.world.getPlayer();
     if (localPlayer) {
-      // Remove all pending actions for this player
-      for (const [key] of this.pendingResourceActions.entries()) {
-        if (key.startsWith(`${localPlayer.id}:`)) {
-          this.pendingResourceActions.delete(key);
-        }
-      }
+      this.cancelAllPendingResourceActions(localPlayer.id);
     }
 
     // Send cancel movement to server
@@ -340,6 +343,17 @@ export class InteractionSystem extends System {
         target: null,
         cancel: true
       });
+    }
+  }
+
+  /**
+   * Cancel all pending resource actions for a specific player
+   */
+  private cancelAllPendingResourceActions(playerId: string): void {
+    for (const [key] of this.pendingResourceActions.entries()) {
+      if (key.startsWith(`${playerId}:`)) {
+        this.pendingResourceActions.delete(key);
+      }
     }
   }
   
@@ -575,20 +589,50 @@ export class InteractionSystem extends System {
   }
   
   private processPendingResourceActions(): void {
-    const localPlayer = this.world.getPlayer();
-    if (!localPlayer) return;
-    
     const now = Date.now();
     const toRemove: string[] = [];
-    
+
+    // Only check for timeouts in the per-frame loop
+    // Distance checks are now handled by checkPendingResourceActions() on idle state
     for (const [key, pending] of this.pendingResourceActions.entries()) {
       // Check if action has timed out
       if (now - pending.startTime > this.PENDING_ACTION_TIMEOUT) {
-        console.warn(`[InteractionSystem] Pending action timed out for ${pending.action}`);
+        // Only warn once per pending action to avoid spam
+        if (!pending.warned) {
+          console.warn(`[InteractionSystem] Pending action timed out for ${pending.action}`);
+          pending.warned = true;
+        }
         toRemove.push(key);
         continue;
       }
-      
+
+      // Check if resource still exists
+      const resourceEntity = this.world.entities.get(pending.resourceId);
+      if (!resourceEntity) {
+        console.warn(`[InteractionSystem] Resource no longer exists: ${pending.resourceId}`);
+        toRemove.push(key);
+        continue;
+      }
+    }
+
+    // Clean up timed out or deleted resource actions
+    for (const key of toRemove) {
+      this.pendingResourceActions.delete(key);
+    }
+  }
+
+  /**
+   * Event-driven check for pending resource actions when player becomes idle
+   */
+  private checkPendingResourceActions(player: Entity): void {
+    const toRemove: string[] = [];
+
+    for (const [key, pending] of this.pendingResourceActions.entries()) {
+      // Only check actions for this specific player
+      if (!key.startsWith(`${player.id}:`)) {
+        continue;
+      }
+
       // Get resource entity and check if still exists
       const resourceEntity = this.world.entities.get(pending.resourceId);
       if (!resourceEntity) {
@@ -596,24 +640,20 @@ export class InteractionSystem extends System {
         toRemove.push(key);
         continue;
       }
-      
-      // Recompute distance each frame
+
+      // Recompute distance
       const resourcePos = resourceEntity.position;
-      const playerPos = localPlayer.position;
-      const distance = Math.sqrt(
-        Math.pow(resourcePos.x - playerPos.x, 2) + 
-        Math.pow(resourcePos.z - playerPos.z, 2)
-      );
-      
+      const playerPos = player.position;
+      const distance = this.calculateDistance(playerPos, resourcePos);
+
       // Check if within interaction range (with 0.5m tolerance)
       if (distance <= pending.interactionDistance + 0.5) {
-        console.log(`[InteractionSystem] ✓ Reached resource, executing ${pending.action} (distance: ${distance.toFixed(1)}m)`);
         this.executeResourceAction(pending.resourceId, pending.action);
         toRemove.push(key);
       }
     }
-    
-    // Clean up processed/timed out actions
+
+    // Clean up processed actions
     for (const key of toRemove) {
       this.pendingResourceActions.delete(key);
     }
@@ -848,25 +888,28 @@ export class InteractionSystem extends System {
           icon: '⚔️',
           enabled: isAlive,
           handler: () => {
+            // Cancel any pending resource actions when starting combat
+            this.cancelAllPendingResourceActions(playerId);
+
             // Check for debouncing to prevent duplicate attack requests
             const attackKey = `${playerId}:${target.id}`;
             const now = Date.now();
             const lastRequest = this.recentAttackRequests.get(attackKey);
-            
+
             if (lastRequest && (now - lastRequest) < this.ATTACK_DEBOUNCE_TIME) {
               return;
             }
-            
+
             // Record this attack request
             this.recentAttackRequests.set(attackKey, now);
-            
+
             // Clean up old entries (older than 5 seconds)
             for (const [key, timestamp] of this.recentAttackRequests.entries()) {
               if (now - timestamp > 5000) {
                 this.recentAttackRequests.delete(key);
               }
             }
-            
+
             if (this.world.network?.send) {
               this.world.network.send('attackMob', {
                 mobId: target.id,
@@ -912,6 +955,9 @@ export class InteractionSystem extends System {
             icon: '🏦',
             enabled: true,
             handler: () => {
+              // Cancel pending resource actions when opening bank
+              this.cancelAllPendingResourceActions(playerId);
+
               this.world.emit(EventType.BANK_OPEN, {
                 playerId,
                 bankId: target.id,
@@ -920,7 +966,7 @@ export class InteractionSystem extends System {
             }
           });
         }
-        
+
         if (services.includes('store')) {
           actions.push({
             id: 'open-store',
@@ -928,6 +974,9 @@ export class InteractionSystem extends System {
             icon: '🏪',
             enabled: true,
             handler: () => {
+              // Cancel pending resource actions when opening store
+              this.cancelAllPendingResourceActions(playerId);
+
               this.world.emit(EventType.STORE_OPEN, {
                 playerId,
                 storeId: target.id,
@@ -936,13 +985,16 @@ export class InteractionSystem extends System {
             }
           });
         }
-        
+
         actions.push({
           id: 'talk',
           label: 'Talk',
           icon: '💬',
           enabled: true,
           handler: () => {
+            // Cancel pending resource actions when talking to NPC
+            this.cancelAllPendingResourceActions(playerId);
+
             this.world.emit(EventType.NPC_DIALOGUE, {
               playerId,
               npcId: target.id
@@ -978,10 +1030,7 @@ export class InteractionSystem extends System {
     // Check distance to resource (RuneScape-style: walk if too far, then interact)
     const resourcePos = resourceEntity.position;
     const playerPos = localPlayer.position;
-    const distance = Math.sqrt(
-      Math.pow(resourcePos.x - playerPos.x, 2) +
-      Math.pow(resourcePos.z - playerPos.z, 2)
-    );
+    const distance = this.calculateDistance(playerPos, resourcePos);
 
     const interactionDistance = 3.0; // Must be within 3 meters
 
@@ -1007,8 +1056,22 @@ export class InteractionSystem extends System {
       // Add to pending actions - will be processed in update() loop
       const pendingKey = `${localPlayer.id}:${resourceId}`;
 
-      // Clear any existing pending action for this resource (e.g., if player clicked again)
+      // Delete any existing pending action for this specific resource (player clicked same resource again)
       this.pendingResourceActions.delete(pendingKey);
+
+      // Count existing pending actions for this player
+      let playerPendingCount = 0;
+      for (const [key] of this.pendingResourceActions.entries()) {
+        if (key.startsWith(`${localPlayer.id}:`)) {
+          playerPendingCount++;
+        }
+      }
+
+      // Check if player has reached max pending actions
+      if (playerPendingCount >= this.MAX_PENDING_ACTIONS_PER_PLAYER) {
+        console.warn(`[InteractionSystem] Player ${localPlayer.id} has too many pending resource actions (${playerPendingCount}). Aborting new action.`);
+        return;
+      }
 
       this.pendingResourceActions.set(pendingKey, {
         resourceId,
@@ -1194,13 +1257,16 @@ export class InteractionSystem extends System {
     if (data.changes.e === 'idle') {
       const player = this.world.getPlayer();
       if (player && player.id === data.id) {
+        // Event-driven: Check pending resource actions when player becomes idle
+        this.checkPendingResourceActions(player);
+
         // Check if we have a pending pickup for this player
         const pendingPickup = this.pendingPickups.get(player.id);
         if (pendingPickup) {
           // Check if we're close enough to the item now
           const distance = this.calculateDistance(player.position, pendingPickup.position);
           const pickupRange = 2.0;
-          
+
           if (distance <= pickupRange) {
             // Close enough - attempt pickup
             const target = {
@@ -1210,7 +1276,7 @@ export class InteractionSystem extends System {
             };
             this.attemptPickup(player, target);
           }
-          
+
           // Clear the pending pickup regardless
           this.pendingPickups.delete(player.id);
         }

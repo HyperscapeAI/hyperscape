@@ -79,14 +79,14 @@ import * as schema from './schema';
 
 /**
  * Create a Drizzle adapter that implements the SystemDatabase interface
- * 
+ *
  * The returned function acts as a table selector (like Knex), and returns
  * an object with query builder methods that internally use Drizzle.
- * 
+ *
  * @param db - The Drizzle database instance to wrap
  * @returns A function that takes a table name and returns query builder methods
  */
-export function createDrizzleAdapter(db: NodePgDatabase<typeof schema>): SystemDatabase {
+export function createDrizzleAdapter(db: NodePgDatabase<typeof schema>): SystemDatabase<Record<string, unknown>> {
   return function(tableName: string) {
     // ========================================================================
     // STORAGE TABLE ADAPTER
@@ -102,7 +102,7 @@ export function createDrizzleAdapter(db: NodePgDatabase<typeof schema>): SystemD
               .from(schema.storage)
               .where(eq(schema.storage.key, value as string))
               .limit(1);
-            return results[0];
+            return results[0] as Record<string, unknown> | undefined;
           },
           update: async (data: Record<string, unknown>) => {
             await db.update(schema.storage)
@@ -123,7 +123,7 @@ export function createDrizzleAdapter(db: NodePgDatabase<typeof schema>): SystemD
                 .from(schema.storage)
                 .where(eq(schema.storage.key, value as string))
                 .limit(1);
-              return results[0];
+              return results[0] as Record<string, unknown> | undefined;
             }
           })
         }),
@@ -142,11 +142,11 @@ export function createDrizzleAdapter(db: NodePgDatabase<typeof schema>): SystemD
         },
         first: async () => {
           const results = await db.select().from(schema.storage).limit(1);
-          return results[0];
+          return results[0] as Record<string, unknown> | undefined;
         },
-        then: async <T>(onfulfilled: (value: unknown[]) => T) => {
+        then: async <T>(onfulfilled: (value: Record<string, unknown>[]) => T) => {
           const results = await db.select().from(schema.storage);
-          return onfulfilled(results);
+          return onfulfilled(results as Record<string, unknown>[]);
         },
         catch: async <T>(onrejected: (reason: unknown) => T) => {
           try {
@@ -172,7 +172,7 @@ export function createDrizzleAdapter(db: NodePgDatabase<typeof schema>): SystemD
               .from(schema.config)
               .where(eq(schema.config.key, value as string))
               .limit(1);
-            return results[0];
+            return results[0] as Record<string, unknown> | undefined;
           },
           update: async (data: Record<string, unknown>) => {
             await db.update(schema.config)
@@ -193,7 +193,7 @@ export function createDrizzleAdapter(db: NodePgDatabase<typeof schema>): SystemD
                 .from(schema.config)
                 .where(eq(schema.config.key, value as string))
                 .limit(1);
-              return results[0];
+              return results[0] as Record<string, unknown> | undefined;
             }
           })
         }),
@@ -212,11 +212,11 @@ export function createDrizzleAdapter(db: NodePgDatabase<typeof schema>): SystemD
         },
         first: async () => {
           const results = await db.select().from(schema.config).limit(1);
-          return results[0];
+          return results[0] as Record<string, unknown> | undefined;
         },
-        then: async <T>(onfulfilled: (value: unknown[]) => T) => {
+        then: async <T>(onfulfilled: (value: Record<string, unknown>[]) => T) => {
           const results = await db.select().from(schema.config);
-          return onfulfilled(results);
+          return onfulfilled(results as Record<string, unknown>[]);
         },
         catch: async <T>(onrejected: (reason: unknown) => T) => {
           try {
@@ -235,22 +235,22 @@ export function createDrizzleAdapter(db: NodePgDatabase<typeof schema>): SystemD
     // For tables not specifically implemented, provide no-op methods.
     // These tables should use DatabaseSystem directly instead of the adapter.
     return {
-      where: () => ({
-        first: async () => undefined,
-        update: async () => 0,
+      where: (key: string, value: unknown) => ({
+        first: async () => undefined as Record<string, unknown> | undefined,
+        update: async (data: Partial<Record<string, unknown>>) => 0,
         delete: async () => 0
       }),
       select: () => ({
         where: (_key: string, _value: unknown) => ({
-          first: async () => undefined
+          first: async () => undefined as Record<string, unknown> | undefined
         })
       }),
-      insert: async () => {},
-      update: async () => 0,
+      insert: async (data: Partial<Record<string, unknown>> | Partial<Record<string, unknown>>[]) => {},
+      update: async (data: Partial<Record<string, unknown>>) => 0,
       delete: async () => 0,
-      first: async () => undefined,
-      then: async <T>(onfulfilled: (value: unknown[]) => T) => {
-        return onfulfilled([]);
+      first: async () => undefined as Record<string, unknown> | undefined,
+      then: async <T>(onfulfilled: (value: Record<string, unknown>[]) => T) => {
+        return onfulfilled([] as Record<string, unknown>[]);
       },
       catch: async <T>(_onrejected: (reason: unknown) => T) => {
         return [] as unknown as T;

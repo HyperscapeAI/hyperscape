@@ -3,6 +3,8 @@ import { THREE, Player } from "@hyperscape/shared";
 import fs, { promises as fsPromises } from "fs";
 import path from "path";
 import { chromium, Browser, Page, PageScreenshotOptions } from "playwright";
+import { PNG } from "pngjs";
+import pixelmatch from "pixelmatch";
 import { HyperscapeService } from "../service";
 import { getModuleDirectory, resolveUrl } from "../utils";
 import { GRAPHICS_CONFIG } from "../config/constants";
@@ -18,6 +20,8 @@ export class PlaywrightManager {
   private browser: Browser;
   private page: Page;
   private initPromise: Promise<void> | null = null;
+  private _initialized: boolean = false;
+  private disposed: boolean = false;
   private readonly STRIP_SLOTS = [
     "map",
     "aoMap",
@@ -73,6 +77,11 @@ export class PlaywrightManager {
   // Removed duplicate getPage method - keeping the one at line 34
 
   private async init() {
+    // Check if already disposed
+    if (this.disposed) {
+      throw new Error("PlaywrightManager has been disposed and cannot be reinitialized");
+    }
+
     // Only initialize once
     if (!this.initPromise) {
       this.initPromise = (async () => {
@@ -106,6 +115,8 @@ export class PlaywrightManager {
             window.camera !== undefined &&
             window.renderer !== undefined,
         );
+
+        this._initialized = true;
       })();
     }
     return this.initPromise;
@@ -476,20 +487,51 @@ export class PlaywrightManager {
    * Call this when done with Playwright to free up memory
    */
   async dispose(): Promise<void> {
-    if (this.browser) {
-      await this.browser.close();
-      logger.info("[PlaywrightManager] Browser closed and resources cleaned up");
+    // Set disposed flag immediately to prevent reinitialization
+    this.disposed = true;
+
+    // If initialization is in progress, wait for it to complete
+    if (this.initPromise) {
+      try {
+        await this.initPromise;
+      } catch (error) {
+        logger.warn("[PlaywrightManager] Initialization failed during disposal:", error);
+      }
     }
+
+    // Close browser if it exists
+    if (this.browser) {
+      try {
+        await this.browser.close();
+        logger.info("[PlaywrightManager] Browser closed and resources cleaned up");
+      } catch (error) {
+        logger.error("[PlaywrightManager] Error closing browser:", error);
+      }
+    }
+
+    // Clear all references
+    this.page = null!;
+    this.browser = null!;
+    this.initPromise = null;
+    this._initialized = false;
+
+    // Clear singleton instance
     PlaywrightManager.instance = null;
   }
 
   /**
    * Compare screenshots for visual regression testing
-   * Returns exact buffer comparison result without threshold
+   * Uses pixel-level comparison with configurable threshold
+   *
+   * @param screenshot1 - First screenshot (Buffer or base64 string)
+   * @param screenshot2 - Second screenshot (Buffer or base64 string)
+   * @param threshold - Acceptable difference threshold (0-1), default 0.1 for rendering variance
+   * @returns Object with match status and difference percentage
    */
   async compareScreenshots(
     screenshot1: Buffer | string,
     screenshot2: Buffer | string,
+    threshold: number = 0.1,
   ): Promise<{ match: boolean; difference: number }> {
     // Convert to buffers if needed
     const buffer1 = typeof screenshot1 === 'string'
@@ -499,9 +541,44 @@ export class PlaywrightManager {
       ? Buffer.from(screenshot2, 'base64')
       : screenshot2;
 
-    // Exact buffer comparison
-    const match = buffer1.equals(buffer2);
-    const difference = match ? 0 : 1;
+    // Parse PNG images
+    const img1 = PNG.sync.read(buffer1);
+    const img2 = PNG.sync.read(buffer2);
+
+    // Verify image dimensions match
+    if (img1.width !== img2.width || img1.height !== img2.height) {
+      logger.warn('[PlaywrightManager] Screenshot dimensions mismatch:', {
+        img1: { width: img1.width, height: img1.height },
+        img2: { width: img2.width, height: img2.height },
+      });
+      return { match: false, difference: 1 };
+    }
+
+    // Prepare output buffer for diff visualization (optional)
+    const { width, height } = img1;
+    const diff = new PNG({ width, height });
+
+    // Perform pixel-level comparison
+    const numDiffPixels = pixelmatch(
+      img1.data,
+      img2.data,
+      diff.data,
+      width,
+      height,
+      { threshold: 0.1 } // pixelmatch's own threshold for color difference
+    );
+
+    const totalPixels = width * height;
+    const difference = numDiffPixels / totalPixels;
+    const match = difference <= threshold;
+
+    logger.info('[PlaywrightManager] Screenshot comparison:', {
+      numDiffPixels,
+      totalPixels,
+      differencePercentage: (difference * 100).toFixed(2) + '%',
+      threshold: (threshold * 100).toFixed(2) + '%',
+      match,
+    });
 
     return { match, difference };
   }

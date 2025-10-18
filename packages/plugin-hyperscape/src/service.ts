@@ -223,6 +223,11 @@ Hyperscape world integration service that enables agents to:
   private loadedContentPacks: Map<string, IContentPack> = new Map();
   private activeGameSystems: Map<string, IGameSystem[]> = new Map();
 
+  // Circuit breaker for failing systems
+  private systemErrors: Map<string, { count: number; lastError: Error; timestamp: number }> = new Map();
+  private static readonly MAX_SYSTEM_ERRORS = 5;
+  private static readonly ERROR_RESET_TIME_MS = 60000; // 1 minute
+
   public get currentWorldId(): UUID | null {
     return this._currentWorldId;
   }
@@ -463,24 +468,43 @@ Hyperscape world integration service that enables agents to:
       }
     }
 
-    // Validate action uniqueness
+    // Validate action uniqueness - fail fast on duplicates unless forceOverride is enabled
     if (pack.actions) {
       const existingActionNames = targetRuntime.actions.map(a => a.name);
       const duplicateActions = pack.actions.filter(a => existingActionNames.includes(a.name));
       if (duplicateActions.length > 0) {
-        logger.warn(
-          `[HyperscapeService] Content pack contains ${duplicateActions.length} actions that already exist: ${duplicateActions.map(a => a.name).join(', ')}`,
-        );
+        if (!pack.forceOverride) {
+          throw new Error(
+            `[HyperscapeService] Content pack contains ${duplicateActions.length} actions that already exist: ${duplicateActions.map(a => a.name).join(', ')}. Cannot load pack with duplicate actions (ElizaOS cannot unregister actions). Set pack.forceOverride=true to replace existing actions, or use unique names.`,
+          );
+        } else {
+          logger.info(
+            `[HyperscapeService] Content pack has forceOverride=true. Replacing ${duplicateActions.length} existing actions: ${duplicateActions.map(a => a.name).join(', ')}`,
+          );
+          // Remove duplicate actions from runtime
+          for (const duplicate of duplicateActions) {
+            const existingIndex = targetRuntime.actions.findIndex(a => a.name === duplicate.name);
+            if (existingIndex !== -1) {
+              targetRuntime.actions.splice(existingIndex, 1);
+            }
+          }
+        }
       }
     }
 
-    // Validate provider uniqueness
+    // Validate provider uniqueness - fail fast on duplicates
     if (pack.providers) {
-      const existingProviderNames = (targetRuntime as { providers: Array<{ name: string }> }).providers?.map(p => p.name) || [];
+      // Runtime guards: verify providers property exists and is an array
+      const runtimeProviders = (targetRuntime as { providers?: unknown }).providers;
+      const existingProviderNames = (
+        Array.isArray(runtimeProviders)
+          ? (runtimeProviders as Array<{ name: string }>).map(p => p.name)
+          : []
+      );
       const duplicateProviders = pack.providers.filter(p => existingProviderNames.includes(p.name));
       if (duplicateProviders.length > 0) {
-        logger.warn(
-          `[HyperscapeService] Content pack contains ${duplicateProviders.length} providers that already exist: ${duplicateProviders.map(p => p.name).join(', ')}`,
+        throw new Error(
+          `[HyperscapeService] Content pack contains ${duplicateProviders.length} providers that already exist: ${duplicateProviders.map(p => p.name).join(', ')}. Cannot load pack with duplicate providers (ElizaOS cannot unregister providers). Please use unique names or version your content pack.`,
         );
       }
     }
@@ -597,41 +621,50 @@ Hyperscape world integration service that enables agents to:
         error,
       );
 
-      // Cleanup on failure - unregister all partially registered items
-      // Note: ElizaOS core doesn't support unregistration, so we log warnings
-      if (registeredActions.length > 0) {
-        logger.warn(
-          `[HyperscapeService] ${registeredActions.length} actions were registered but cannot be unregistered: ${registeredActions.join(', ')}`,
-        );
-      }
-
-      if (registeredProviders.length > 0) {
-        logger.warn(
-          `[HyperscapeService] ${registeredProviders.length} providers were registered but cannot be unregistered: ${registeredProviders.join(', ')}`,
-        );
-      }
-
-      if (registeredEvaluators.length > 0) {
-        logger.warn(
-          `[HyperscapeService] ${registeredEvaluators.length} evaluators were registered but cannot be unregistered: ${registeredEvaluators.join(', ')}`,
-        );
-      }
-
-      // Cleanup initialized systems
+      // Cleanup on failure - attempt to cleanup initialized systems
       const systems = this.activeGameSystems.get(pack.id);
+      const failedCleanups: string[] = [];
+
       if (systems) {
         for (const system of systems) {
           try {
             system.cleanup();
-            logger.info(`[HyperscapeService] Cleaned up system: ${system.name}`);
+            logger.info(`[HyperscapeService] Cleaned up system: ${system.name} for pack ${pack.id}`);
           } catch (cleanupError) {
             logger.error(
-              `[HyperscapeService] Failed to cleanup system ${system.name}:`,
+              `[HyperscapeService] Failed to cleanup system ${system.name} for pack ${pack.id}:`,
               cleanupError,
             );
+            failedCleanups.push(system.name);
           }
         }
         this.activeGameSystems.delete(pack.id);
+      }
+
+      // Track all items that remain registered (cannot be unregistered by ElizaOS)
+      const remainingItems: string[] = [];
+
+      if (registeredActions.length > 0) {
+        remainingItems.push(`Actions: ${registeredActions.join(', ')}`);
+      }
+
+      if (registeredProviders.length > 0) {
+        remainingItems.push(`Providers: ${registeredProviders.join(', ')}`);
+      }
+
+      if (registeredEvaluators.length > 0) {
+        remainingItems.push(`Evaluators: ${registeredEvaluators.join(', ')}`);
+      }
+
+      // If any items remain registered, log detailed error with recovery steps
+      if (remainingItems.length > 0) {
+        const errorMessage = `[HyperscapeService] Content pack ${pack.id} failed to load with partial registration. The following items cannot be unregistered and remain in runtime:\n${remainingItems.join('\n')}\n\nOriginal error: ${error}\n\nRecovery steps:\n1. Fix the content pack to resolve the error\n2. Restart the agent to clear runtime state\n3. Reload the pack\n\nAgent restart is REQUIRED to fully clear these registered items.`;
+
+        logger.error(errorMessage);
+
+        throw new Error(
+          `Content pack ${pack.id} load failed with partial registration. ${remainingItems.length} item(s) remain registered and agent restart is required. See logs for details.`,
+        );
       }
 
       throw error;
@@ -765,18 +798,55 @@ Hyperscape world integration service that enables agents to:
 
   /**
    * Update all active game systems (called from game loop if needed)
+   * Implements circuit breaker pattern to disable failing systems
    */
   updateContentPackSystems(deltaTime: number): void {
-    for (const [_packId, systems] of this.activeGameSystems) {
+    for (const [packId, systems] of this.activeGameSystems) {
       for (const system of systems) {
         if (system.update) {
+          // Create unique key for this system
+          const systemKey = `${packId}:${system.name}`;
+          const errorState = this.systemErrors.get(systemKey);
+
+          // Check if system is disabled by circuit breaker
+          if (errorState && errorState.count >= HyperscapeService.MAX_SYSTEM_ERRORS) {
+            const now = Date.now();
+            const timeSinceLastError = now - errorState.timestamp;
+
+            // Check if timeout has expired
+            if (timeSinceLastError >= HyperscapeService.ERROR_RESET_TIME_MS) {
+              // Reset error count and try again
+              this.systemErrors.delete(systemKey);
+              logger.info(
+                `[HyperscapeService] Circuit breaker timeout expired for system ${system.name} in pack ${packId}. Retrying updates.`,
+              );
+            } else {
+              // Skip this system - still disabled
+              continue;
+            }
+          }
+
           try {
             system.update(deltaTime);
           } catch (error) {
+            // Track error for circuit breaker
+            const currentState = this.systemErrors.get(systemKey) || { count: 0, lastError: error as Error, timestamp: Date.now() };
+            currentState.count++;
+            currentState.lastError = error as Error;
+            currentState.timestamp = Date.now();
+            this.systemErrors.set(systemKey, currentState);
+
             logger.error(
-              `[HyperscapeService] Error updating system ${system.name}:`,
+              `[HyperscapeService] Error updating system ${system.name} in pack ${packId} (error ${currentState.count}/${HyperscapeService.MAX_SYSTEM_ERRORS}):`,
               error,
             );
+
+            // Check if threshold reached
+            if (currentState.count >= HyperscapeService.MAX_SYSTEM_ERRORS) {
+              logger.error(
+                `[HyperscapeService] System ${system.name} in pack ${packId} has been disabled due to ${HyperscapeService.MAX_SYSTEM_ERRORS} consecutive errors. Will retry after ${HyperscapeService.ERROR_RESET_TIME_MS}ms timeout. Last error: ${currentState.lastError.message}`,
+              );
+            }
           }
         }
       }

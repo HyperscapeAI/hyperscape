@@ -319,7 +319,9 @@ export class MessageManager {
     }
 
     // Always respond to direct messages
-    if (message.content.userName && text.length > 0) {
+    // Check metadata.username as message.content.userName is never set
+    const metadata = message.metadata as { username?: string } | undefined;
+    if (metadata?.username && text.length > 0) {
       return true;
     }
 
@@ -379,6 +381,11 @@ export class MessageManager {
     // Check if it's an object with a 'text' property
     if (responseText && typeof responseText === 'object' && 'text' in responseText) {
       const textValue = (responseText as { text: unknown }).text;
+      // Check if the text property is a string
+      if (typeof textValue === 'string') {
+        return textValue;
+      }
+      // If text property exists but isn't a string, convert it
       return String(textValue);
     }
 

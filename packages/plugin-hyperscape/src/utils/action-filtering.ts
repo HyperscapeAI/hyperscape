@@ -66,24 +66,25 @@ export interface ActionFilterConfig {
 /**
  * Check if RPG systems are available in the world
  * RPG systems include: skills, inventory, banking, resources
+ * @param requireAll - If true, all systems must be present; if false, any system is sufficient (default: false)
  */
-function hasRPGSystems(world: World | null): boolean {
+function hasRPGSystems(world: World | null, requireAll = false): boolean {
   if (!world) return false
-
-  // Check for RPG-specific systems
-  const systems = world.systems as Record<string, unknown> | undefined
-  if (!systems) return false
+  if (typeof world.getSystem !== 'function') return false
 
   // Check for skills system (core RPG feature)
-  const hasSkills = !!world.getSystem?.('skills')
+  const hasSkills = !!world.getSystem('skills')
 
   // Check for inventory system
-  const hasInventory = !!world.getSystem?.('inventory')
+  const hasInventory = !!world.getSystem('inventory')
 
   // Check for resource system (for gathering)
-  const hasResources = !!world.getSystem?.('resource')
+  const hasResources = !!world.getSystem('resource')
 
-  return hasSkills || hasInventory || hasResources
+  // Return based on requireAll parameter
+  return requireAll
+    ? hasSkills && hasInventory && hasResources
+    : hasSkills || hasInventory || hasResources
 }
 
 /**
@@ -91,13 +92,19 @@ function hasRPGSystems(world: World | null): boolean {
  */
 function hasNearbyInteractables(world: World | null): boolean {
   if (!world) return false
+  if (!world.actions) return false
 
   try {
-    // Check for nearby actions via the actions system
-    const actionsSystem = world.actions as { getNearby?: (radius: number) => unknown[] } | undefined
-    const nearbyActions = actionsSystem?.getNearby ? actionsSystem.getNearby(NEARBY_INTERACTABLE_RADIUS) : []
+    // Verify getNearby is a function before calling
+    if (typeof world.actions.getNearby !== 'function') return false
 
-    return nearbyActions.length > 0
+    // Check for nearby actions via the actions system
+    const nearbyResult = world.actions.getNearby(NEARBY_INTERACTABLE_RADIUS)
+
+    // Ensure result is an array before checking length
+    if (!Array.isArray(nearbyResult)) return false
+
+    return nearbyResult.length > 0
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error)
     console.error('[hasNearbyInteractables] Failed to check for nearby interactables:', errorMsg)
@@ -151,7 +158,7 @@ export function getFilteredActionNames(
 
   // Always include core actions
   const alwaysInclude = config?.alwaysInclude || ['core']
-  const includedActions = getActionsInCategories(alwaysInclude)
+  const includedActions = [...getActionsInCategories(alwaysInclude)]
 
   // Merge default predicates with user-provided predicates
   const predicates: Partial<Record<ActionCategory, CategoryPredicate>> = {

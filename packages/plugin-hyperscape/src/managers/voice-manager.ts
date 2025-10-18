@@ -63,9 +63,13 @@ export class VoiceManager {
       transcriptionText: string;
     }
   > = new Map();
-  private processingVoice: boolean = false;
+  // Flag to prevent concurrent transcription processing
+  // Checked in debouncedProcessTranscription (line ~132) to ensure only one transcription processes at a time
+  private processingTranscription: boolean = false;
   private transcriptionTimeout: NodeJS.Timeout | null = null;
   private audioQueue: Buffer[] = [];
+  // Flag to prevent concurrent audio queue processing
+  // Set atomically in playAudio before starting processAudioQueue
   private processingQueue: boolean = false;
 
   constructor(runtime: IAgentRuntime) {
@@ -129,7 +133,7 @@ export class VoiceManager {
     const DEBOUNCE_TRANSCRIPTION_THRESHOLD =
       VOICE_CONFIG.TRANSCRIPTION_DEBOUNCE_MS;
 
-    if (this.processingVoice) {
+    if (this.processingTranscription) {
       const state = this.userStates.get(playerId);
       if (state) {
         state.buffers.length = 0;
@@ -144,7 +148,7 @@ export class VoiceManager {
 
     this.transcriptionTimeout = setTimeout(async () => {
       await agentActivityLock.run(async () => {
-        this.processingVoice = true;
+        this.processingTranscription = true;
         try {
           await this.processTranscription(playerId);
 
@@ -155,7 +159,7 @@ export class VoiceManager {
             state.transcriptionText = "";
           });
         } finally {
-          this.processingVoice = false;
+          this.processingTranscription = false;
         }
       });
     }, DEBOUNCE_TRANSCRIPTION_THRESHOLD) as NodeJS.Timeout;
@@ -323,13 +327,16 @@ export class VoiceManager {
     this.audioQueue.push(audioBuffer);
     logger.info("[VoiceManager] Audio added to queue, queue length:", this.audioQueue.length);
 
-    // Fix race condition: check and set flag atomically
-    // If we're already processing, the running loop will pick up the new item
-    // If not, we start processing
+    // Atomic test-and-set: only one caller wins the race to start processing
+    // If processingQueue is already true, the running loop will pick up the new item
+    // Otherwise, atomically set to true and start processing
     if (!this.processingQueue) {
-      // Immediately start processing without awaiting to avoid blocking
+      this.processingQueue = true;
+      // Start processing without awaiting to avoid blocking
       this.processAudioQueue().catch(error => {
         logger.error("[VoiceManager] Error in audio queue processing:", error);
+        // Ensure flag is cleared on error
+        this.processingQueue = false;
       });
     }
   }
@@ -338,15 +345,9 @@ export class VoiceManager {
    * Process audio queue sequentially
    * Drains the queue and plays each audio buffer in order
    * Null checks moved outside the loop for better performance
+   * Note: processingQueue flag is already set by playAudio before calling this method
    */
   private async processAudioQueue(): Promise<void> {
-    // Prevent concurrent queue processing
-    if (this.processingQueue) {
-      return;
-    }
-
-    this.processingQueue = true;
-
     try {
       // Get service and world once before loop
       const service = this.getService();
@@ -377,8 +378,6 @@ export class VoiceManager {
           continue;
         }
 
-        this.processingVoice = true;
-
         try {
           // Publish audio stream through LiveKit
           logger.debug("[VoiceManager] Publishing audio stream through LiveKit");
@@ -387,12 +386,10 @@ export class VoiceManager {
         } catch (error) {
           logger.error("[VoiceManager] Failed to play audio:", error);
           // Continue processing remaining items in queue even if one fails
-        } finally {
-          this.processingVoice = false;
         }
       }
     } finally {
-      // Always clear the processing flag, even on errors
+      // Always clear the processing flag when queue is empty or on error
       this.processingQueue = false;
     }
   }

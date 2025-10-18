@@ -76,8 +76,16 @@
  * **Referenced by**: client.ts (initialization), DatabaseSystem.ts (queries), drizzle-adapter.ts (legacy compat)
  */
 
-import { pgTable, text, integer, bigint, real, timestamp, serial, unique, index } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, bigint, real, timestamp, serial, unique, index, boolean, jsonb } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
+
+/**
+ * Agent Permissions Type
+ *
+ * Defines the structure of agent permissions stored in the database.
+ * Permissions are stored as a JSON array of permission strings.
+ */
+export type AgentPermissions = string[];
 
 /**
  * Config Table - Server configuration settings
@@ -104,7 +112,7 @@ export const config = pgTable('config', {
  * - `runtimeId` - ElizaOS runtime ID for AI agents
  * - `ownerId` - User ID that owns this agent (for AI agents)
  * - `isActive` - Whether this user/agent is active (for deactivation)
- * - `permissions` - Comma-separated permissions for agents
+ * - `permissions` - JSON array of permission strings for agents
  */
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
@@ -117,8 +125,8 @@ export const users = pgTable('users', {
   // Agent-specific fields
   runtimeId: text('runtimeId'),
   ownerId: text('ownerId'),
-  isActive: integer('isActive').notNull().default(1).$type<boolean>(), // 1 = active, 0 = deactivated
-  permissions: text('permissions').notNull().default('{}').$type<Record<string, unknown>>(),
+  isActive: boolean('isActive').notNull().default(true),
+  permissions: jsonb('permissions').notNull().default('[]').$type<AgentPermissions>(),
 }, (table) => ({
   privyIdx: index('idx_users_privy').on(table.privyUserId),
   farcasterIdx: index('idx_users_farcaster').on(table.farcasterFid),
@@ -433,12 +441,12 @@ export const storage = pgTable('storage', {
  * - `owner_id` - User ID that owns this agent (nullable)
  * - `privy_user_id` - Privy user ID of owner (nullable)
  * - `metadata` - JSON string with additional context (IP, user agent, etc.)
- * - `success` - Whether the event succeeded (true/false)
+ * - `success` - Whether the event succeeded (boolean)
  * - `error_message` - Error description for failed events (nullable)
  *
  * Design notes:
  * - Used for security auditing and breach detection
- * - Indexed on agent_id and timestamp for fast lookups
+ * - Indexed on composite keys for efficient queries
  * - In-memory cache maintained separately (last 1000 entries)
  * - All authentication events are logged here for durability
  */
@@ -452,12 +460,14 @@ export const agentAuditLogs = pgTable('agent_audit_logs', {
   owner_id: text('owner_id'),
   privy_user_id: text('privy_user_id'),
   metadata: text('metadata'),
-  success: integer('success').notNull(), // 1 = success, 0 = failure
+  success: boolean('success').notNull(),
   error_message: text('error_message'),
 }, (table) => ({
-  agentIdx: index('idx_agent_audit_agent').on(table.agent_id),
+  // Composite indexes for common query patterns
   timestampIdx: index('idx_agent_audit_timestamp').on(table.timestamp),
-  eventTypeIdx: index('idx_agent_audit_event_type').on(table.event_type),
+  agentTimeIdx: index('idx_audit_agent_time').on(table.agent_id, table.timestamp),
+  eventSuccessIdx: index('idx_audit_event_success').on(table.event_type, table.success),
+  compositeIdx: index('idx_audit_composite').on(table.agent_id, table.event_type, table.timestamp),
 }));
 
 /**

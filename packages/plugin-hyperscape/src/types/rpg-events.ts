@@ -2,6 +2,7 @@
  * RPG-specific event data types for skills, banking, cooking, etc.
  */
 
+import type { IAgentRuntime } from '@elizaos/core'
 import type { BaseEventData } from './event-types'
 
 /**
@@ -85,7 +86,7 @@ export interface SkillEventData extends BaseEventData {
  * Safety violation event data
  */
 export interface SafetyViolationData extends BaseEventData {
-  runtime: unknown
+  runtime: IAgentRuntime
   roomId: string
   violations: Array<{
     type: string
@@ -107,7 +108,7 @@ export interface SafetyViolationData extends BaseEventData {
  * Engagement update event data
  */
 export interface EngagementUpdateData extends BaseEventData {
-  runtime: unknown
+  runtime: IAgentRuntime
   roomId: string
   entityId: string
   level: string
@@ -120,7 +121,7 @@ export interface EngagementUpdateData extends BaseEventData {
  * Resource inefficiency event data
  */
 export interface ResourceInefficiencyData extends BaseEventData {
-  runtime: unknown
+  runtime: IAgentRuntime
   roomId: string
   issue: string
   severity: string
@@ -132,7 +133,7 @@ export interface ResourceInefficiencyData extends BaseEventData {
  * Skill level up event data
  */
 export interface SkillLevelUpData extends BaseEventData {
-  runtime: unknown
+  runtime: IAgentRuntime
   roomId: string
   skill: string
   newLevel: number

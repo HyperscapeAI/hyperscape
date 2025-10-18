@@ -49,6 +49,11 @@ export const CSRF_HEADER_NAME = 'x-csrf-token';
  * - HEAD requests (read-only)
  * - OPTIONS requests (CORS preflight)
  * - Public webhooks
+ *
+ * Route matching:
+ * - Exact match: '/api/health' matches only '/api/health'
+ * - Wildcard prefix: '/api/webhooks/*' matches any path starting with '/api/webhooks/'
+ * - Must use explicit '*' for prefix matching to avoid accidental broad exemptions
  */
 export const CSRF_EXEMPT_ROUTES: string[] = [
   '/api/agent/auth', // Agent authentication (uses different auth)
@@ -100,17 +105,69 @@ export async function registerCsrfProtection(app: FastifyInstance): Promise<void
 
   console.log('[CSRF] CSRF protection registered');
 
-  // Add hook to exempt certain routes
-  app.addHook('preHandler', async (request, _reply) => {
+  // Add hook to exempt certain routes and verify CSRF tokens
+  app.addHook('preHandler', async (request, reply) => {
     // Skip CSRF for exempt routes
     if (isRouteExempt(request)) {
+      return;
+    }
+
+    // For non-exempt routes, verify CSRF token
+    // The @fastify/csrf-protection plugin provides request.csrfProtection()
+    try {
+      // Call the CSRF verification function provided by the plugin
+      // This verifies that the token in the header matches the cookie
+      await (request as { csrfProtection?: () => Promise<void> }).csrfProtection?.();
+    } catch (error) {
+      // CSRF verification failed - log and reject request
+      console.error('[CSRF] CSRF verification failed:', {
+        url: request.url,
+        method: request.method,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+
+      // Send 403 Forbidden response
+      reply.code(403).send({
+        error: 'Forbidden',
+        message: 'CSRF token verification failed',
+      });
+
+      // End request processing
       return;
     }
   });
 }
 
 /**
+ * Normalized path for comparison
+ * Removes query string and trailing slashes
+ *
+ * @param path - URL path
+ * @returns Normalized path
+ */
+function normalizePath(path: string): string {
+  // Remove query string
+  const pathWithoutQuery = path.split('?')[0]!;
+
+  // URL decode to prevent encoding bypasses
+  const decoded = decodeURIComponent(pathWithoutQuery);
+
+  // Remove trailing slash for consistency (but keep root '/')
+  return decoded.length > 1 && decoded.endsWith('/')
+    ? decoded.slice(0, -1)
+    : decoded;
+}
+
+/**
  * Check if route is exempt from CSRF protection
+ *
+ * Supports two matching strategies:
+ * 1. Exact match: '/api/health' matches only '/api/health'
+ * 2. Wildcard prefix: '/api/webhooks/*' matches '/api/webhooks/github', '/api/webhooks/stripe', etc.
+ *
+ * Wildcard matching requires explicit '*' to prevent accidental broad exemptions.
+ * For example, '/api/agent/auth' will NOT match '/api/agent/auth/login' unless
+ * you explicitly add '/api/agent/auth/*' to the exempt list.
  *
  * @param request - Fastify request object
  * @returns true if route is exempt, false otherwise
@@ -124,11 +181,32 @@ export function isRouteExempt(request: FastifyRequest): boolean {
     return true;
   }
 
-  // Check if route is in exempt list
-  // Using startsWith to intentionally exempt all subpaths under each route
-  // (e.g., /api/agent/auth will exempt /api/agent/auth/register, /api/agent/auth/revoke, etc.)
-  if (CSRF_EXEMPT_ROUTES.some(route => path.startsWith(route))) {
-    return true;
+  // Normalize the incoming path to prevent traversal/encoding bypasses
+  const normalizedPath = normalizePath(path);
+
+  // Check exempt routes with both exact and wildcard matching
+  for (const exemptRoute of CSRF_EXEMPT_ROUTES) {
+    // Exact match (no wildcard)
+    if (!exemptRoute.includes('*')) {
+      if (normalizedPath === exemptRoute) {
+        return true;
+      }
+      continue;
+    }
+
+    // Wildcard prefix match (explicit '*' required)
+    if (exemptRoute.endsWith('/*')) {
+      const prefix = exemptRoute.slice(0, -2); // Remove '/*' suffix
+      if (normalizedPath === prefix || normalizedPath.startsWith(prefix + '/')) {
+        return true;
+      }
+    } else if (exemptRoute.endsWith('*')) {
+      // Support '/api/webhooks*' pattern (matches /api/webhooks and /api/webhooks...)
+      const prefix = exemptRoute.slice(0, -1); // Remove '*' suffix
+      if (normalizedPath.startsWith(prefix)) {
+        return true;
+      }
+    }
   }
 
   return false;

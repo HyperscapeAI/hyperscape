@@ -30,6 +30,7 @@
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import fastifyCookie from '@fastify/cookie';
+import { COOKIE_SECURITY } from '../config/security';
 
 /**
  * Cookie names used in the application
@@ -191,11 +192,6 @@ export function clearAuthCookie(reply: FastifyReply): void {
  * @param token - CSRF token
  * @param options - Optional cookie configuration
  */
-// Security constants for token/session validation
-const MIN_TOKEN_LENGTH = 16;
-const SESSION_ID_MASK_PREFIX_LENGTH = 4;
-const SESSION_ID_MASK_SUFFIX_LENGTH = 4;
-
 export function setCsrfCookie(
   reply: FastifyReply,
   token: string,
@@ -207,10 +203,10 @@ export function setCsrfCookie(
     throw new Error('Invalid CSRF token: must be a non-empty string');
   }
 
-  // CSRF tokens should be at least 16 characters for security
-  if (token.length < MIN_TOKEN_LENGTH) {
-    console.error('[Cookies] CSRF token too short - minimum 16 characters');
-    throw new Error('CSRF token too short: minimum 16 characters required');
+  // CSRF tokens should be at least MIN_TOKEN_LENGTH characters for security
+  if (token.length < COOKIE_SECURITY.MIN_TOKEN_LENGTH) {
+    console.error(`[Cookies] CSRF token too short - minimum ${COOKIE_SECURITY.MIN_TOKEN_LENGTH} characters`);
+    throw new Error(`CSRF token too short: minimum ${COOKIE_SECURITY.MIN_TOKEN_LENGTH} characters required`);
   }
 
   const cookieOptions = { ...DEFAULT_CSRF_COOKIE_OPTIONS, ...options };
@@ -264,10 +260,10 @@ export function setSessionCookie(
     throw new Error('Invalid session ID: must be a non-empty string');
   }
 
-  // Session IDs should be at least 16 characters for security
-  if (sessionId.length < MIN_TOKEN_LENGTH) {
-    console.error('[Cookies] Session ID too short - minimum 16 characters');
-    throw new Error('Session ID too short: minimum 16 characters required');
+  // Session IDs should be at least MIN_SESSION_ID_LENGTH characters for security
+  if (sessionId.length < COOKIE_SECURITY.MIN_SESSION_ID_LENGTH) {
+    console.error(`[Cookies] Session ID too short - minimum ${COOKIE_SECURITY.MIN_SESSION_ID_LENGTH} characters`);
+    throw new Error(`Session ID too short: minimum ${COOKIE_SECURITY.MIN_SESSION_ID_LENGTH} characters required`);
   }
 
   const cookieOptions = { ...DEFAULT_AUTH_COOKIE_OPTIONS, ...options };
@@ -276,7 +272,7 @@ export function setSessionCookie(
 
   // Don't log the full session ID in production to avoid leaking it
   const maskedSessionId = process.env.NODE_ENV === 'production'
-    ? `${sessionId.substring(0, SESSION_ID_MASK_PREFIX_LENGTH)}...${sessionId.substring(sessionId.length - SESSION_ID_MASK_SUFFIX_LENGTH)}`
+    ? `${sessionId.substring(0, COOKIE_SECURITY.SESSION_ID_MASK_PREFIX_LENGTH)}...${sessionId.substring(sessionId.length - COOKIE_SECURITY.SESSION_ID_MASK_SUFFIX_LENGTH)}`
     : sessionId;
 
   console.log('[Cookies] Set session cookie:', maskedSessionId);
@@ -319,4 +315,31 @@ export function clearAllAuthCookies(reply: FastifyReply): void {
   clearSessionCookie(reply);
 
   console.log('[Cookies] Cleared all authentication cookies');
+}
+
+/**
+ * Parse cookie string into key-value pairs
+ *
+ * This utility function parses raw cookie headers (e.g., from WebSocket upgrade requests)
+ * into a structured object. Used for manual cookie parsing when Fastify's cookie
+ * parser is not available.
+ *
+ * @param cookieHeader - Raw cookie header string (e.g., "name=value; foo=bar")
+ * @returns Object with cookie key-value pairs
+ *
+ * @example
+ * ```typescript
+ * const cookies = parseCookieString('privy-id-token=abc123; csrf-token=xyz789');
+ * console.log(cookies['privy-id-token']); // 'abc123'
+ * console.log(cookies['csrf-token']); // 'xyz789'
+ * ```
+ */
+export function parseCookieString(cookieHeader: string): Record<string, string> {
+  return cookieHeader.split(';').reduce((acc, cookie) => {
+    const [key, value] = cookie.trim().split('=');
+    if (key && value) {
+      acc[key] = decodeURIComponent(value);
+    }
+    return acc;
+  }, {} as Record<string, string>);
 }

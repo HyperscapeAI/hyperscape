@@ -36,14 +36,14 @@
 // Import commonly used shared types for convenience
 
 /** Database interface for Knex-style queries */
-export type SystemDatabase<TRecord = unknown> = (table: string) => {
-  where: (key: string, value: unknown) => {
+export type SystemDatabase<TRecord extends Record<string, unknown> = Record<string, unknown>> = (table: string) => {
+  where: (key: string, value: TRecord[keyof TRecord]) => {
     first: () => Promise<TRecord | undefined>
     update: (data: Partial<TRecord>) => Promise<number>
     delete: () => Promise<number>
   }
   select: (columns?: string | string[]) => {
-    where: (key: string, value: unknown) => {
+    where: (key: string, value: TRecord[keyof TRecord]) => {
       first: () => Promise<TRecord | undefined>
     }
   }
@@ -285,8 +285,8 @@ export interface ChatMessage {
 
 // Define storage interface based on actual storage implementation
 export interface StorageSystem {
-  get<T = unknown>(key: string): Promise<T | undefined>;
-  set<T = unknown>(key: string, value: T): Promise<void>;
+  get<T>(key: string): Promise<T | undefined>;
+  set<T>(key: string, value: T): Promise<void>;
   delete(key: string): Promise<void>;
 }
 
@@ -362,7 +362,8 @@ export type PlayerEntity = Entity & {
  * @public
  */
 export interface ServerNetworkWithSockets {
-  sockets: Map<string, ServerSocket & { 
+  sockets: Map<string, ServerSocket & {
     player: PlayerEntity
   }>
+  db: SystemDatabase
 }

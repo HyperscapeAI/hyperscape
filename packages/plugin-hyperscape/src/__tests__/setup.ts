@@ -243,11 +243,8 @@ export class TestScenario {
 
   constructor() {
     this.runtime = createMockRuntime();
-    // Use mock world when DEV_CONFIG.USE_MOCK_WORLD is enabled or in test environment
+    // Mock world is always used in tests
     this.world = createMockWorld();
-    if (DEV_CONFIG.USE_MOCK_WORLD) {
-      console.debug("[TestScenario] Using mock world (DEV_CONFIG.USE_MOCK_WORLD=true)");
-    }
   }
 
   getRuntimet(): IAgentRuntime {

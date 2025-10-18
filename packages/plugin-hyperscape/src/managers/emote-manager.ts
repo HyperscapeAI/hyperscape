@@ -19,7 +19,7 @@ export class EmoteManager {
   private movementCheckInterval: NodeJS.Timeout | null = null;
   private runtime: IAgentRuntime;
   private emoteQueue: string[] = [];
-  private isPlayingEmote = false;
+  private isPlayingEmote: boolean = false;
 
   constructor(runtime: IAgentRuntime) {
     this.runtime = runtime;

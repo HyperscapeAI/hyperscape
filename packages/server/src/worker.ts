@@ -51,7 +51,7 @@
  */
 
 // Cloudflare Containers types (optional package, used in Cloudflare deployments)
-// @ts-ignore - Optional dependency, may not be installed in all environments
+// @ts-expect-error - Optional dependency, may not be installed in all environments
 import { Container, getRandom } from '@cloudflare/containers'
 
 // ============================================================================

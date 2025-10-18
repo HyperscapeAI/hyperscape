@@ -265,6 +265,7 @@ export const chopTreeAction: Action = {
         let totalXp = 0
         let didLevelUp = false
         let levelAfter: number | undefined
+        let cleanedUp = false
 
         // Listen for gathering completion
         const completionHandler = (data: { playerId: string; resourceId: string; successful: boolean }) => {
@@ -320,6 +321,8 @@ export const chopTreeAction: Action = {
         }
 
         const cleanup = () => {
+          if (cleanedUp) return
+          cleanedUp = true
           clearTimeout(timeout)
           world.off(RESOURCE_GATHERING_COMPLETED, completionHandler)
           world.off(INVENTORY_UPDATED, inventoryHandler)
@@ -354,22 +357,26 @@ export const chopTreeAction: Action = {
         // Also resolve after a short delay when gathering succeeds (don't wait full timeout)
         const checkCompletion = setInterval(() => {
           if (gatheringSuccess && (itemsReceived.length > 0 || totalXp > 0)) {
-            cleanup()
-            clearInterval(checkCompletion)
-            logger.info(`[CHOP_TREE] Gathering complete with items/XP received`)
-            resolve({
-              success: true,
-              items: itemsReceived,
-              xpGained: totalXp,
-              levelUp: didLevelUp,
-              newLevel: levelAfter
-            })
+            if (!cleanedUp) {
+              cleanup()
+              clearInterval(checkCompletion)
+              logger.info(`[CHOP_TREE] Gathering complete with items/XP received`)
+              resolve({
+                success: true,
+                items: itemsReceived,
+                xpGained: totalXp,
+                levelUp: didLevelUp,
+                newLevel: levelAfter
+              })
+            }
           }
         }, 500)
 
         // Clean up interval on timeout
         setTimeout(() => {
-          clearInterval(checkCompletion)
+          if (!cleanedUp) {
+            clearInterval(checkCompletion)
+          }
         }, 15000)
 
         // Send gather packet via WebSocket

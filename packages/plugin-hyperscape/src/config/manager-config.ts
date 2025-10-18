@@ -3,20 +3,22 @@
  * Centralizes all configurable values for manager components
  */
 
+import { elizaLogger } from '@elizaos/core';
+
 // Type-safe environment variable parsing helpers
 function parseIntEnv(value: string | undefined, defaultValue: number, min?: number, max?: number): number {
   if (!value) return defaultValue;
   const parsed = parseInt(value, 10);
   if (!Number.isFinite(parsed)) {
-    console.warn(`Invalid integer env value "${value}", using default ${defaultValue}`);
+    elizaLogger.warn(`Invalid integer env value "${value}", using default ${defaultValue}`);
     return defaultValue;
   }
   if (min !== undefined && parsed < min) {
-    console.warn(`Env value ${parsed} below minimum ${min}, clamping to ${min}`);
+    elizaLogger.warn(`Env value ${parsed} below minimum ${min}, clamping to ${min}`);
     return min;
   }
   if (max !== undefined && parsed > max) {
-    console.warn(`Env value ${parsed} above maximum ${max}, clamping to ${max}`);
+    elizaLogger.warn(`Env value ${parsed} above maximum ${max}, clamping to ${max}`);
     return max;
   }
   return parsed;
@@ -26,15 +28,15 @@ function parseFloatEnv(value: string | undefined, defaultValue: number, min?: nu
   if (!value) return defaultValue;
   const parsed = parseFloat(value);
   if (!Number.isFinite(parsed)) {
-    console.warn(`Invalid float env value "${value}", using default ${defaultValue}`);
+    elizaLogger.warn(`Invalid float env value "${value}", using default ${defaultValue}`);
     return defaultValue;
   }
   if (min !== undefined && parsed < min) {
-    console.warn(`Env value ${parsed} below minimum ${min}, clamping to ${min}`);
+    elizaLogger.warn(`Env value ${parsed} below minimum ${min}, clamping to ${min}`);
     return min;
   }
   if (max !== undefined && parsed > max) {
-    console.warn(`Env value ${parsed} above maximum ${max}, clamping to ${max}`);
+    elizaLogger.warn(`Env value ${parsed} above maximum ${max}, clamping to ${max}`);
     return max;
   }
   return parsed;
@@ -45,7 +47,7 @@ function parseBoolEnv(value: string | undefined, defaultValue: boolean): boolean
   const lower = value.toLowerCase().trim();
   if (lower === 'true' || lower === '1' || lower === 'yes') return true;
   if (lower === 'false' || lower === '0' || lower === 'no') return false;
-  console.warn(`Invalid boolean env value "${value}", using default ${defaultValue}`);
+  elizaLogger.warn(`Invalid boolean env value "${value}", using default ${defaultValue}`);
   return defaultValue;
 }
 
