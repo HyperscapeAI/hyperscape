@@ -252,10 +252,10 @@ export function SettingsPanel({ world }: SettingsPanelProps) {
 
   return (
     <div className="w-full h-full overflow-y-auto relative">
-      <div className="font-semibold mb-2.5" style={{ color: '#f2d08a' }}>Quick Settings</div>
+      <div className="font-semibold mb-2.5 text-white">Quick Settings</div>
       <div className="flex flex-col gap-2.5">
         <div>
-          <div className="mb-1" style={{ color: 'rgba(242, 208, 138, 0.9)' }}>UI Scale</div>
+          <div className="mb-1 text-white/90">UI Scale</div>
           <input
             type='range'
             min={0.6}
@@ -271,7 +271,7 @@ export function SettingsPanel({ world }: SettingsPanelProps) {
           />
         </div>
         <div className="flex justify-between items-center">
-          <div style={{ color: 'rgba(242, 208, 138, 0.9)' }}>Fullscreen</div>
+          <div className="text-white/90">Fullscreen</div>
           <button
             onClick={() => { if (canFullscreen) toggleFullscreen(!(isFullscreen as boolean)) }}
             className="border text-white rounded-md py-1 px-2 cursor-pointer"
@@ -285,7 +285,7 @@ export function SettingsPanel({ world }: SettingsPanelProps) {
           </button>
         </div>
         <div className="flex justify-between items-center">
-          <div style={{ color: 'rgba(242, 208, 138, 0.9)' }}>Performance Stats</div>
+          <div className="text-white/90">Performance Stats</div>
           <button
             onClick={() => {
               const next = !statsOn

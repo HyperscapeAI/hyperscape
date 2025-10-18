@@ -948,7 +948,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
         this.world.entities.remove(serverSocket.player.id);
       }
       // Broadcast entity removal to all remaining clients
-      this.send('entityRemoved', serverSocket.player.id);
+      this.send('entityRemoved', { id: serverSocket.player.id });
     }
   }
 
