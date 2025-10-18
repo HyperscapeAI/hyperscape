@@ -112,6 +112,26 @@ type ExecutionContext = {
 }
 
 /**
+ * Cloudflare Request with cf property
+ *
+ * Extends the standard Request type with Cloudflare-specific metadata.
+ * The `cf` property contains information about the request's origin datacenter,
+ * country, and other edge-specific data.
+ *
+ * @see https://developers.cloudflare.com/workers/runtime-apis/request/#incomingrequestcfproperties
+ */
+type CloudflareRequest = Request & {
+  cf?: {
+    /** Cloudflare datacenter (colo) processing this request */
+    colo?: string
+    /** Country code (ISO 3166-1 alpha-2) */
+    country?: string
+    /** Request's IP address */
+    ip?: string
+  }
+}
+
+/**
  * Worker environment bindings
  * 
  * These are injected by Cloudflare Workers runtime and configured in wrangler.toml.
@@ -179,7 +199,7 @@ export default {
     // ===== HEALTH CHECK (Edge level) =====
     if (url.pathname === '/health') {
       // Cast to CloudflareRequest to access cf property
-      const cfRequest = request as Request & { cf?: { colo?: string } }
+      const cfRequest = request as CloudflareRequest
       return Response.json({
         status: 'healthy',
         layer: 'cloudflare-edge',

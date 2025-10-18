@@ -57,7 +57,8 @@
 import { createJWT, verifyJWT } from './utils';
 import type { User, SystemDatabase } from './types';
 import { uuid } from '@hyperscape/shared';
-import { RateLimiterMemory } from 'rate-limiter-flexible';
+import { RateLimiterMemory, RateLimiterRedis } from 'rate-limiter-flexible';
+import Redis from 'ioredis';
 
 /**
  * Agent token expiry time in seconds (5 minutes for enhanced security)
@@ -70,13 +71,72 @@ const AGENT_TOKEN_EXPIRY = parseInt(process.env.AGENT_TOKEN_EXPIRY || '300', 10)
 const AGENT_AUTH_ENABLED = process.env.AGENT_AUTH_ENABLED !== 'false';
 
 /**
- * Rate limiter for agent registration
- * Prevents abuse by limiting registration attempts
+ * Redis client for distributed rate limiting (production)
+ * Falls back to null in development if Redis is not configured
  */
-const agentRegistrationLimiter = new RateLimiterMemory({
-  points: parseInt(process.env.AGENT_REGISTRATION_LIMIT || '10', 10), // 10 registrations
-  duration: parseInt(process.env.AGENT_REGISTRATION_WINDOW || '900', 10), // per 15 minutes (900 seconds)
-});
+let redisClient: Redis | null = null;
+
+if (process.env.REDIS_URL) {
+  try {
+    redisClient = new Redis(process.env.REDIS_URL, {
+      enableOfflineQueue: false,
+      maxRetriesPerRequest: 3,
+      retryStrategy(times: number) {
+        if (times > 3) {
+          console.error('[AgentAuth] Redis connection failed after 3 retries. Falling back to in-memory rate limiting.');
+          return null; // Stop retrying
+        }
+        return Math.min(times * 100, 3000); // Exponential backoff
+      },
+    });
+
+    redisClient.on('error', (err) => {
+      console.error('[AgentAuth] Redis error:', err.message);
+    });
+
+    redisClient.on('connect', () => {
+      console.info('[AgentAuth] Redis connected - using distributed rate limiting');
+    });
+  } catch (error) {
+    console.error('[AgentAuth] Failed to initialize Redis:', error);
+    redisClient = null;
+  }
+}
+
+/**
+ * Rate limiter for agent registration
+ * 
+ * Uses Redis-backed distributed rate limiting in production to prevent
+ * bypassing limits across multiple server instances.
+ * 
+ * Falls back to in-memory rate limiting in development (single instance only).
+ * 
+ * **IMPORTANT**: In-memory rate limiting does NOT work correctly in 
+ * multi-instance deployments. Each instance has its own rate limit counter,
+ * allowing attackers to bypass limits by distributing requests across instances.
+ * 
+ * Always set REDIS_URL in production environments.
+ */
+const agentRegistrationLimiter = redisClient
+  ? new RateLimiterRedis({
+      storeClient: redisClient,
+      points: parseInt(process.env.AGENT_REGISTRATION_LIMIT || '10', 10), // 10 registrations
+      duration: parseInt(process.env.AGENT_REGISTRATION_WINDOW || '900', 10), // per 15 minutes (900 seconds)
+      keyPrefix: 'agent_reg_limit',
+    })
+  : new RateLimiterMemory({
+      points: parseInt(process.env.AGENT_REGISTRATION_LIMIT || '10', 10),
+      duration: parseInt(process.env.AGENT_REGISTRATION_WINDOW || '900', 10),
+    });
+
+// Warn if using in-memory rate limiting in production
+if (!redisClient && process.env.NODE_ENV === 'production') {
+  console.warn(
+    '⚠️  [AgentAuth] Using in-memory rate limiting in production! ' +
+    'This is NOT secure for multi-instance deployments. ' +
+    'Set REDIS_URL environment variable to enable distributed rate limiting.'
+  );
+}
 
 /**
  * Agent authentication information
@@ -185,12 +245,12 @@ async function logAgentAuthEvent(entry: AgentAuthAuditEntry, db?: SystemDatabase
   // Add to in-memory cache
   auditLog.push(entry);
 
-  // Also log to console for debugging
+  // Also log to console for debugging (without PII)
+  // Note: Full metadata including IP addresses is persisted to database but excluded from console to prevent PII exposure
   const logLevel = entry.success ? 'info' : 'warn';
   console[logLevel](`[AgentAuth] ${entry.eventType}:`, {
     agentId: entry.agentId,
     success: entry.success,
-    metadata: entry.metadata,
   });
 
   // Keep only last 1000 entries in memory
@@ -327,7 +387,7 @@ export async function registerAgent(
       runtimeId: request.runtimeId || null,
       ownerId: request.privyUserId || null,
       privyUserId: request.privyUserId || null,
-      isActive: true,
+      isActive: 1, // 1 = active (database expects integer, not boolean)
       permissions: permissions.join(','),
     };
 
@@ -548,7 +608,7 @@ export async function deactivateAgent(
 ): Promise<void> {
   await db('users')
     .where('id', agentId)
-    .update({ isActive: false });
+    .update({ isActive: 0 }); // 0 = inactive (database expects integer, not boolean)
 
   const entry = Object.assign(new AgentAuthAuditEntry(), {
     timestamp: new Date().toISOString(),
@@ -579,4 +639,21 @@ export function getAgentAuditLog(agentId: string): AgentAuthAuditEntry[] {
  */
 export function getRecentAuditLog(limit = 100): AgentAuthAuditEntry[] {
   return auditLog.slice(-limit);
+}
+
+/**
+ * Gracefully closes Redis connection (if active)
+ * Call this during server shutdown
+ */
+export async function shutdownAgentAuth(): Promise<void> {
+  const client = redisClient;
+  if (client) {
+    console.info('[AgentAuth] Closing Redis connection...');
+    try {
+      await client.quit();
+      console.info('[AgentAuth] Redis connection closed');
+    } catch (error) {
+      console.error('[AgentAuth] Error closing Redis connection:', error);
+    }
+  }
 }

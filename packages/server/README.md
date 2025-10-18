@@ -23,6 +23,8 @@ See `FIXES-COMPLETE.md` for detailed migration changelog.
 - **Character System** - Multi-character support per account
 - **Authentication** - Optional Privy authentication with Farcaster support
 - **LiveKit Voice** - Optional voice chat integration
+- **Distributed Rate Limiting** - Redis-backed rate limiting for multi-instance deployments
+- **Agent Authentication** - Secure M2M auth for AI agents with audit logging
 
 ## Quick Start
 
@@ -236,6 +238,18 @@ POSTGRES_PORT=5432
 DATABASE_URL=postgresql://user:pass@host:5432/dbname
 ```
 
+### Redis (Required for Production Multi-Instance)
+
+```env
+# Required for production deployments with multiple server instances
+# Enables distributed rate limiting across instances
+REDIS_URL=redis://localhost:6379
+```
+
+**Important:** Redis is **required** for production deployments running multiple server instances. Without Redis, rate limiting will not work correctly across instances, allowing attackers to bypass rate limits by distributing requests.
+
+For development (single instance), Redis is optional and will fall back to in-memory rate limiting.
+
 ### Assets
 
 ```env
@@ -284,15 +298,22 @@ docker run -p 5555:5555 \
 Requirements:
 - Node.js 22+ or Bun runtime
 - PostgreSQL 16+ (local or managed)
+- **Redis** (required for multi-instance deployments)
 - Reverse proxy (nginx, caddy) for SSL
 
 ```bash
 # Build
 bun run build
 
-# Run with process manager
+# Run with process manager (single instance)
 pm2 start dist/index.js --name hyperscape-server
+
+# Run multiple instances (requires Redis)
+pm2 start dist/index.js --name hyperscape-server --instances 4 -e REDIS_URL=redis://localhost:6379
 ```
+
+**Multi-Instance Deployments:**
+When running multiple server instances (for high availability or load balancing), you **must** configure Redis via the `REDIS_URL` environment variable. This enables distributed rate limiting across all instances. Without Redis, each instance will have its own independent rate limiter, allowing attackers to bypass rate limits by distributing requests across instances.
 
 ### Environment-Specific
 

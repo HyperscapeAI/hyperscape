@@ -296,6 +296,12 @@ export class MessageManager {
 
   /**
    * Determine if agent should respond to message
+   *
+   * By default, only responds when:
+   * - Agent is mentioned by name
+   * - Message is a direct message
+   *
+   * Can be overridden by setting alwaysRespond config option to true
    */
   private async shouldRespondToMessage(
     message: Memory,
@@ -317,7 +323,15 @@ export class MessageManager {
       return true;
     }
 
-    return true; // Default to responding
+    // Check for configurable override to allow broadcast responses
+    // This can be set via runtime.character.settings.alwaysRespond = true
+    const settings = this.runtime.character.settings as Record<string, unknown> | undefined;
+    if (settings?.alwaysRespond === true) {
+      return true;
+    }
+
+    // Default to NOT responding (only respond when mentioned or in DMs)
+    return false;
   }
 
   /**
@@ -340,18 +354,36 @@ export class MessageManager {
         }
       );
 
-      // Parse response text
-      const textContent = typeof responseText === 'string'
-        ? responseText
-        : (responseText && typeof responseText === 'object' && 'text' in responseText)
-          ? String((responseText as { text: unknown }).text)
-          : String(responseText);
+      // Parse response text using helper
+      const textContent = this.parseResponseText(responseText);
 
       return textContent.trim();
     } catch (error) {
       console.error("[MessageManager] Failed to generate response:", error);
       return null;
     }
+  }
+
+  /**
+   * Parse LLM response text with clear type guards
+   *
+   * @param responseText - Unknown response from LLM (could be string, object, or other type)
+   * @returns Parsed string content
+   */
+  private parseResponseText(responseText: unknown): string {
+    // Check if it's already a string
+    if (typeof responseText === 'string') {
+      return responseText;
+    }
+
+    // Check if it's an object with a 'text' property
+    if (responseText && typeof responseText === 'object' && 'text' in responseText) {
+      const textValue = (responseText as { text: unknown }).text;
+      return String(textValue);
+    }
+
+    // Fallback: convert to string
+    return String(responseText);
   }
 
   /**
