@@ -123,6 +123,7 @@ import fastifyWebSocket from '@fastify/websocket'
 import dotenv from 'dotenv'
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
 import fs from 'fs-extra'
+import rateLimit from '@fastify/rate-limit'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { createServerWorld } from '@hyperscape/shared'
@@ -807,7 +808,14 @@ async function startServer() {
   })
 
   // Logout endpoint - clears authentication cookies
-  fastify.post('/api/auth/logout', async (_req, reply) => {
+  fastify.post('/api/auth/logout', {
+    config: {
+      rateLimit: {
+        max: 5, // max 5 logout requests
+        timeWindow: '1 minute'
+      }
+    }
+  }, async (_req, reply) => {
     clearAllAuthCookies(reply)
     return reply.send({
       success: true,
