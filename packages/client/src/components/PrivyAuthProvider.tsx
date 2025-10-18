@@ -15,8 +15,7 @@ interface PrivyAuthProviderProps {
  * Inner component that handles Privy hooks
  */
 function PrivyAuthHandler({ children }: { children: React.ReactNode }) {
-  const { ready, authenticated, user, logout } = usePrivy()
-  const { getIdentityToken } = usePrivy()
+  const { ready, authenticated, user, logout, getIdentityToken } = usePrivy()
 
   useEffect(() => {
     const updateAuth = async () => {

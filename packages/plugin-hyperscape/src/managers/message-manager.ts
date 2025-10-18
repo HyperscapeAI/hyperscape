@@ -350,7 +350,7 @@ export class MessageManager {
           prompt: context,
           max_tokens: 1000,
           temperature: 0.8,
-          stop: [],
+          stop: ['</s>', '\n\nUser:', '\n\nHuman:'],
         }
       );
 
@@ -405,8 +405,12 @@ export class MessageManager {
       context += `${state.text}\n\n`;
     }
 
+    // Get username from metadata (with fallback for backward compatibility)
+    const metadata = message.metadata as { username?: string } | undefined;
+    const userName = metadata?.username || message.content.userName || "User";
+
     // Add current message
-    context += `Message from ${message.content.userName || "User"}:\n${message.content.text}\n\n`;
+    context += `Message from ${userName}:\n${message.content.text}\n\n`;
     context += `Generate a response as ${characterName}. Keep it natural and in-character.\n`;
 
     return context;

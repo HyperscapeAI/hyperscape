@@ -25,27 +25,6 @@
  * ```
  */
 
-/**
- * Fetch request initialization options
- *
- * Type-safe wrapper for fetch API options.
- * We define our own interface using string literals to avoid ESLint no-undef warnings
- * while maintaining type safety with the browser fetch API.
- */
-interface FetchOptions {
-  method?: string
-  headers?: Record<string, string>
-  body?: string
-  credentials?: 'include' | 'omit' | 'same-origin'
-  cache?: 'default' | 'no-store' | 'reload' | 'no-cache' | 'force-cache' | 'only-if-cached'
-  mode?: 'cors' | 'no-cors' | 'same-origin' | 'navigate'
-  redirect?: 'follow' | 'error' | 'manual'
-  referrer?: string
-  referrerPolicy?: 'no-referrer' | 'no-referrer-when-downgrade' | 'origin' | 'origin-when-cross-origin' | 'same-origin' | 'strict-origin' | 'strict-origin-when-cross-origin' | 'unsafe-url'
-  integrity?: string
-  keepalive?: boolean
-  signal?: { aborted: boolean; addEventListener: (type: string, listener: () => void) => void }
-}
 
 /**
  * Get CSRF token from cookie
@@ -93,7 +72,7 @@ export function getCsrfTokenFromCookie(): string | null {
  * }));
  * ```
  */
-export function addCsrfHeader(options: FetchOptions = {}): FetchOptions {
+export function addCsrfHeader(options: RequestInit = {}): RequestInit {
   const csrfToken = getCsrfTokenFromCookie();
 
   if (!csrfToken) {
@@ -104,7 +83,7 @@ export function addCsrfHeader(options: FetchOptions = {}): FetchOptions {
   return {
     ...options,
     headers: {
-      ...options.headers,
+      ...(options.headers as Record<string, string> | undefined),
       'X-CSRF-Token': csrfToken,
     },
   };
@@ -141,16 +120,14 @@ export function hasCsrfToken(): boolean {
  */
 export async function csrfFetch(
   url: string,
-  options: FetchOptions = {}
+  options: RequestInit = {}
 ): Promise<Response> {
-  const csrfOptions: FetchOptions = {
+  const csrfOptions: RequestInit = {
     ...addCsrfHeader(options),
     credentials: 'include', // Always include cookies
   };
 
-  // Cast to unknown first, then to the global RequestInit type
-  // This maintains type safety while working with the browser fetch API
-  return fetch(url, csrfOptions as unknown as globalThis.RequestInit);
+  return fetch(url, csrfOptions);
 }
 
 /**

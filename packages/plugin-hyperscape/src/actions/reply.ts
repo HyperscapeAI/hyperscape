@@ -161,12 +161,14 @@ export const replyAction: Action = {
       },
     };
 
-    await callback({
-      text: (response.message as string) || "",
-      thought: response.thought,
-      actions: ["HYPERSCAPE_REPLY"],
-      source: "hyperscape",
-    });
+    if (callback) {
+      await callback({
+        text: (response.message as string) || "",
+        thought: response.thought,
+        actions: ["HYPERSCAPE_REPLY"],
+        source: "hyperscape",
+      });
+    }
 
     return {
       text: responseContent.text,

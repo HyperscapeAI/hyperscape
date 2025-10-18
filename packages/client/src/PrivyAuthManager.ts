@@ -15,6 +15,26 @@ const AuthResponseSchema = z.object({
 })
 
 /**
+ * Authentication error codes
+ */
+type AuthErrorCode = 'NETWORK_ERROR' | 'INVALID_TOKEN' | 'SERVER_ERROR' | 'VALIDATION_ERROR'
+
+/**
+ * Structured authentication error
+ */
+export class AuthenticationError extends Error {
+  constructor(
+    message: string,
+    public code: AuthErrorCode,
+    public retryable: boolean,
+    public originalError?: unknown
+  ) {
+    super(message)
+    this.name = 'AuthenticationError'
+  }
+}
+
+/**
  * Privy authentication state
  *
  * Contains all authentication-related state including user data,
@@ -69,6 +89,7 @@ export class PrivyAuthManager {
   }
 
   private listeners: Set<(state: PrivyAuthState) => void> = new Set()
+  private csrfTokenPromise: Promise<void> | null = null
 
   private constructor() {}
 
@@ -142,6 +163,7 @@ export class PrivyAuthManager {
    *
    * @param user - Privy user object with profile data
    * @param identityToken - Privy identity token (JWT with user claims)
+   * @throws {AuthenticationError} Structured error with retry guidance
    *
    * @public
    */
@@ -165,13 +187,58 @@ export class PrivyAuthManager {
         }),
       })
 
+      // Categorize errors by HTTP status
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.message || 'Failed to authenticate with server')
+        let errorData: { message?: string } = {}
+
+        // Safely parse error response JSON
+        try {
+          errorData = await response.json()
+        } catch (jsonError) {
+          console.warn('[PrivyAuthManager] Failed to parse error response as JSON:', jsonError)
+          // Continue with empty errorData object
+        }
+
+        const errorMessage = errorData.message || `HTTP ${response.status}: Failed to authenticate with server`
+
+        // Categorize by status code
+        if (response.status === 401) {
+          throw new AuthenticationError(
+            errorMessage,
+            'INVALID_TOKEN',
+            false, // Non-retryable - token is invalid
+            response
+          )
+        } else if (response.status >= 500) {
+          throw new AuthenticationError(
+            errorMessage,
+            'SERVER_ERROR',
+            true, // Retryable - server is having issues
+            response
+          )
+        } else {
+          throw new AuthenticationError(
+            errorMessage,
+            'SERVER_ERROR',
+            false, // Non-retryable - client error (4xx)
+            response
+          )
+        }
       }
 
-      // Validate response using helper
-      const data = this.validateAuthResponse(await response.json())
+      // Parse and validate response
+      let data: { csrfToken: string; userId: string }
+      try {
+        const rawData = await response.json()
+        data = this.validateAuthResponse(rawData)
+      } catch (validationError) {
+        throw new AuthenticationError(
+          'Server returned invalid authentication response',
+          'VALIDATION_ERROR',
+          false, // Non-retryable - response format is wrong
+          validationError
+        )
+      }
 
       // Update state with user info and CSRF token
       // NOTE: The actual auth token is now in an HttpOnly cookie, not in state
@@ -194,8 +261,53 @@ export class PrivyAuthManager {
 
       console.log('[PrivyAuthManager] Authentication successful - credentials stored in HttpOnly cookie')
     } catch (error) {
-      console.error('[PrivyAuthManager] Failed to authenticate with server:', error)
-      throw error
+      // Handle network errors
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        const networkError = new AuthenticationError(
+          'Network error: Failed to connect to authentication server',
+          'NETWORK_ERROR',
+          true, // Retryable - network issues are temporary
+          error
+        )
+        console.error('[PrivyAuthManager] Network error during authentication:', {
+          code: networkError.code,
+          retryable: networkError.retryable,
+          message: networkError.message,
+          originalError: error
+        })
+        throw networkError
+      }
+
+      // Re-throw AuthenticationError with logging
+      if (error instanceof AuthenticationError) {
+        console.error('[PrivyAuthManager] Authentication failed:', {
+          code: error.code,
+          retryable: error.retryable,
+          message: error.message,
+          originalError: error.originalError
+        })
+
+        // Emit retry recommendation for retryable errors
+        if (error.retryable) {
+          console.warn('[PrivyAuthManager] This error is retryable. Consider implementing exponential backoff.')
+        }
+
+        throw error
+      }
+
+      // Unknown error - wrap it
+      const unknownError = new AuthenticationError(
+        error instanceof Error ? error.message : 'Unknown authentication error',
+        'SERVER_ERROR',
+        false,
+        error
+      )
+      console.error('[PrivyAuthManager] Unknown error during authentication:', {
+        code: unknownError.code,
+        retryable: unknownError.retryable,
+        originalError: error
+      })
+      throw unknownError
     }
   }
 
@@ -281,6 +393,7 @@ export class PrivyAuthManager {
    *
    * Called automatically during restoration if CSRF token is not in localStorage.
    * Fetches a new CSRF token from the server using the HttpOnly cookie for auth.
+   * Prevents race conditions by ensuring only one fetch happens at a time.
    *
    * @returns Promise that resolves when CSRF token is fetched and updated
    *
@@ -292,38 +405,56 @@ export class PrivyAuthManager {
       return
     }
 
-    // Only fetch if we have a userId (user is authenticated)
+    // If a fetch is already in progress, return the existing promise
+    if (this.csrfTokenPromise) {
+      return this.csrfTokenPromise
+    }
+
+    // Check authentication before starting fetch
     if (!this.state.privyUserId) {
       throw new Error('Cannot fetch CSRF token: user not authenticated')
     }
 
-    try {
-      const response = await fetch(`${this.getServerUrl()}/api/auth/csrf`, {
-        method: 'GET',
-        credentials: 'include', // Include cookies for authentication
-      })
+    // Create a self-contained async IIFE that handles the fetch
+    this.csrfTokenPromise = (async () => {
+      try {
+        const response = await fetch(`${this.getServerUrl()}/api/auth/csrf`, {
+          method: 'GET',
+          credentials: 'include', // Include cookies for authentication
+        })
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch CSRF token: ${response.status}`)
+        if (!response.ok) {
+          throw new Error(`Failed to fetch CSRF token: ${response.status}`)
+        }
+
+        // Validate response using helper
+        const csrfData = this.validateAuthResponse(await response.json())
+
+        // Re-check authentication after fetch completes (to detect logout during fetch)
+        if (!this.state.privyUserId) {
+          throw new Error('User logged out during CSRF token fetch')
+        }
+
+        // Update state with fetched CSRF token
+        this.updateState({
+          csrfToken: csrfData.csrfToken,
+        })
+
+        // Store in localStorage for next session
+        localStorage.setItem('csrf_token', csrfData.csrfToken)
+
+        console.log('[PrivyAuthManager] CSRF token fetched and updated')
+      } catch (error) {
+        console.error('[PrivyAuthManager] Failed to fetch CSRF token:', error)
+        // Don't clear auth state - the error is logged and can be retried
+        throw error
+      } finally {
+        // Clear the promise so future calls can retry
+        this.csrfTokenPromise = null
       }
+    })()
 
-      // Validate response using helper
-      const csrfData = this.validateAuthResponse(await response.json())
-
-      // Update state with fetched CSRF token
-      this.updateState({
-        csrfToken: csrfData.csrfToken,
-      })
-
-      // Store in localStorage for next session
-      localStorage.setItem('csrf_token', csrfData.csrfToken)
-
-      console.log('[PrivyAuthManager] CSRF token fetched and updated')
-    } catch (error) {
-      console.error('[PrivyAuthManager] Failed to fetch CSRF token:', error)
-      // Don't clear auth state - the error is logged and can be retried
-      throw error
-    }
+    return this.csrfTokenPromise
   }
 
   /**

@@ -68,16 +68,14 @@ const rpgSystems: IGameSystem[] = [
     type: "skills",
     init: async (world: World) => {
       // Validate that skills system exists in world
-      if (typeof world.getSystem === 'function') {
-        const skillsSystem = world.getSystem('skills');
-        if (!skillsSystem) {
-          console.warn('[RPG Pack] Skills system not found in world');
-        } else {
-          console.info('[RPG Pack] ✓ Skills system connected');
-        }
-      } else {
-        console.warn('[RPG Pack] world.getSystem API not available');
+      if (typeof world.getSystem !== 'function') {
+        throw new Error('[RPG Pack] Missing required API: world.getSystem is not a function');
       }
+      const skillsSystem = world.getSystem('skills');
+      if (!skillsSystem) {
+        throw new Error('[RPG Pack] Missing required system: skills');
+      }
+      console.info('[RPG Pack] ✓ Skills system connected');
     },
     cleanup: () => {
       console.info('[RPG Pack] Skills system bridge disconnected');
@@ -90,16 +88,14 @@ const rpgSystems: IGameSystem[] = [
     type: "inventory",
     init: async (world: World) => {
       // Validate that inventory system exists in world
-      if (typeof world.getSystem === 'function') {
-        const inventorySystem = world.getSystem('inventory');
-        if (!inventorySystem) {
-          console.warn('[RPG Pack] Inventory system not found in world');
-        } else {
-          console.info('[RPG Pack] ✓ Inventory system connected');
-        }
-      } else {
-        console.warn('[RPG Pack] world.getSystem API not available');
+      if (typeof world.getSystem !== 'function') {
+        throw new Error('[RPG Pack] Missing required API: world.getSystem is not a function');
       }
+      const inventorySystem = world.getSystem('inventory');
+      if (!inventorySystem) {
+        throw new Error('[RPG Pack] Missing required system: inventory');
+      }
+      console.info('[RPG Pack] ✓ Inventory system connected');
     },
     cleanup: () => {
       console.info('[RPG Pack] Inventory system bridge disconnected');
@@ -112,16 +108,14 @@ const rpgSystems: IGameSystem[] = [
     type: "custom",
     init: async (world: World) => {
       // Validate that banking system exists in world
-      if (typeof world.getSystem === 'function') {
-        const bankingSystem = world.getSystem('banking');
-        if (!bankingSystem) {
-          console.warn('[RPG Pack] Banking system not found in world');
-        } else {
-          console.info('[RPG Pack] ✓ Banking system connected');
-        }
-      } else {
-        console.warn('[RPG Pack] world.getSystem API not available');
+      if (typeof world.getSystem !== 'function') {
+        throw new Error('[RPG Pack] Missing required API: world.getSystem is not a function');
       }
+      const bankingSystem = world.getSystem('banking');
+      if (!bankingSystem) {
+        throw new Error('[RPG Pack] Missing required system: banking');
+      }
+      console.info('[RPG Pack] ✓ Banking system connected');
     },
     cleanup: () => {
       console.info('[RPG Pack] Banking system bridge disconnected');
@@ -134,16 +128,14 @@ const rpgSystems: IGameSystem[] = [
     type: "custom",
     init: async (world: World) => {
       // Validate that resource system exists in world
-      if (typeof world.getSystem === 'function') {
-        const resourceSystem = world.getSystem('resources');
-        if (!resourceSystem) {
-          console.warn('[RPG Pack] Resource system not found in world');
-        } else {
-          console.info('[RPG Pack] ✓ Resource system connected');
-        }
-      } else {
-        console.warn('[RPG Pack] world.getSystem API not available');
+      if (typeof world.getSystem !== 'function') {
+        throw new Error('[RPG Pack] Missing required API: world.getSystem is not a function');
       }
+      const resourceSystem = world.getSystem('resources');
+      if (!resourceSystem) {
+        throw new Error('[RPG Pack] Missing required system: resources');
+      }
+      console.info('[RPG Pack] ✓ Resource system connected');
     },
     cleanup: () => {
       console.info('[RPG Pack] Resource system bridge disconnected');

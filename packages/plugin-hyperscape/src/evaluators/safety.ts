@@ -7,6 +7,8 @@ import {
   composePromptFromState,
   parseKeyValueXml,
   ModelType,
+  generateId,
+  type UUID,
 } from '@elizaos/core'
 
 /**
@@ -21,6 +23,19 @@ function parseScoreValue(value: unknown, defaultValue = 0): number {
   }
   const parsed = parseInt(String(value || defaultValue), 10)
   return Number.isFinite(parsed) ? parsed : defaultValue
+}
+
+/**
+ * Extract action type from action memory entry
+ * Exported for testability
+ */
+export function extractActionType(entry: Memory): string | undefined {
+  if (!entry.content) return undefined
+  const action = entry.content.action
+  if (typeof action === 'string') return action
+  const type = entry.content.type
+  if (typeof type === 'string') return type
+  return undefined
 }
 
 /**
@@ -168,18 +183,6 @@ export const safetyEvaluator: Evaluator = {
       const actionsLastMinute = agentActions.filter(
         a => a.createdAt && a.createdAt > oneMinuteAgo
       )
-
-      /**
-       * Extract action type from action memory entry
-       */
-      function extractActionType(entry: Memory): string | undefined {
-        if (!entry.content) return undefined
-        const action = entry.content.action
-        if (typeof action === 'string') return action
-        const type = entry.content.type
-        if (typeof type === 'string') return type
-        return undefined
-      }
 
       // Analyze action patterns
       const actionTypes = actionsLastMinute
@@ -365,7 +368,7 @@ export const safetyEvaluator: Evaluator = {
 
       // Store safety evaluation in memory
       const safetyMemory: Memory = {
-        id: crypto.randomUUID() as `${string}-${string}-${string}-${string}-${string}`,
+        id: generateId() as UUID,
         entityId: message.entityId,
         agentId: runtime.agentId,
         content: {

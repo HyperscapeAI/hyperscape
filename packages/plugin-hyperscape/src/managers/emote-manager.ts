@@ -179,8 +179,11 @@ export class EmoteManager {
         elizaLogger.error(`[EmoteManager] Error playing queued emote '${nextEmote}':`, error);
         // Clear any partial state and continue to next emote
         this.clearTimers();
+        this.isPlayingEmote = false;
+        // Continue processing the queue after an error
+        await this.processNextEmote();
       } finally {
-        // Always ensure we mark as not playing if queue is empty
+        // Only set to false when queue is truly empty (terminal cleanup)
         if (this.emoteQueue.length === 0) {
           this.isPlayingEmote = false;
         }

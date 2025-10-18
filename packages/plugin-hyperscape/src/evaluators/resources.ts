@@ -65,7 +65,32 @@ function isPlayerInventoryData(data: unknown): data is PlayerInventoryData {
 }
 
 /**
- * Generic helper to safely extract and validate metadata from Memory objects
+ * Generic helper to safely extract and validate metadata from Memory objects.
+ *
+ * **WARNING: This function does NOT perform runtime type validation.**
+ *
+ * This function extracts metadata values from a Memory object based on the provided keys,
+ * but it performs an unchecked type assertion when reading from memory.metadata which is
+ * typed as Record<string, unknown>. The function assumes that the values match the generic
+ * type T and casts them accordingly.
+ *
+ * **Callers are responsible for:**
+ * - Ensuring the generic parameter T matches the actual shape of metadata values
+ * - Ensuring expectedKeys correspond to properties that actually exist in the metadata
+ * - Validating or coercing the returned values before use if type safety is critical
+ *
+ * **Return value:**
+ * - Returns `Partial<T>` containing the extracted metadata properties, or `undefined` if
+ *   memory.metadata is not present or is not an object
+ * - The returned Partial<T> may contain properties whose runtime types do not match T
+ *   due to the unchecked type assertion (as T[keyof T]) used internally
+ * - Properties from expectedKeys that don't exist in the metadata will be omitted from
+ *   the result (not set to undefined)
+ *
+ * @template T - The expected shape of the metadata object (not runtime-validated)
+ * @param memory - The Memory object containing metadata to extract
+ * @param expectedKeys - Array of keys to extract from the metadata
+ * @returns A Partial<T> with extracted values, or undefined if metadata is invalid
  */
 function getActionMetadata<T extends Record<string, unknown>>(
   memory: Memory,
@@ -288,13 +313,13 @@ export const resourceManagementEvaluator: Evaluator = {
       // 7. Calculate efficiency scores
       const inventoryEfficiency = typeof parsed.inventory_efficiency === 'number'
         ? parsed.inventory_efficiency
-        : parseInt(String(parsed.inventory_efficiency || 50))
+        : parseInt(String(parsed.inventory_efficiency || 50), 10)
       const bankingEfficiency = typeof parsed.banking_efficiency === 'number'
         ? parsed.banking_efficiency
-        : parseInt(String(parsed.banking_efficiency || 50))
+        : parseInt(String(parsed.banking_efficiency || 50), 10)
       const wastedActionsFromLLM = typeof parsed.wasted_actions === 'number'
         ? parsed.wasted_actions
-        : parseInt(String(parsed.wasted_actions || 0))
+        : parseInt(String(parsed.wasted_actions || 0), 10)
       const issues = String(parsed.issues || '')
       const recommendations = String(parsed.recommendations || '')
 

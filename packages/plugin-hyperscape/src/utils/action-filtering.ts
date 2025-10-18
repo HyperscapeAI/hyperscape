@@ -23,6 +23,18 @@ import type { HyperscapeService } from '../service'
 import type { World } from '../types/core-types'
 
 /**
+ * Nearby interactables radius (in meters)
+ * Actions within this distance are considered "nearby"
+ */
+export const NEARBY_INTERACTABLE_RADIUS = 10
+
+/**
+ * Default action filtering threshold
+ * If more than this ratio of actions are included, filtering is not beneficial
+ */
+export const FILTERING_THRESHOLD = 0.8
+
+/**
  * Predicate function that determines if a category should be included
  * Returns true if the category's actions should be loaded
  */
@@ -42,6 +54,13 @@ export interface ActionFilterConfig {
    * Map of category name to predicate function
    */
   conditionalCategories?: Partial<Record<ActionCategory, CategoryPredicate>>
+
+  /**
+   * Filtering threshold (0-1)
+   * If filtering ratio > threshold, filtering is not applied
+   * Defaults to FILTERING_THRESHOLD (0.8)
+   */
+  threshold?: number
 }
 
 /**
@@ -76,7 +95,7 @@ function hasNearbyInteractables(world: World | null): boolean {
   try {
     // Check for nearby actions via the actions system
     const actionsSystem = world.actions as { getNearby?: (radius: number) => unknown[] } | undefined
-    const nearbyActions = actionsSystem?.getNearby ? actionsSystem.getNearby(10) : []
+    const nearbyActions = actionsSystem?.getNearby ? actionsSystem.getNearby(NEARBY_INTERACTABLE_RADIUS) : []
 
     return nearbyActions.length > 0
   } catch (error) {
@@ -174,7 +193,10 @@ export function shouldUseFiltering(
   const filteredActions = getFilteredActionNames(runtime, message, state, config)
   const allActions = getActionsInCategories(Object.keys(ACTION_CATEGORIES) as ActionCategory[])
 
-  // If we're filtering out less than 20% of actions, filtering isn't worth it
+  // Use configured threshold or default
+  const threshold = config?.threshold ?? FILTERING_THRESHOLD
+
+  // If we're filtering out less than threshold% of actions, filtering isn't worth it
   const filteringRatio = filteredActions.length / allActions.length
-  return filteringRatio < 0.8
+  return filteringRatio < threshold
 }

@@ -107,11 +107,7 @@ export function getActionsInCategory(category: ActionCategory): readonly string[
  * Get all action names across multiple categories
  */
 export function getActionsInCategories(categories: ActionCategory[]): string[] {
-  const actions: string[] = []
-  for (const category of categories) {
-    actions.push(...ACTION_CATEGORIES[category])
-  }
-  return actions
+  return categories.flatMap(category => ACTION_CATEGORIES[category])
 }
 
 /**

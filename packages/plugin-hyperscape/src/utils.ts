@@ -4,6 +4,7 @@ import type { Action, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
 import path from "path";
+import type { ActionFilterConfig } from './utils/action-filtering';
 
 export async function hashFileBuffer(buffer: Buffer): Promise<string> {
   const arrayBuffer = buffer.buffer.slice(
@@ -161,7 +162,7 @@ export async function getHyperscapeActionsOptimized(
   runtime: IAgentRuntime,
   message: Memory,
   state: State,
-  config?: import('./utils/action-filtering').ActionFilterConfig,
+  config?: ActionFilterConfig,
 ): Promise<Action[]> {
   try {
     // Get filtered list of action names to include in context

@@ -312,6 +312,11 @@ Or for chat:
    * Handle movement actions
    */
   private async handleMoveAction(content: ResponseContent): Promise<void> {
+    if (!this.world) {
+      console.error("[BehaviorManager] World not available for movement");
+      return;
+    }
+
     const coordinatesText = content.coordinates!;
 
     const coords = coordinatesText
@@ -321,7 +326,12 @@ Or for chat:
     const [x, y, z] = coords;
     console.info(`[BehaviorManager] Moving to coordinates: ${x}, ${y}, ${z}`);
 
-    const controls = this.world!.systems.find(isClientInputSystem)!;
+    const controls = this.world.systems.find(isClientInputSystem);
+    if (!controls) {
+      console.error("[BehaviorManager] ClientInputSystem not found");
+      return;
+    }
+
     await controls.goto(x, z); // Hyperscape typically uses x,z for ground movement
     console.info("[BehaviorManager] Movement command executed");
   }
@@ -345,9 +355,14 @@ Or for chat:
    * Handle exploration actions (move in a direction)
    */
   private async handleExploreAction(content: ResponseContent): Promise<void> {
+    if (!this.world || !this.world.entities.player) {
+      console.error("[BehaviorManager] World or player not available for exploration");
+      return;
+    }
+
     const direction = (content.direction as string)?.toLowerCase() || "north";
-    const world = this.world!;
-    const playerPos = world.entities.player!.node.position;
+    const world = this.world;
+    const playerPos = world.entities.player.node.position;
 
     // Calculate exploration coordinates based on direction
     const exploreDistance = 5; // units to explore
