@@ -4,16 +4,12 @@ import {
   Memory,
   ModelType,
   UUID,
+  type Content,
+  type State,
 } from "@elizaos/core";
 import type { HyperscapeService } from "../service";
 import { World, Entity } from "../types/core-types";
 import { ChatMessage } from "../types";
-import {
-  composeContext,
-  generateMessageResponse,
-  shouldRespond,
-} from "../utils/ai-helpers";
-import { handleMessage } from "../handlers/native-message-handler";
 
 type HyperscapePlayerData = Entity & {
   metadata?: {
@@ -111,28 +107,47 @@ export class MessageManager {
     // Save message to memory first
     await this.runtime.createMemory(memory, "messages");
 
-    // Process through native message handler (decoupled from bootstrap)
-    // This handles message processing internally within plugin-hyperscape
-    await handleMessage({
-      runtime: this.runtime,
-      message: memory,
-      callback: async (response) => {
-        if (response && response.text) {
-          // Send response back to Hyperscape world
-          await this.sendMessage(response.text);
+    // Compose state with providers (includes world context from worldContextProvider)
+    const state = await this.runtime.composeState(memory);
 
+    // Check if we should respond
+    const shouldRespond = await this.shouldRespondToMessage(memory, state);
+    if (!shouldRespond) {
+      console.debug("[MessageManager] Skipping message (should not respond)");
+      return;
+    }
+
+    // Track responses
+    const responses: Memory[] = [];
+
+    // Process actions using ElizaOS core
+    await this.runtime.processActions(
+      memory,
+      responses,
+      state,
+      async (content: Content) => {
+        if (content?.text) {
+          await this.sendMessage(content.text);
           console.info("[MessageManager] Response sent:", {
             originalMessage: msg.text?.substring(0, 50) + "...",
-            response: response.text?.substring(0, 50) + "...",
-            action: response.action || "none",
+            response: content.text?.substring(0, 50) + "...",
+            action: content.action || "none",
           });
         }
         return [];
-      },
-      onComplete: () => {
-        console.debug("[MessageManager] Message processing complete");
-      },
-    });
+      }
+    );
+
+    // If no action handled the message, generate conversational response
+    if (responses.length === 0) {
+      const response = await this.generateConversationalResponse(memory, state);
+      if (response) {
+        await this.sendMessage(response);
+        console.info("[MessageManager] Generated conversational response");
+      }
+    }
+
+    console.debug("[MessageManager] Message processing complete");
   }
 
   async sendMessage(text: string): Promise<void> {
@@ -277,5 +292,91 @@ export class MessageManager {
     ];
 
     return context.join(", ");
+  }
+
+  /**
+   * Determine if agent should respond to message
+   */
+  private async shouldRespondToMessage(
+    message: Memory,
+    state: State
+  ): Promise<boolean> {
+    const text = message.content.text?.toLowerCase() || "";
+    const agentName = this.runtime.character.name;
+    const nameToCheck = Array.isArray(agentName)
+      ? agentName[0].toLowerCase()
+      : agentName.toLowerCase();
+
+    // Always respond if mentioned by name
+    if (text.includes(nameToCheck)) {
+      return true;
+    }
+
+    // Always respond to direct messages
+    if (message.content.userName && text.length > 0) {
+      return true;
+    }
+
+    return true; // Default to responding
+  }
+
+  /**
+   * Generate conversational response when no action matches
+   */
+  private async generateConversationalResponse(
+    message: Memory,
+    state: State
+  ): Promise<string | null> {
+    try {
+      const context = this.buildLLMContext(message, state);
+
+      const responseText = await this.runtime.useModel(
+        ModelType.TEXT_LARGE,
+        {
+          prompt: context,
+          max_tokens: 1000,
+          temperature: 0.8,
+          stop: [],
+        }
+      );
+
+      // Parse response text
+      const textContent = typeof responseText === 'string'
+        ? responseText
+        : (responseText && typeof responseText === 'object' && 'text' in responseText)
+          ? String((responseText as { text: unknown }).text)
+          : String(responseText);
+
+      return textContent.trim();
+    } catch (error) {
+      console.error("[MessageManager] Failed to generate response:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Build LLM context from state
+   */
+  private buildLLMContext(message: Memory, state: State): string {
+    const characterName = Array.isArray(this.runtime.character.name)
+      ? this.runtime.character.name[0]
+      : this.runtime.character.name;
+
+    const characterBio = Array.isArray(this.runtime.character.bio)
+      ? this.runtime.character.bio.join(" ")
+      : this.runtime.character.bio;
+
+    let context = `You are ${characterName}. ${characterBio}\n\n`;
+
+    // Add state context (includes provider outputs like worldContextProvider)
+    if (state.text) {
+      context += `${state.text}\n\n`;
+    }
+
+    // Add current message
+    context += `Message from ${message.content.userName || "User"}:\n${message.content.text}\n\n`;
+    context += `Generate a response as ${characterName}. Keep it natural and in-character.\n`;
+
+    return context;
   }
 }

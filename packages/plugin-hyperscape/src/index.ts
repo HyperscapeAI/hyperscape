@@ -20,14 +20,35 @@
  * - `ignore`: Ignore specific messages or users
  *
  * **Providers** (context for agent decision-making):
- * - `world`: Current world state, entities, and environment info
+ * - `world`: Current world state, entities, and environment info (verbose)
+ * - `world-context`: Agent position and nearby entities (compact)
  * - `emote`: Available emotes and gestures
  * - `actions`: Available actions the agent can perform
  * - `character`: Agent's character state (health, inventory, etc.)
+ * - `skills`: Skill levels and progression
+ * - `banking`: Banking and inventory status
+ *
+ * **Evaluators** (post-conversation analysis):
+ * - `boredom`: Monitors engagement levels and detects boredom
+ * - `fact`: Extracts and stores factual information from conversations
+ * - `goal`: Tracks user goals and progress toward objectives
+ * - `skills`: Tracks skill training efficiency, XP rates, and level progression
+ * - `resources`: Monitors inventory management, banking efficiency, and resource gathering
+ * - `safety`: CRITICAL - Detects spam, harassment, and rule violations in multiplayer
  *
  * **Service**:
  * `HyperscapeService` manages the connection to Hyperscape worlds, handles
  * real-time state synchronization, and executes actions on behalf of the agent.
+ *
+ * **Content Packs**:
+ * Modular bundles that extend agent capabilities with custom actions, providers,
+ * evaluators, and game systems. The service automatically loads the Runescape RPG
+ * content pack on startup, which includes:
+ * - 6 RPG actions (chopTree, catchFish, cookFood, lightFire, bankItems, checkInventory)
+ * - 2 RPG providers (banking, character stats)
+ * - 4 system bridges (skills, inventory, banking, resources)
+ * - Visual configuration for testing
+ * Additional content packs can be loaded via `service.loadContentPack(pack)`
  *
  * **Events**:
  * Listens for world events (chat messages, entity spawns, etc.) and routes
@@ -53,6 +74,7 @@
  * - Service: Long-lived connection and state management
  * - Actions: Discrete tasks the agent can perform
  * - Providers: Context injection for agent prompts
+ * - Evaluators: Post-conversation analysis and memory building
  * - Events: React to world events
  *
  * **Referenced by**: ElizaOS agent configurations, character definitions
@@ -81,6 +103,7 @@ import { ignoreAction } from "./actions/ignore";
 // import { checkInventoryAction } from "./actions/checkInventory";
 // import { bankItemsAction } from "./actions/bankItems";
 import { hyperscapeProvider } from "./providers/world";
+import { worldContextProvider } from "./providers/world-context";
 import { hyperscapeEmoteProvider } from "./providers/emote";
 import { hyperscapeActionsProvider } from "./providers/actions";
 import { characterProvider } from "./providers/character";
@@ -92,6 +115,14 @@ import { hyperscapeSkillProvider } from "./providers/skills";
 // import { cookingSkillProvider } from "./providers/skills/cooking";
 // import { firemakingSkillProvider } from "./providers/skills/firemaking";
 import { hyperscapeEvents } from "./events";
+import {
+  boredomEvaluator,
+  factEvaluator,
+  goalEvaluator,
+  skillProgressionEvaluator,
+  safetyEvaluator,
+  resourceManagementEvaluator,
+} from "./evaluators";
 
 import { NETWORK_CONFIG } from "./config/constants";
 
@@ -144,7 +175,8 @@ export const hyperscapePlugin: Plugin = {
   ],
   providers: [
     // Standard providers - always loaded
-    hyperscapeProvider,
+    hyperscapeProvider,           // Verbose world state
+    worldContextProvider,         // Compact world context (position + nearby entities)
     hyperscapeEmoteProvider,
     hyperscapeActionsProvider,
     characterProvider,
@@ -152,6 +184,17 @@ export const hyperscapePlugin: Plugin = {
     bankingProvider,
     // Dynamic skill providers are loaded when their systems are detected
     // (woodcuttingSkillProvider, fishingSkillProvider, etc.)
+  ],
+  evaluators: [
+    // Post-conversation analysis and memory building
+    boredomEvaluator,
+    factEvaluator,
+    goalEvaluator,
+    // Gameplay analytics
+    skillProgressionEvaluator,
+    resourceManagementEvaluator,
+    // Safety and compliance (critical for multiplayer)
+    safetyEvaluator,
   ],
   routes: [],
 };

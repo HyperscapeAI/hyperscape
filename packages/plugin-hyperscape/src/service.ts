@@ -112,6 +112,10 @@ import type {
   RPGStateManager,
   TeleportOptions,
 } from "./types/content-types";
+import type {
+  IContentPack,
+  IGameSystem,
+} from "./types/content-pack";
 import {
   CharacterController,
 } from "./types/core-types";
@@ -215,6 +219,10 @@ Hyperscape world integration service that enables agents to:
 
   // UGC content support
   private loadedContent: Map<string, ContentInstance> = new Map();
+
+  // Content pack support
+  private loadedContentPacks: Map<string, IContentPack> = new Map();
+  private activeGameSystems: Map<string, IGameSystem[]> = new Map();
 
   public get currentWorldId(): UUID | null {
     return this._currentWorldId;
@@ -369,6 +377,9 @@ Hyperscape world integration service that enables agents to:
     // Check for RPG systems and load RPG actions/providers dynamically
     await this.loadRPGExtensions();
 
+    // Load default content packs (Runescape RPG pack)
+    await this.loadDefaultContentPacks();
+
     // Check player entity availability (appearance polling will handle initialization)
     if (this.world.entities?.player) {
       const appearance = this.world.entities.player.data.appearance;
@@ -425,6 +436,261 @@ Hyperscape world integration service that enables agents to:
       await this.runtime.registerAction(checkInventoryAction);
 
       console.info('[HyperscapeService] Loaded 2 inventory actions');
+    }
+  }
+
+  /**
+   * Load a content pack into the service
+   *
+   * Content packs are modular bundles that can include:
+   * - Actions: Custom agent actions (e.g., combat, trading)
+   * - Providers: State providers for agent context
+   * - Evaluators: Post-processing analysis components
+   * - Systems: Game systems (e.g., combat, inventory)
+   * - Visual config: Entity colors, UI themes, assets
+   * - State managers: Per-player state tracking
+   *
+   * @param pack - The content pack to load
+   * @param runtime - Optional runtime override (defaults to service runtime)
+   */
+  async loadContentPack(pack: IContentPack, runtime?: IAgentRuntime): Promise<void> {
+    logger.info(
+      `[HyperscapeService] Loading content pack: ${pack.name} v${pack.version}`,
+    );
+
+    // Check if already loaded
+    if (this.loadedContentPacks.has(pack.id)) {
+      logger.warn(`[HyperscapeService] Content pack already loaded: ${pack.id}`);
+      return;
+    }
+
+    const targetRuntime = runtime || this.runtime;
+    const world = this.getWorld();
+
+    if (!world) {
+      throw new Error(
+        `[HyperscapeService] Cannot load content pack: No world connected`,
+      );
+    }
+
+    try {
+      // Execute onLoad hook if provided
+      if (pack.onLoad) {
+        await pack.onLoad(targetRuntime, world);
+      }
+
+      // Initialize game systems
+      if (pack.systems) {
+        const initializedSystems: IGameSystem[] = [];
+
+        for (const system of pack.systems) {
+          try {
+            await system.init(world);
+            initializedSystems.push(system);
+            logger.info(`[HyperscapeService] Initialized system: ${system.name}`);
+          } catch (error) {
+            logger.error(
+              `[HyperscapeService] Failed to initialize system ${system.name}:`,
+              error,
+            );
+            throw error;
+          }
+        }
+
+        this.activeGameSystems.set(pack.id, initializedSystems);
+      }
+
+      // Register actions dynamically
+      if (pack.actions) {
+        for (const action of pack.actions) {
+          try {
+            await targetRuntime.registerAction(action);
+            logger.info(`[HyperscapeService] Registered action: ${action.name}`);
+          } catch (error) {
+            logger.error(
+              `[HyperscapeService] Failed to register action ${action.name}:`,
+              error,
+            );
+            throw error;
+          }
+        }
+      }
+
+      // Register providers
+      if (pack.providers) {
+        for (const provider of pack.providers) {
+          try {
+            targetRuntime.registerProvider(provider);
+            logger.info(`[HyperscapeService] Registered provider: ${provider.name}`);
+          } catch (error) {
+            logger.error(
+              `[HyperscapeService] Failed to register provider ${provider.name}:`,
+              error,
+            );
+            throw error;
+          }
+        }
+      }
+
+      // Register evaluators
+      if (pack.evaluators) {
+        for (const evaluator of pack.evaluators) {
+          try {
+            targetRuntime.registerEvaluator(evaluator);
+            logger.info(`[HyperscapeService] Registered evaluator: ${evaluator.name}`);
+          } catch (error) {
+            logger.error(
+              `[HyperscapeService] Failed to register evaluator ${evaluator.name}:`,
+              error,
+            );
+            throw error;
+          }
+        }
+      }
+
+      // Initialize state manager
+      if (pack.stateManager) {
+        const playerId = world.entities.player!.data.id as string;
+        pack.stateManager.initPlayerState(playerId);
+        logger.info(`[HyperscapeService] Initialized state manager for player: ${playerId}`);
+      }
+
+      // Store loaded pack
+      this.loadedContentPacks.set(pack.id, pack);
+      logger.info(`[HyperscapeService] Successfully loaded content pack: ${pack.id}`);
+    } catch (error) {
+      logger.error(
+        `[HyperscapeService] Failed to load content pack ${pack.id}:`,
+        error,
+      );
+
+      // Cleanup on failure
+      const systems = this.activeGameSystems.get(pack.id);
+      if (systems) {
+        for (const system of systems) {
+          try {
+            system.cleanup();
+          } catch (cleanupError) {
+            logger.error(
+              `[HyperscapeService] Failed to cleanup system ${system.name}:`,
+              cleanupError,
+            );
+          }
+        }
+        this.activeGameSystems.delete(pack.id);
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Unload a content pack from the service
+   *
+   * @param packId - ID of the content pack to unload
+   */
+  async unloadContentPack(packId: string): Promise<void> {
+    const pack = this.loadedContentPacks.get(packId);
+
+    if (!pack) {
+      logger.warn(`[HyperscapeService] Content pack not loaded: ${packId}`);
+      return;
+    }
+
+    logger.info(`[HyperscapeService] Unloading content pack: ${pack.name}`);
+
+    const world = this.getWorld();
+
+    try {
+      // Execute onUnload hook if provided
+      if (pack.onUnload && world) {
+        await pack.onUnload(this.runtime, world);
+      }
+
+      // Cleanup game systems
+      const systems = this.activeGameSystems.get(packId);
+      if (systems) {
+        for (const system of systems) {
+          try {
+            system.cleanup();
+            logger.info(`[HyperscapeService] Cleaned up system: ${system.name}`);
+          } catch (error) {
+            logger.error(
+              `[HyperscapeService] Failed to cleanup system ${system.name}:`,
+              error,
+            );
+          }
+        }
+        this.activeGameSystems.delete(packId);
+      }
+
+      // Note: Actions, providers, and evaluators are managed by ElizaOS core
+      // They cannot be unregistered dynamically, so they remain in the runtime
+
+      this.loadedContentPacks.delete(packId);
+      logger.info(`[HyperscapeService] Successfully unloaded content pack: ${packId}`);
+    } catch (error) {
+      logger.error(
+        `[HyperscapeService] Failed to unload content pack ${packId}:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Load default content packs during service initialization
+   * Currently loads the RunescapeRPG content pack
+   */
+  async loadDefaultContentPacks(): Promise<void> {
+    logger.info('[HyperscapeService] Loading default content packs...');
+
+    try {
+      // Import and load the Runescape RPG pack
+      const { RunescapeRPGPack } = await import('./content-packs/content-pack');
+      await this.loadContentPack(RunescapeRPGPack);
+
+      logger.info('[HyperscapeService] Default content packs loaded successfully');
+    } catch (error) {
+      logger.error(
+        '[HyperscapeService] Failed to load default content packs:',
+        error,
+      );
+      // Don't throw - allow service to continue without content packs
+    }
+  }
+
+  /**
+   * Get all loaded content packs
+   */
+  getLoadedContentPacks(): IContentPack[] {
+    return Array.from(this.loadedContentPacks.values());
+  }
+
+  /**
+   * Check if a content pack is loaded
+   */
+  isContentPackLoaded(packId: string): boolean {
+    return this.loadedContentPacks.has(packId);
+  }
+
+  /**
+   * Update all active game systems (called from game loop if needed)
+   */
+  updateContentPackSystems(deltaTime: number): void {
+    for (const [_packId, systems] of this.activeGameSystems) {
+      for (const system of systems) {
+        if (system.update) {
+          try {
+            system.update(deltaTime);
+          } catch (error) {
+            logger.error(
+              `[HyperscapeService] Error updating system ${system.name}:`,
+              error,
+            );
+          }
+        }
+      }
     }
   }
 

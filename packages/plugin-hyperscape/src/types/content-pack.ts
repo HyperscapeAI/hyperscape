@@ -101,20 +101,3 @@ export interface IStateManager {
   serialize(playerId: string): string;
   deserialize(playerId: string, data: string): void;
 }
-
-/**
- * Content pack loader interface
- */
-export interface IContentPackLoader {
-  // Load a content pack
-  loadPack(pack: IContentPack, runtime: IAgentRuntime): Promise<void>;
-
-  // Unload a content pack
-  unloadPack(packId: string): Promise<void>;
-
-  // Get loaded packs
-  getLoadedPacks(): IContentPack[];
-
-  // Check if pack is loaded
-  isPackLoaded(packId: string): boolean;
-}

@@ -8,3 +8,6 @@
 export { factEvaluator } from './fact'
 export { goalEvaluator } from './goal'
 export { boredomEvaluator } from './boredom'
+export { skillProgressionEvaluator } from './skills'
+export { resourceManagementEvaluator } from './resources'
+export { safetyEvaluator } from './safety'
