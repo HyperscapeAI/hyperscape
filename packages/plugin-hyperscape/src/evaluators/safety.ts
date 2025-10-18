@@ -19,7 +19,8 @@ function parseScoreValue(value: unknown, defaultValue = 0): number {
   if (typeof value === 'number') {
     return value
   }
-  return parseInt(String(value || defaultValue))
+  const parsed = parseInt(String(value || defaultValue), 10)
+  return Number.isFinite(parsed) ? parsed : defaultValue
 }
 
 /**
@@ -168,14 +169,21 @@ export const safetyEvaluator: Evaluator = {
         a => a.createdAt && a.createdAt > oneMinuteAgo
       )
 
+      /**
+       * Extract action type from action memory entry
+       */
+      function extractActionType(entry: Memory): string | undefined {
+        if (!entry.content) return undefined
+        const action = entry.content.action
+        if (typeof action === 'string') return action
+        const type = entry.content.type
+        if (typeof type === 'string') return type
+        return undefined
+      }
+
       // Analyze action patterns
       const actionTypes = actionsLastMinute
-        .map(a => {
-          if (!a.content) return undefined
-          const action = a.content.action
-          const type = a.content.type
-          return (typeof action === 'string' ? action : (typeof type === 'string' ? type : undefined))
-        })
+        .map(extractActionType)
         .filter((a): a is string => a !== undefined)
       const mostCommonAction = getMostCommon(actionTypes)
       const actionRepetitionCount = actionTypes.filter(
@@ -217,8 +225,10 @@ export const safetyEvaluator: Evaluator = {
         recentActions: agentActions
           .slice(0, 20)
           .map(
-            a =>
-              `[${new Date(a.createdAt!).toISOString()}] ${a.content.action || a.content.type}: ${JSON.stringify(a.content)}`
+            a => {
+              const timestamp = a.createdAt ? new Date(a.createdAt).toISOString() : 'unknown'
+              return `[${timestamp}] ${a.content.action || a.content.type}: ${JSON.stringify(a.content)}`
+            }
           )
           .join('\n'),
       })

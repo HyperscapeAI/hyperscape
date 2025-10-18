@@ -302,37 +302,27 @@ Hyperscape world integration service that enables agents to:
       "[HyperscapeService] Creating headless Node.js client world with binary protocol",
     );
 
-    // Performance monitoring: Track connection time
+    // Performance monitoring: Track connection time (optional)
+    const perfStart = DEV_CONFIG.ENABLE_PERFORMANCE_MONITORING ? performance.now() : 0;
+
+    // Create headless client world with proper ClientNetwork system
+    this.world = createNodeClientWorld();
+
+    // Initialize world with server connection
+    await this.world.init({
+      wsUrl: config.wsUrl,
+      initialAuthToken: config.authToken,
+      assetsUrl:
+        process.env.HYPERSCAPE_ASSETS_URL || "https://assets.hyperscape.io",
+    });
+
+    // Log performance metrics if monitoring is enabled
     if (DEV_CONFIG.ENABLE_PERFORMANCE_MONITORING) {
-      const perfStart = performance.now();
-
-      // Create headless client world with proper ClientNetwork system
-      this.world = createNodeClientWorld();
-
-      // Initialize world with server connection
-      await this.world.init({
-        wsUrl: config.wsUrl,
-        initialAuthToken: config.authToken,
-        assetsUrl:
-          process.env.HYPERSCAPE_ASSETS_URL || "https://assets.hyperscape.io",
-      });
-
       const perfEnd = performance.now();
       const connectionDuration = perfEnd - perfStart;
       console.info(
         `[Performance] World connection took ${connectionDuration.toFixed(2)}ms`,
       );
-    } else {
-      // Create headless client world with proper ClientNetwork system
-      this.world = createNodeClientWorld();
-
-      // Initialize world with server connection
-      await this.world.init({
-        wsUrl: config.wsUrl,
-        initialAuthToken: config.authToken,
-        assetsUrl:
-          process.env.HYPERSCAPE_ASSETS_URL || "https://assets.hyperscape.io",
-      });
     }
 
     console.info("[HyperscapeService] Headless client world initialized and connected");
@@ -451,6 +441,55 @@ Hyperscape world integration service that enables agents to:
         `[HyperscapeService] Cannot load content pack: No world connected`,
       );
     }
+
+    // ===== PHASE 1: PRE-VALIDATION =====
+    // Validate all prerequisites before making any changes
+    logger.debug(`[HyperscapeService] Phase 1: Validating content pack prerequisites`);
+
+    // Validate pack structure
+    if (!pack.id || !pack.name || !pack.version) {
+      throw new Error(
+        `[HyperscapeService] Invalid content pack: Missing required fields (id, name, or version)`,
+      );
+    }
+
+    // Validate state manager requirements
+    if (pack.stateManager) {
+      const player = world.entities?.player;
+      if (!player || !player.data || !player.data.id) {
+        throw new Error(
+          `[HyperscapeService] Cannot load content pack with state manager: Player entity not available`,
+        );
+      }
+    }
+
+    // Validate action uniqueness
+    if (pack.actions) {
+      const existingActionNames = targetRuntime.actions.map(a => a.name);
+      const duplicateActions = pack.actions.filter(a => existingActionNames.includes(a.name));
+      if (duplicateActions.length > 0) {
+        logger.warn(
+          `[HyperscapeService] Content pack contains ${duplicateActions.length} actions that already exist: ${duplicateActions.map(a => a.name).join(', ')}`,
+        );
+      }
+    }
+
+    // Validate provider uniqueness
+    if (pack.providers) {
+      const existingProviderNames = (targetRuntime as { providers: Array<{ name: string }> }).providers?.map(p => p.name) || [];
+      const duplicateProviders = pack.providers.filter(p => existingProviderNames.includes(p.name));
+      if (duplicateProviders.length > 0) {
+        logger.warn(
+          `[HyperscapeService] Content pack contains ${duplicateProviders.length} providers that already exist: ${duplicateProviders.map(p => p.name).join(', ')}`,
+        );
+      }
+    }
+
+    logger.debug(`[HyperscapeService] Phase 1 complete: All prerequisites validated`);
+
+    // ===== PHASE 2: LOADING =====
+    // Now proceed with actual loading
+    logger.debug(`[HyperscapeService] Phase 2: Loading content pack components`);
 
     // Track registered items for cleanup on failure
     const registeredActions: string[] = [];

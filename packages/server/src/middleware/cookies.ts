@@ -106,8 +106,13 @@ export const DEFAULT_CSRF_COOKIE_OPTIONS: CookieOptions = {
  * @param app - Fastify instance
  */
 export async function registerCookies(app: FastifyInstance): Promise<void> {
+  const secret = process.env.COOKIE_SECRET || process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('COOKIE_SECRET or JWT_SECRET environment variable is required for cookie signing');
+  }
+
   await app.register(fastifyCookie, {
-    secret: process.env.COOKIE_SECRET || process.env.JWT_SECRET, // Use for signed cookies (optional)
+    secret, // Use for signed cookies (optional)
     parseOptions: {}, // Options for cookie parsing
   });
 
@@ -186,6 +191,11 @@ export function clearAuthCookie(reply: FastifyReply): void {
  * @param token - CSRF token
  * @param options - Optional cookie configuration
  */
+// Security constants for token/session validation
+const MIN_TOKEN_LENGTH = 16;
+const SESSION_ID_MASK_PREFIX_LENGTH = 4;
+const SESSION_ID_MASK_SUFFIX_LENGTH = 4;
+
 export function setCsrfCookie(
   reply: FastifyReply,
   token: string,
@@ -198,7 +208,7 @@ export function setCsrfCookie(
   }
 
   // CSRF tokens should be at least 16 characters for security
-  if (token.length < 16) {
+  if (token.length < MIN_TOKEN_LENGTH) {
     console.error('[Cookies] CSRF token too short - minimum 16 characters');
     throw new Error('CSRF token too short: minimum 16 characters required');
   }
@@ -255,7 +265,7 @@ export function setSessionCookie(
   }
 
   // Session IDs should be at least 16 characters for security
-  if (sessionId.length < 16) {
+  if (sessionId.length < MIN_TOKEN_LENGTH) {
     console.error('[Cookies] Session ID too short - minimum 16 characters');
     throw new Error('Session ID too short: minimum 16 characters required');
   }
@@ -266,7 +276,7 @@ export function setSessionCookie(
 
   // Don't log the full session ID in production to avoid leaking it
   const maskedSessionId = process.env.NODE_ENV === 'production'
-    ? `${sessionId.substring(0, 4)}...${sessionId.substring(sessionId.length - 4)}`
+    ? `${sessionId.substring(0, SESSION_ID_MASK_PREFIX_LENGTH)}...${sessionId.substring(sessionId.length - SESSION_ID_MASK_SUFFIX_LENGTH)}`
     : sessionId;
 
   console.log('[Cookies] Set session cookie:', maskedSessionId);

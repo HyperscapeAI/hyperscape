@@ -36,22 +36,22 @@
 // Import commonly used shared types for convenience
 
 /** Database interface for Knex-style queries */
-export type SystemDatabase = (table: string) => {
+export type SystemDatabase<TRecord = unknown> = (table: string) => {
   where: (key: string, value: unknown) => {
-    first: () => Promise<unknown>
-    update: (data: Record<string, unknown>) => Promise<number>
+    first: () => Promise<TRecord | undefined>
+    update: (data: Partial<TRecord>) => Promise<number>
     delete: () => Promise<number>
   }
   select: (columns?: string | string[]) => {
     where: (key: string, value: unknown) => {
-      first: () => Promise<unknown>
+      first: () => Promise<TRecord | undefined>
     }
   }
-  insert: (data: Record<string, unknown> | Record<string, unknown>[]) => Promise<void>
-  update: (data: Record<string, unknown>) => Promise<number>
+  insert: (data: Partial<TRecord> | Partial<TRecord>[]) => Promise<void>
+  update: (data: Partial<TRecord>) => Promise<number>
   delete: () => Promise<number>
-  first: () => Promise<unknown>
-  then: <T>(onfulfilled: (value: unknown[]) => T) => Promise<T>
+  first: () => Promise<TRecord | undefined>
+  then: <T>(onfulfilled: (value: TRecord[]) => T) => Promise<T>
   catch: <T>(onrejected: (reason: unknown) => T) => Promise<T>
 }
 
@@ -199,7 +199,7 @@ export interface SocketLike {
 
 // Extended Socket type with server-specific properties
 export interface ServerSocket extends SocketLike {
-  player: unknown
+  player?: PlayerEntity
   ws: NodeWebSocket
   network: NetworkWithSocket
 
@@ -285,8 +285,8 @@ export interface ChatMessage {
 
 // Define storage interface based on actual storage implementation
 export interface StorageSystem {
-  get(key: string): Promise<unknown>;
-  set(key: string, value: unknown): Promise<void>;
+  get<T = unknown>(key: string): Promise<T | undefined>;
+  set<T = unknown>(key: string, value: T): Promise<void>;
   delete(key: string): Promise<void>;
 }
 

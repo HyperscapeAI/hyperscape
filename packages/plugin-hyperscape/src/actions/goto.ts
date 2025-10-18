@@ -11,15 +11,115 @@ import {
   logger,
 } from "@elizaos/core";
 import { HyperscapeService } from "../service";
+import type { World } from "../types/core-types";
 
-// Navigation event types
-const NAVIGATION_STARTED = 'rpg:navigation:started';
-const NAVIGATION_COMPLETED = 'rpg:navigation:completed';
-const NAVIGATION_FAILED = 'rpg:navigation:failed';
+// Typed navigation event constants
+export const NAVIGATION_STARTED = 'rpg:navigation:started' as const;
+export const NAVIGATION_COMPLETED = 'rpg:navigation:completed' as const;
+export const NAVIGATION_FAILED = 'rpg:navigation:failed' as const;
+
+// Navigation event payload interfaces
+export interface NavigationStartedPayload {
+  playerId: string;
+  targetEntityId?: string;
+  targetPosition?: { x: number; z: number };
+  navigationType: 'entity' | 'position';
+}
+
+export interface NavigationCompletedPayload {
+  playerId: string;
+  success: boolean;
+}
+
+export interface NavigationFailedPayload {
+  playerId: string;
+  error?: string;
+}
+
+// Type map for event emissions
+export interface NavigationEventMap {
+  [NAVIGATION_STARTED]: NavigationStartedPayload;
+  [NAVIGATION_COMPLETED]: NavigationCompletedPayload;
+  [NAVIGATION_FAILED]: NavigationFailedPayload;
+}
 
 export enum NavigationType {
   ENTITY = "entity",
   POSITION = "position",
+}
+
+// Configurable navigation timeout
+const DEFAULT_NAVIGATION_TIMEOUT_MS = 10000;
+
+/**
+ * Helper function to execute navigation with typed events
+ */
+async function executeNavigationWithEvents(
+  world: World,
+  playerId: string,
+  navigationType: 'entity' | 'position',
+  options: {
+    targetEntityId?: string;
+    targetPosition?: { x: number; z: number };
+    timeout?: number;
+  },
+  startNavigation: () => void,
+): Promise<{ success: boolean; error?: string }> {
+  const timeoutMs = options.timeout || DEFAULT_NAVIGATION_TIMEOUT_MS;
+
+  // Emit navigation started event
+  const startPayload: NavigationStartedPayload = {
+    playerId,
+    targetEntityId: options.targetEntityId,
+    targetPosition: options.targetPosition,
+    navigationType,
+  };
+  world.emit(NAVIGATION_STARTED, startPayload);
+
+  // Wrap navigation in promise with event listeners
+  return new Promise<{ success: boolean; error?: string }>((resolve, reject) => {
+    const completionHandler = (data: NavigationCompletedPayload) => {
+      if (data.playerId === playerId) {
+        logger.info(`[GOTO] Navigation ${data.success ? 'completed' : 'failed'}`);
+        cleanup();
+        resolve({ success: data.success });
+      }
+    };
+
+    const failureHandler = (data: NavigationFailedPayload) => {
+      if (data.playerId === playerId) {
+        logger.error(`[GOTO] Navigation failed: ${data.error || 'Unknown error'}`);
+        cleanup();
+        resolve({ success: false, error: data.error });
+      }
+    };
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      world.off(NAVIGATION_COMPLETED, completionHandler);
+      world.off(NAVIGATION_FAILED, failureHandler);
+    };
+
+    const timeout = setTimeout(() => {
+      cleanup();
+      const errorMsg = `Navigation timeout after ${timeoutMs}ms`;
+      logger.error(`[GOTO] ${errorMsg}`);
+      reject(new Error(errorMsg));
+    }, timeoutMs);
+
+    world.on(NAVIGATION_COMPLETED, completionHandler);
+    world.on(NAVIGATION_FAILED, failureHandler);
+
+    // Start navigation
+    try {
+      startNavigation();
+    } catch (error) {
+      cleanup();
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error(`[GOTO] Failed to start navigation: ${errorMsg}`);
+      reject(error);
+    }
+  });
 }
 
 const navigationTargetExtractionTemplate = (thoughts?: string) => {
@@ -97,8 +197,8 @@ export const hyperscapeGotoEntityAction: Action = {
     const service = runtime.getService<HyperscapeService>(
       HyperscapeService.serviceName,
     )!;
-    const world = service.getWorld()!; // Use the getter
-    const controls = world.controls!; // Controls are typed correctly in World interface
+    const world = service.getWorld()!;
+    const controls = world.controls!;
     const player = world.entities.player;
 
     const extractionState = await runtime.composeState(message);
@@ -120,57 +220,26 @@ export const hyperscapeGotoEntityAction: Action = {
 
         logger.info(`[GOTO] Navigating to entity ${entityId}`);
 
-        // Emit navigation started event
-        world.emit(NAVIGATION_STARTED, {
-          playerId: player.id,
-          targetEntityId: entityId,
-          navigationType: 'entity',
-        });
-
-        // Wrap navigation in promise with event listeners
-        const navResult = await new Promise<{ success: boolean; error?: string }>((resolve) => {
-          const completionHandler = (data: { playerId: string; success: boolean }) => {
-            if (data.playerId === player.id) {
-              logger.info(`[GOTO] Navigation ${data.success ? 'completed' : 'failed'}`);
-              cleanup();
-              resolve({ success: data.success });
-            }
-          };
-
-          const failureHandler = (data: { playerId: string; error?: string }) => {
-            if (data.playerId === player.id) {
-              logger.error(`[GOTO] Navigation failed: ${data.error || 'Unknown error'}`);
-              cleanup();
-              resolve({ success: false, error: data.error });
-            }
-          };
-
-          const cleanup = () => {
-            clearTimeout(timeout);
-            world.off(NAVIGATION_COMPLETED, completionHandler);
-            world.off(NAVIGATION_FAILED, failureHandler);
-          };
-
-          const timeout = setTimeout(() => {
-            cleanup();
-            logger.warn('[GOTO] Navigation timeout - assuming success');
-            resolve({ success: true });
-          }, 10000);
-
-          world.on(NAVIGATION_COMPLETED, completionHandler);
-          world.on(NAVIGATION_FAILED, failureHandler);
-
-          // Start navigation
-          controls.followEntity(entityId);
-          logger.info(`[GOTO] Started following entity ${entityId}`);
-        });
+        // Execute navigation with events
+        const navResult = await executeNavigationWithEvents(
+          world,
+          player.id,
+          'entity',
+          { targetEntityId: entityId },
+          () => {
+            controls.followEntity(entityId);
+            logger.info(`[GOTO] Started following entity ${entityId}`);
+          },
+        );
 
         if (!navResult.success) {
-          await callback!({
-            text: `Failed to reach entity: ${navResult.error || 'Unknown error'}`,
-            actions: ["HYPERSCAPE_GOTO_ENTITY"],
-            source: "hyperscape",
-          });
+          if (callback) {
+            await callback({
+              text: `Failed to reach entity: ${navResult.error || 'Unknown error'}`,
+              actions: ["HYPERSCAPE_GOTO_ENTITY"],
+              source: "hyperscape",
+            });
+          }
 
           return {
             text: `Failed to reach entity: ${navResult.error || 'Unknown error'}`,
@@ -191,7 +260,9 @@ export const hyperscapeGotoEntityAction: Action = {
             actions: ["HYPERSCAPE_GOTO_ENTITY"],
             source: "hyperscape",
           };
-          await callback!(missingEntityResponse);
+          if (callback) {
+            await callback(missingEntityResponse);
+          }
 
           return {
             text: missingEntityResponse.text,
@@ -224,7 +295,9 @@ export const hyperscapeGotoEntityAction: Action = {
           actions: ["HYPERSCAPE_GOTO_ENTITY"],
           source: "hyperscape",
         };
-        await callback!(successResponse);
+        if (callback) {
+          await callback(successResponse);
+        }
 
         return {
           text: successResponse.text,
@@ -247,57 +320,26 @@ export const hyperscapeGotoEntityAction: Action = {
 
         logger.info(`[GOTO] Navigating to position (${pos.x}, ${pos.z})`);
 
-        // Emit navigation started event
-        world.emit(NAVIGATION_STARTED, {
-          playerId: player.id,
-          targetPosition: pos,
-          navigationType: 'position',
-        });
-
-        // Wrap navigation in promise with event listeners
-        const navResult = await new Promise<{ success: boolean; error?: string }>((resolve) => {
-          const completionHandler = (data: { playerId: string; success: boolean }) => {
-            if (data.playerId === player.id) {
-              logger.info(`[GOTO] Navigation ${data.success ? 'completed' : 'failed'}`);
-              cleanup();
-              resolve({ success: data.success });
-            }
-          };
-
-          const failureHandler = (data: { playerId: string; error?: string }) => {
-            if (data.playerId === player.id) {
-              logger.error(`[GOTO] Navigation failed: ${data.error || 'Unknown error'}`);
-              cleanup();
-              resolve({ success: false, error: data.error });
-            }
-          };
-
-          const cleanup = () => {
-            clearTimeout(timeout);
-            world.off(NAVIGATION_COMPLETED, completionHandler);
-            world.off(NAVIGATION_FAILED, failureHandler);
-          };
-
-          const timeout = setTimeout(() => {
-            cleanup();
-            logger.warn('[GOTO] Navigation timeout - assuming success');
-            resolve({ success: true });
-          }, 10000);
-
-          world.on(NAVIGATION_COMPLETED, completionHandler);
-          world.on(NAVIGATION_FAILED, failureHandler);
-
-          // Start navigation
-          controls.goto(pos.x, pos.z);
-          logger.info(`[GOTO] Started navigation to position (${pos.x}, ${pos.z})`);
-        });
+        // Execute navigation with events
+        const navResult = await executeNavigationWithEvents(
+          world,
+          player.id,
+          'position',
+          { targetPosition: pos },
+          () => {
+            controls.goto(pos.x, pos.z);
+            logger.info(`[GOTO] Started navigation to position (${pos.x}, ${pos.z})`);
+          },
+        );
 
         if (!navResult.success) {
-          await callback!({
-            text: `Failed to reach position: ${navResult.error || 'Unknown error'}`,
-            actions: ["HYPERSCAPE_GOTO_ENTITY"],
-            source: "hyperscape",
-          });
+          if (callback) {
+            await callback({
+              text: `Failed to reach position: ${navResult.error || 'Unknown error'}`,
+              actions: ["HYPERSCAPE_GOTO_ENTITY"],
+              source: "hyperscape",
+            });
+          }
 
           return {
             text: `Failed to reach position: ${navResult.error || 'Unknown error'}`,
@@ -312,7 +354,9 @@ export const hyperscapeGotoEntityAction: Action = {
           actions: ["HYPERSCAPE_GOTO_ENTITY"],
           source: "hyperscape",
         };
-        await callback!(positionResponse);
+        if (callback) {
+          await callback(positionResponse);
+        }
 
         return {
           text: positionResponse.text,

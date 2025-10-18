@@ -64,12 +64,17 @@ export const CSRF_EXEMPT_ROUTES: string[] = [
  * @param app - Fastify instance
  */
 export async function registerCsrfProtection(app: FastifyInstance): Promise<void> {
+  const secret = process.env.CSRF_SECRET || process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('CSRF_SECRET or JWT_SECRET environment variable is required for CSRF protection');
+  }
+
   await app.register(fastifyCsrf, {
     // Use cookie-based CSRF protection (double-submit cookie pattern)
     sessionPlugin: '@fastify/cookie',
 
     // CSRF secret for token generation (fallback to JWT secret)
-    cookieKey: process.env.CSRF_SECRET || process.env.JWT_SECRET,
+    cookieKey: secret,
 
     // Cookie options for CSRF token
     cookieOpts: {
@@ -120,6 +125,8 @@ export function isRouteExempt(request: FastifyRequest): boolean {
   }
 
   // Check if route is in exempt list
+  // Using startsWith to intentionally exempt all subpaths under each route
+  // (e.g., /api/agent/auth will exempt /api/agent/auth/register, /api/agent/auth/revoke, etc.)
   if (CSRF_EXEMPT_ROUTES.some(route => path.startsWith(route))) {
     return true;
   }

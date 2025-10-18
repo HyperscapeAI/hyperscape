@@ -122,29 +122,18 @@ export async function verifyPrivyToken(
 
   let verifiedClaims: { userId: string } | null = null;
 
-  // Try identity token verification first (preferred method)
+  // Try identity token verification first (preferred method for 2025)
   try {
-    // Identity tokens use a different verification method
-    // They contain user data directly in the JWT claims
-    const idTokenClaims = await client.verifyAuthToken(token);
+    // Get user info directly from Privy API using the token
+    const userInfo = await client.users().get({ id_token: token });
 
-    if (idTokenClaims && idTokenClaims.userId) {
-      verifiedClaims = idTokenClaims;
-      console.log('[PrivyAuth] Verified identity token for user:', idTokenClaims.userId);
+    if (userInfo && userInfo.id) {
+      verifiedClaims = { userId: userInfo.id };
+      console.log('[PrivyAuth] Verified identity token for user:', userInfo.id);
     }
   } catch (err) {
-    // If identity token verification fails, try access token
-    try {
-      const accessTokenClaims = await client.verifyAuthToken(token);
-
-      if (accessTokenClaims && accessTokenClaims.userId) {
-        verifiedClaims = accessTokenClaims;
-        console.log('[PrivyAuth] Verified access token (legacy) for user:', accessTokenClaims.userId);
-      }
-    } catch (accessErr) {
-      console.error('[PrivyAuth] Token verification failed:', accessErr);
-      return null;
-    }
+    console.error('[PrivyAuth] Token verification failed:', err);
+    return null;
   }
 
   if (!verifiedClaims || !verifiedClaims.userId) {

@@ -22,6 +22,23 @@ import { logger } from "@elizaos/core";
 import type { HyperscapeService } from "../service";
 
 /**
+ * Nearby entity data structure
+ */
+interface NearbyEntityData {
+  id?: string;
+  type?: string;
+  data?: {
+    name?: string;
+  };
+  distance?: number;
+  position?: {
+    x: number;
+    y: number;
+    z: number;
+  };
+}
+
+/**
  * World Context Provider
  *
  * Provides compact world state for agent decision-making.
@@ -90,11 +107,7 @@ export const worldContextProvider: Provider = {
 
       // Show first 5 entities
       nearbyEntities.slice(0, 5).forEach((entity) => {
-        const entityData = entity as {
-          type?: string;
-          data?: { name?: string };
-          distance?: number;
-        };
+        const entityData = entity as NearbyEntityData;
 
         const entityType = entityData.type || "unknown";
         const entityName = entityData.data?.name || entityType;
@@ -126,13 +139,7 @@ export const worldContextProvider: Provider = {
       data: {
         position: { x: position.x, y: position.y, z: position.z },
         nearbyEntities: nearbyEntities.slice(0, 10).map((entity) => {
-          const entityData = entity as {
-            id?: string;
-            type?: string;
-            data?: { name?: string };
-            distance?: number;
-            position?: { x: number; y: number; z: number };
-          };
+          const entityData = entity as NearbyEntityData;
 
           return {
             id: entityData.id,

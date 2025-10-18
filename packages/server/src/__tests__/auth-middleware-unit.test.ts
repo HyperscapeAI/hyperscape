@@ -323,17 +323,27 @@ describe('CSRF Middleware - Unit Tests', () => {
   });
 });
 
+/**
+ * Helper function to parse cookie string into key-value pairs
+ *
+ * @param cookieHeader - Raw cookie header string (e.g., "key1=value1; key2=value2")
+ * @returns Object with cookie key-value pairs
+ */
+function parseCookieString(cookieHeader: string): Record<string, string> {
+  return cookieHeader.split(';').reduce((acc, cookie) => {
+    const [key, value] = cookie.trim().split('=');
+    if (key && value) {
+      acc[key] = decodeURIComponent(value);
+    }
+    return acc;
+  }, {} as Record<string, string>);
+}
+
 describe('Cookie Parsing Logic (Client-Side)', () => {
   test('Cookie string parsing works correctly', () => {
     const mockCookieHeader = 'privy-id-token=test-token; csrf-token=test-csrf; other=value';
 
-    const cookies = mockCookieHeader.split(';').reduce((acc, cookie) => {
-      const [key, value] = cookie.trim().split('=');
-      if (key && value) {
-        acc[key] = decodeURIComponent(value);
-      }
-      return acc;
-    }, {} as Record<string, string>);
+    const cookies = parseCookieString(mockCookieHeader);
 
     expect(cookies['privy-id-token']).toBe('test-token');
     expect(cookies['csrf-token']).toBe('test-csrf');
@@ -344,13 +354,7 @@ describe('Cookie Parsing Logic (Client-Side)', () => {
   test('Cookie parsing handles encoded values', () => {
     const mockCookieHeader = 'name=John%20Doe; token=abc%2B123%3D%3D';
 
-    const cookies = mockCookieHeader.split(';').reduce((acc, cookie) => {
-      const [key, value] = cookie.trim().split('=');
-      if (key && value) {
-        acc[key] = decodeURIComponent(value);
-      }
-      return acc;
-    }, {} as Record<string, string>);
+    const cookies = parseCookieString(mockCookieHeader);
 
     expect(cookies['name']).toBe('John Doe');
     expect(cookies['token']).toBe('abc+123==');
@@ -360,13 +364,7 @@ describe('Cookie Parsing Logic (Client-Side)', () => {
   test('Cookie parsing handles empty cookie string', () => {
     const mockCookieHeader = '';
 
-    const cookies = mockCookieHeader.split(';').reduce((acc, cookie) => {
-      const [key, value] = cookie.trim().split('=');
-      if (key && value) {
-        acc[key] = decodeURIComponent(value);
-      }
-      return acc;
-    }, {} as Record<string, string>);
+    const cookies = parseCookieString(mockCookieHeader);
 
     expect(Object.keys(cookies).length).toBe(0);
     console.log('✅ Cookie parsing handles empty string gracefully');
@@ -375,13 +373,7 @@ describe('Cookie Parsing Logic (Client-Side)', () => {
   test('Cookie parsing handles malformed cookies', () => {
     const mockCookieHeader = 'valid=value; malformed; another=good';
 
-    const cookies = mockCookieHeader.split(';').reduce((acc, cookie) => {
-      const [key, value] = cookie.trim().split('=');
-      if (key && value) {
-        acc[key] = decodeURIComponent(value);
-      }
-      return acc;
-    }, {} as Record<string, string>);
+    const cookies = parseCookieString(mockCookieHeader);
 
     expect(cookies['valid']).toBe('value');
     expect(cookies['another']).toBe('good');

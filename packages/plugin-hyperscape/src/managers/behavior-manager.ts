@@ -367,11 +367,13 @@ Or for chat:
       case "west":
         targetX -= exploreDistance;
         break;
-      default:
+      default: {
         // Random direction
         const angle = Math.random() * Math.PI * 2;
         targetX += Math.cos(angle) * exploreDistance;
         targetZ += Math.sin(angle) * exploreDistance;
+        break;
+      }
     }
 
     console.info(`[BehaviorManager] Exploring ${direction}: (${targetX.toFixed(1)}, ${targetZ.toFixed(1)})`);

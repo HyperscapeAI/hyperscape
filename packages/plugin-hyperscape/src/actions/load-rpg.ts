@@ -86,28 +86,22 @@ export const loadRPGAction: Action = {
       // - Loot system (drops, rarity, equipment)
       // - Economy system (shops, trading, currency)
 
-      logger.info("[LOAD_RPG] Loading RPG content pack for world:", world.id);
+      logger.info("[LOAD_RPG] RPG content pack not yet implemented for world:", world.id);
 
       // RPG systems integration point - connect to our 54 polished systems
       // TODO: Actual RPG content pack loading will be implemented here
-      // For now, we validate that the world is ready for RPG content
+      // For now, return that RPG is not implemented
 
       const result: ActionResult = {
-        success: true,
-        text: "RPG content pack loaded successfully. RPG features are now available in this world.",
+        success: false,
+        text: "RPG content pack not implemented",
         data: {
           worldId: world.id,
-          rpgEnabled: true,
-          systemsLoaded: [
-            "skills",
-            "quests",
-            "npcs",
-            "loot",
-            "economy",
-          ],
+          rpgEnabled: false,
+          error: "NOT_IMPLEMENTED",
         },
         values: {
-          rpg_mode: true,
+          rpg_mode: false,
           world_id: world.id,
         },
       };

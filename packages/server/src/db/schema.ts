@@ -117,8 +117,8 @@ export const users = pgTable('users', {
   // Agent-specific fields
   runtimeId: text('runtimeId'),
   ownerId: text('ownerId'),
-  isActive: integer('isActive').default(1), // 1 = active, 0 = deactivated
-  permissions: text('permissions'),
+  isActive: integer('isActive').notNull().default(1).$type<boolean>(), // 1 = active, 0 = deactivated
+  permissions: text('permissions').notNull().default('{}').$type<Record<string, unknown>>(),
 }, (table) => ({
   privyIdx: index('idx_users_privy').on(table.privyUserId),
   farcasterIdx: index('idx_users_farcaster').on(table.farcasterFid),

@@ -56,11 +56,11 @@ export class EmoteManager {
 
       const service = this.getService();
       if (!service) {
-        throw new Error("[EmoteManager] Service not available");
+        throw new Error("[EmoteManager] Service not available during emote upload");
       }
       const world = service.getWorld();
       if (!world) {
-        throw new Error("[EmoteManager] World not available");
+        throw new Error("[EmoteManager] World not available during emote upload");
       }
       const network = world.network as ClientNetwork;
 
@@ -103,17 +103,16 @@ export class EmoteManager {
   /**
    * Play an emote immediately
    * Private method - use queueEmote() for public API
+   * Throws errors instead of returning early to ensure proper error handling
    */
   private async playEmote(emoteName: string): Promise<void> {
     const service = this.getService();
     if (!service) {
-      elizaLogger.error("[EmoteManager] Service not available");
-      return;
+      throw new Error("[EmoteManager] Service not available for emote playback");
     }
     const world = service.getWorld();
     if (!world) {
-      elizaLogger.error("[EmoteManager] World not available");
-      return;
+      throw new Error("[EmoteManager] World not available for emote playback");
     }
 
     const agentPlayer = world.entities.player as Player;
@@ -168,12 +167,24 @@ export class EmoteManager {
 
   /**
    * Process next emote in queue
+   * Wrapped in try/catch/finally to ensure proper cleanup on errors
    */
   private async processNextEmote(): Promise<void> {
     const nextEmote = this.emoteQueue.shift();
     if (nextEmote) {
       elizaLogger.debug(`[EmoteManager] Playing next queued emote: ${nextEmote}`);
-      await this.playEmote(nextEmote);
+      try {
+        await this.playEmote(nextEmote);
+      } catch (error) {
+        elizaLogger.error(`[EmoteManager] Error playing queued emote '${nextEmote}':`, error);
+        // Clear any partial state and continue to next emote
+        this.clearTimers();
+      } finally {
+        // Always ensure we mark as not playing if queue is empty
+        if (this.emoteQueue.length === 0) {
+          this.isPlayingEmote = false;
+        }
+      }
     } else {
       this.isPlayingEmote = false;
     }

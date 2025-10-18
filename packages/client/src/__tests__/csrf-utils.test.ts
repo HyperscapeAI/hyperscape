@@ -85,11 +85,21 @@ describe('CSRF Utilities - Real Browser Tests', () => {
           return getCsrfTokenFromCookie() !== null;
         }
 
+        // Copy of addCsrfHeader function
+        function addCsrfHeader(headers) {
+          const csrfToken = getCsrfTokenFromCookie();
+          if (csrfToken) {
+            headers['X-CSRF-Token'] = csrfToken;
+          }
+          return headers;
+        }
+
         // Expose functions to window for testing
         window.getCsrfTokenFromCookie = getCsrfTokenFromCookie;
         window.parseCookies = parseCookies;
         window.getCookie = getCookie;
         window.hasCsrfToken = hasCsrfToken;
+        window.addCsrfHeader = addCsrfHeader;
       `,
     });
   });

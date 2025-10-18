@@ -163,12 +163,18 @@ export async function getHyperscapeActionsOptimized(
   state: State,
   config?: import('./utils/action-filtering').ActionFilterConfig,
 ): Promise<Action[]> {
-  // Get filtered list of action names to include in context
-  const { getFilteredActionNames } = await import('./utils/action-filtering')
-  const includeList = getFilteredActionNames(runtime, message, state, config)
+  try {
+    // Get filtered list of action names to include in context
+    const { getFilteredActionNames } = await import('./utils/action-filtering')
+    const includeList = getFilteredActionNames(runtime, message, state, config)
 
-  // Use existing getHyperscapeActions function with includeList
-  return getHyperscapeActions(runtime, message, state, includeList)
+    // Use existing getHyperscapeActions function with includeList
+    return getHyperscapeActions(runtime, message, state, includeList)
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    console.error('[getHyperscapeActionsOptimized] Failed to load action filtering module:', errorMsg)
+    throw error
+  }
 }
 
 /**

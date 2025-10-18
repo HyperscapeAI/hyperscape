@@ -15,7 +15,7 @@ export interface ResourceItem {
   quantity?: number
   level?: number
   respawnTime?: number
-  isAvailable: boolean
+  isAvailable?: boolean
   levelRequired?: number
   skillRequired?: string
   data?: ResourceData

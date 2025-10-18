@@ -128,7 +128,10 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { createServerWorld } from '@hyperscape/shared'
 import { installThreeJSExtensions } from '@hyperscape/shared'
+import type { World } from '@hyperscape/shared'
 import type pg from 'pg'
+import type { Pool } from 'pg'
+import type { NodePgDatabase as DrizzleDB } from 'drizzle-orm/node-postgres'
 
 import { hashFile } from './utils.js'
 
@@ -272,10 +275,20 @@ async function startServer() {
   world.register('database', ServerDatabaseSystem);
   world.register('network', ServerNetwork);
   
+  // Define augmented world interface for dynamic properties
+  interface AugmentedWorld extends World {
+    pgPool: Pool;
+    drizzleDb: DrizzleDB;
+    settings: { model: string };
+    entities: Map<unknown, unknown>;
+    actionRegistry: Map<unknown, unknown>;
+    network: unknown;
+  }
+
   // Make PostgreSQL pool and Drizzle DB available for DatabaseSystem to use
   // These are dynamically added properties, not in the World type definition
-  (world as unknown as { pgPool: typeof pgPool }).pgPool = pgPool;
-  (world as unknown as { drizzleDb: typeof drizzleDb }).drizzleDb = drizzleDb;
+  (world as unknown as AugmentedWorld).pgPool = pgPool;
+  (world as unknown as AugmentedWorld).drizzleDb = drizzleDb;
 
   // Set up default environment model
   (world as unknown as { settings: { model: { url: string } } }).settings.model = {
@@ -625,11 +638,18 @@ async function startServer() {
         fastify.log.error('[Server] Invalid WebSocket object received')
         return
       }
-      
-      // Handle network connection
+
+      // Handle network connection with type safety
       const query = req.query as Record<string, JSONValue>
-      const network = (world as unknown as { network: { onConnection: (ws: unknown, query: unknown) => void } }).network
-      network.onConnection(ws, query)
+      const network = (world as AugmentedWorld).network
+
+      // Guard to ensure network has onConnection method
+      if (network && typeof network === 'object' && 'onConnection' in network) {
+        const typedNetwork = network as { onConnection: (ws: unknown, query: unknown) => void }
+        if (typeof typedNetwork.onConnection === 'function') {
+          typedNetwork.onConnection(ws, query)
+        }
+      }
     })
   }
 

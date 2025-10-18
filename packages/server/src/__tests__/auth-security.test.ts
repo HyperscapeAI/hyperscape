@@ -18,7 +18,10 @@ import WebSocket from 'ws';
 const SERVER_URL = process.env.HYPERSCAPE_SERVER_URL || 'http://localhost:5555';
 const WS_URL = process.env.HYPERSCAPE_WS_URL || 'ws://localhost:5555/ws';
 
-// Mock identity token for testing (in real tests, this would come from Privy)
+// Use real Privy credentials from environment when available for proper testing
+// Falls back to mock token when Privy is not configured
+const PRIVY_TEST_APP_ID = process.env.PRIVY_TEST_APP_ID;
+const PRIVY_TEST_APP_SECRET = process.env.PRIVY_TEST_APP_SECRET;
 const MOCK_IDENTITY_TOKEN = 'mock-identity-token-for-testing';
 
 describe('Phase 2 Security Features', () => {
@@ -41,10 +44,11 @@ describe('Phase 2 Security Features', () => {
       });
 
       // Should return 200 or 401 (depending on if Privy is configured)
-      expect([200, 401, 500]).toContain(response.status);
+      // Treat 500 as test failure - should never return server error
+      expect([200, 401]).toContain(response.status);
 
       // If Privy is not configured, that's okay - we're testing the endpoint exists
-      if (response.status === 401 || response.status === 500) {
+      if (response.status === 401) {
         console.log('⚠️  Privy not configured - skipping identity token test');
         return;
       }
@@ -201,9 +205,9 @@ describe('Phase 2 Security Features', () => {
       console.log(`📊 Rate limit test responses: ${statuses.join(', ')}`);
 
       // At least one should be rate limited (429) if rate limiting is working
-      // Or all should be 401/500 if Privy is not configured
+      // Or all should be 401 if Privy is not configured
       const hasRateLimit = statuses.some(s => s === 429);
-      const allUnauthorized = statuses.every(s => s === 401 || s === 500);
+      const allUnauthorized = statuses.every(s => s === 401);
 
       if (hasRateLimit) {
         console.log('✅ Rate limiting is working');
@@ -213,7 +217,8 @@ describe('Phase 2 Security Features', () => {
         console.log('ℹ️  Rate limiting may not be triggered (limits may be high)');
       }
 
-      expect(true).toBe(true); // Always pass - we're just checking the behavior
+      // Expect either rate limiting to work OR all requests to be unauthorized
+      expect(hasRateLimit || allUnauthorized).toBe(true);
     }, 30000); // 30 second timeout for this test
   });
 
@@ -245,24 +250,6 @@ describe('Phase 2 Security Features', () => {
         done();
       }, 5000);
     }, 10000);
-
-    test('should parse cookies from WebSocket upgrade request', () => {
-      // This is a unit test of the cookie parsing logic
-      const mockCookieHeader = 'privy-id-token=test-token; csrf-token=test-csrf';
-
-      const cookies = mockCookieHeader.split(';').reduce((acc, cookie) => {
-        const [key, value] = cookie.trim().split('=');
-        if (key && value) {
-          acc[key] = decodeURIComponent(value);
-        }
-        return acc;
-      }, {} as Record<string, string>);
-
-      expect(cookies['privy-id-token']).toBe('test-token');
-      expect(cookies['csrf-token']).toBe('test-csrf');
-
-      console.log('✅ Cookie parsing logic works correctly');
-    });
   });
 
   describe('6. Logout Functionality', () => {

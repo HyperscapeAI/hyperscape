@@ -79,9 +79,11 @@ function hasNearbyInteractables(world: World | null): boolean {
     const nearbyActions = actionsSystem?.getNearby ? actionsSystem.getNearby(10) : []
 
     return nearbyActions.length > 0
-  } catch {
-    // If actions system not available, assume interactables might exist
-    return true
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    console.error('[hasNearbyInteractables] Failed to check for nearby interactables:', errorMsg)
+    // If actions system not available, return false to avoid loading unnecessary actions
+    return false
   }
 }
 

@@ -10,7 +10,7 @@ import { z } from 'zod'
  * Zod schema for authentication response validation
  */
 const AuthResponseSchema = z.object({
-  csrfToken: z.string(),
+  csrfToken: z.string().min(16, 'csrfToken must be at least 16 characters'),
   userId: z.string(),
 })
 
@@ -83,6 +83,26 @@ export class PrivyAuthManager {
   }
 
   /**
+   * Validates authentication response data using Zod schema
+   *
+   * @param rawData - The raw response data to validate
+   * @returns Validated response with csrfToken and userId
+   * @throws Error if parsing fails or csrfToken doesn't meet requirements
+   * @private
+   */
+  private validateAuthResponse(rawData: unknown): { csrfToken: string; userId: string } {
+    const parseResult = AuthResponseSchema.safeParse(rawData)
+
+    if (!parseResult.success) {
+      throw new Error(
+        `Invalid response format: ${parseResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`
+      )
+    }
+
+    return parseResult.data
+  }
+
+  /**
    * Gets the singleton instance of PrivyAuthManager
    * 
    * @returns The singleton instance
@@ -150,22 +170,8 @@ export class PrivyAuthManager {
         throw new Error(errorData.message || 'Failed to authenticate with server')
       }
 
-      // Validate response using Zod schema
-      const rawData: unknown = await response.json()
-      const parseResult = AuthResponseSchema.safeParse(rawData)
-
-      if (!parseResult.success) {
-        throw new Error(
-          `Invalid response format: ${parseResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`
-        )
-      }
-
-      const data = parseResult.data
-
-      // Enforce minimum CSRF token length (server-side requirement)
-      if (data.csrfToken.length < 16) {
-        throw new Error('Invalid csrfToken: must be a string of length >= 16')
-      }
+      // Validate response using helper
+      const data = this.validateAuthResponse(await response.json())
 
       // Update state with user info and CSRF token
       // NOTE: The actual auth token is now in an HttpOnly cookie, not in state
@@ -301,21 +307,8 @@ export class PrivyAuthManager {
         throw new Error(`Failed to fetch CSRF token: ${response.status}`)
       }
 
-      const rawData: unknown = await response.json()
-      const parseResult = AuthResponseSchema.safeParse(rawData)
-
-      if (!parseResult.success) {
-        throw new Error(
-          `Invalid CSRF response format: ${parseResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`
-        )
-      }
-
-      const csrfData = parseResult.data
-
-      // Enforce minimum CSRF token length (server-side requirement)
-      if (csrfData.csrfToken.length < 16) {
-        throw new Error('Invalid csrfToken: must be a string of length >= 16')
-      }
+      // Validate response using helper
+      const csrfData = this.validateAuthResponse(await response.json())
 
       // Update state with fetched CSRF token
       this.updateState({

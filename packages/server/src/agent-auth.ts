@@ -59,11 +59,20 @@ import type { User, SystemDatabase } from './types';
 import { uuid } from '@hyperscape/shared';
 import { RateLimiterMemory, RateLimiterRedis } from 'rate-limiter-flexible';
 import Redis from 'ioredis';
+import { elizaLogger } from '@elizaos/core';
 
 /**
  * Agent token expiry time in seconds (5 minutes for enhanced security)
+ * Valid range: 60-86400 seconds (1 minute to 24 hours)
  */
-const AGENT_TOKEN_EXPIRY = parseInt(process.env.AGENT_TOKEN_EXPIRY || '300', 10);
+const AGENT_TOKEN_EXPIRY = (() => {
+  const value = parseInt(process.env.AGENT_TOKEN_EXPIRY || '300', 10);
+  if (value < 60 || value > 86400) {
+    elizaLogger.warn(`[AgentAuth] Invalid AGENT_TOKEN_EXPIRY: ${value}. Must be between 60 and 86400. Using default: 300`);
+    return 300;
+  }
+  return value;
+})();
 
 /**
  * Check if agent authentication is enabled
@@ -83,7 +92,7 @@ if (process.env.REDIS_URL) {
       maxRetriesPerRequest: 3,
       retryStrategy(times: number) {
         if (times > 3) {
-          console.error('[AgentAuth] Redis connection failed after 3 retries. Falling back to in-memory rate limiting.');
+          elizaLogger.error('[AgentAuth] Redis connection failed after 3 retries. Falling back to in-memory rate limiting.');
           return null; // Stop retrying
         }
         return Math.min(times * 100, 3000); // Exponential backoff
@@ -91,14 +100,14 @@ if (process.env.REDIS_URL) {
     });
 
     redisClient.on('error', (err) => {
-      console.error('[AgentAuth] Redis error:', err.message);
+      elizaLogger.error('[AgentAuth] Redis error:', err.message);
     });
 
     redisClient.on('connect', () => {
-      console.info('[AgentAuth] Redis connected - using distributed rate limiting');
+      elizaLogger.info('[AgentAuth] Redis connected - using distributed rate limiting');
     });
   } catch (error) {
-    console.error('[AgentAuth] Failed to initialize Redis:', error);
+    elizaLogger.error('[AgentAuth] Failed to initialize Redis:', error);
     redisClient = null;
   }
 }
@@ -117,21 +126,36 @@ if (process.env.REDIS_URL) {
  * 
  * Always set REDIS_URL in production environments.
  */
-const agentRegistrationLimiter = redisClient
-  ? new RateLimiterRedis({
-      storeClient: redisClient,
-      points: parseInt(process.env.AGENT_REGISTRATION_LIMIT || '10', 10), // 10 registrations
-      duration: parseInt(process.env.AGENT_REGISTRATION_WINDOW || '900', 10), // per 15 minutes (900 seconds)
-      keyPrefix: 'agent_reg_limit',
-    })
-  : new RateLimiterMemory({
-      points: parseInt(process.env.AGENT_REGISTRATION_LIMIT || '10', 10),
-      duration: parseInt(process.env.AGENT_REGISTRATION_WINDOW || '900', 10),
-    });
+const agentRegistrationLimiter = (() => {
+  const points = parseInt(process.env.AGENT_REGISTRATION_LIMIT || '10', 10);
+  const duration = parseInt(process.env.AGENT_REGISTRATION_WINDOW || '900', 10);
+
+  if (points <= 0) {
+    elizaLogger.warn(`[AgentAuth] Invalid AGENT_REGISTRATION_LIMIT: ${points}. Must be > 0. Using default: 10`);
+  }
+  if (duration <= 0) {
+    elizaLogger.warn(`[AgentAuth] Invalid AGENT_REGISTRATION_WINDOW: ${duration}. Must be > 0. Using default: 900`);
+  }
+
+  const validPoints = points > 0 ? points : 10;
+  const validDuration = duration > 0 ? duration : 900;
+
+  return redisClient
+    ? new RateLimiterRedis({
+        storeClient: redisClient,
+        points: validPoints,
+        duration: validDuration,
+        keyPrefix: 'agent_reg_limit',
+      })
+    : new RateLimiterMemory({
+        points: validPoints,
+        duration: validDuration,
+      });
+})();
 
 // Warn if using in-memory rate limiting in production
 if (!redisClient && process.env.NODE_ENV === 'production') {
-  console.warn(
+  elizaLogger.warn(
     '⚠️  [AgentAuth] Using in-memory rate limiting in production! ' +
     'This is NOT secure for multi-instance deployments. ' +
     'Set REDIS_URL environment variable to enable distributed rate limiting.'
@@ -141,12 +165,12 @@ if (!redisClient && process.env.NODE_ENV === 'production') {
 /**
  * Agent authentication information
  */
-export class AgentAuthInfo {
+export interface AgentAuthInfo {
   /** Unique agent ID */
-  agentId!: string;
+  agentId: string;
 
   /** Agent display name */
-  agentName!: string;
+  agentName: string;
 
   /** ElizaOS runtime ID (if applicable) */
   runtimeId?: string;
@@ -158,22 +182,22 @@ export class AgentAuthInfo {
   privyUserId?: string;
 
   /** Agent role (default: 'agent') */
-  role!: 'agent' | 'autonomous_agent' | 'npc' | 'bot';
+  role: 'agent' | 'autonomous_agent' | 'npc' | 'bot';
 
   /** Allowed permissions */
-  permissions!: string[];
+  permissions: string[];
 
   /** Creation timestamp */
-  createdAt!: Date;
+  createdAt: Date;
 
   /** Whether this agent is active */
-  isActive!: boolean;
+  isActive: boolean;
 }
 
 /**
  * Agent metadata for audit trail
  */
-export class AgentMetadata {
+export interface AgentMetadata {
   ipAddress?: string;
   userAgent?: string;
   version?: string;
@@ -182,9 +206,9 @@ export class AgentMetadata {
 /**
  * Agent authentication request
  */
-export class AgentAuthRequest {
+export interface AgentAuthRequest {
   /** Agent name */
-  agentName!: string;
+  agentName: string;
 
   /** ElizaOS runtime ID */
   runtimeId?: string;
@@ -202,33 +226,33 @@ export class AgentAuthRequest {
 /**
  * Agent authentication response
  */
-export class AgentAuthResponse {
+export interface AgentAuthResponse {
   /** JWT token for WebSocket connection */
-  token!: string;
+  token: string;
 
   /** Agent identity info */
-  agentInfo!: AgentAuthInfo;
+  agentInfo: AgentAuthInfo;
 
   /** Token expiry time (ISO string) */
-  expiresAt!: string;
+  expiresAt: string;
 
   /** WebSocket URL to connect to */
-  wsUrl!: string;
+  wsUrl: string;
 }
 
 /**
  * Audit log entry for agent authentication events
  */
-class AgentAuthAuditEntry {
-  timestamp!: string;
-  eventType!: 'agent_registered' | 'agent_authenticated' | 'agent_token_refreshed' | 'agent_deactivated' | 'agent_auth_failed';
-  agentId!: string;
+export interface AgentAuthAuditEntry {
+  timestamp: string;
+  eventType: 'agent_registered' | 'agent_authenticated' | 'agent_token_refreshed' | 'agent_deactivated' | 'agent_auth_failed';
+  agentId: string;
   agentName?: string;
   runtimeId?: string;
   ownerId?: string;
   privyUserId?: string;
   metadata?: Record<string, string | number | boolean>;
-  success!: boolean;
+  success: boolean;
   errorMessage?: string;
 }
 
@@ -245,13 +269,19 @@ async function logAgentAuthEvent(entry: AgentAuthAuditEntry, db?: SystemDatabase
   // Add to in-memory cache
   auditLog.push(entry);
 
-  // Also log to console for debugging (without PII)
-  // Note: Full metadata including IP addresses is persisted to database but excluded from console to prevent PII exposure
-  const logLevel = entry.success ? 'info' : 'warn';
-  console[logLevel](`[AgentAuth] ${entry.eventType}:`, {
-    agentId: entry.agentId,
-    success: entry.success,
-  });
+  // Also log for debugging (without PII)
+  // Note: Full metadata including IP addresses is persisted to database but excluded from logs to prevent PII exposure
+  if (entry.success) {
+    elizaLogger.info(`[AgentAuth] ${entry.eventType}:`, {
+      agentId: entry.agentId,
+      success: entry.success,
+    });
+  } else {
+    elizaLogger.warn(`[AgentAuth] ${entry.eventType}:`, {
+      agentId: entry.agentId,
+      success: entry.success,
+    });
+  }
 
   // Keep only last 1000 entries in memory
   if (auditLog.length > 1000) {
@@ -275,7 +305,7 @@ async function logAgentAuthEvent(entry: AgentAuthAuditEntry, db?: SystemDatabase
       });
     } catch (error) {
       // Log but don't fail the auth flow if audit logging fails
-      console.error('[AgentAuth] Failed to persist audit log:', error);
+      elizaLogger.error('[AgentAuth] Failed to persist audit log:', error);
     }
   }
 }
@@ -295,7 +325,10 @@ export async function registerAgent(
   request: AgentAuthRequest
 ): Promise<AgentAuthResponse> {
   // Rate limiting - derive key from IP address or runtime ID
-  const rateLimitKey = request.metadata?.ipAddress || request.runtimeId || 'anonymous';
+  const rateLimitKey = request.metadata?.ipAddress || request.runtimeId;
+  if (!rateLimitKey) {
+    throw new Error('Agent registration requires either IP address or runtime ID for rate limiting');
+  }
 
   try {
     await agentRegistrationLimiter.consume(rateLimitKey);
@@ -333,7 +366,12 @@ export async function registerAgent(
         .first();
 
       if (existing) {
-        console.info(`[AgentAuth] Found existing agent for runtimeId ${request.runtimeId}, reusing: ${existing.id}`);
+        // Validate ownership - agents cannot be claimed by different users
+        if (request.privyUserId !== existing.privyUserId) {
+          throw new Error('Agent belongs to different user');
+        }
+
+        elizaLogger.info(`[AgentAuth] Found existing agent for runtimeId ${request.runtimeId}, reusing: ${existing.id}`);
 
         // Generate new token for existing agent
         const token = await createJWT(
@@ -385,13 +423,23 @@ export async function registerAgent(
     const agentRecord = {
       ...agentUser,
       runtimeId: request.runtimeId || null,
-      ownerId: request.privyUserId || null,
-      privyUserId: request.privyUserId || null,
+      ownerId: request.privyUserId || null, // Set owner to the privy user creating this agent
+      privyUserId: request.privyUserId || null, // Also set privyUserId for the agent itself
       isActive: 1, // 1 = active (database expects integer, not boolean)
       permissions: permissions.join(','),
     };
 
-    await db('users').insert(agentRecord);
+    // Use UPSERT to handle race conditions where agent might already exist
+    // ON CONFLICT will update the existing record instead of failing
+    await db('users')
+      .insert(agentRecord)
+      .onConflict('runtimeId')
+      .merge({
+        ownerId: request.privyUserId || null,
+        privyUserId: request.privyUserId || null,
+        permissions: permissions.join(','),
+        isActive: 1
+      });
 
     // Generate short-lived JWT token
     const token = await createJWT(
@@ -465,6 +513,29 @@ export async function registerAgent(
 }
 
 /**
+ * Agent database record structure
+ *
+ * This interface defines the shape of agent data stored in the users table.
+ * Agents have additional fields beyond regular users (runtimeId, ownerId, permissions, isActive).
+ */
+export interface AgentRecord {
+  /** Unique agent identifier */
+  agentId: string;
+  /** ElizaOS runtime ID (nullable) */
+  runtimeId: string | null;
+  /** Owner's user ID (nullable) */
+  ownerId: string | null;
+  /** Privy user ID of owner (nullable) */
+  privyUserId: string | null;
+  /** Whether agent is active (1=active, 0=inactive, null treated as inactive) */
+  isActive: boolean | number | null;
+  /** Comma-separated permissions string */
+  permissions: string;
+  /** Creation timestamp */
+  createdAt: number;
+}
+
+/**
  * Verifies an agent JWT token and returns agent information
  *
  * Validates the token signature, expiry, and agent permissions.
@@ -511,11 +582,11 @@ export async function verifyAgentToken(
     const agentRecord = await db('users').where('id', payload.userId as string).first() as {
       id: string
       name: string
-      runtimeId?: string | null
-      ownerId?: string | null
-      privyUserId?: string | null
-      isActive?: boolean | number | null
-      permissions?: string | null
+      runtimeId: string | null | undefined
+      ownerId: string | null | undefined
+      privyUserId: string | null | undefined
+      isActive: boolean | number | null | undefined
+      permissions: string | null | undefined
       createdAt: string
     } | undefined;
 
@@ -565,7 +636,7 @@ export async function verifyAgentToken(
     const authInfo = Object.assign(new AgentAuthInfo(), {
       agentId: agentRecord.id,
       agentName: agentRecord.name,
-      runtimeId: agentRecord.runtimeId || undefined,
+      runtimeId: agentRecord.runtimeId ? agentRecord.runtimeId : undefined, // Convert null to undefined
       ownerId: agentRecord.privyUserId || agentRecord.ownerId || undefined,
       privyUserId: agentRecord.privyUserId || undefined,
       role: 'agent' as const,
@@ -632,11 +703,13 @@ export function getAgentAuditLog(agentId: string): AgentAuthAuditEntry[] {
 /**
  * Gets all recent audit log entries
  *
- * @param limit - Maximum number of entries to return
+ * @param limit - Maximum number of entries to return (1-1000, default 100)
  * @returns Array of recent audit log entries
  */
 export function getRecentAuditLog(limit = 100): AgentAuthAuditEntry[] {
-  return auditLog.slice(-limit);
+  // Clamp limit to valid range (1-1000) to prevent abuse
+  const validatedLimit = Math.max(1, Math.min(limit, 1000));
+  return auditLog.slice(-validatedLimit);
 }
 
 /**
@@ -646,12 +719,12 @@ export function getRecentAuditLog(limit = 100): AgentAuthAuditEntry[] {
 export async function shutdownAgentAuth(): Promise<void> {
   const client = redisClient;
   if (client) {
-    console.info('[AgentAuth] Closing Redis connection...');
+    elizaLogger.info('[AgentAuth] Closing Redis connection...');
     try {
       await client.quit();
-      console.info('[AgentAuth] Redis connection closed');
+      elizaLogger.info('[AgentAuth] Redis connection closed');
     } catch (error) {
-      console.error('[AgentAuth] Error closing Redis connection:', error);
+      elizaLogger.error('[AgentAuth] Error closing Redis connection:', error);
     }
   }
 }

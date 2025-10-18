@@ -17,10 +17,25 @@ export interface FormattableEntity {
 }
 
 /**
+ * Hyperscape app system type (minimal representation for tests)
+ *
+ * The full App type is defined in @hyperscape/shared but we only
+ * need minimal type information for test utilities.
+ */
+export interface App {
+  // Minimal app properties used in tests
+  [key: string]: unknown
+}
+
+/**
  * Entity with interactable components
  */
 export interface InteractableEntity {
-  app?: unknown
+  /**
+   * Hyperscape app system attached to this entity
+   * Apps provide interactive functionality like buttons, doors, portals, etc.
+   */
+  app?: App
   grabbable?: boolean
   clickable?: boolean
   interactable?: boolean

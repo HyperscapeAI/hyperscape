@@ -86,7 +86,7 @@ export const skillProgressionEvaluator: Evaluator = {
     const action = typeof content.action === 'string' ? content.action : undefined
 
     // Check xpGained with type safety
-    const hasXpGained = typeof content.xpGained === 'number' || (content.xpGained !== undefined && typeof content.xpGained === 'number')
+    const hasXpGained = typeof content.xpGained === 'number'
 
     // Check levelUp with type safety
     const hasLevelUp = content.levelUp === true
@@ -302,8 +302,14 @@ export const skillProgressionEvaluator: Evaluator = {
             newLevel,
             xpPerHour,
           })
-        } catch {
-          logger.debug('[SKILL_EVALUATOR] Could not emit level up event')
+        } catch (emitError) {
+          const errorMsg = emitError instanceof Error ? emitError.message : String(emitError)
+          const errorStack = emitError instanceof Error ? emitError.stack : undefined
+          logger.error(
+            `[SKILL_EVALUATOR] Failed to emit level up event for ${skillName} level ${newLevel} in room ${message.roomId}`,
+            { error: errorMsg, stack: errorStack }
+          )
+          throw emitError
         }
       }
 

@@ -72,10 +72,13 @@ export class InteractionSystem extends System {
     super(world);
   }
   
+  // Bound method reference for proper cleanup
+  private onEntityModifiedBound!: (data: { id: string; changes: { e?: string; p?: number[] } }) => void;
+
   override start(): void {
     this.canvas = this.world.graphics?.renderer?.domElement ?? null;
     if (!this.canvas) return;
-    
+
     // Bind once so we can remove correctly on destroy
     this.onCanvasClick = this.onCanvasClick.bind(this);
     this.onRightClick = this.onRightClick.bind(this);
@@ -85,7 +88,8 @@ export class InteractionSystem extends System {
     this.onMouseUp = this.onMouseUp.bind(this);
     this.onTouchStart = this.onTouchStart.bind(this);
     this.onTouchEnd = this.onTouchEnd.bind(this);
-    
+    this.onEntityModifiedBound = this.onEntityModified.bind(this);
+
     // Add event listeners with capture phase for context menu priority
     this.canvas.addEventListener('click', this.onCanvasClick, false);
     this.canvas.addEventListener('contextmenu', this.onContextMenu, true);
@@ -94,13 +98,13 @@ export class InteractionSystem extends System {
     this.canvas.addEventListener('mouseup', this.onMouseUp, false);
     this.canvas.addEventListener('touchstart', this.onTouchStart, true);
     this.canvas.addEventListener('touchend', this.onTouchEnd, true);
-    
+
     // Listen for camera tap events on mobile
     this.world.on(EventType.CAMERA_TAP, this.onCameraTap);
-    
+
     // Listen for movement completion events to trigger auto-pickup
-    this.world.on(EventType.ENTITY_MODIFIED, this.onEntityModified.bind(this));
-    
+    this.world.on(EventType.ENTITY_MODIFIED, this.onEntityModifiedBound);
+
     // Create target marker (visual indicator)
     this.createTargetMarker();
   }
@@ -108,13 +112,13 @@ export class InteractionSystem extends System {
   override destroy(): void {
     // Clear pending resource actions
     this.pendingResourceActions.clear();
-    
+
     // Clear long press timer if active
     if (this.longPressTimer) {
       clearTimeout(this.longPressTimer);
       this.longPressTimer = null;
     }
-    
+
     // Remove event listeners
     if (this.canvas) {
       this.canvas.removeEventListener('click', this.onCanvasClick, false);
@@ -125,10 +129,11 @@ export class InteractionSystem extends System {
       this.canvas.removeEventListener('touchstart', this.onTouchStart, true);
       this.canvas.removeEventListener('touchend', this.onTouchEnd, true);
     }
-    
+
     // Unsubscribe from world events
     this.world.off(EventType.CAMERA_TAP, this.onCameraTap);
-    
+    this.world.off(EventType.ENTITY_MODIFIED, this.onEntityModifiedBound);
+
     // Clean up target marker
     if (this.targetMarker) {
       this.targetMarker.geometry.dispose();
@@ -138,7 +143,7 @@ export class InteractionSystem extends System {
       }
       this.targetMarker = null;
     }
-    
+
     // Call parent cleanup
     super.destroy();
   }
@@ -317,7 +322,18 @@ export class InteractionSystem extends System {
       this.targetMarker.visible = false;
     }
     this.targetPosition = null;
-    
+
+    // Clear any pending resource actions for this player
+    const localPlayer = this.world.getPlayer();
+    if (localPlayer) {
+      // Remove all pending actions for this player
+      for (const [key] of this.pendingResourceActions.entries()) {
+        if (key.startsWith(`${localPlayer.id}:`)) {
+          this.pendingResourceActions.delete(key);
+        }
+      }
+    }
+
     // Send cancel movement to server
     if (this.world.network?.send) {
       this.world.network.send('moveRequest', {
@@ -951,45 +967,49 @@ export class InteractionSystem extends System {
   private handleResourceAction(resourceId: string, action: string): void {
     const localPlayer = this.world.getPlayer();
     if (!localPlayer) return;
-    
+
     // Get the resource entity to check distance
     const resourceEntity = this.world.entities.get(resourceId);
     if (!resourceEntity) {
       console.warn('[InteractionSystem] Resource entity not found:', resourceId);
       return;
     }
-    
+
     // Check distance to resource (RuneScape-style: walk if too far, then interact)
     const resourcePos = resourceEntity.position;
     const playerPos = localPlayer.position;
     const distance = Math.sqrt(
-      Math.pow(resourcePos.x - playerPos.x, 2) + 
+      Math.pow(resourcePos.x - playerPos.x, 2) +
       Math.pow(resourcePos.z - playerPos.z, 2)
     );
-    
+
     const interactionDistance = 3.0; // Must be within 3 meters
-    
+
     if (distance > interactionDistance) {
       // Too far - walk to resource first (RuneScape behavior)
       console.log(`[InteractionSystem] 🚶 Walking to ${action} (distance: ${distance.toFixed(1)}m)`);
-      
+
       // Walk to just outside interaction range
       const targetDistance = interactionDistance - 0.5; // Stop 0.5m before max range
       const direction = {
         x: (resourcePos.x - playerPos.x) / distance,
         z: (resourcePos.z - playerPos.z) / distance
       };
-      
+
       const targetPos = {
         x: resourcePos.x - direction.x * targetDistance,
         y: resourcePos.y,
         z: resourcePos.z - direction.z * targetDistance
       };
-      
+
       this.walkTo(targetPos);
-      
+
       // Add to pending actions - will be processed in update() loop
       const pendingKey = `${localPlayer.id}:${resourceId}`;
+
+      // Clear any existing pending action for this resource (e.g., if player clicked again)
+      this.pendingResourceActions.delete(pendingKey);
+
       this.pendingResourceActions.set(pendingKey, {
         resourceId,
         action,
@@ -997,10 +1017,10 @@ export class InteractionSystem extends System {
         targetDistance,
         interactionDistance
       });
-      
+
       return;
     }
-    
+
     // Close enough - execute immediately
     this.executeResourceAction(resourceId, action);
   }

@@ -70,9 +70,9 @@ function isPlayerInventoryData(data: unknown): data is PlayerInventoryData {
 function getActionMetadata<T extends Record<string, unknown>>(
   memory: Memory,
   expectedKeys: (keyof T)[]
-): Partial<T> | null {
+): Partial<T> | undefined {
   if (!memory.metadata || typeof memory.metadata !== 'object') {
-    return null
+    return undefined
   }
 
   const result: Partial<T> = {}

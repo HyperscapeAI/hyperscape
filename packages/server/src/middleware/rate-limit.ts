@@ -26,7 +26,7 @@
  * @see https://github.com/fastify/fastify-rate-limit
  */
 
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import fastifyRateLimit from '@fastify/rate-limit';
 
 /**
@@ -40,7 +40,7 @@ export const AUTH_RATE_LIMIT_CONFIG = {
   max: Number(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS) || 5,
 
   // Use IP address as key
-  keyGenerator: (request: { ip: string }) => request.ip,
+  keyGenerator: (request: FastifyRequest) => request.ip ?? 'unknown',
 
   // Error response when limit exceeded
   errorResponseBuilder: () => ({
@@ -56,7 +56,7 @@ export const AUTH_RATE_LIMIT_CONFIG = {
 export const API_RATE_LIMIT_CONFIG = {
   timeWindow: 15 * 60 * 1000, // 15 minutes
   max: 100, // 100 requests per window
-  keyGenerator: (request: { ip: string }) => request.ip,
+  keyGenerator: (request: FastifyRequest) => request.ip ?? 'unknown',
   errorResponseBuilder: () => ({
     error: 'Too Many Requests',
     message: 'You have exceeded the rate limit. Please slow down.',
@@ -70,7 +70,7 @@ export const API_RATE_LIMIT_CONFIG = {
 export const STRICT_RATE_LIMIT_CONFIG = {
   timeWindow: 60 * 60 * 1000, // 1 hour
   max: 3, // 3 requests per hour
-  keyGenerator: (request: { ip: string }) => request.ip,
+  keyGenerator: (request: FastifyRequest) => request.ip ?? 'unknown',
   errorResponseBuilder: () => ({
     error: 'Too Many Requests',
     message: 'This operation is rate limited. Please try again later.',
@@ -92,7 +92,7 @@ export async function registerRateLimiting(app: FastifyInstance): Promise<void> 
     max: API_RATE_LIMIT_CONFIG.max,
     timeWindow: API_RATE_LIMIT_CONFIG.timeWindow,
     errorResponseBuilder: API_RATE_LIMIT_CONFIG.errorResponseBuilder,
-    keyGenerator: (request) => request.ip,
+    keyGenerator: (request: FastifyRequest) => request.ip ?? 'unknown',
   });
 
   console.log('[RateLimit] Rate limiting registered:', {

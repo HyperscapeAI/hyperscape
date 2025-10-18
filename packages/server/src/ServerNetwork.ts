@@ -118,11 +118,18 @@ import type {
   InventorySystemData,
   DatabaseSystemOperations
 } from './types';
-import { EventType, Socket, System, THREE, addRole, dbHelpers, getItem, hasRole, isDatabaseInstance, removeRole, serializeRoles, uuid, writePacket, Entity, TerrainSystem, World } from '@hyperscape/shared';
+import { EventType, Socket, System, THREE, addRole, dbHelpers, getItem, hasRole, isDatabaseInstance, removeRole, serializeRoles, uuid, writePacket, Entity, TerrainSystem } from '@hyperscape/shared';
+import type { World } from '@hyperscape/shared';
 import type { Vector3 } from 'three';
 import { isPrivyEnabled, verifyPrivyToken } from './privy-auth';
 import { createJWT, verifyJWT } from './utils';
 import { isAgentAuthEnabled, verifyAgentToken } from './agent-auth';
+
+// Agent user type extending User with agent-specific properties
+export interface AgentUser extends User {
+  isAgent: true;
+  runtimeId: string;
+}
 
 // SocketInterface is the extended ServerSocket type
 type SocketInterface = ServerSocket;
@@ -238,8 +245,8 @@ export class ServerNetwork extends System implements NetworkWithSocket {
   // const qDelta = quatSubtract(currentQuaternion, last.q);
   // Quantize and send qDelta, update last
 
-  constructor(world: unknown) {
-    super(world as InstanceType<typeof import('@hyperscape/shared').World>);
+  constructor(world: World) {
+    super(world);
     this.id = 0;
     this.ids = -1;
     this.sockets = new Map();
@@ -905,6 +912,12 @@ export class ServerNetwork extends System implements NetworkWithSocket {
    * 
    * @public
    */
+  // Define packet data types for better type safety
+  type PacketData =
+    | { type: 'spawn'; data: unknown }
+    | { type: 'move'; data: unknown }
+    | { type: string; data: unknown };
+
   enqueue(socket: SocketInterface, method: string, data: unknown): void {
     if (method === 'onChatAdded') {
     }
@@ -1067,14 +1080,53 @@ export class ServerNetwork extends System implements NetworkWithSocket {
         return {};
       }
 
-      // Parse cookie header into key-value pairs
-      return cookieHeader.split(';').reduce((acc, cookie) => {
+      // Security: Cap cookie header size to prevent memory exhaustion
+      const MAX_COOKIE_HEADER_SIZE = 8 * 1024; // 8KB
+      if (cookieHeader.length > MAX_COOKIE_HEADER_SIZE) {
+        console.warn('[ServerNetwork] Cookie header exceeds size limit, truncating');
+        return {};
+      }
+
+      // Parse cookie header into key-value pairs with validation
+      const cookies = cookieHeader.split(';');
+      const MAX_COOKIES = 50;
+      if (cookies.length > MAX_COOKIES) {
+        console.warn('[ServerNetwork] Too many cookies, limiting to first 50');
+      }
+
+      const result: Record<string, string> = {};
+      const COOKIE_KEY_REGEX = /^[a-zA-Z0-9_-]+$/;
+      const MAX_VALUE_LENGTH = 1024;
+
+      for (let i = 0; i < Math.min(cookies.length, MAX_COOKIES); i++) {
+        const cookie = cookies[i];
+        if (!cookie) continue;
+
         const [key, value] = cookie.trim().split('=');
-        if (key && value) {
-          acc[key] = decodeURIComponent(value);
+        if (!key || !value) continue;
+
+        // Validate key format
+        if (!COOKIE_KEY_REGEX.test(key)) {
+          console.warn(`[ServerNetwork] Invalid cookie key: ${key}`);
+          continue;
         }
-        return acc;
-      }, {} as Record<string, string>);
+
+        // Limit value length
+        if (value.length > MAX_VALUE_LENGTH) {
+          console.warn(`[ServerNetwork] Cookie value too long: ${key}`);
+          continue;
+        }
+
+        // Safe decoding with error handling
+        try {
+          result[key] = decodeURIComponent(value);
+        } catch (decodeErr) {
+          console.warn(`[ServerNetwork] Failed to decode cookie value for ${key}:`, decodeErr);
+          continue;
+        }
+      }
+
+      return result;
     } catch (err) {
       console.error('[ServerNetwork] Failed to parse cookies from WebSocket:', err);
       return {};
@@ -1197,11 +1249,20 @@ export class ServerNetwork extends System implements NetworkWithSocket {
             // Load agent user from database
             const dbResult = await this.db('users').where('id', agentInfo.agentId).first();
             if (dbResult) {
-              user = dbResult as User;
+              const baseUser = dbResult as User;
 
-              // Add agent-specific metadata
-              (user as User & { isAgent?: boolean; runtimeId?: string }).isAgent = true;
-              (user as User & { isAgent?: boolean; runtimeId?: string }).runtimeId = agentInfo.runtimeId;
+              // Construct properly typed AgentUser object
+              const agentUser: AgentUser = {
+                id: baseUser.id,
+                name: baseUser.name,
+                avatar: baseUser.avatar,
+                roles: baseUser.roles,
+                createdAt: baseUser.createdAt,
+                isAgent: true,
+                runtimeId: agentInfo.runtimeId
+              };
+
+              user = agentUser;
             }
           }
         } catch (err) {

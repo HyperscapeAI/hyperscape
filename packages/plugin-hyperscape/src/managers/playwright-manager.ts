@@ -485,15 +485,13 @@ export class PlaywrightManager {
 
   /**
    * Compare screenshots for visual regression testing
-   * Returns true if screenshots match within threshold
+   * Returns exact buffer comparison result without threshold
    */
   async compareScreenshots(
     screenshot1: Buffer | string,
     screenshot2: Buffer | string,
-    threshold = 0.1,
   ): Promise<{ match: boolean; difference: number }> {
-    // TODO: Implement pixel-by-pixel comparison
-    // For now, return simple buffer comparison
+    // Convert to buffers if needed
     const buffer1 = typeof screenshot1 === 'string'
       ? Buffer.from(screenshot1, 'base64')
       : screenshot1;
@@ -501,10 +499,11 @@ export class PlaywrightManager {
       ? Buffer.from(screenshot2, 'base64')
       : screenshot2;
 
+    // Exact buffer comparison
     const match = buffer1.equals(buffer2);
     const difference = match ? 0 : 1;
 
-    return { match: difference <= threshold, difference };
+    return { match, difference };
   }
 
   private getService() {

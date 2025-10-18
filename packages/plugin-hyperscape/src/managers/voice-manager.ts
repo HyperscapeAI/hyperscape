@@ -1,4 +1,5 @@
 import { VOICE_CONFIG } from "../config/constants";
+import { VOICE_MANAGER_CONFIG } from "../config/manager-config";
 import {
   ChannelType,
   Content,
@@ -292,7 +293,7 @@ export class VoiceManager {
         const audioBuffer = await convertToAudioBuffer(responseStream);
         const emoteManager = service.getEmoteManager();
         if (emoteManager) {
-          const emote = (content.emote as string) || "waving both hands";
+          const emote = (content.emote as string) || VOICE_MANAGER_CONFIG.DEFAULT_EMOTE;
           await emoteManager.queueEmote(emote);
         }
         await this.playAudio(audioBuffer);
@@ -322,15 +323,21 @@ export class VoiceManager {
     this.audioQueue.push(audioBuffer);
     logger.info("[VoiceManager] Audio added to queue, queue length:", this.audioQueue.length);
 
-    // If not already processing queue, start processing
+    // Fix race condition: check and set flag atomically
+    // If we're already processing, the running loop will pick up the new item
+    // If not, we start processing
     if (!this.processingQueue) {
-      await this.processAudioQueue();
+      // Immediately start processing without awaiting to avoid blocking
+      this.processAudioQueue().catch(error => {
+        logger.error("[VoiceManager] Error in audio queue processing:", error);
+      });
     }
   }
 
   /**
    * Process audio queue sequentially
    * Drains the queue and plays each audio buffer in order
+   * Null checks moved outside the loop for better performance
    */
   private async processAudioQueue(): Promise<void> {
     // Prevent concurrent queue processing
@@ -341,34 +348,38 @@ export class VoiceManager {
     this.processingQueue = true;
 
     try {
+      // Get service and world once before loop
+      const service = this.getService();
+      if (!service) {
+        logger.error("[VoiceManager] Service not available");
+        throw new Error("HyperscapeService not available");
+      }
+
+      const world = service.getWorld();
+      if (!world) {
+        logger.error("[VoiceManager] World not available");
+        throw new Error("World not available");
+      }
+
+      // Get LiveKit system once before loop
+      const livekit = world.livekit;
+      if (!livekit) {
+        logger.warn("[VoiceManager] LiveKit not available, cannot process audio queue");
+        // Clear queue since we can't process it
+        this.audioQueue.length = 0;
+        return;
+      }
+
+      // Process all items in queue
       while (this.audioQueue.length > 0) {
         const audioBuffer = this.audioQueue.shift();
         if (!audioBuffer) {
           continue;
         }
 
-        const service = this.getService();
-        if (!service) {
-          logger.error("[VoiceManager] Service not available");
-          throw new Error("HyperscapeService not available");
-        }
-
-        const world = service.getWorld();
-        if (!world) {
-          logger.error("[VoiceManager] World not available");
-          throw new Error("World not available");
-        }
-
         this.processingVoice = true;
 
         try {
-          // Get LiveKit system from world
-          const livekit = world.livekit;
-          if (!livekit) {
-            logger.warn("[VoiceManager] LiveKit not available, skipping audio playback");
-            continue;
-          }
-
           // Publish audio stream through LiveKit
           logger.debug("[VoiceManager] Publishing audio stream through LiveKit");
           await livekit.publishAudioStream(audioBuffer);

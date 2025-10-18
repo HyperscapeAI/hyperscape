@@ -14,6 +14,109 @@ import type {
 } from "../types/core-types";
 import { HyperscapeService } from "../service";
 import { World, Entity } from "../types/core-types";
+import { DYNAMIC_ACTION_CONFIG } from "../config/manager-config";
+
+/**
+ * Retry helper with exponential backoff for LLM calls
+ * Retries failed LLM calls with increasing delays between attempts
+ */
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxAttempts: number = DYNAMIC_ACTION_CONFIG.MAX_RETRY_ATTEMPTS,
+  baseDelay: number = DYNAMIC_ACTION_CONFIG.RETRY_DELAY_MS,
+): Promise<T> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error as Error;
+
+      if (attempt === maxAttempts) {
+        // Last attempt failed, throw the error
+        break;
+      }
+
+      // Calculate exponential backoff delay
+      const delay = baseDelay * Math.pow(2, attempt - 1);
+      logger.warn(
+        `[DynamicActionLoader] Attempt ${attempt}/${maxAttempts} failed: ${lastError.message}. Retrying in ${delay}ms...`
+      );
+
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  // All attempts failed
+  throw lastError || new Error('Retry failed with unknown error');
+}
+
+/**
+ * Timeout wrapper for promises
+ * Rejects if promise doesn't resolve within specified timeout
+ */
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  errorMessage: string = 'Operation timed out'
+): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(errorMessage)), timeoutMs)
+    ),
+  ]);
+}
+
+/**
+ * Robust JSON parsing that handles various response formats
+ * Extracts JSON from code blocks, text, and handles malformed responses
+ */
+function parseJSONFromResponse(response: string | unknown): Record<string, unknown> {
+  // Handle non-string responses
+  if (typeof response !== 'string') {
+    if (response && typeof response === 'object') {
+      return response as Record<string, unknown>;
+    }
+    logger.warn('[DynamicActionLoader] Response is not a string or object');
+    return {};
+  }
+
+  const text = response.trim();
+
+  // Try direct JSON parse first
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    // Direct parse failed, try extracting from various formats
+  }
+
+  // Try to extract JSON from code blocks (```json ... ```)
+  const codeBlockMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+  if (codeBlockMatch) {
+    try {
+      return JSON.parse(codeBlockMatch[1]);
+    } catch (e) {
+      logger.debug('[DynamicActionLoader] Failed to parse JSON from code block');
+    }
+  }
+
+  // Try to extract first JSON object from text
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      return JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      logger.debug('[DynamicActionLoader] Failed to parse extracted JSON object');
+    }
+  }
+
+  // All parsing attempts failed
+  logger.warn('[DynamicActionLoader] Could not parse JSON from LLM response');
+  return {};
+}
 
 /**
  * CLAUDE.md Compliance: Strong typing for dynamic action results
@@ -259,61 +362,115 @@ JSON Response:`;
     try {
       logger.debug(`[DynamicActionLoader] Extracting parameters using LLM for action: ${descriptor.name}`);
 
-      const response = await runtime.useModel(
-        ModelType.TEXT_LARGE,
-        {
-          prompt: extractionPrompt,
-          max_tokens: 500,
-          temperature: 0.3, // Low temperature for consistent extraction
-          stop: [],
-        }
-      );
+      // Wrap LLM call with retry and timeout
+      const response = await retryWithBackoff(async () => {
+        return await withTimeout(
+          runtime.useModel(
+            ModelType.TEXT_LARGE,
+            {
+              prompt: extractionPrompt,
+              max_tokens: 500,
+              temperature: DYNAMIC_ACTION_CONFIG.PARAMETER_EXTRACTION_TEMPERATURE,
+              stop: [],
+            }
+          ),
+          DYNAMIC_ACTION_CONFIG.LLM_TIMEOUT_MS,
+          `LLM parameter extraction timed out after ${DYNAMIC_ACTION_CONFIG.LLM_TIMEOUT_MS}ms`
+        );
+      });
 
-      // Parse response (handle both string and object responses)
-      let parsedParams: Record<string, unknown>;
-      if (typeof response === 'string') {
-        // Try to extract JSON from response
-        const jsonMatch = response.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          parsedParams = JSON.parse(jsonMatch[0]);
-        } else {
-          logger.warn(`[DynamicActionLoader] Failed to extract JSON from LLM response`);
-          parsedParams = {};
-        }
-      } else if (response && typeof response === 'object') {
-        parsedParams = response as Record<string, unknown>;
-      } else {
-        parsedParams = {};
-      }
+      // Parse response using robust JSON parsing
+      const parsedParams = parseJSONFromResponse(response);
 
-      // Validate and assign parameters
+      // Validate and assign parameters with hardened type coercion
       for (const param of descriptor.parameters) {
         if (param.name in parsedParams) {
           // Type coercion based on parameter definition
           let value = parsedParams[param.name];
 
-          if (param.type === 'number' && typeof value === 'string') {
-            const coerced = parseFloat(value);
-            if (!isFinite(coerced)) {
-              logger.warn(`[DynamicActionLoader] Invalid number for parameter '${param.name}' in action ${descriptor.name}: "${value}"`);
+          if (param.type === 'number') {
+            // Harden number coercion - fail fast on invalid values
+            if (typeof value === 'string') {
+              const coerced = parseFloat(value);
+              if (!Number.isFinite(coerced)) {
+                if (param.required) {
+                  throw new Error(
+                    `[DynamicActionLoader] Required parameter '${param.name}' has invalid number value: "${value}"`
+                  );
+                }
+                logger.warn(
+                  `[DynamicActionLoader] Invalid number for parameter '${param.name}' in action ${descriptor.name}: "${value}"`
+                );
+                if (param.default !== undefined) {
+                  params[param.name] = param.default;
+                }
+                continue;
+              }
+              value = coerced;
+            } else if (typeof value === 'number') {
+              if (!Number.isFinite(value)) {
+                if (param.required) {
+                  throw new Error(
+                    `[DynamicActionLoader] Required parameter '${param.name}' has invalid number value: ${value}`
+                  );
+                }
+                logger.warn(
+                  `[DynamicActionLoader] Invalid number for parameter '${param.name}' in action ${descriptor.name}: ${value}`
+                );
+                if (param.default !== undefined) {
+                  params[param.name] = param.default;
+                }
+                continue;
+              }
+            } else {
+              // Not a string or number - fail if required
+              if (param.required) {
+                throw new Error(
+                  `[DynamicActionLoader] Required parameter '${param.name}' must be a number, got: ${typeof value}`
+                );
+              }
+              logger.warn(
+                `[DynamicActionLoader] Parameter '${param.name}' expected number, got ${typeof value}`
+              );
               if (param.default !== undefined) {
                 params[param.name] = param.default;
               }
-              // Skip assignment if invalid and no default
               continue;
             }
-            value = coerced;
-          } else if (param.type === 'boolean' && typeof value === 'string') {
-            const normalized = value.toLowerCase();
-            if (normalized !== 'true' && normalized !== 'false') {
-              logger.warn(`[DynamicActionLoader] Invalid boolean for parameter '${param.name}' in action ${descriptor.name}: "${value}"`);
+          } else if (param.type === 'boolean') {
+            // Harden boolean coercion - fail fast on invalid values
+            if (typeof value === 'string') {
+              const normalized = value.toLowerCase().trim();
+              if (normalized !== 'true' && normalized !== 'false') {
+                if (param.required) {
+                  throw new Error(
+                    `[DynamicActionLoader] Required parameter '${param.name}' has invalid boolean value: "${value}"`
+                  );
+                }
+                logger.warn(
+                  `[DynamicActionLoader] Invalid boolean for parameter '${param.name}' in action ${descriptor.name}: "${value}"`
+                );
+                if (param.default !== undefined) {
+                  params[param.name] = param.default;
+                }
+                continue;
+              }
+              value = normalized === 'true';
+            } else if (typeof value !== 'boolean') {
+              // Not a string or boolean - fail if required
+              if (param.required) {
+                throw new Error(
+                  `[DynamicActionLoader] Required parameter '${param.name}' must be a boolean, got: ${typeof value}`
+                );
+              }
+              logger.warn(
+                `[DynamicActionLoader] Parameter '${param.name}' expected boolean, got ${typeof value}`
+              );
               if (param.default !== undefined) {
                 params[param.name] = param.default;
               }
-              // Skip assignment if invalid and no default
               continue;
             }
-            value = normalized === 'true';
           }
 
           params[param.name] = value;
@@ -321,7 +478,10 @@ JSON Response:`;
           // Use default value
           params[param.name] = param.default;
         } else if (param.required) {
-          logger.warn(`[DynamicActionLoader] Required parameter '${param.name}' not found for action ${descriptor.name}`);
+          // Required parameter missing - fail fast
+          throw new Error(
+            `[DynamicActionLoader] Required parameter '${param.name}' not found for action ${descriptor.name}`
+          );
         }
       }
 
@@ -331,9 +491,17 @@ JSON Response:`;
     } catch (error) {
       logger.error(`[DynamicActionLoader] Error extracting parameters with LLM:`, error);
 
+      // Check if any required parameters are missing - if so, re-throw
+      const missingRequired = descriptor.parameters.filter(p => p.required && !(p.name in params));
+      if (missingRequired.length > 0) {
+        throw new Error(
+          `[DynamicActionLoader] Failed to extract required parameters for ${descriptor.name}: ${missingRequired.map(p => p.name).join(', ')}`
+        );
+      }
+
       // Fallback to default values for all parameters
       for (const param of descriptor.parameters) {
-        if (param.default !== undefined) {
+        if (param.default !== undefined && !(param.name in params)) {
           params[param.name] = param.default;
         }
       }
@@ -370,15 +538,21 @@ Generate a brief, in-character response (1-2 sentences) explaining what went wro
 
 Response:`;
 
-        const response = await runtime.useModel(
-          ModelType.TEXT_LARGE,
-          {
-            prompt: errorPrompt,
-            max_tokens: 100,
-            temperature: 0.7,
-            stop: [],
-          }
-        );
+        const response = await retryWithBackoff(async () => {
+          return await withTimeout(
+            runtime.useModel(
+              ModelType.TEXT_LARGE,
+              {
+                prompt: errorPrompt,
+                max_tokens: 100,
+                temperature: DYNAMIC_ACTION_CONFIG.RESPONSE_GENERATION_TEMPERATURE,
+                stop: [],
+              }
+            ),
+            DYNAMIC_ACTION_CONFIG.LLM_TIMEOUT_MS,
+            `LLM error response generation timed out after ${DYNAMIC_ACTION_CONFIG.LLM_TIMEOUT_MS}ms`
+          );
+        });
 
         return typeof response === 'string' ? response.trim() : `Failed to ${descriptor.name}: ${errorMessage}`;
       } catch (error) {
@@ -415,15 +589,21 @@ Response:`;
 
       logger.debug(`[DynamicActionLoader] Generating contextual response for ${descriptor.name}`);
 
-      const response = await runtime.useModel(
-        ModelType.TEXT_LARGE,
-        {
-          prompt: responsePrompt,
-          max_tokens: 150,
-          temperature: 0.8,
-          stop: [],
-        }
-      );
+      const response = await retryWithBackoff(async () => {
+        return await withTimeout(
+          runtime.useModel(
+            ModelType.TEXT_LARGE,
+            {
+              prompt: responsePrompt,
+              max_tokens: 150,
+              temperature: DYNAMIC_ACTION_CONFIG.RESPONSE_GENERATION_TEMPERATURE,
+              stop: [],
+            }
+          ),
+          DYNAMIC_ACTION_CONFIG.LLM_TIMEOUT_MS,
+          `LLM success response generation timed out after ${DYNAMIC_ACTION_CONFIG.LLM_TIMEOUT_MS}ms`
+        );
+      });
 
       const responseText = typeof response === 'string'
         ? response.trim()
