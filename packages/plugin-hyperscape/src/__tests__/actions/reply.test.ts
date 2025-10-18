@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 import { replyAction } from "../../actions/reply";
-import { createMockRuntime, toUUID } from "../test-utils";
+import { createMockRuntime, toUUID } from "../../types/test-mocks";
 import type { Memory, State, Content } from "@elizaos/core";
 
 describe("REPLY Action", () => {
