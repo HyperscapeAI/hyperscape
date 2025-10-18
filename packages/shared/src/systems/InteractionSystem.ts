@@ -592,8 +592,8 @@ export class InteractionSystem extends System {
     const now = Date.now();
     const toRemove: string[] = [];
 
-    // Only check for timeouts in the per-frame loop
-    // Distance checks are now handled by checkPendingResourceActions() on idle state
+    // This method performs timeout checks AND resource existence validation in the per-frame loop
+    // Distance checks are handled separately by checkPendingResourceActions() when player becomes idle
     for (const [key, pending] of this.pendingResourceActions.entries()) {
       // Check if action has timed out
       if (now - pending.startTime > this.PENDING_ACTION_TIMEOUT) {
@@ -606,7 +606,7 @@ export class InteractionSystem extends System {
         continue;
       }
 
-      // Check if resource still exists
+      // Check if resource still exists (validation)
       const resourceEntity = this.world.entities.get(pending.resourceId);
       if (!resourceEntity) {
         console.warn(`[InteractionSystem] Resource no longer exists: ${pending.resourceId}`);

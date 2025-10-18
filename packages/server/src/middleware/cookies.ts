@@ -70,18 +70,33 @@ interface CookieOptions {
 }
 
 /**
+ * Parse maxAge from environment variable with safe fallback
+ */
+function parseMaxAgeFromEnv(envVar: string | undefined, defaultValue: number): number {
+  if (!envVar) {
+    return defaultValue;
+  }
+  const parsed = parseInt(envVar, 10);
+  if (isNaN(parsed) || parsed <= 0) {
+    console.warn(`[Cookies] Invalid maxAge value "${envVar}", using default ${defaultValue}`);
+    return defaultValue;
+  }
+  return parsed;
+}
+
+/**
  * Default cookie options for authentication
  *
  * - HttpOnly: true (prevents XSS)
  * - Secure: true in production (HTTPS only)
  * - SameSite: strict (prevents CSRF)
- * - MaxAge: 1 hour
+ * - MaxAge: configurable via AUTH_COOKIE_MAX_AGE_SECONDS (default: 3600 seconds)
  */
 export const DEFAULT_AUTH_COOKIE_OPTIONS: CookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
   sameSite: 'strict',
-  maxAge: 60 * 60, // 1 hour in seconds
+  maxAge: parseMaxAgeFromEnv(process.env.AUTH_COOKIE_MAX_AGE_SECONDS, 3600), // Default: 1 hour
   path: '/',
 };
 
@@ -91,13 +106,13 @@ export const DEFAULT_AUTH_COOKIE_OPTIONS: CookieOptions = {
  * - HttpOnly: false (client needs to read this)
  * - Secure: true in production
  * - SameSite: strict
- * - MaxAge: 1 hour
+ * - MaxAge: configurable via CSRF_COOKIE_MAX_AGE_SECONDS (default: 3600 seconds)
  */
 export const DEFAULT_CSRF_COOKIE_OPTIONS: CookieOptions = {
   httpOnly: false, // Client needs to read this for CSRF protection
   secure: process.env.NODE_ENV === 'production',
   sameSite: 'strict',
-  maxAge: 60 * 60, // 1 hour in seconds
+  maxAge: parseMaxAgeFromEnv(process.env.CSRF_COOKIE_MAX_AGE_SECONDS, 3600), // Default: 1 hour
   path: '/',
 };
 
@@ -107,7 +122,27 @@ export const DEFAULT_CSRF_COOKIE_OPTIONS: CookieOptions = {
  * @param app - Fastify instance
  */
 export async function registerCookies(app: FastifyInstance): Promise<void> {
-  const secret = process.env.COOKIE_SECRET || process.env.JWT_SECRET;
+  const cookieSecret = process.env.COOKIE_SECRET;
+  const jwtSecret = process.env.JWT_SECRET;
+
+  // In production, require COOKIE_SECRET to be set and different from JWT_SECRET
+  if (process.env.NODE_ENV === 'production') {
+    if (!cookieSecret) {
+      throw new Error('COOKIE_SECRET environment variable is required in production');
+    }
+    if (cookieSecret === jwtSecret) {
+      throw new Error('COOKIE_SECRET must be different from JWT_SECRET in production for security');
+    }
+  } else {
+    // In development, allow fallback but warn
+    if (!cookieSecret) {
+      console.warn('[Cookies] WARNING: COOKIE_SECRET not set, falling back to JWT_SECRET (not recommended for production)');
+    } else if (cookieSecret === jwtSecret) {
+      console.warn('[Cookies] WARNING: COOKIE_SECRET equals JWT_SECRET (use different secrets in production)');
+    }
+  }
+
+  const secret = cookieSecret || jwtSecret;
   if (!secret) {
     throw new Error('COOKIE_SECRET or JWT_SECRET environment variable is required for cookie signing');
   }
@@ -199,13 +234,11 @@ export function setCsrfCookie(
 ): void {
   // Validate CSRF token before setting
   if (!token || typeof token !== 'string' || token.trim().length === 0) {
-    console.error('[Cookies] Invalid CSRF token provided - cannot set cookie');
     throw new Error('Invalid CSRF token: must be a non-empty string');
   }
 
   // CSRF tokens should be at least MIN_TOKEN_LENGTH characters for security
   if (token.length < COOKIE_SECURITY.MIN_TOKEN_LENGTH) {
-    console.error(`[Cookies] CSRF token too short - minimum ${COOKIE_SECURITY.MIN_TOKEN_LENGTH} characters`);
     throw new Error(`CSRF token too short: minimum ${COOKIE_SECURITY.MIN_TOKEN_LENGTH} characters required`);
   }
 
@@ -336,10 +369,29 @@ export function clearAllAuthCookies(reply: FastifyReply): void {
  */
 export function parseCookieString(cookieHeader: string): Record<string, string> {
   return cookieHeader.split(';').reduce((acc, cookie) => {
-    const [key, value] = cookie.trim().split('=');
-    if (key && value) {
-      acc[key] = decodeURIComponent(value);
+    const trimmed = cookie.trim();
+    const equalsIndex = trimmed.indexOf('=');
+
+    if (equalsIndex === -1) {
+      // No '=' found - treat as key with empty value
+      if (trimmed) {
+        acc[trimmed] = '';
+      }
+    } else {
+      // Split on first '=' only (limit 2)
+      const key = trimmed.substring(0, equalsIndex);
+      const value = trimmed.substring(equalsIndex + 1);
+
+      if (key) {
+        try {
+          acc[key] = decodeURIComponent(value);
+        } catch {
+          // If decodeURIComponent fails, use raw value
+          acc[key] = value;
+        }
+      }
     }
+
     return acc;
   }, {} as Record<string, string>);
 }

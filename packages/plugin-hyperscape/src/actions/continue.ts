@@ -142,14 +142,14 @@ export const continueAction: Action = {
       },
     }
   },
-  examples: [
+  examples: ([
     [
       {
         name: '{{user}}',
         content: {
           text: 'I really enjoy playing this game.',
         },
-      } as ActionExample,
+      },
       {
         name: '{{agent}}',
         content: {
@@ -158,7 +158,7 @@ export const continueAction: Action = {
           thought:
             'User expressed enjoyment - I should ask a follow-up question to learn more',
         },
-      } as ActionExample,
+      },
     ],
     [
       {
@@ -166,7 +166,7 @@ export const continueAction: Action = {
         content: {
           text: "I've been working on leveling up my woodcutting skill.",
         },
-      } as ActionExample,
+      },
       {
         name: '{{agent}}',
         content: {
@@ -175,7 +175,7 @@ export const continueAction: Action = {
           thought:
             'User is working on a skill - I should show interest and ask about their progress',
         },
-      } as ActionExample,
+      },
     ],
     [
       {
@@ -183,7 +183,7 @@ export const continueAction: Action = {
         content: {
           text: 'I found a really cool spot in the world.',
         },
-      } as ActionExample,
+      },
       {
         name: '{{agent}}',
         content: {
@@ -192,7 +192,7 @@ export const continueAction: Action = {
           thought:
             'User discovered something - I should express interest and ask for details',
         },
-      } as ActionExample,
+      },
     ],
     [
       {
@@ -200,7 +200,7 @@ export const continueAction: Action = {
         content: {
           text: 'Just completed my first quest!',
         },
-      } as ActionExample,
+      },
       {
         name: '{{agent}}',
         content: {
@@ -209,7 +209,7 @@ export const continueAction: Action = {
           thought:
             'User achieved something - I should congratulate them and ask about their experience',
         },
-      } as ActionExample,
+      },
     ],
     [
       {
@@ -217,7 +217,7 @@ export const continueAction: Action = {
         content: {
           text: "I'm not sure what to do next in the game.",
         },
-      } as ActionExample,
+      },
       {
         name: '{{agent}}',
         content: {
@@ -226,7 +226,7 @@ export const continueAction: Action = {
           thought:
             'User needs guidance - I should offer help and ask clarifying questions',
         },
-      } as ActionExample,
+      },
     ],
-  ],
-}
+  ] as ActionExample[][]),
+} as Action

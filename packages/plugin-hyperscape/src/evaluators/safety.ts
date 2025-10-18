@@ -7,7 +7,6 @@ import {
   composePromptFromState,
   parseKeyValueXml,
   ModelType,
-  generateId,
   type UUID,
 } from '@elizaos/core'
 
@@ -30,11 +29,19 @@ function parseScoreValue(value: unknown, defaultValue = 0): number {
  * Exported for testability
  */
 export function extractActionType(entry: Memory): string | undefined {
-  if (!entry.content) return undefined
-  const action = entry.content.action
+  // Type guard: ensure content is a non-null object
+  if (!entry.content || typeof entry.content !== 'object') {
+    return undefined
+  }
+
+  const content = entry.content as { action?: unknown; type?: unknown }
+
+  const action = content.action
   if (typeof action === 'string') return action
-  const type = entry.content.type
+
+  const type = content.type
   if (typeof type === 'string') return type
+
   return undefined
 }
 
@@ -368,7 +375,7 @@ export const safetyEvaluator: Evaluator = {
 
       // Store safety evaluation in memory
       const safetyMemory: Memory = {
-        id: generateId() as UUID,
+        id: crypto.randomUUID() as UUID,
         entityId: message.entityId,
         agentId: runtime.agentId,
         content: {

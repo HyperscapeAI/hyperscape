@@ -22,6 +22,13 @@ const ACTION_TO_SKILL_MAP: Record<string, string> = {
 }
 
 /**
+ * Player skills data structure
+ */
+interface PlayerSkillsData {
+  skills?: Record<string, { level: number; experience: number }>
+}
+
+/**
  * Template for analyzing skill training efficiency
  */
 const skillProgressionTemplate = `# Task: Analyze skill training efficiency
@@ -117,11 +124,7 @@ export const skillProgressionEvaluator: Evaluator = {
 
       const world = service.getWorld()
       const player = world?.entities?.player
-      const playerData = player?.data as
-        | {
-            skills?: Record<string, { level: number; experience: number }>
-          }
-        | undefined
+      const playerData = player?.data as PlayerSkillsData | undefined
 
       // 1. Get current skills state
       const skills = playerData?.skills || {}
@@ -304,10 +307,9 @@ export const skillProgressionEvaluator: Evaluator = {
           })
         } catch (emitError) {
           const errorMsg = emitError instanceof Error ? emitError.message : String(emitError)
-          const errorStack = emitError instanceof Error ? emitError.stack : undefined
+          const errorStack = emitError instanceof Error ? emitError.stack : ''
           logger.error(
-            `[SKILL_EVALUATOR] Failed to emit level up event for ${skillName} level ${newLevel} in room ${message.roomId}`,
-            { error: errorMsg, stack: errorStack }
+            `[SKILL_EVALUATOR] Failed to emit level up event for ${skillName} level ${newLevel} in room ${message.roomId}: ${errorMsg}${errorStack ? '\n' + errorStack : ''}`
           )
           throw emitError
         }

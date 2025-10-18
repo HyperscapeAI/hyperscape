@@ -158,6 +158,9 @@ const agentRegistrationLimiter = (() => {
   const validPoints = points > 0 ? points : 10;
   const validDuration = duration > 0 ? duration : 900;
 
+  elizaLogger.info(`[AgentAuth] Rate limiting configuration - Points: ${validPoints}, Duration: ${validDuration}s`);
+  elizaLogger.debug(`[AgentAuth] Using ${redisClient ? 'Redis-backed distributed' : 'in-memory'} rate limiting`);
+
   return redisClient
     ? new RateLimiterRedis({
         storeClient: redisClient,
@@ -299,6 +302,50 @@ export interface AgentAuthAuditEntry {
 const auditLog: AgentAuthAuditEntry[] = [];
 
 /**
+ * Helper function to compute effective permissions from existing agent record
+ *
+ * Filters both existing and requested permissions against the canonical allowed list,
+ * then computes the intersection. Falls back to defaults if no valid permissions remain.
+ *
+ * @param rawExistingPermissions - Permissions from database (may be invalid/outdated)
+ * @param requestedPermissions - Newly requested permissions (may be invalid)
+ * @param defaultPermissions - Default permissions to use as fallback
+ * @returns Array of valid permissions to grant
+ */
+function computeExistingPermissions(
+  rawExistingPermissions: string[],
+  requestedPermissions: string[] | undefined,
+  defaultPermissions: string[]
+): string[] {
+  // Filter existing permissions against canonical allowed list
+  const validExistingPermissions = rawExistingPermissions.filter(
+    (perm) => ALLOWED_AGENT_PERMISSIONS.includes(perm as typeof ALLOWED_AGENT_PERMISSIONS[number])
+  );
+
+  // Filter requested permissions against canonical allowed list
+  const requestedPerms = requestedPermissions || defaultPermissions;
+  const validRequestedPermissions = requestedPerms.filter(
+    (perm) => ALLOWED_AGENT_PERMISSIONS.includes(perm as typeof ALLOWED_AGENT_PERMISSIONS[number])
+  );
+
+  // Use intersection of valid existing and valid requested permissions
+  if (validExistingPermissions.length > 0) {
+    const intersection = validExistingPermissions.filter((perm) => validRequestedPermissions.includes(perm));
+    if (intersection.length > 0) {
+      return intersection;
+    }
+  }
+
+  // If no valid existing permissions or no intersection, use valid requested permissions
+  if (validRequestedPermissions.length > 0) {
+    return validRequestedPermissions;
+  }
+
+  // Fall back to defaults if nothing else works
+  return defaultPermissions;
+}
+
+/**
  * Logs an agent authentication event to both memory and persistent storage
  */
 async function logAgentAuthEvent(entry: AgentAuthAuditEntry, db?: SystemDatabase): Promise<void> {
@@ -370,7 +417,7 @@ export async function registerAgent(
     await agentRegistrationLimiter.consume(rateLimitKey);
   } catch (rateLimiterError) {
     // Rate limit exceeded
-    const errorEntry = Object.assign(new AgentAuthAuditEntry(), {
+    const errorEntry: AgentAuthAuditEntry = {
       timestamp: new Date().toISOString(),
       eventType: 'agent_registered' as const,
       agentId: 'rate_limited',
@@ -379,7 +426,7 @@ export async function registerAgent(
       metadata: request.metadata,
       success: false,
       errorMessage: 'Rate limit exceeded for agent registration',
-    });
+    };
     await logAgentAuthEvent(errorEntry, db);
 
     throw new Error('Rate limit exceeded. Too many agent registration attempts. Please try again later.');
@@ -462,24 +509,12 @@ export async function registerAgent(
           return [];
         })();
 
-        // Filter existing permissions against canonical allowed list
-        const validExistingPermissions = rawExistingPermissions.filter(
-          (perm) => ALLOWED_AGENT_PERMISSIONS.includes(perm as typeof ALLOWED_AGENT_PERMISSIONS[number])
+        // Compute effective permissions using helper function
+        const existingPermissions = computeExistingPermissions(
+          rawExistingPermissions,
+          request.requestedPermissions,
+          permissions
         );
-
-        // Intersect with requested permissions (or use defaults if none requested)
-        const requestedPerms = request.requestedPermissions || permissions;
-        const validRequestedPermissions = requestedPerms.filter(
-          (perm) => ALLOWED_AGENT_PERMISSIONS.includes(perm as typeof ALLOWED_AGENT_PERMISSIONS[number])
-        );
-
-        // Use intersection of valid existing and valid requested permissions
-        // If no valid permissions remain, fall back to defaults
-        const existingPermissions = validExistingPermissions.length > 0
-          ? validExistingPermissions.filter((perm) => validRequestedPermissions.includes(perm))
-          : validRequestedPermissions.length > 0
-          ? validRequestedPermissions
-          : permissions;
 
         // Generate new token for existing agent
         const token = await createJWT(
@@ -495,7 +530,7 @@ export async function registerAgent(
         const expiresAt = new Date(Date.now() + AGENT_TOKEN_EXPIRY * 1000).toISOString();
         const wsUrl = process.env.HYPERSCAPE_WS_URL || 'ws://localhost:5555/ws';
 
-        const agentInfo = Object.assign(new AgentAuthInfo(), {
+        const agentInfo: AgentAuthInfo = {
           agentId: existing.id,
           agentName: existing.name,
           runtimeId: existing.runtimeId || undefined,
@@ -505,14 +540,14 @@ export async function registerAgent(
           permissions: existingPermissions,
           createdAt: new Date(existing.createdAt),
           isActive: existing.isActive !== false,
-        });
+        };
 
-        const response = Object.assign(new AgentAuthResponse(), {
+        const response: AgentAuthResponse = {
           token,
           agentInfo,
           expiresAt,
           wsUrl,
-        });
+        };
 
         return response;
       }
@@ -567,7 +602,7 @@ export async function registerAgent(
     const wsUrl = process.env.HYPERSCAPE_WS_URL || 'ws://localhost:5555/ws';
 
     // Log successful registration
-    const auditEntry = Object.assign(new AgentAuthAuditEntry(), {
+    const auditEntry: AgentAuthAuditEntry = {
       timestamp,
       eventType: 'agent_registered' as const,
       agentId,
@@ -576,11 +611,11 @@ export async function registerAgent(
       privyUserId: request.privyUserId,
       metadata: request.metadata,
       success: true,
-    });
+    };
     await logAgentAuthEvent(auditEntry, db);
 
     // Create agent info instance
-    const agentInfo = Object.assign(new AgentAuthInfo(), {
+    const agentInfo: AgentAuthInfo = {
       agentId,
       agentName: request.agentName,
       runtimeId: request.runtimeId,
@@ -590,20 +625,20 @@ export async function registerAgent(
       permissions,
       createdAt: new Date(timestamp),
       isActive: true,
-    });
+    };
 
     // Create response instance
-    const response = Object.assign(new AgentAuthResponse(), {
+    const response: AgentAuthResponse = {
       token,
       agentInfo,
       expiresAt,
       wsUrl,
-    });
+    };
 
     return response;
   } catch (error) {
     // Log failed registration
-    const failureEntry = Object.assign(new AgentAuthAuditEntry(), {
+    const failureEntry: AgentAuthAuditEntry = {
       timestamp: new Date().toISOString(),
       eventType: 'agent_registered' as const,
       agentId: 'unknown',
@@ -613,7 +648,7 @@ export async function registerAgent(
       metadata: request.metadata,
       success: false,
       errorMessage: error instanceof Error ? error.message : 'Unknown error',
-    });
+    };
     await logAgentAuthEvent(failureEntry, db);
 
     throw error;
@@ -694,26 +729,26 @@ export async function verifyAgentToken(
     const payload = await verifyJWT(token);
 
     if (!payload || !payload.userId) {
-      const entry = Object.assign(new AgentAuthAuditEntry(), {
+      const entry: AgentAuthAuditEntry = {
         timestamp: new Date().toISOString(),
         eventType: 'agent_auth_failed' as const,
         agentId: 'unknown',
         success: false,
         errorMessage: 'Invalid token payload',
-      });
+      };
       await logAgentAuthEvent(entry, db);
       return null;
     }
 
     // Check if this is an agent token
     if (payload.type !== 'agent') {
-      const entry = Object.assign(new AgentAuthAuditEntry(), {
+      const entry: AgentAuthAuditEntry = {
         timestamp: new Date().toISOString(),
         eventType: 'agent_auth_failed' as const,
         agentId: payload.userId as string,
         success: false,
         errorMessage: 'Not an agent token',
-      });
+      };
       await logAgentAuthEvent(entry, db);
       return null;
     }
@@ -723,13 +758,13 @@ export async function verifyAgentToken(
 
     // Handle missing row case
     if (!rawRow) {
-      const entry = Object.assign(new AgentAuthAuditEntry(), {
+      const entry: AgentAuthAuditEntry = {
         timestamp: new Date().toISOString(),
         eventType: 'agent_auth_failed' as const,
         agentId: payload.userId as string,
         success: false,
         errorMessage: 'Agent not found in database',
-      });
+      };
       await logAgentAuthEvent(entry, db);
       elizaLogger.warn('[AgentAuth] Agent record not found in database', {
         agentId: payload.userId,
@@ -742,13 +777,13 @@ export async function verifyAgentToken(
 
     if (!parseResult.success) {
       // Validation failed - log error and reject auth
-      const entry = Object.assign(new AgentAuthAuditEntry(), {
+      const entry: AgentAuthAuditEntry = {
         timestamp: new Date().toISOString(),
         eventType: 'agent_auth_failed' as const,
         agentId: payload.userId as string,
         success: false,
         errorMessage: 'Agent record failed validation',
-      });
+      };
       await logAgentAuthEvent(entry, db);
       elizaLogger.error('[AgentAuth] Agent record validation failed', {
         agentId: payload.userId,
@@ -762,19 +797,19 @@ export async function verifyAgentToken(
 
     // Check if agent is active (handle both boolean and integer types)
     if (agentRecord.isActive === false || agentRecord.isActive === 0 || agentRecord.isActive === null) {
-      const entry = Object.assign(new AgentAuthAuditEntry(), {
+      const entry: AgentAuthAuditEntry = {
         timestamp: new Date().toISOString(),
         eventType: 'agent_auth_failed' as const,
         agentId: payload.userId as string,
         success: false,
         errorMessage: 'Agent is deactivated',
-      });
+      };
       await logAgentAuthEvent(entry, db);
       return null;
     }
 
     // Log successful authentication
-    const successEntry = Object.assign(new AgentAuthAuditEntry(), {
+    const successEntry: AgentAuthAuditEntry = {
       timestamp: new Date().toISOString(),
       eventType: 'agent_authenticated' as const,
       agentId: payload.userId as string,
@@ -782,7 +817,7 @@ export async function verifyAgentToken(
       runtimeId: payload.runtimeId as string | undefined,
       privyUserId: agentRecord.privyUserId || undefined,
       success: true,
-    });
+    };
     await logAgentAuthEvent(successEntry, db);
 
     // Parse permissions (handle both JSON array and comma-separated string for backward compatibility)
@@ -806,7 +841,7 @@ export async function verifyAgentToken(
     })();
 
     // Create and return AgentAuthInfo instance
-    const authInfo = Object.assign(new AgentAuthInfo(), {
+    const authInfo: AgentAuthInfo = {
       agentId: agentRecord.id,
       agentName: agentRecord.name,
       runtimeId: agentRecord.runtimeId ? agentRecord.runtimeId : undefined, // Convert null to undefined
@@ -816,17 +851,17 @@ export async function verifyAgentToken(
       permissions,
       createdAt: new Date(agentRecord.createdAt),
       isActive: agentRecord.isActive !== false,
-    });
+    };
 
     return authInfo;
   } catch (error) {
-    const errorEntry = Object.assign(new AgentAuthAuditEntry(), {
+    const errorEntry: AgentAuthAuditEntry = {
       timestamp: new Date().toISOString(),
       eventType: 'agent_auth_failed' as const,
       agentId: 'unknown',
       success: false,
       errorMessage: error instanceof Error ? error.message : 'Token verification failed',
-    });
+    };
     await logAgentAuthEvent(errorEntry, db);
 
     return null;
@@ -854,12 +889,12 @@ export async function deactivateAgent(
     .where('id', agentId)
     .update({ isActive: false });
 
-  const entry = Object.assign(new AgentAuthAuditEntry(), {
+  const entry: AgentAuthAuditEntry = {
     timestamp: new Date().toISOString(),
     eventType: 'agent_deactivated' as const,
     agentId,
     success: true,
-  });
+  };
   await logAgentAuthEvent(entry, db);
 }
 

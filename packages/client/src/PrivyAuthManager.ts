@@ -11,13 +11,13 @@ import { z } from 'zod'
  */
 const AuthResponseSchema = z.object({
   csrfToken: z.string().min(16, 'csrfToken must be at least 16 characters'),
-  userId: z.string(),
+  userId: z.string().trim().min(1, 'userId must not be empty'),
 })
 
 /**
  * Authentication error codes
  */
-type AuthErrorCode = 'NETWORK_ERROR' | 'INVALID_TOKEN' | 'SERVER_ERROR' | 'VALIDATION_ERROR'
+type AuthErrorCode = 'NETWORK_ERROR' | 'INVALID_TOKEN' | 'SERVER_ERROR' | 'CLIENT_ERROR' | 'VALIDATION_ERROR'
 
 /**
  * Structured authentication error
@@ -219,7 +219,7 @@ export class PrivyAuthManager {
         } else {
           throw new AuthenticationError(
             errorMessage,
-            'SERVER_ERROR',
+            'CLIENT_ERROR',
             false, // Non-retryable - client error (4xx)
             response
           )
@@ -564,14 +564,35 @@ export class PrivyAuthManager {
         csrfToken: csrfToken || null, // May be null if cookie not yet returned
       })
 
-      // If CSRF token is missing, try to fetch it
+      // If CSRF token is missing, try to fetch it with exponential backoff
       if (!csrfToken) {
         console.log('[PrivyAuthManager] Restoring without CSRF token - will fetch')
-        // Await the CSRF token fetch to ensure it completes before callers proceed
-        await this.ensureCsrfToken().catch((error) => {
-          console.warn('[PrivyAuthManager] Failed to fetch CSRF token:', error)
-          // Don't clear auth state - just log the error
-        })
+
+        // Exponential backoff retry logic (3 attempts with delays)
+        const maxAttempts = 3
+        const baseDelay = 1000 // 1 second
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            await this.ensureCsrfToken()
+            break // Success - exit retry loop
+          } catch (error) {
+            console.warn(`[PrivyAuthManager] Failed to fetch CSRF token (attempt ${attempt}/${maxAttempts}):`, error)
+
+            if (attempt === maxAttempts) {
+              // Final failure - clear auth state
+              console.error('[PrivyAuthManager] All CSRF token fetch attempts failed - clearing auth state')
+              await this.clearAuth()
+              // Don't throw - just return with cleared state
+              return { token: null, userId: null, csrfToken: null }
+            } else {
+              // Wait before retry with exponential backoff
+              const delay = baseDelay * Math.pow(2, attempt - 1)
+              console.log(`[PrivyAuthManager] Retrying in ${delay}ms...`)
+              await new Promise(resolve => setTimeout(resolve, delay))
+            }
+          }
+        }
       }
     }
 

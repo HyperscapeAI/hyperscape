@@ -20,7 +20,7 @@ export async function ambient(
   _options: ActionHandlerOptions,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
-  logger.info('[AMBIENT] Starting ambient observation action');
+  logger.debug('[AMBIENT] Starting ambient observation action');
 
   // Lazy evaluation via callback for immediate response
   if (callback) {
@@ -100,7 +100,7 @@ export async function ambient(
   };
 
   // For ambient actions, use the full model for more thoughtful responses
-  logger.info('[AMBIENT] Generating AI response for ambient observation');
+  logger.debug('[AMBIENT] Generating AI response for ambient observation');
   const response = await runtime.useModel(
     ModelType.LARGE, // Uses high-temp for creativity
     `You are observing your surroundings in a 3D virtual world.
@@ -114,7 +114,7 @@ export async function ambient(
   );
 
   actionResult.text = response as string;
-  logger.info('[AMBIENT] Generated ambient response successfully');
+  logger.debug('[AMBIENT] Generated ambient response successfully');
 
   // Store the observation in memory for continuity
   await runtime.createMemory(

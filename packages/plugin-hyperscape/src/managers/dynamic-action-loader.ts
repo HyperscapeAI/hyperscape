@@ -49,8 +49,8 @@ async function retryWithBackoff<T>(
     }
   }
 
-  // All attempts failed
-  throw lastError || new Error('Retry failed with unknown error');
+  // All attempts failed - rethrow the last error
+  throw lastError!;
 }
 
 /**
@@ -62,11 +62,15 @@ function withTimeout<T>(
   timeoutMs: number,
   errorMessage: string = 'Operation timed out'
 ): Promise<T> {
+  let timeoutId: NodeJS.Timeout;
+
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(errorMessage)), timeoutMs);
+  });
+
   return Promise.race([
-    promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(errorMessage)), timeoutMs)
-    ),
+    promise.finally(() => clearTimeout(timeoutId)),
+    timeoutPromise,
   ]);
 }
 
@@ -391,7 +395,26 @@ JSON Response:`;
           if (param.type === 'number') {
             // Harden number coercion - fail fast on invalid values
             if (typeof value === 'string') {
-              const coerced = parseFloat(value);
+              // Strict validation: trim, match valid number format, then coerce
+              const trimmed = value.trim();
+              const validNumberRegex = /^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/;
+
+              if (!validNumberRegex.test(trimmed)) {
+                if (param.required) {
+                  throw new Error(
+                    `[DynamicActionLoader] Required parameter '${param.name}' has invalid number format: "${value}"`
+                  );
+                }
+                logger.warn(
+                  `[DynamicActionLoader] Invalid number format for parameter '${param.name}' in action ${descriptor.name}: "${value}"`
+                );
+                if (param.default !== undefined) {
+                  params[param.name] = param.default;
+                }
+                continue;
+              }
+
+              const coerced = Number(trimmed);
               if (!Number.isFinite(coerced)) {
                 if (param.required) {
                   throw new Error(

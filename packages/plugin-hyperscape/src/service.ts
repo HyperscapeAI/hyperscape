@@ -496,15 +496,27 @@ Hyperscape world integration service that enables agents to:
     if (pack.providers) {
       // Runtime guards: verify providers property exists and is an array
       const runtimeProviders = (targetRuntime as { providers?: unknown }).providers;
+
+      // Filter runtime providers to only valid objects with name property
       const existingProviderNames = (
         Array.isArray(runtimeProviders)
-          ? (runtimeProviders as Array<{ name: string }>).map(p => p.name)
+          ? (runtimeProviders as Array<unknown>)
+              .filter((p): p is { name: string } => {
+                return p !== null && typeof p === 'object' && typeof (p as { name?: unknown }).name === 'string';
+              })
+              .map(p => p.name)
           : []
       );
-      const duplicateProviders = pack.providers.filter(p => existingProviderNames.includes(p.name));
+
+      // Filter pack providers to only valid objects with name property
+      const validPackProviders = pack.providers.filter(p => {
+        return p !== null && typeof p === 'object' && typeof (p as { name?: unknown }).name === 'string';
+      });
+
+      const duplicateProviders = validPackProviders.filter(p => existingProviderNames.includes((p as { name: string }).name));
       if (duplicateProviders.length > 0) {
         throw new Error(
-          `[HyperscapeService] Content pack contains ${duplicateProviders.length} providers that already exist: ${duplicateProviders.map(p => p.name).join(', ')}. Cannot load pack with duplicate providers (ElizaOS cannot unregister providers). Please use unique names or version your content pack.`,
+          `[HyperscapeService] Content pack contains ${duplicateProviders.length} providers that already exist: ${duplicateProviders.map(p => (p as { name: string }).name).join(', ')}. Cannot load pack with duplicate providers (ElizaOS cannot unregister providers). Please use unique names or version your content pack.`,
         );
       }
     }
@@ -702,14 +714,14 @@ Hyperscape world integration service that enables agents to:
 
     logger.info(`[HyperscapeService] Unloading content pack: ${pack.name}`);
 
-    // Warn if pack has persistent registrations
+    // Note if pack has persistent registrations
     const hasPersistentRegistrations =
       (pack.actions && pack.actions.length > 0) ||
       (pack.providers && pack.providers.length > 0) ||
       (pack.evaluators && pack.evaluators.length > 0);
 
     if (hasPersistentRegistrations) {
-      logger.warn(
+      logger.debug(
         `[HyperscapeService] Content pack "${pack.name}" has actions/providers/evaluators that cannot be unregistered. ` +
         `These will persist in the runtime after unload. To fully remove, restart the agent.`
       );
@@ -769,8 +781,14 @@ Hyperscape world integration service that enables agents to:
 
     try {
       // Import and load the Runescape RPG pack
-      const { RunescapeRPGPack } = await import('./content-packs/content-pack');
-      await this.loadContentPack(RunescapeRPGPack);
+      const contentPackModule = await import('./content-packs/content-pack');
+
+      // Validate that the export exists
+      if (!contentPackModule.RunescapeRPGPack) {
+        throw new Error('[HyperscapeService] RunescapeRPGPack export not found in content-pack module');
+      }
+
+      await this.loadContentPack(contentPackModule.RunescapeRPGPack);
 
       logger.info('[HyperscapeService] Default content packs loaded successfully');
     } catch (error) {
@@ -831,9 +849,15 @@ Hyperscape world integration service that enables agents to:
           } catch (error) {
             // Track error for circuit breaker
             const currentState = this.systemErrors.get(systemKey) || { count: 0, lastError: error as Error, timestamp: Date.now() };
+            const previousCount = currentState.count;
             currentState.count++;
             currentState.lastError = error as Error;
-            currentState.timestamp = Date.now();
+
+            // Only update timestamp when count crosses threshold
+            if (currentState.count >= HyperscapeService.MAX_SYSTEM_ERRORS && previousCount < HyperscapeService.MAX_SYSTEM_ERRORS) {
+              currentState.timestamp = Date.now();
+            }
+
             this.systemErrors.set(systemKey, currentState);
 
             logger.error(

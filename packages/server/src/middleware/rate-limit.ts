@@ -30,6 +30,17 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import fastifyRateLimit from '@fastify/rate-limit';
 
 /**
+ * Key generator function that throws when IP is missing
+ * This ensures rate limiting cannot be bypassed by clients without IP addresses
+ */
+function safeKeyGenerator(request: FastifyRequest): string {
+  if (!request.ip) {
+    throw new Error('Rate limiting requires IP address - request.ip is missing');
+  }
+  return request.ip;
+}
+
+/**
  * Rate limit configuration for authentication endpoints
  */
 export const AUTH_RATE_LIMIT_CONFIG = {
@@ -39,8 +50,8 @@ export const AUTH_RATE_LIMIT_CONFIG = {
   // Maximum requests per window (default: 5)
   max: Number(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS) || 5,
 
-  // Use IP address as key
-  keyGenerator: (request: FastifyRequest) => request.ip ?? 'unknown',
+  // Use IP address as key - throw if missing to prevent bypass
+  keyGenerator: safeKeyGenerator,
 
   // Error response when limit exceeded
   errorResponseBuilder: () => ({
@@ -56,7 +67,7 @@ export const AUTH_RATE_LIMIT_CONFIG = {
 export const API_RATE_LIMIT_CONFIG = {
   timeWindow: 15 * 60 * 1000, // 15 minutes
   max: 100, // 100 requests per window
-  keyGenerator: (request: FastifyRequest) => request.ip ?? 'unknown',
+  keyGenerator: safeKeyGenerator,
   errorResponseBuilder: () => ({
     error: 'Too Many Requests',
     message: 'You have exceeded the rate limit. Please slow down.',
@@ -70,7 +81,7 @@ export const API_RATE_LIMIT_CONFIG = {
 export const STRICT_RATE_LIMIT_CONFIG = {
   timeWindow: 60 * 60 * 1000, // 1 hour
   max: 3, // 3 requests per hour
-  keyGenerator: (request: FastifyRequest) => request.ip ?? 'unknown',
+  keyGenerator: safeKeyGenerator,
   errorResponseBuilder: () => ({
     error: 'Too Many Requests',
     message: 'This operation is rate limited. Please try again later.',
@@ -81,21 +92,21 @@ export const STRICT_RATE_LIMIT_CONFIG = {
 /**
  * Register rate limiting middleware with Fastify
  *
- * This sets up global rate limiting for the entire server.
- * Individual routes can override with route-specific limits.
+ * This sets up per-route rate limiting (global: false).
+ * Individual routes must opt-in by specifying rate limit config.
  *
  * @param app - Fastify instance
  */
 export async function registerRateLimiting(app: FastifyInstance): Promise<void> {
   await app.register(fastifyRateLimit, {
-    global: false, // Don't apply globally, let routes opt-in
+    global: false, // Per-route rate limiting - routes must opt-in
     max: API_RATE_LIMIT_CONFIG.max,
     timeWindow: API_RATE_LIMIT_CONFIG.timeWindow,
     errorResponseBuilder: API_RATE_LIMIT_CONFIG.errorResponseBuilder,
-    keyGenerator: (request: FastifyRequest) => request.ip ?? 'unknown',
+    keyGenerator: safeKeyGenerator,
   });
 
-  console.log('[RateLimit] Rate limiting registered:', {
+  console.log('[RateLimit] Per-route rate limiting registered (global: false):', {
     timeWindow: API_RATE_LIMIT_CONFIG.timeWindow / 1000 / 60 + ' minutes',
     max: API_RATE_LIMIT_CONFIG.max,
   });

@@ -67,6 +67,9 @@ export function createMockService(name: string): Service {
   return mockService as unknown as Service;
 }
 
+// Cached World instance for test performance
+let cachedMockWorld: World | null = null;
+
 // Create mock world instance for testing - using proper Hyperscape World interface
 export function createMockWorld(overrides: Partial<World> = {}): World {
   const mockWorld = {
@@ -128,7 +131,7 @@ export function createMockWorld(overrides: Partial<World> = {}): World {
     // Map of available world action handlers (ActionName => handler function)
     // Keys are action names, values are handler functions with signature (payload) => Promise<void>
     // Empty object means no actions are registered for this mock world
-    actions: {},
+    actions: {} as Record<string, (payload: unknown) => Promise<void>>,
 
     // Mock system access methods
     getSystem: vi.fn((systemKey: string) => {
@@ -156,7 +159,28 @@ export function createMockWorld(overrides: Partial<World> = {}): World {
     ...overrides,
   } as World;
 
+  // Cache the world instance for reuse
+  cachedMockWorld = mockWorld;
   return mockWorld;
+}
+
+/**
+ * Get cached World instance (or create new one if none exists)
+ * Improves test performance by reusing the same mock world
+ */
+export function getWorld(): World {
+  if (!cachedMockWorld) {
+    cachedMockWorld = createMockWorld();
+  }
+  return cachedMockWorld;
+}
+
+/**
+ * Reset the cached mock world instance
+ * Useful for cleaning up between tests
+ */
+export function resetMockWorld(): void {
+  cachedMockWorld = null;
 }
 
 // Create real player instance for testing
@@ -223,7 +247,7 @@ export function createMockHyperscapeService(
     runtime: {} as IAgentRuntime,
     stop: async () => {},
     isConnected: () => true,
-    getWorld: () => createMockWorld(),
+    getWorld: () => getWorld(),
     ...config,
   };
 

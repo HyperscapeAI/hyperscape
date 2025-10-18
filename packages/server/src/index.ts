@@ -1022,22 +1022,11 @@ async function startServer() {
           createdAt: timestamp,
         }
 
-        try {
-          newUser.privyUserId = privyInfo.privyUserId
-          if (privyInfo.farcasterFid) {
-            newUser.farcasterFid = privyInfo.farcasterFid
-          }
-          await db('users').insert(newUser)
-        } catch (_err) {
-          // Fallback without optional fields if schema doesn't support them
-          await db('users').insert({
-            id: newUser.id,
-            name: newUser.name,
-            avatar: newUser.avatar,
-            roles: newUser.roles,
-            createdAt: newUser.createdAt,
-          })
+        newUser.privyUserId = privyInfo.privyUserId
+        if (privyInfo.farcasterFid) {
+          newUser.farcasterFid = privyInfo.farcasterFid
         }
+        await db('users').insert(newUser)
       }
 
       // Generate Hyperscape JWT token (1 hour expiry for humans)

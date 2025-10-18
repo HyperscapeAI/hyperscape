@@ -11,6 +11,23 @@ import type { HyperscapeService } from "../service";
 import { World, Entity } from "../types/core-types";
 import { ChatMessage } from "../types";
 
+/**
+ * Chat metadata interface for message.metadata typing
+ */
+interface ChatMetadata {
+  type?: string;
+  hyperscape?: {
+    username?: string;
+    name?: string;
+    worldId?: string;
+  };
+  username?: string;
+  avatar?: string;
+  userId?: string;
+  isDirect?: boolean;
+  [key: string]: string | number | boolean | Record<string, unknown> | undefined;
+}
+
 type HyperscapePlayerData = Entity & {
   metadata?: {
     hyperscape?: {
@@ -299,7 +316,7 @@ export class MessageManager {
    *
    * By default, only responds when:
    * - Agent is mentioned by name
-   * - Message is a direct message
+   * - Message is a direct message (metadata.isDirect === true)
    *
    * Can be overridden by setting alwaysRespond config option to true
    */
@@ -319,15 +336,19 @@ export class MessageManager {
     }
 
     // Always respond to direct messages
-    // Check metadata.username as message.content.userName is never set
-    const metadata = message.metadata as { username?: string } | undefined;
-    if (metadata?.username && text.length > 0) {
+    // Check metadata.isDirect for explicit DM indication
+    const metadata = message.metadata as ChatMetadata | undefined;
+    if (metadata?.isDirect === true) {
       return true;
     }
 
     // Check for configurable override to allow broadcast responses
     // This can be set via runtime.character.settings.alwaysRespond = true
-    const settings = this.runtime.character.settings as Record<string, unknown> | undefined;
+    interface CharacterSettings {
+      alwaysRespond?: boolean;
+      [key: string]: unknown;
+    }
+    const settings = this.runtime.character.settings as CharacterSettings | undefined;
     if (settings?.alwaysRespond === true) {
       return true;
     }
@@ -353,6 +374,7 @@ export class MessageManager {
           max_tokens: 1000,
           temperature: 0.8,
           stop: ['</s>', '\n\nUser:', '\n\nHuman:'],
+          timeout: 30000,
         }
       );
 
@@ -413,7 +435,7 @@ export class MessageManager {
     }
 
     // Get username from metadata (with fallback for backward compatibility)
-    const metadata = message.metadata as { username?: string } | undefined;
+    const metadata = message.metadata as ChatMetadata | undefined;
     const userName = metadata?.username || message.content.userName || "User";
 
     // Add current message

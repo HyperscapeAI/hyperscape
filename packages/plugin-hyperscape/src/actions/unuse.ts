@@ -54,26 +54,45 @@ export const hyperscapeUnuseItemAction: Action = {
     logger.info("[UNUSE ITEM] Attempting to release current action.");
 
     // Use typed AgentActions system directly
-    (actions as AgentActions).releaseAction();
+    try {
+      (actions as AgentActions).releaseAction();
+      logger.info("[UNUSE ITEM] Action released successfully");
 
-    logger.info("[UNUSE ITEM] Action released successfully");
+      if (callback) {
+        const successResponse = {
+          text: "Item released.",
+          actions: ["HYPERSCAPE_UNUSE_ITEM"],
+          source: "hyperscape",
+          metadata: { status: "released" },
+        };
+        await callback(successResponse);
+      }
 
-    if (callback) {
-      const successResponse = {
+      return {
         text: "Item released.",
-        actions: ["HYPERSCAPE_UNUSE_ITEM"],
-        source: "hyperscape",
-        metadata: { status: "released" },
+        success: true,
+        values: { success: true, status: "released" },
+        data: { action: "HYPERSCAPE_UNUSE_ITEM" },
       };
-      await callback(successResponse);
-    }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error(`[UNUSE ITEM] Failed to release action: ${errorMsg}`);
 
-    return {
-      text: "Item released.",
-      success: true,
-      values: { success: true, status: "released" },
-      data: { action: "HYPERSCAPE_UNUSE_ITEM" },
-    };
+      if (callback) {
+        await callback({
+          text: `Failed to release item: ${errorMsg}`,
+          actions: ["HYPERSCAPE_UNUSE_ITEM"],
+          source: "hyperscape",
+        });
+      }
+
+      return {
+        text: `Failed to release item: ${errorMsg}`,
+        success: false,
+        values: { success: false, error: errorMsg },
+        data: { action: "HYPERSCAPE_UNUSE_ITEM" },
+      };
+    }
   },
   examples: [
     [

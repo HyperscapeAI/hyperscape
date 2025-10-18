@@ -180,13 +180,15 @@ export class EmoteManager {
         // Clear any partial state and continue to next emote
         this.clearTimers();
         this.isPlayingEmote = false;
-        // Continue processing the queue after an error
-        await this.processNextEmote();
       } finally {
         // Only set to false when queue is truly empty (terminal cleanup)
         if (this.emoteQueue.length === 0) {
           this.isPlayingEmote = false;
         }
+      }
+      // Recursion happens AFTER finally block completes
+      if (this.emoteQueue.length > 0) {
+        await this.processNextEmote();
       }
     } else {
       this.isPlayingEmote = false;

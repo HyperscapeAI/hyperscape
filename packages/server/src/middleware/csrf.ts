@@ -69,7 +69,15 @@ export const CSRF_EXEMPT_ROUTES: string[] = [
  * @param app - Fastify instance
  */
 export async function registerCsrfProtection(app: FastifyInstance): Promise<void> {
-  const secret = process.env.CSRF_SECRET || process.env.JWT_SECRET;
+  const csrfSecret = process.env.CSRF_SECRET;
+  const jwtSecret = process.env.JWT_SECRET;
+
+  // Warn if CSRF_SECRET is not set and falling back to JWT_SECRET
+  if (!csrfSecret && jwtSecret) {
+    console.warn('[CSRF] WARNING: CSRF_SECRET not set, falling back to JWT_SECRET. Set CSRF_SECRET for better security.');
+  }
+
+  const secret = csrfSecret || jwtSecret;
   if (!secret) {
     throw new Error('CSRF_SECRET or JWT_SECRET environment variable is required for CSRF protection');
   }
@@ -82,8 +90,11 @@ export async function registerCsrfProtection(app: FastifyInstance): Promise<void
     cookieKey: secret,
 
     // Cookie options for CSRF token
+    // WARNING: httpOnly: false means client JavaScript can read this cookie
+    // This is necessary for CSRF double-submit pattern but exposes tokens to XSS
+    // Ensure proper XSS protection measures are in place (Content-Security-Policy, etc.)
     cookieOpts: {
-      httpOnly: false, // Client needs to read this
+      httpOnly: false, // Client needs to read this for CSRF double-submit pattern
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       path: '/',
@@ -115,21 +126,45 @@ export async function registerCsrfProtection(app: FastifyInstance): Promise<void
     // For non-exempt routes, verify CSRF token
     // The @fastify/csrf-protection plugin provides request.csrfProtection()
     try {
+      // Type assertion for CSRF protection method
+      interface CsrfRequest extends FastifyRequest {
+        csrfProtection?: () => Promise<void>;
+      }
+
       // Call the CSRF verification function provided by the plugin
       // This verifies that the token in the header matches the cookie
-      await (request as { csrfProtection?: () => Promise<void> }).csrfProtection?.();
+      const csrfProtection = (request as CsrfRequest).csrfProtection;
+      if (csrfProtection) {
+        await csrfProtection();
+      }
     } catch (error) {
-      // CSRF verification failed - log and reject request
+      // Discriminate error types for better debugging
+      let reason: 'token_missing' | 'token_invalid' | 'unknown' = 'unknown';
+      let errorMessage = 'Unknown error';
+
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        // Check common error patterns from @fastify/csrf-protection
+        if (errorMessage.includes('missing') || errorMessage.includes('not found')) {
+          reason = 'token_missing';
+        } else if (errorMessage.includes('invalid') || errorMessage.includes('mismatch')) {
+          reason = 'token_invalid';
+        }
+      }
+
+      // CSRF verification failed - log with specific reason
       console.error('[CSRF] CSRF verification failed:', {
         url: request.url,
         method: request.method,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        reason,
+        error: errorMessage,
       });
 
-      // Send 403 Forbidden response
+      // Send 403 Forbidden response with specific reason
       reply.code(403).send({
         error: 'Forbidden',
         message: 'CSRF token verification failed',
+        reason, // Include specific failure reason in response
       });
 
       // End request processing
@@ -150,7 +185,15 @@ function normalizePath(path: string): string {
   const pathWithoutQuery = path.split('?')[0]!;
 
   // URL decode to prevent encoding bypasses
-  const decoded = decodeURIComponent(pathWithoutQuery);
+  // Wrap in try-catch to handle malformed URIs gracefully
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathWithoutQuery);
+  } catch {
+    // If decoding fails (malformed URI), use the raw path
+    // This prevents throwing errors for invalid inputs
+    decoded = pathWithoutQuery;
+  }
 
   // Remove trailing slash for consistency (but keep root '/')
   return decoded.length > 1 && decoded.endsWith('/')

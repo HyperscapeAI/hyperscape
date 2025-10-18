@@ -73,6 +73,7 @@
     "@types/node": "^24.7.2",
     "@types/pg": "^8.11.10",
     "@types/source-map-support": "^0.5.10",
+    "@types/three": "^0.180.0",
     "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.38.0",
     "@typescript-eslint/parser": "^8.38.0",

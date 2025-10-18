@@ -80,12 +80,28 @@ import { pgTable, text, integer, bigint, real, timestamp, serial, unique, index,
 import { relations, sql } from 'drizzle-orm';
 
 /**
+ * Agent Permission Type
+ *
+ * Defines valid permission strings that can be granted to agents.
+ * This is the canonical list of allowed agent permissions.
+ */
+export type AgentPermission =
+  | 'chat'
+  | 'move'
+  | 'perceive'
+  | 'interact'
+  | 'trade'
+  | 'craft'
+  | 'attack'
+  | 'build';
+
+/**
  * Agent Permissions Type
  *
  * Defines the structure of agent permissions stored in the database.
  * Permissions are stored as a JSON array of permission strings.
  */
-export type AgentPermissions = string[];
+export type AgentPermissions = AgentPermission[];
 
 /**
  * Config Table - Server configuration settings
@@ -124,7 +140,7 @@ export const users = pgTable('users', {
   farcasterFid: text('farcasterFid'),
   // Agent-specific fields
   runtimeId: text('runtimeId'),
-  ownerId: text('ownerId'),
+  ownerId: text('ownerId').nullable().references(() => users.id, { onDelete: 'set null' }),
   isActive: boolean('isActive').notNull().default(true),
   permissions: jsonb('permissions').notNull().default('[]').$type<AgentPermissions>(),
 }, (table) => ({

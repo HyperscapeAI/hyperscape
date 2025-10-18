@@ -23,11 +23,11 @@ function generateUUID(): UUID {
 
 /**
  * Create minimal runtime fixture for testing simple actions
- * This is not a mock - it's a minimal real object that satisfies the IAgentRuntime interface
- * The IGNORE action doesn't use the runtime, so we only need the structure
+ * This is not a mock - it's a complete real object that satisfies the IAgentRuntime interface
+ * The IGNORE action doesn't use most runtime properties, but we provide a complete runtime for type safety
  */
 function createMinimalRuntime(): IAgentRuntime {
-  const runtime: Partial<IAgentRuntime> = {
+  const runtime: IAgentRuntime = {
     agentId: generateUUID(),
     character: {
       id: generateUUID(),
@@ -36,8 +36,38 @@ function createMinimalRuntime(): IAgentRuntime {
       clients: [],
       settings: { secrets: {}, voice: { model: "en_US-male-medium" } },
     },
+    // Add all required IAgentRuntime properties
+    serverUrl: "http://localhost:3000",
+    databaseAdapter: {} as any,
+    token: null,
+    actions: [],
+    evaluators: [],
+    providers: [],
+    plugins: [],
+    fetch: fetch.bind(globalThis),
+    messageManager: {} as any,
+    descriptionManager: {} as any,
+    loreManager: {} as any,
+    documentsManager: {} as any,
+    knowledgeManager: {} as any,
+    services: new Map(),
+    initialize: async () => {},
+    registerMemoryManager: () => {},
+    getMemoryManager: () => null as any,
+    getService: () => null,
+    registerService: () => {},
+    getSetting: () => null,
+    getConversationLength: () => 32,
+    processActions: async () => {},
+    evaluate: async () => [],
+    ensureConnection: async () => {},
+    ensureUserExists: async () => {},
+    ensureParticipantInRoom: async () => {},
+    ensureRoomExists: async () => {},
+    composeState: async () => ({} as any),
+    updateRecentMessageState: async () => ({} as any),
   };
-  return runtime as IAgentRuntime;
+  return runtime;
 }
 
 describe("IGNORE Action", () => {

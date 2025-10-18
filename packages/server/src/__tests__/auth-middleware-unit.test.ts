@@ -26,6 +26,7 @@ import {
   setCsrfCookie,
   getCsrfCookie,
   clearCsrfCookie,
+  parseCookieString,
 } from '../middleware/cookies';
 
 import {
@@ -46,7 +47,9 @@ describe('Cookie Middleware - Unit Tests', () => {
     expect(COOKIE_NAMES.PRIVY_ID_TOKEN).toBe('privy-id-token');
     expect(COOKIE_NAMES.CSRF_TOKEN).toBe('csrf-token');
     expect(COOKIE_NAMES.HYPERSCAPE_SESSION).toBe('hyperscape-session');
-    console.log('✅ Cookie names are correctly defined');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ Cookie names are correctly defined');
+    }
   });
 
   test('DEFAULT_AUTH_COOKIE_OPTIONS have secure defaults', () => {
@@ -54,7 +57,9 @@ describe('Cookie Middleware - Unit Tests', () => {
     expect(DEFAULT_AUTH_COOKIE_OPTIONS.sameSite).toBe('strict');
     expect(DEFAULT_AUTH_COOKIE_OPTIONS.maxAge).toBe(60 * 60); // 1 hour in seconds
     expect(DEFAULT_AUTH_COOKIE_OPTIONS.path).toBe('/');
-    console.log('✅ Auth cookie options have secure defaults (HttpOnly, SameSite=strict)');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ Auth cookie options have secure defaults (HttpOnly, SameSite=strict)');
+    }
   });
 
   test('DEFAULT_CSRF_COOKIE_OPTIONS allow client reads', () => {
@@ -62,7 +67,9 @@ describe('Cookie Middleware - Unit Tests', () => {
     expect(DEFAULT_CSRF_COOKIE_OPTIONS.sameSite).toBe('strict');
     expect(DEFAULT_CSRF_COOKIE_OPTIONS.maxAge).toBe(60 * 60);
     expect(DEFAULT_CSRF_COOKIE_OPTIONS.path).toBe('/');
-    console.log('✅ CSRF cookie options allow client reads (httpOnly=false)');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ CSRF cookie options allow client reads (httpOnly=false)');
+    }
   });
 
   test('setAuthCookie creates mock cookie with correct parameters', () => {
@@ -84,7 +91,9 @@ describe('Cookie Middleware - Unit Tests', () => {
 
     setAuthCookie(mockReply, 'test-token-123');
     expect(mockCookies[COOKIE_NAMES.PRIVY_ID_TOKEN]).toBe('test-token-123');
-    console.log('✅ setAuthCookie sets secure HttpOnly cookie');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ setAuthCookie sets secure HttpOnly cookie');
+    }
   });
 
   test('getAuthCookie retrieves token from cookies', () => {
@@ -96,7 +105,9 @@ describe('Cookie Middleware - Unit Tests', () => {
 
     const token = getAuthCookie(mockRequest);
     expect(token).toBe('retrieved-token-456');
-    console.log('✅ getAuthCookie retrieves token correctly');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ getAuthCookie retrieves token correctly');
+    }
   });
 
   test('getAuthCookie returns null when cookie not found', () => {
@@ -106,7 +117,9 @@ describe('Cookie Middleware - Unit Tests', () => {
 
     const token = getAuthCookie(mockRequest);
     expect(token).toBeNull();
-    console.log('✅ getAuthCookie returns null for missing cookie');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ getAuthCookie returns null for missing cookie');
+    }
   });
 
   test('clearAuthCookie clears the cookie', () => {
@@ -125,7 +138,9 @@ describe('Cookie Middleware - Unit Tests', () => {
 
     clearAuthCookie(mockReply);
     expect(clearedCookie).toBe(COOKIE_NAMES.PRIVY_ID_TOKEN);
-    console.log('✅ clearAuthCookie clears authentication cookie');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ clearAuthCookie clears authentication cookie');
+    }
   });
 
   test('setCsrfCookie sets client-readable cookie', () => {
@@ -146,7 +161,9 @@ describe('Cookie Middleware - Unit Tests', () => {
 
     setCsrfCookie(mockReply, 'csrf-token-789');
     expect(mockCookies[COOKIE_NAMES.CSRF_TOKEN]).toBe('csrf-token-789');
-    console.log('✅ setCsrfCookie sets client-readable cookie (httpOnly=false)');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ setCsrfCookie sets client-readable cookie (httpOnly=false)');
+    }
   });
 
   test('getCsrfCookie retrieves CSRF token', () => {
@@ -158,7 +175,9 @@ describe('Cookie Middleware - Unit Tests', () => {
 
     const token = getCsrfCookie(mockRequest);
     expect(token).toBe('csrf-retrieved-123');
-    console.log('✅ getCsrfCookie retrieves CSRF token');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ getCsrfCookie retrieves CSRF token');
+    }
   });
 
   test('clearCsrfCookie clears CSRF cookie', () => {
@@ -171,7 +190,9 @@ describe('Cookie Middleware - Unit Tests', () => {
 
     clearCsrfCookie(mockReply);
     expect(clearedCookie).toBe(COOKIE_NAMES.CSRF_TOKEN);
-    console.log('✅ clearCsrfCookie clears CSRF cookie');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ clearCsrfCookie clears CSRF cookie');
+    }
   });
 });
 
@@ -185,19 +206,25 @@ describe('Rate Limit Middleware - Unit Tests', () => {
     const errorResponse = AUTH_RATE_LIMIT_CONFIG.errorResponseBuilder();
     expect(errorResponse.statusCode).toBe(429);
     expect(errorResponse.error).toBe('Too Many Requests');
-    console.log('✅ Auth rate limit: 5 requests per 15 minutes');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ Auth rate limit: 5 requests per 15 minutes');
+    }
   });
 
   test('API_RATE_LIMIT_CONFIG has moderate limits', () => {
     expect(API_RATE_LIMIT_CONFIG.max).toBe(100);
     expect(API_RATE_LIMIT_CONFIG.timeWindow).toBe(15 * 60 * 1000);
-    console.log('✅ API rate limit: 100 requests per 15 minutes');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ API rate limit: 100 requests per 15 minutes');
+    }
   });
 
   test('STRICT_RATE_LIMIT_CONFIG has very strict limits', () => {
     expect(STRICT_RATE_LIMIT_CONFIG.max).toBe(3);
     expect(STRICT_RATE_LIMIT_CONFIG.timeWindow).toBe(60 * 60 * 1000); // 1 hour
-    console.log('✅ Strict rate limit: 3 requests per hour');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ Strict rate limit: 3 requests per hour');
+    }
   });
 
   test('getRateLimitConfig returns correct config for each type', () => {
@@ -210,28 +237,36 @@ describe('Rate Limit Middleware - Unit Tests', () => {
     const strictConfig = getRateLimitConfig('strict');
     expect(strictConfig.max).toBe(3);
 
-    console.log('✅ getRateLimitConfig returns correct configs');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ getRateLimitConfig returns correct configs');
+    }
   });
 
   test('Rate limit uses IP-based key generation', () => {
     const mockRequest = { ip: '192.168.1.100' };
     const key = AUTH_RATE_LIMIT_CONFIG.keyGenerator(mockRequest);
     expect(key).toBe('192.168.1.100');
-    console.log('✅ Rate limiting uses IP address as key');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ Rate limiting uses IP address as key');
+    }
   });
 });
 
 describe('CSRF Middleware - Unit Tests', () => {
   test('CSRF_HEADER_NAME is correctly defined', () => {
     expect(CSRF_HEADER_NAME).toBe('x-csrf-token');
-    console.log('✅ CSRF header name is x-csrf-token');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ CSRF header name is x-csrf-token');
+    }
   });
 
   test('CSRF_EXEMPT_ROUTES are correctly defined', () => {
     expect(CSRF_EXEMPT_ROUTES).toContain('/api/agent/auth');
     expect(CSRF_EXEMPT_ROUTES).toContain('/api/health');
     expect(CSRF_EXEMPT_ROUTES).toContain('/ws');
-    console.log('✅ CSRF exempt routes include agent auth, health, WebSocket');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ CSRF exempt routes include agent auth, health, WebSocket');
+    }
   });
 
   test('isRouteExempt returns true for GET requests', () => {
@@ -242,7 +277,9 @@ describe('CSRF Middleware - Unit Tests', () => {
 
     const isExempt = isRouteExempt(mockRequest);
     expect(isExempt).toBe(true);
-    console.log('✅ GET requests are exempt from CSRF (safe method)');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ GET requests are exempt from CSRF (safe method)');
+    }
   });
 
   test('isRouteExempt returns true for HEAD requests', () => {
@@ -253,7 +290,9 @@ describe('CSRF Middleware - Unit Tests', () => {
 
     const isExempt = isRouteExempt(mockRequest);
     expect(isExempt).toBe(true);
-    console.log('✅ HEAD requests are exempt from CSRF (safe method)');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ HEAD requests are exempt from CSRF (safe method)');
+    }
   });
 
   test('isRouteExempt returns true for OPTIONS requests', () => {
@@ -264,7 +303,9 @@ describe('CSRF Middleware - Unit Tests', () => {
 
     const isExempt = isRouteExempt(mockRequest);
     expect(isExempt).toBe(true);
-    console.log('✅ OPTIONS requests are exempt from CSRF (CORS preflight)');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ OPTIONS requests are exempt from CSRF (CORS preflight)');
+    }
   });
 
   test('isRouteExempt returns true for exempt routes (agent auth)', () => {
@@ -275,7 +316,9 @@ describe('CSRF Middleware - Unit Tests', () => {
 
     const isExempt = isRouteExempt(mockRequest);
     expect(isExempt).toBe(true);
-    console.log('✅ Agent auth endpoint is exempt from CSRF');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ Agent auth endpoint is exempt from CSRF');
+    }
   });
 
   test('isRouteExempt returns true for WebSocket upgrade', () => {
@@ -286,7 +329,9 @@ describe('CSRF Middleware - Unit Tests', () => {
 
     const isExempt = isRouteExempt(mockRequest);
     expect(isExempt).toBe(true);
-    console.log('✅ WebSocket upgrade is exempt from CSRF');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ WebSocket upgrade is exempt from CSRF');
+    }
   });
 
   test('isRouteExempt returns false for POST to protected route', () => {
@@ -297,7 +342,9 @@ describe('CSRF Middleware - Unit Tests', () => {
 
     const isExempt = isRouteExempt(mockRequest);
     expect(isExempt).toBe(false);
-    console.log('✅ POST to protected route requires CSRF token');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ POST to protected route requires CSRF token');
+    }
   });
 
   test('isRouteExempt returns false for PUT requests', () => {
@@ -308,7 +355,9 @@ describe('CSRF Middleware - Unit Tests', () => {
 
     const isExempt = isRouteExempt(mockRequest);
     expect(isExempt).toBe(false);
-    console.log('✅ PUT requests require CSRF token');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ PUT requests require CSRF token');
+    }
   });
 
   test('isRouteExempt returns false for DELETE requests', () => {
@@ -319,25 +368,11 @@ describe('CSRF Middleware - Unit Tests', () => {
 
     const isExempt = isRouteExempt(mockRequest);
     expect(isExempt).toBe(false);
-    console.log('✅ DELETE requests require CSRF token');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ DELETE requests require CSRF token');
+    }
   });
 });
-
-/**
- * Helper function to parse cookie string into key-value pairs
- *
- * @param cookieHeader - Raw cookie header string (e.g., "key1=value1; key2=value2")
- * @returns Object with cookie key-value pairs
- */
-function parseCookieString(cookieHeader: string): Record<string, string> {
-  return cookieHeader.split(';').reduce((acc, cookie) => {
-    const [key, value] = cookie.trim().split('=');
-    if (key && value) {
-      acc[key] = decodeURIComponent(value);
-    }
-    return acc;
-  }, {} as Record<string, string>);
-}
 
 describe('Cookie Parsing Logic (Client-Side)', () => {
   test('Cookie string parsing works correctly', () => {
@@ -348,7 +383,9 @@ describe('Cookie Parsing Logic (Client-Side)', () => {
     expect(cookies['privy-id-token']).toBe('test-token');
     expect(cookies['csrf-token']).toBe('test-csrf');
     expect(cookies['other']).toBe('value');
-    console.log('✅ Cookie parsing extracts all key-value pairs');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ Cookie parsing extracts all key-value pairs');
+    }
   });
 
   test('Cookie parsing handles encoded values', () => {
@@ -358,7 +395,9 @@ describe('Cookie Parsing Logic (Client-Side)', () => {
 
     expect(cookies['name']).toBe('John Doe');
     expect(cookies['token']).toBe('abc+123==');
-    console.log('✅ Cookie parsing correctly decodes URL-encoded values');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ Cookie parsing correctly decodes URL-encoded values');
+    }
   });
 
   test('Cookie parsing handles empty cookie string', () => {
@@ -367,7 +406,9 @@ describe('Cookie Parsing Logic (Client-Side)', () => {
     const cookies = parseCookieString(mockCookieHeader);
 
     expect(Object.keys(cookies).length).toBe(0);
-    console.log('✅ Cookie parsing handles empty string gracefully');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ Cookie parsing handles empty string gracefully');
+    }
   });
 
   test('Cookie parsing handles malformed cookies', () => {
@@ -378,17 +419,24 @@ describe('Cookie Parsing Logic (Client-Side)', () => {
     expect(cookies['valid']).toBe('value');
     expect(cookies['another']).toBe('good');
     expect(cookies['malformed']).toBeUndefined();
-    console.log('✅ Cookie parsing skips malformed entries');
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('✅ Cookie parsing skips malformed entries');
+    }
+  });
+
+  // Summary (only when TEST_DEBUG is enabled)
+  test('Print test summary', () => {
+    if (process.env.TEST_DEBUG === 'true') {
+      console.log('\n' + '='.repeat(60));
+      console.log('Phase 2 Security Middleware - Unit Test Summary');
+      console.log('='.repeat(60));
+      console.log('✅ All cookie middleware functions tested and working');
+      console.log('✅ All rate limit configurations verified');
+      console.log('✅ All CSRF protection logic tested');
+      console.log('✅ Cookie parsing logic validated');
+      console.log('✅ Security defaults confirmed (HttpOnly, SameSite=strict)');
+      console.log('='.repeat(60));
+    }
+    expect(true).toBe(true); // Always pass
   });
 });
-
-// Summary
-console.log('\n' + '='.repeat(60));
-console.log('Phase 2 Security Middleware - Unit Test Summary');
-console.log('='.repeat(60));
-console.log('✅ All cookie middleware functions tested and working');
-console.log('✅ All rate limit configurations verified');
-console.log('✅ All CSRF protection logic tested');
-console.log('✅ Cookie parsing logic validated');
-console.log('✅ Security defaults confirmed (HttpOnly, SameSite=strict)');
-console.log('='.repeat(60));

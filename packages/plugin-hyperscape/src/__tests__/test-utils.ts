@@ -52,7 +52,6 @@ export interface PhysicsData {
   position?: { x: number; y: number; z: number }
   isGrounded?: boolean
   mass?: number
-  grounded?: boolean
 }
 
 /**
@@ -174,8 +173,8 @@ export function formatPhysicsData(physicsData: PhysicsData): string {
     parts.push(`Mass: ${physicsData.mass} kg`);
   }
 
-  if (physicsData.grounded !== undefined) {
-    parts.push(`Grounded: ${physicsData.grounded ? "Yes" : "No"}`);
+  if (physicsData.isGrounded !== undefined) {
+    parts.push(`Grounded: ${physicsData.isGrounded ? "Yes" : "No"}`);
   }
 
   return parts.join(", ");

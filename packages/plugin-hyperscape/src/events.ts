@@ -18,7 +18,7 @@ export const EventType = hyperscapeEventType;
  */
 export const hyperscapeEvents = {
   [hyperscapeEventType.MESSAGE_RECEIVED]: [
-    (_payload: MessagePayload) => {
+    async (_payload: MessagePayload): Promise<void> => {
       logger.debug(
         "[Events] MESSAGE_RECEIVED event triggered (handled by MessageManager)"
       );
@@ -28,7 +28,7 @@ export const hyperscapeEvents = {
   ],
 
   [hyperscapeEventType.VOICE_MESSAGE_RECEIVED]: [
-    (_payload: MessagePayload) => {
+    async (_payload: MessagePayload): Promise<void> => {
       logger.debug(
         "[Events] VOICE_MESSAGE_RECEIVED event triggered (handled by MessageManager)"
       );

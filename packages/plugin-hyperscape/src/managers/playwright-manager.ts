@@ -38,6 +38,9 @@ export class PlaywrightManager {
    * Get the current page instance for testing purposes
    */
   getPage(): Page | null {
+    if (this.disposed) {
+      throw new Error("PlaywrightManager has been disposed");
+    }
     return this.page || null;
   }
 
@@ -47,6 +50,9 @@ export class PlaywrightManager {
   async takeScreenshot(
     options?: PageScreenshotOptions,
   ): Promise<string | Buffer> {
+    if (this.disposed) {
+      throw new Error("PlaywrightManager has been disposed");
+    }
     return await this.page!.screenshot({
       type: "png",
       fullPage: false,
@@ -133,6 +139,9 @@ export class PlaywrightManager {
   public async snapshotFacingDirection(
     direction: "front" | "back" | "left" | "right",
   ): Promise<string> {
+    if (this.disposed) {
+      throw new Error("PlaywrightManager has been disposed");
+    }
     await this.init();
 
     if (!this.browser || !this.page) {
@@ -172,6 +181,9 @@ export class PlaywrightManager {
   public async snapshotViewToTarget(
     targetPosition: [number, number, number],
   ): Promise<string> {
+    if (this.disposed) {
+      throw new Error("PlaywrightManager has been disposed");
+    }
     await this.init();
 
     const service = this.getService();
@@ -202,6 +214,9 @@ export class PlaywrightManager {
   }
 
   public async snapshotEquirectangular(): Promise<string> {
+    if (this.disposed) {
+      throw new Error("PlaywrightManager has been disposed");
+    }
     await this.init();
 
     const service = this.getService();
@@ -231,6 +246,9 @@ export class PlaywrightManager {
   }
 
   async loadGlbBytes(url: string): Promise<number[]> {
+    if (this.disposed) {
+      throw new Error("PlaywrightManager has been disposed");
+    }
     await this.init();
     const STRIP_SLOTS = this.STRIP_SLOTS;
 
@@ -295,6 +313,9 @@ export class PlaywrightManager {
   }
 
   async loadVRMBytes(url: string): Promise<number[]> {
+    if (this.disposed) {
+      throw new Error("PlaywrightManager has been disposed");
+    }
     await this.init();
 
     return this.page.evaluate(async (url) => {
@@ -319,6 +340,9 @@ export class PlaywrightManager {
   }
 
   async registerTexture(url: string, slot: string): Promise<string> {
+    if (this.disposed) {
+      throw new Error("PlaywrightManager has been disposed");
+    }
     await this.init();
 
     return this.page.evaluate(
@@ -347,6 +371,9 @@ export class PlaywrightManager {
   }
 
   public async loadEnvironmentHDR(url: string): Promise<void> {
+    if (this.disposed) {
+      throw new Error("PlaywrightManager has been disposed");
+    }
     await this.init();
     const service = this.getService();
     const world = service.getWorld();
@@ -533,6 +560,9 @@ export class PlaywrightManager {
     screenshot2: Buffer | string,
     threshold: number = 0.1,
   ): Promise<{ match: boolean; difference: number }> {
+    if (this.disposed) {
+      throw new Error("PlaywrightManager has been disposed");
+    }
     // Convert to buffers if needed
     const buffer1 = typeof screenshot1 === 'string'
       ? Buffer.from(screenshot1, 'base64')
@@ -547,10 +577,7 @@ export class PlaywrightManager {
 
     // Verify image dimensions match
     if (img1.width !== img2.width || img1.height !== img2.height) {
-      logger.warn('[PlaywrightManager] Screenshot dimensions mismatch:', {
-        img1: { width: img1.width, height: img1.height },
-        img2: { width: img2.width, height: img2.height },
-      });
+      logger.warn(`[PlaywrightManager] Screenshot dimensions mismatch: img1=${img1.width}x${img1.height}, img2=${img2.width}x${img2.height}`);
       return { match: false, difference: 1 };
     }
 
@@ -559,26 +586,21 @@ export class PlaywrightManager {
     const diff = new PNG({ width, height });
 
     // Perform pixel-level comparison
+    // Note: threshold 0.1 is pixelmatch's per-pixel color sensitivity threshold (0-1 scale)
     const numDiffPixels = pixelmatch(
       img1.data,
       img2.data,
       diff.data,
       width,
       height,
-      { threshold: 0.1 } // pixelmatch's own threshold for color difference
+      { threshold: 0.1 }
     );
 
     const totalPixels = width * height;
     const difference = numDiffPixels / totalPixels;
     const match = difference <= threshold;
 
-    logger.info('[PlaywrightManager] Screenshot comparison:', {
-      numDiffPixels,
-      totalPixels,
-      differencePercentage: (difference * 100).toFixed(2) + '%',
-      threshold: (threshold * 100).toFixed(2) + '%',
-      match,
-    });
+    logger.info(`[PlaywrightManager] Screenshot comparison: ${numDiffPixels}/${totalPixels} pixels differ (${(difference * 100).toFixed(2)}% vs threshold ${(threshold * 100).toFixed(2)}%), match=${match}`);
 
     return { match, difference };
   }

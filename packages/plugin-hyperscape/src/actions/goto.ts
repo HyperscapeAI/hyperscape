@@ -23,7 +23,7 @@ export interface NavigationStartedPayload {
   playerId: string;
   targetEntityId?: string;
   targetPosition?: { x: number; z: number };
-  navigationType: 'entity' | 'position';
+  navigationType: NavigationType;
 }
 
 export interface NavigationCompletedPayload {
@@ -57,7 +57,7 @@ const DEFAULT_NAVIGATION_TIMEOUT_MS = 10000;
 async function executeNavigationWithEvents(
   world: World,
   playerId: string,
-  navigationType: 'entity' | 'position',
+  navigationType: NavigationType,
   options: {
     targetEntityId?: string;
     targetPosition?: { x: number; z: number };
@@ -66,15 +66,6 @@ async function executeNavigationWithEvents(
   startNavigation: () => void,
 ): Promise<{ success: boolean; error?: string }> {
   const timeoutMs = options.timeout || DEFAULT_NAVIGATION_TIMEOUT_MS;
-
-  // Emit navigation started event
-  const startPayload: NavigationStartedPayload = {
-    playerId,
-    targetEntityId: options.targetEntityId,
-    targetPosition: options.targetPosition,
-    navigationType,
-  };
-  world.emit(NAVIGATION_STARTED, startPayload);
 
   // Wrap navigation in promise with event listeners
   return new Promise<{ success: boolean; error?: string }>((resolve, reject) => {
@@ -107,10 +98,7 @@ async function executeNavigationWithEvents(
       resolve({ success: false, error: errorMsg });
     }, timeoutMs);
 
-    world.on(NAVIGATION_COMPLETED, completionHandler);
-    world.on(NAVIGATION_FAILED, failureHandler);
-
-    // Start navigation
+    // Start navigation BEFORE registering event listeners
     try {
       startNavigation();
     } catch (error) {
@@ -118,7 +106,20 @@ async function executeNavigationWithEvents(
       logger.error(`[GOTO] Failed to start navigation: ${errorMsg}`);
       cleanup();
       resolve({ success: false, error: errorMsg });
+      return;
     }
+
+    // Emit navigation started event
+    const startPayload: NavigationStartedPayload = {
+      playerId,
+      targetEntityId: options.targetEntityId,
+      targetPosition: options.targetPosition,
+      navigationType,
+    };
+    world.emit(NAVIGATION_STARTED, startPayload);
+
+    world.on(NAVIGATION_COMPLETED, completionHandler);
+    world.on(NAVIGATION_FAILED, failureHandler);
   });
 }
 
@@ -224,7 +225,7 @@ export const hyperscapeGotoEntityAction: Action = {
         const navResult = await executeNavigationWithEvents(
           world,
           player.id,
-          'entity',
+          NavigationType.ENTITY,
           { targetEntityId: entityId },
           () => {
             controls.followEntity(entityId);
@@ -324,7 +325,7 @@ export const hyperscapeGotoEntityAction: Action = {
         const navResult = await executeNavigationWithEvents(
           world,
           player.id,
-          'position',
+          NavigationType.POSITION,
           { targetPosition: pos },
           () => {
             controls.goto(pos.x, pos.z);

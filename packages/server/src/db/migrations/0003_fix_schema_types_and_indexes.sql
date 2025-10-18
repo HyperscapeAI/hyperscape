@@ -83,18 +83,24 @@ BEGIN
         -- Handle empty strings, null values, and malformed data
         UPDATE "users"
         SET "permissions_new" = CASE
-            -- If it's valid JSON already, use it directly
-            WHEN "permissions" ~ '^[\[\{].*[\]\}]$' THEN
-                COALESCE("permissions"::jsonb, '[]'::jsonb)
             -- If it's empty or just whitespace, use empty array
             WHEN "permissions" IS NULL OR TRIM("permissions") = '' OR TRIM("permissions") = '{}' THEN
                 '[]'::jsonb
-            -- If it contains commas, convert to JSON array
+            -- If it's valid JSON already (starts with [ or {), try to cast it
+            WHEN "permissions" ~ '^[\[\{]' THEN
+                CASE
+                    -- Safe cast check: attempt to validate JSON
+                    WHEN "permissions"::text IS JSON THEN
+                        "permissions"::jsonb
+                    ELSE
+                        '[]'::jsonb
+                END
+            -- If it contains commas, convert comma-separated string to flat JSON array
             WHEN "permissions" ~ ',' THEN
-                jsonb_build_array(string_to_array("permissions", ','))
+                to_jsonb(string_to_array("permissions", ','))
             -- Otherwise, single permission - wrap in array
             ELSE
-                jsonb_build_array("permissions")
+                to_jsonb(ARRAY["permissions"])
         END;
 
         -- Step 3: Drop old TEXT column

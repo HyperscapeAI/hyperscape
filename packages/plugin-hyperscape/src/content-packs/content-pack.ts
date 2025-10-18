@@ -58,6 +58,34 @@ const rpgProviders: Provider[] = [
 ];
 
 /**
+ * Validates that a world system exists and is properly connected
+ * @param world - The world instance to check
+ * @param systemName - The name of the system to validate
+ * @throws Error if world.getSystem is not a function or system is missing
+ */
+function validateWorldSystem(world: World, systemName: string): void {
+  // Type guard: verify world has getSystem method
+  if (typeof world.getSystem !== 'function') {
+    throw new Error('[RPG Pack] Missing required API: world.getSystem is not a function');
+  }
+
+  // Retrieve system
+  const system = world.getSystem(systemName);
+
+  // Verify system exists
+  if (!system) {
+    throw new Error(`[RPG Pack] Missing required system: ${systemName}`);
+  }
+
+  // Add runtime type guard for system methods (optional, depending on expected API)
+  if (typeof (system as { getSkillLevel?: unknown }).getSkillLevel === 'function') {
+    console.info(`[RPG Pack] ✓ ${systemName} system connected (with getSkillLevel API)`);
+  } else {
+    console.info(`[RPG Pack] ✓ ${systemName} system connected`);
+  }
+}
+
+/**
  * RPG Game Systems Bridge
  * Validates that RPG systems are available in the world
  */
@@ -67,15 +95,7 @@ const rpgSystems: IGameSystem[] = [
     name: "RPG Skills System Bridge",
     type: "skills",
     init: async (world: World) => {
-      // Validate that skills system exists in world
-      if (typeof world.getSystem !== 'function') {
-        throw new Error('[RPG Pack] Missing required API: world.getSystem is not a function');
-      }
-      const skillsSystem = world.getSystem('skills');
-      if (!skillsSystem) {
-        throw new Error('[RPG Pack] Missing required system: skills');
-      }
-      console.info('[RPG Pack] ✓ Skills system connected');
+      validateWorldSystem(world, 'skills');
     },
     cleanup: () => {
       console.info('[RPG Pack] Skills system bridge disconnected');
@@ -87,15 +107,7 @@ const rpgSystems: IGameSystem[] = [
     name: "RPG Inventory System Bridge",
     type: "inventory",
     init: async (world: World) => {
-      // Validate that inventory system exists in world
-      if (typeof world.getSystem !== 'function') {
-        throw new Error('[RPG Pack] Missing required API: world.getSystem is not a function');
-      }
-      const inventorySystem = world.getSystem('inventory');
-      if (!inventorySystem) {
-        throw new Error('[RPG Pack] Missing required system: inventory');
-      }
-      console.info('[RPG Pack] ✓ Inventory system connected');
+      validateWorldSystem(world, 'inventory');
     },
     cleanup: () => {
       console.info('[RPG Pack] Inventory system bridge disconnected');
@@ -107,15 +119,7 @@ const rpgSystems: IGameSystem[] = [
     name: "RPG Banking System Bridge",
     type: "custom",
     init: async (world: World) => {
-      // Validate that banking system exists in world
-      if (typeof world.getSystem !== 'function') {
-        throw new Error('[RPG Pack] Missing required API: world.getSystem is not a function');
-      }
-      const bankingSystem = world.getSystem('banking');
-      if (!bankingSystem) {
-        throw new Error('[RPG Pack] Missing required system: banking');
-      }
-      console.info('[RPG Pack] ✓ Banking system connected');
+      validateWorldSystem(world, 'banking');
     },
     cleanup: () => {
       console.info('[RPG Pack] Banking system bridge disconnected');
@@ -127,15 +131,7 @@ const rpgSystems: IGameSystem[] = [
     name: "RPG Resource System Bridge",
     type: "custom",
     init: async (world: World) => {
-      // Validate that resource system exists in world
-      if (typeof world.getSystem !== 'function') {
-        throw new Error('[RPG Pack] Missing required API: world.getSystem is not a function');
-      }
-      const resourceSystem = world.getSystem('resources');
-      if (!resourceSystem) {
-        throw new Error('[RPG Pack] Missing required system: resources');
-      }
-      console.info('[RPG Pack] ✓ Resource system connected');
+      validateWorldSystem(world, 'resources');
     },
     cleanup: () => {
       console.info('[RPG Pack] Resource system bridge disconnected');
@@ -158,7 +154,7 @@ export const RunescapeRPGPack: IContentPack = {
   id: "runescape-rpg",
   name: "Runescape RPG Pack",
   description:
-    "Complete RPG experience with 6 actions, 6 providers, and 4 system bridges for AI agents",
+    "Enables AI agents to gather resources, train skills, manage inventory, and bank items in a Runescape-style RPG world",
   version: "1.0.0",
 
   // Actions available to AI agents

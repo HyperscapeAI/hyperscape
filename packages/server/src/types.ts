@@ -35,6 +35,8 @@
 // ============================================================================
 // Import commonly used shared types for convenience
 
+import { Socket, Entity } from '@hyperscape/shared'
+
 /** Database interface for Knex-style queries */
 export type SystemDatabase<TRecord extends Record<string, unknown> = Record<string, unknown>> = (table: string) => {
   where: (key: string, value: TRecord[keyof TRecord]) => {
@@ -164,8 +166,8 @@ export interface EquipmentSaveItem {
   quantity: number
 }
 
-// Database helpers - re-export from shared for convenience
-export { dbHelpers, isDatabaseInstance } from '@hyperscape/shared'
+// Database helpers and classes - re-export from shared for convenience
+export { dbHelpers, isDatabaseInstance, Socket, Entity } from '@hyperscape/shared'
 
 // ============================================================================
 // NETWORK TYPES
@@ -188,9 +190,9 @@ export type NodeWebSocket = WebSocket & {
 export interface SocketLike {
   id: string
   ws: NodeWebSocket
-  player: PlayerEntity | null
-  send: (data: unknown) => void
-  sendPacket: (type: string, data: unknown) => void
+  player?: PlayerEntity | null
+  send: (name: string, data: unknown) => void
+  sendPacket: (packet: ArrayBuffer | Uint8Array) => void
   disconnect: () => void
   close: () => void
   ping: () => void
@@ -199,7 +201,7 @@ export interface SocketLike {
 
 // Extended Socket type with server-specific properties
 export interface ServerSocket extends SocketLike {
-  player?: PlayerEntity
+  player?: PlayerEntity | undefined
   ws: NodeWebSocket
   network: NetworkWithSocket
 

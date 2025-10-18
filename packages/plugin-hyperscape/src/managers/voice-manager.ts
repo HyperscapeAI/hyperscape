@@ -64,7 +64,7 @@ export class VoiceManager {
     }
   > = new Map();
   // Flag to prevent concurrent transcription processing
-  // Checked in debouncedProcessTranscription (line ~132) to ensure only one transcription processes at a time
+  // Checked in debouncedProcessTranscription() method to ensure only one transcription processes at a time
   private processingTranscription: boolean = false;
   private transcriptionTimeout: NodeJS.Timeout | null = null;
   private audioQueue: Buffer[] = [];
@@ -325,7 +325,7 @@ export class VoiceManager {
   async playAudio(audioBuffer: Buffer): Promise<void> {
     // Add audio to queue
     this.audioQueue.push(audioBuffer);
-    logger.info("[VoiceManager] Audio added to queue, queue length:", this.audioQueue.length);
+    logger.info(`[VoiceManager] Audio added to queue, queue length: ${this.audioQueue.length}`);
 
     // Atomic test-and-set: only one caller wins the race to start processing
     // If processingQueue is already true, the running loop will pick up the new item

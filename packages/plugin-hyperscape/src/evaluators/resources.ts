@@ -192,9 +192,24 @@ export const resourceManagementEvaluator: Evaluator = {
     logger.info('[RESOURCE_EVALUATOR] Analyzing resource management')
 
     try {
+      // Explicit null checks for service, world, and player
       const service = runtime.getService<HyperscapeService>('hyperscape')
-      const world = service?.getWorld()
-      const player = world?.entities?.player
+      if (!service) {
+        logger.debug('[RESOURCE_EVALUATOR] Service not available, skipping evaluation')
+        return
+      }
+
+      const world = service.getWorld()
+      if (!world) {
+        logger.warn('[RESOURCE_EVALUATOR] World not available, skipping evaluation')
+        return
+      }
+
+      const player = world.entities?.player
+      if (!player) {
+        logger.warn('[RESOURCE_EVALUATOR] Player entity not available, skipping evaluation')
+        return
+      }
 
       // Validate player.data structure with runtime type guard
       let inventory: Array<{ itemId: string; quantity: number }> = []
@@ -203,7 +218,7 @@ export const resourceManagementEvaluator: Evaluator = {
       let freeSlots = 28
       let inventoryFullness = 0
 
-      if (player?.data && isPlayerInventoryData(player.data)) {
+      if (player.data && isPlayerInventoryData(player.data)) {
         const playerData = player.data
         // 1. Get current inventory state
         inventory = playerData.inventory?.items || []
@@ -212,7 +227,8 @@ export const resourceManagementEvaluator: Evaluator = {
         freeSlots = maxSlots - usedSlots
         inventoryFullness = (usedSlots / maxSlots) * 100
       } else {
-        logger.debug('[RESOURCE_EVALUATOR] Player data not available or invalid structure, using defaults')
+        logger.debug('[RESOURCE_EVALUATOR] Player data not available or invalid structure, skipping inventory extraction')
+        return
       }
 
       // 2. Get recent banking events from memory

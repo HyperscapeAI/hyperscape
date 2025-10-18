@@ -25,8 +25,8 @@ import type { HyperscapeService } from "../service";
  * Nearby entity data structure
  */
 interface NearbyEntityData {
-  id?: string;
-  type?: string;
+  id: string;
+  type: string;
   data?: {
     name?: string;
   };
@@ -36,6 +36,24 @@ interface NearbyEntityData {
     y: number;
     z: number;
   };
+}
+
+/**
+ * Type guard for NearbyEntityData
+ */
+function isNearbyEntity(entity: unknown): entity is NearbyEntityData {
+  if (!entity || typeof entity !== 'object') {
+    return false
+  }
+
+  const obj = entity as Record<string, unknown>
+
+  // Require id and type properties
+  if (typeof obj.id !== 'string' || typeof obj.type !== 'string') {
+    return false
+  }
+
+  return true
 }
 
 /**
@@ -107,9 +125,14 @@ export const worldContextProvider: Provider = {
 
       // Show first 5 entities
       nearbyEntities.slice(0, 5).forEach((entity) => {
-        const entityData = entity as NearbyEntityData;
+        // Use type guard before casting
+        if (!isNearbyEntity(entity)) {
+          return
+        }
 
-        const entityType = entityData.type || "unknown";
+        const entityData = entity
+
+        const entityType = entityData.type
         const entityName = entityData.data?.name || entityType;
         const distance = entityData.distance
           ? `${entityData.distance.toFixed(1)}m`
@@ -138,17 +161,17 @@ export const worldContextProvider: Provider = {
       },
       data: {
         position: { x: position.x, y: position.y, z: position.z },
-        nearbyEntities: nearbyEntities.slice(0, 10).map((entity) => {
-          const entityData = entity as NearbyEntityData;
-
-          return {
-            id: entityData.id,
-            type: entityData.type,
-            name: entityData.data?.name,
-            distance: entityData.distance,
-            position: entityData.position,
-          };
-        }),
+        nearbyEntities: nearbyEntities.slice(0, 10)
+          .filter(isNearbyEntity)
+          .map((entity) => {
+            return {
+              id: entity.id,
+              type: entity.type,
+              name: entity.data?.name,
+              distance: entity.distance,
+              position: entity.position,
+            };
+          }),
       },
     };
   },

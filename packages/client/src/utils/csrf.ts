@@ -35,24 +35,7 @@
  * @returns CSRF token or null if not found
  */
 export function getCsrfTokenFromCookie(): string | null {
-  if (typeof document === 'undefined') {
-    return null; // Not in browser environment
-  }
-
-  const cookies = document.cookie.split(';');
-  const csrfCookie = cookies.find(c => c.trim().startsWith('csrf-token='));
-
-  if (!csrfCookie) {
-    return null;
-  }
-
-  const firstEqualIndex = csrfCookie.indexOf('=');
-  if (firstEqualIndex === -1) {
-    return null;
-  }
-
-  const value = csrfCookie.slice(firstEqualIndex + 1).trim();
-  return value ? decodeURIComponent(value) : null;
+  return getCookie('csrf-token');
 }
 
 /**
@@ -102,8 +85,12 @@ export function hasCsrfToken(): boolean {
  * Make a CSRF-protected fetch request
  *
  * Wrapper around fetch that automatically includes:
- * - credentials: 'include' (for HttpOnly cookies)
+ * - credentials: 'include' (for HttpOnly cookies) - FORCED to ensure CSRF cookie token access
  * - X-CSRF-Token header (from cookie)
+ *
+ * Note: credentials is always forced to 'include' to ensure the browser sends cookies
+ * (including the csrf-token cookie) and receives Set-Cookie headers. This is required
+ * for CSRF protection to work correctly.
  *
  * @param url - Request URL
  * @param options - Fetch request options
@@ -124,7 +111,7 @@ export async function csrfFetch(
 ): Promise<Response> {
   const csrfOptions: RequestInit = {
     ...addCsrfHeader(options),
-    credentials: 'include', // Always include cookies
+    credentials: 'include', // Always include cookies - forced for CSRF token access
   };
 
   return fetch(url, csrfOptions);

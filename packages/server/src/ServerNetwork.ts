@@ -118,8 +118,7 @@ import type {
   InventorySystemData,
   DatabaseSystemOperations
 } from './types';
-import { EventType, Socket, System, THREE, addRole, dbHelpers, getItem, hasRole, isDatabaseInstance, removeRole, serializeRoles, uuid, writePacket, Entity, TerrainSystem } from '@hyperscape/shared';
-import type { World } from '@hyperscape/shared';
+import { EventType, Socket, System, THREE, addRole, dbHelpers, getItem, hasRole, isDatabaseInstance, removeRole, serializeRoles, uuid, writePacket, Entity, TerrainSystem, World } from '@hyperscape/shared';
 import type { Vector3 } from 'three';
 import { isPrivyEnabled, verifyPrivyToken } from './privy-auth';
 import { createJWT, verifyJWT } from './utils';
@@ -128,7 +127,7 @@ import { isAgentAuthEnabled, verifyAgentToken } from './agent-auth';
 // Agent user type extending User with agent-specific properties
 export interface AgentUser extends User {
   isAgent: true;
-  runtimeId: string;
+  runtimeId?: string;
 }
 
 // SocketInterface is the extended ServerSocket type
@@ -257,7 +256,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
   // const qDelta = quatSubtract(currentQuaternion, last.q);
   // Quantize and send qDelta, update last
 
-  constructor(world: World) {
+  constructor(world: InstanceType<typeof World>) {
     super(world);
     this.id = 0;
     this.ids = -1;
@@ -534,7 +533,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
     }) : undefined;
       socket.player = addedEntity || undefined;
     if (socket.player) {
-      this.world.emit(EventType.PLAYER_JOINED, { playerId: socket.player.data.id as string, player: socket.player as unknown as import('@hyperscape/shared').PlayerLocal });
+      this.world.emit(EventType.PLAYER_JOINED, { playerId: socket.player.data.id as string, player: socket.player });
       try {
         // Send to everyone else
         this.send('entityAdded', socket.player.serialize(), socket.id);
@@ -1266,7 +1265,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
             // Load agent user from database
             const dbResult = await this.db('users').where('id', agentInfo.agentId).first();
             if (dbResult) {
-              const baseUser = dbResult as User;
+              const baseUser = (dbResult as unknown) as User;
 
               // Construct properly typed AgentUser object
               const agentUser: AgentUser = {
@@ -1296,7 +1295,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
             const dbResult = await this.db('users').where('id', jwtPayload.userId as string).first();
             if (dbResult) {
               // Strong type assumption - dbResult has user properties
-              user = dbResult as User;
+              user = (dbResult as unknown) as User;
             }
           }
         } catch (err) {
@@ -1544,7 +1543,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       if (socket.player) {
         const playerId = socket.player.data.id as string;
         const userId = socket.player.data.userId as string | undefined;
-        this.world.emit(EventType.PLAYER_JOINED, { playerId, player: socket.player as unknown as import('@hyperscape/shared').PlayerLocal });
+        this.world.emit(EventType.PLAYER_JOINED, { playerId, player: socket.player });
         
         // Broadcast new player entity to all existing clients except the new connection
         try {

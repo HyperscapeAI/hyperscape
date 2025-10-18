@@ -355,8 +355,13 @@ Or for chat:
    * Handle exploration actions (move in a direction)
    */
   private async handleExploreAction(content: ResponseContent): Promise<void> {
-    if (!this.world || !this.world.entities.player) {
-      console.error("[BehaviorManager] World or player not available for exploration");
+    if (!this.world) {
+      console.error("[BehaviorManager] World not available for exploration");
+      return;
+    }
+
+    if (!this.world.entities?.player) {
+      console.error("[BehaviorManager] Player not available for exploration");
       return;
     }
 
@@ -403,16 +408,21 @@ Or for chat:
    * Handle perception actions (observe environment/entity)
    */
   private async handlePerceiveAction(content: ResponseContent): Promise<void> {
+    if (!this.world) {
+      console.error("[BehaviorManager] World not available for perception");
+      return;
+    }
+
     const target = content.target as string;
 
     if (target === "environment") {
       console.info("[BehaviorManager] Observing environment");
-      const nearbyEntities = this.getNearbyEntities(this.world!);
+      const nearbyEntities = this.getNearbyEntities(this.world);
       console.info(`[BehaviorManager] Nearby entities: ${nearbyEntities}`);
     } else {
       console.info(`[BehaviorManager] Perceiving entity: ${target}`);
       // Find entity by ID and log details
-      const entity = this.world!.entities.items.get(target);
+      const entity = this.world.entities.items.get(target);
       if (entity) {
         console.info(`[BehaviorManager] Entity details:`, {
           id: entity.id,
@@ -430,11 +440,16 @@ Or for chat:
    * Handle interaction actions (use object, interact with entity)
    */
   private async handleInteractAction(content: ResponseContent): Promise<void> {
+    if (!this.world) {
+      console.error("[BehaviorManager] World not available for interaction");
+      return;
+    }
+
     const target = content.target as string;
     console.info(`[BehaviorManager] Interacting with: ${target}`);
 
     // Use AgentActions system to perform action
-    const actionSystem = this.world!.systems.find(isAgentActionsSystem);
+    const actionSystem = this.world.systems.find(isAgentActionsSystem);
 
     if (actionSystem) {
       actionSystem.performAction(target);
