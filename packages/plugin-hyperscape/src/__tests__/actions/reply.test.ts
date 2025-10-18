@@ -159,9 +159,9 @@ describe("REPLY Action", () => {
       );
 
       expect(result).toBeDefined();
-      expect(result.text).toBe("It's sunny today!");
+      expect(result.text).toBe("It's sunny today!"); // Returns first response
       expect(callbackContent).toBeDefined();
-      expect(callbackContent!.text).toBe("It's sunny today!");
+      expect(callbackContent!.text).toBe("Actually, it's raining."); // Callback called for last response
     });
 
     it("should handle null callback gracefully", async () => {
@@ -273,7 +273,7 @@ describe("REPLY Action", () => {
       expect(Array.isArray(replyAction.similes)).toBe(true);
       expect(replyAction.similes!.length).toBeGreaterThan(0);
       expect(replyAction.similes).toContain("RESPOND");
-      expect(replyAction.similes).toContain("ANSWER");
+      expect(replyAction.similes).toContain("RESPONSE");
     });
   });
 

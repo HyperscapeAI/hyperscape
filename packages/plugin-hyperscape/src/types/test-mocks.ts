@@ -125,6 +125,8 @@ export function createMockWorld(overrides: Partial<World> = {}): World {
       id: "mock-network",
     },
 
+    actions: {},
+
     // Mock system access methods
     getSystem: vi.fn((systemKey: string) => {
       return (
@@ -217,6 +219,8 @@ export function createMockHyperscapeService(
     capabilityDescription: "hyperscape service",
     runtime: {} as IAgentRuntime,
     stop: async () => {},
+    isConnected: () => true,
+    getWorld: () => createMockWorld(),
     ...config,
   };
 
@@ -250,6 +254,7 @@ export function createMockRuntime(config?: TestRuntimeConfig): IAgentRuntime {
     ensureConnection: vi.fn(),
     getService: vi.fn().mockReturnValue({
       getWorld: vi.fn().mockReturnValue(createMockWorld()),
+      isConnected: vi.fn().mockReturnValue(true),
     }),
     // Add other required properties as needed
     routes: [],

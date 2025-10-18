@@ -118,11 +118,13 @@ export const replyAction: Action = {
           values: { replied: true, replyText: reply.text },
           data: { source: "hyperscape", action: "REPLY" },
         };
-        await callback({
-          text: result.text,
-          actions: ["HYPERSCAPE_REPLY"],
-          source: "hyperscape",
-        });
+        if (callback) {
+          await callback({
+            text: result.text,
+            actions: ["HYPERSCAPE_REPLY"],
+            source: "hyperscape",
+          });
+        }
       }
       return {
         text: existingReplies[0].text || "",
