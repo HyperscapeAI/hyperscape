@@ -274,12 +274,12 @@ async function startServer() {
   // Make PostgreSQL pool and Drizzle DB available for DatabaseSystem to use
   // These are dynamically added properties, not in the World type definition
   (world as unknown as { pgPool: typeof pgPool }).pgPool = pgPool;
-  (world as unknown as { drizzleDb: typeof drizzleDb }).drizzleDb = drizzleDb
+  (world as unknown as { drizzleDb: typeof drizzleDb }).drizzleDb = drizzleDb;
 
   // Set up default environment model
   (world as unknown as { settings: { model: { url: string } } }).settings.model = {
     url: 'asset://world/base-environment.glb',
-  }
+  };
 
   // Configure assets URL before world.init()
   // Point to CDN root (localhost:8080 in dev, R2/S3 in prod)
