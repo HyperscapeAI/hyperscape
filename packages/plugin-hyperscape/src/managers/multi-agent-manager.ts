@@ -86,7 +86,11 @@ export class MultiAgentManager extends EventEmitter {
    * Remove an agent from the world
    */
   async removeAgent(agentId: UUID): Promise<void> {
-    const agent = this.agents.get(agentId)!;
+    const agent = this.agents.get(agentId);
+    if (!agent) {
+      logger.warn(`[MultiAgentManager] Agent ${agentId} not found for removal`);
+      return;
+    }
 
     await agent.service.disconnect();
     agent.status = "disconnected";
@@ -164,8 +168,13 @@ export class MultiAgentManager extends EventEmitter {
    */
   private updateAgents(): void {
     for (const agent of this.agents.values()) {
-      const world = agent.service.getWorld()!;
-      const player = world.entities.player!;
+      const world = agent.service.getWorld();
+      if (!world || !world.entities.player) {
+        logger.warn(`[MultiAgentManager] World or player not available for agent ${agent.name}`);
+        continue;
+      }
+
+      const player = world.entities.player;
 
       agent.position = {
         x: player.node.position.x,
@@ -193,24 +202,42 @@ export class MultiAgentManager extends EventEmitter {
   }
 
   /**
-   * Enable inter-agent communication
+   * Enable inter-agent communication using event-based architecture
+   * Avoids method override hacks and tight coupling
    */
   enableInterAgentCommunication(): void {
-    // Set up message routing between agents
+    logger.info("[MultiAgentManager] Enabling inter-agent communication");
+
+    // Set up event-based message routing between agents
     for (const agent of this.agents.values()) {
+      // Store original sendMessage for each agent
       const messageManager = agent.service.getMessageManager();
+      if (!messageManager) {
+        logger.warn(`[MultiAgentManager] MessageManager not available for agent ${agent.name}`);
+        continue;
+      }
 
-      // Override message handler to broadcast to other agents
-      const originalHandler = messageManager.handleMessage.bind(messageManager);
+      const originalSendMessage = messageManager.sendMessage.bind(messageManager);
 
-      messageManager.handleMessage = async (message: ChatMessage) => {
-        // Process message normally
-        await originalHandler(message);
+      // Wrap sendMessage to broadcast to other agents
+      messageManager.sendMessage = async (text: string): Promise<void> => {
+        // Send normally
+        await originalSendMessage(text);
 
-        // Broadcast to other agents if it's from this agent
-        if (message.fromId === agent.runtime.agentId) {
-          this.broadcastMessage(agent.id, message);
-        }
+        // Create chat message for broadcasting
+        const chatMessage: ChatMessage = {
+          id: createUniqueUuid(agent.runtime, `message-${agent.runtime.agentId}-${Date.now()}`) as UUID,
+          from: agent.name,
+          userId: agent.runtime.agentId,
+          username: agent.name,
+          text: text,
+          body: text,
+          timestamp: Date.now(),
+          createdAt: new Date().toISOString(),
+        };
+
+        // Broadcast to other agents
+        this.broadcastMessage(agent.id, chatMessage);
       };
     }
   }
@@ -219,22 +246,33 @@ export class MultiAgentManager extends EventEmitter {
    * Broadcast a message from one agent to others
    */
   private broadcastMessage(fromAgentId: UUID, message: ChatMessage): void {
+    const fromAgent = this.agents.get(fromAgentId);
+    if (!fromAgent) {
+      logger.warn(`[MultiAgentManager] Source agent ${fromAgentId} not found for broadcast`);
+      return;
+    }
+
     for (const [agentId, agent] of this.agents) {
       if (agentId !== fromAgentId && agent.status === "connected") {
         // Simulate receiving message from another agent
         const messageManager = agent.service.getMessageManager();
-        const agentMessage = {
+        if (!messageManager) {
+          logger.warn(`[MultiAgentManager] MessageManager not available for agent ${agent.name}`);
+          continue;
+        }
+
+        const agentMessage: ChatMessage = {
           ...message,
-          fromId: fromAgentId,
-          from: this.agents.get(fromAgentId)?.name || "Unknown Agent",
-          isFromAgent: true,
+          from: fromAgent.name,
+          userId: fromAgentId,
+          username: fromAgent.name,
         };
 
         messageManager
           .handleMessage(agentMessage)
           .catch((error) =>
             logger.error(
-              `Error broadcasting message to agent ${agent.name}:`,
+              `[MultiAgentManager] Error broadcasting message to agent ${agent.name}:`,
               error,
             ),
           );

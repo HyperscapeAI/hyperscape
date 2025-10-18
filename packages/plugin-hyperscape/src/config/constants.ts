@@ -24,32 +24,19 @@ export const AGENT_CONFIG = {
   BEHAVIOR_TIME_INTERVAL_MAX_MS: parseInt(
     process.env.BEHAVIOR_TIME_MAX_MS || "30000",
   ),
+  // Random walk behavior defaults (used by HYPERSCAPE_WALK_RANDOMLY action)
   RANDOM_WALK_INTERVAL_MS: parseInt(
-    process.env.RANDOM_WALK_INTERVAL_MS || "5000",
+    process.env.RANDOM_WALK_INTERVAL_MS || "4000",
   ),
   RANDOM_WALK_MAX_DISTANCE: parseInt(
-    process.env.RANDOM_WALK_MAX_DISTANCE || "7",
+    process.env.RANDOM_WALK_MAX_DISTANCE || "30",
   ),
 } as const;
 
 // Controls Configuration
 export const CONTROLS_CONFIG = {
-  TICK_INTERVAL_MS: parseInt(process.env.CONTROLS_TICK_INTERVAL_MS || "100"),
-  NAVIGATION_STOP_DISTANCE: parseFloat(
-    process.env.NAVIGATION_STOP_DISTANCE || "0.5",
-  ),
-  FOLLOW_STOP_DISTANCE: parseFloat(process.env.FOLLOW_STOP_DISTANCE || "2.5"),
   ACTION_DEFAULT_DURATION_MS: parseInt(
     process.env.ACTION_DURATION_MS || "5555",
-  ),
-} as const;
-
-// Game Configuration
-export const GAME_CONFIG = {
-  KILL_COOLDOWN_MS: parseInt(process.env.KILL_COOLDOWN_MS || "20000"),
-  BUBBLE_DURATION_MS: parseInt(process.env.BUBBLE_DURATION_MS || "5000"),
-  OBSERVATION_DURATION_MS: parseInt(
-    process.env.OBSERVATION_DURATION_MS || "5555",
   ),
 } as const;
 
@@ -62,17 +49,6 @@ export const VOICE_CONFIG = {
 // Testing Configuration
 export const TEST_CONFIG = {
   DEFAULT_TIMEOUT_MS: parseInt(process.env.TEST_TIMEOUT_MS || "5000"),
-  WAIT_DURATION_MS: parseInt(process.env.TEST_WAIT_MS || "5555"),
-  LONG_WAIT_DURATION_MS: parseInt(process.env.TEST_LONG_WAIT_MS || "5000"),
-  GAME_DURATION_MS: parseInt(process.env.TEST_GAME_DURATION_MS || "300000"), // 5 minutes
-} as const;
-
-// Visual Configuration
-export const VISUAL_CONFIG = {
-  FLOOR_COLOR: parseInt(process.env.FLOOR_COLOR || "0x808080"),
-  VICTIM_COLOR: parseInt(process.env.VICTIM_COLOR || "0x0000ff"),
-  BODY_COLOR: parseInt(process.env.BODY_COLOR || "0x333333"),
-  UI_Z_INDEX: parseInt(process.env.UI_Z_INDEX || "10000"),
 } as const;
 
 // 3D Graphics Configuration
@@ -93,4 +69,10 @@ export const DEV_CONFIG = {
   ENABLE_PERFORMANCE_MONITORING:
     process.env.ENABLE_PERFORMANCE_MONITORING === "true",
   USE_MOCK_WORLD: process.env.USE_MOCK_WORLD === "true",
+} as const;
+
+// File and Memory Constants
+export const FILE_CONSTANTS = {
+  /** Bytes per megabyte conversion factor (1024 * 1024) */
+  BYTES_PER_MB: 1024 * 1024,
 } as const;

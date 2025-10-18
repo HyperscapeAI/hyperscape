@@ -244,6 +244,132 @@ The `agentConfig` section in `package.json` defines the parameters your plugin r
 
 Customize this section to match your plugin's requirements.
 
+## Content Packs
+
+The Hyperscape plugin supports modular content packs that extend agent capabilities with custom actions, providers, evaluators, and game systems.
+
+### Built-in Content Pack
+
+The **Runescape RPG Pack** is automatically loaded when the service starts. It includes:
+
+- **6 RPG Actions**:
+  - `chopTree` - Chop trees for woodcutting XP
+  - `catchFish` - Fish at fishing spots for fishing XP
+  - `cookFood` - Cook raw food for cooking XP
+  - `lightFire` - Light fires for firemaking XP
+  - `bankItems` - Deposit items at banks
+  - `checkInventory` - View inventory contents
+
+- **2 RPG Providers**:
+  - `banking` - Nearby banks and inventory status
+  - `character` - Character stats, skills, and equipment
+
+- **4 System Bridges**:
+  - Skills system validation
+  - Inventory system validation
+  - Banking system validation
+  - Resource system validation
+
+- **Visual Configuration**:
+  - Entity color mappings for testing
+  - UI theme definitions
+
+### Loading Custom Content Packs
+
+```typescript
+import { HyperscapeService } from '@hyperscape/plugin-hyperscape';
+import type { IContentPack } from '@hyperscape/plugin-hyperscape';
+
+const runtime = getRuntime(); // Your ElizaOS runtime
+const service = runtime.getService<HyperscapeService>('hyperscape');
+
+// Define a custom content pack
+const myContentPack: IContentPack = {
+  id: 'my-custom-pack',
+  name: 'My Custom Pack',
+  version: '1.0.0',
+  description: 'Custom gameplay mechanics',
+
+  actions: [...], // Your custom actions
+  providers: [...], // Your custom providers
+  evaluators: [...], // Your custom evaluators
+  systems: [...], // Your custom game systems
+
+  onLoad: async (runtime, world) => {
+    console.log('Content pack loaded!');
+  },
+};
+
+// Load the content pack
+await service.loadContentPack(myContentPack);
+
+// Check if a pack is loaded
+if (service.isContentPackLoaded('my-custom-pack')) {
+  console.log('Pack is active');
+}
+
+// Get all loaded packs
+const packs = service.getLoadedContentPacks();
+
+// Unload a pack
+await service.unloadContentPack('my-custom-pack');
+```
+
+### Creating Content Packs
+
+See [content-pack.ts](./src/content-packs/content-pack.ts) for a complete example.
+
+Key interfaces:
+- `IContentPack` - Main content pack definition
+- `IGameSystem` - Game system lifecycle hooks
+- `IStateManager` - Per-player state management
+- `IVisualConfig` - Visual testing configuration
+
+## Message Processing Architecture
+
+The Hyperscape plugin uses the standard ElizaOS message processing pipeline with world context injection.
+
+### Flow
+
+1. **WebSocket Message** → Chat subscription in HyperscapeService
+2. **Memory Creation** → MessageManager converts to ElizaOS Memory format
+3. **State Composition** → `runtime.composeState()` gathers provider context
+4. **Action Processing** → `runtime.processActions()` evaluates and executes actions
+5. **LLM Fallback** → Generates conversational response if no action matches
+6. **Response Broadcast** → `Chat.add()` sends response to all clients
+
+### World Context Injection
+
+The `worldContextProvider` automatically injects Hyperscape world state into the LLM context:
+
+- **Agent Position**: (x, y, z) coordinates
+- **Nearby Entities**: Entities within 10m radius
+- **Entity Details**: Type, name, distance for each nearby entity
+
+This context is automatically available in `state.text` for all actions and evaluators, enabling location-aware agent behavior.
+
+### Extending Message Processing
+
+To customize message handling:
+
+- **Add Actions**: Register new Action objects in the plugin to handle specific commands
+- **Add Providers**: Create providers to inject custom context into the state
+- **Add Evaluators**: Process messages post-action for analysis and learning
+
+### Example: Accessing World Context in Actions
+
+```typescript
+// In your custom action handler
+handler: async (runtime, message, state) => {
+  // World context is already in state.text
+  // Access structured data from worldContextProvider
+  const position = state.data.position; // { x, y, z }
+  const nearbyEntities = state.data.nearbyEntities; // Entity[]
+
+  // Your action logic here
+}
+```
+
 ## Documentation
 
 Provide clear documentation about:

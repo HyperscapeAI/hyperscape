@@ -349,7 +349,7 @@ export const lightFireAction: Action = {
       {
         name: '{{user}}',
         content: { text: 'Light a fire' }
-      },
+      } as ActionExample,
       {
         name: '{{agent}}',
         content: {
@@ -358,13 +358,13 @@ export const lightFireAction: Action = {
           actions: ['LIGHT_FIRE'],
           source: 'hyperscape',
         }
-      }
+      } as ActionExample,
     ],
     [
       {
         name: '{{user}}',
         content: { text: 'Make a fire so we can cook' }
-      },
+      } as ActionExample,
       {
         name: '{{agent}}',
         content: {
@@ -373,7 +373,7 @@ export const lightFireAction: Action = {
           actions: ['LIGHT_FIRE'],
           source: 'hyperscape',
         }
-      }
-    ]
-  ] as ActionExample[][]
+      } as ActionExample,
+    ],
+  ],
 }

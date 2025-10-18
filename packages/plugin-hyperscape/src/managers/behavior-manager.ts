@@ -21,6 +21,7 @@ import { World, Entity } from "../types/core-types";
 import type { ChatMessage } from "../types/core-types";
 import type { ClientInputSystem } from "../types/system-types";
 import { isClientInputSystem } from "../types/system-types";
+import { AGENT_CONFIG, DEV_CONFIG } from "../config/constants";
 
 interface BehaviorManagerInterface {
   startAutonomousBehavior(): void;
@@ -39,6 +40,25 @@ interface ResponseContent {
 interface BehaviorResponse {
   content: ResponseContent;
   context: string;
+}
+
+/**
+ * Interface describing the AgentActionsSystem shape
+ */
+interface AgentActionsSystem {
+  performAction: (entityId?: string) => void;
+}
+
+/**
+ * Type guard to check if a system is an AgentActionsSystem
+ */
+function isAgentActionsSystem(system: unknown): system is AgentActionsSystem {
+  return (
+    typeof system === 'object' &&
+    system !== null &&
+    'performAction' in system &&
+    typeof (system as AgentActionsSystem).performAction === 'function'
+  );
 }
 
 export class BehaviorManager {
@@ -119,8 +139,18 @@ export class BehaviorManager {
       await this.executeBehavior();
       iterations++;
 
-      // Brief pause between behavior executions
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Random delay between behavior executions (configurable via env vars)
+      const behaviorDelay =
+        AGENT_CONFIG.BEHAVIOR_TIME_INTERVAL_MIN_MS +
+        Math.random() *
+          (AGENT_CONFIG.BEHAVIOR_TIME_INTERVAL_MAX_MS -
+            AGENT_CONFIG.BEHAVIOR_TIME_INTERVAL_MIN_MS);
+      if (DEV_CONFIG.ENABLE_DEBUG_LOGGING) {
+        console.debug(
+          `[BehaviorManager] Next behavior cycle in ${Math.round(behaviorDelay)}ms`,
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, behaviorDelay));
     }
 
     console.info("[BehaviorManager] Behavior loop ended");
@@ -162,9 +192,11 @@ export class BehaviorManager {
     const shouldAct = await shouldRespond(this.runtime, behaviorMessage, state);
 
     if (!shouldAct) {
-      console.debug(
-        "[BehaviorManager] No autonomous action needed at this time",
-      );
+      if (DEV_CONFIG.ENABLE_DEBUG_LOGGING) {
+        console.debug(
+          "[BehaviorManager] No autonomous action needed at this time",
+        );
+      }
       return;
     }
 
@@ -226,6 +258,7 @@ Or for chat:
 
   /**
    * Execute a behavior action based on the response
+   * Supports multiple action types: movement, chat, perception, interaction, emotes
    */
   private async executeBehaviorAction(
     response: Content,
@@ -248,8 +281,24 @@ Or for chat:
         await this.handleMoveAction(parsedResponse.content);
         break;
 
+      case "explore":
+        await this.handleExploreAction(parsedResponse.content);
+        break;
+
       case "send_chat":
         await this.handleChatAction(parsedResponse.content);
+        break;
+
+      case "perceive":
+        await this.handlePerceiveAction(parsedResponse.content);
+        break;
+
+      case "interact":
+        await this.handleInteractAction(parsedResponse.content);
+        break;
+
+      case "emote":
+        await this.handleEmoteAction(parsedResponse.content);
         break;
 
       default:
@@ -263,6 +312,11 @@ Or for chat:
    * Handle movement actions
    */
   private async handleMoveAction(content: ResponseContent): Promise<void> {
+    if (!this.world) {
+      console.error("[BehaviorManager] World not available for movement");
+      return;
+    }
+
     const coordinatesText = content.coordinates!;
 
     const coords = coordinatesText
@@ -272,7 +326,12 @@ Or for chat:
     const [x, y, z] = coords;
     console.info(`[BehaviorManager] Moving to coordinates: ${x}, ${y}, ${z}`);
 
-    const controls = this.world!.systems.find(isClientInputSystem)!;
+    const controls = this.world.systems.find(isClientInputSystem);
+    if (!controls) {
+      console.error("[BehaviorManager] ClientInputSystem not found");
+      return;
+    }
+
     await controls.goto(x, z); // Hyperscape typically uses x,z for ground movement
     console.info("[BehaviorManager] Movement command executed");
   }
@@ -283,9 +342,136 @@ Or for chat:
   private async handleChatAction(content: ResponseContent): Promise<void> {
     const message = content.message as string;
 
-    const messageManager = this.service!.getMessageManager()!;
+    const messageManager = this.service?.getMessageManager();
+    if (!messageManager) {
+      console.warn("[BehaviorManager] MessageManager not available");
+      return;
+    }
     await messageManager.sendMessage(message);
     console.info(`[BehaviorManager] Sent chat message: ${message}`);
+  }
+
+  /**
+   * Handle exploration actions (move in a direction)
+   */
+  private async handleExploreAction(content: ResponseContent): Promise<void> {
+    if (!this.world) {
+      console.error("[BehaviorManager] World not available for exploration");
+      return;
+    }
+
+    if (!this.world.entities?.player) {
+      console.error("[BehaviorManager] Player not available for exploration");
+      return;
+    }
+
+    const direction = (content.direction as string)?.toLowerCase() || "north";
+    const world = this.world;
+    const playerPos = world.entities.player.node.position;
+
+    // Calculate exploration coordinates based on direction
+    const exploreDistance = 5; // units to explore
+    let targetX = playerPos.x;
+    let targetZ = playerPos.z;
+
+    switch (direction) {
+      case "north":
+        targetZ -= exploreDistance;
+        break;
+      case "south":
+        targetZ += exploreDistance;
+        break;
+      case "east":
+        targetX += exploreDistance;
+        break;
+      case "west":
+        targetX -= exploreDistance;
+        break;
+      default: {
+        // Random direction
+        const angle = Math.random() * Math.PI * 2;
+        targetX += Math.cos(angle) * exploreDistance;
+        targetZ += Math.sin(angle) * exploreDistance;
+        break;
+      }
+    }
+
+    console.info(`[BehaviorManager] Exploring ${direction}: (${targetX.toFixed(1)}, ${targetZ.toFixed(1)})`);
+
+    const controls = world.systems.find(isClientInputSystem);
+    if (controls && controls.goto) {
+      await controls.goto(targetX, targetZ);
+    }
+  }
+
+  /**
+   * Handle perception actions (observe environment/entity)
+   */
+  private async handlePerceiveAction(content: ResponseContent): Promise<void> {
+    if (!this.world) {
+      console.error("[BehaviorManager] World not available for perception");
+      return;
+    }
+
+    const target = content.target as string;
+
+    if (target === "environment") {
+      console.info("[BehaviorManager] Observing environment");
+      const nearbyEntities = this.getNearbyEntities(this.world);
+      console.info(`[BehaviorManager] Nearby entities: ${nearbyEntities}`);
+    } else {
+      console.info(`[BehaviorManager] Perceiving entity: ${target}`);
+      // Find entity by ID and log details
+      const entity = this.world.entities.items.get(target);
+      if (entity) {
+        console.info(`[BehaviorManager] Entity details:`, {
+          id: entity.id,
+          type: entity.data.type,
+          name: entity.data.name,
+          position: entity.position,
+        });
+      } else {
+        console.warn(`[BehaviorManager] Entity ${target} not found`);
+      }
+    }
+  }
+
+  /**
+   * Handle interaction actions (use object, interact with entity)
+   */
+  private async handleInteractAction(content: ResponseContent): Promise<void> {
+    if (!this.world) {
+      console.error("[BehaviorManager] World not available for interaction");
+      return;
+    }
+
+    const target = content.target as string;
+    console.info(`[BehaviorManager] Interacting with: ${target}`);
+
+    // Use AgentActions system to perform action
+    const actionSystem = this.world.systems.find(isAgentActionsSystem);
+
+    if (actionSystem) {
+      actionSystem.performAction(target);
+      console.info(`[BehaviorManager] Performed action on ${target}`);
+    } else {
+      console.warn("[BehaviorManager] AgentActions system not available");
+    }
+  }
+
+  /**
+   * Handle emote actions
+   */
+  private async handleEmoteAction(content: ResponseContent): Promise<void> {
+    const emoteName = content.name as string;
+    console.info(`[BehaviorManager] Playing emote: ${emoteName}`);
+
+    const emoteManager = this.service?.getEmoteManager();
+    if (emoteManager) {
+      await emoteManager.queueEmote(emoteName);
+    } else {
+      console.warn("[BehaviorManager] EmoteManager not available");
+    }
   }
 
   /**

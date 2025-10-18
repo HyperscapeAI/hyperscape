@@ -81,15 +81,24 @@ if (!process.env["JWT_SECRET"] && process.env.NODE_ENV === "production") {
  * confirms it was issued by this server without database lookups.
  *
  * @param data - Arbitrary payload to include in the token (user ID, roles, etc.)
+ * @param expiresIn - Token expiry time in seconds (default: 3600 seconds / 1 hour)
  * @returns Promise resolving to a signed JWT string
  *
  * @example
  * const token = await createJWT({ userId: '123', roles: ['player'] })
  * // Send token to client for future requests
+ *
+ * @example
+ * const agentToken = await createJWT({ userId: 'agent_123', type: 'agent' }, 300)
+ * // Create short-lived 5-minute token for AI agent
  */
-export function createJWT(data: Record<string, unknown>): Promise<string> {
+export function createJWT(data: Record<string, unknown>, expiresIn?: number): Promise<string> {
   return new Promise((resolve, reject) => {
-    jwt.sign(data, jwtSecret, (err: Error | null, token?: string) => {
+    // Default to 1 hour (3600 seconds) if not specified
+    const tokenExpiry = expiresIn !== undefined ? expiresIn : 3600;
+    const options = { expiresIn: tokenExpiry };
+
+    jwt.sign(data, jwtSecret, options, (err: Error | null, token?: string) => {
       if (err) reject(err);
       else resolve(token!);
     });

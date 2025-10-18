@@ -10,10 +10,7 @@ import {
   type Content,
 } from "@elizaos/core";
 import { HyperscapeService } from "../service";
-
-// Constants for default values
-const RANDOM_WALK_DEFAULT_INTERVAL = 4000; // ms (4 seconds)
-const RANDOM_WALK_DEFAULT_MAX_DISTANCE = 30; // meters
+import { AGENT_CONFIG } from "../config/constants";
 
 export const hyperscapeWalkRandomlyAction: Action = {
   name: "HYPERSCAPE_WALK_RANDOMLY",
@@ -67,11 +64,11 @@ export const hyperscapeWalkRandomlyAction: Action = {
     }
 
     const command = options?.command || "start";
-    // Use provided interval (in seconds) or default (in ms)
+    // Use provided interval (in seconds) or default from config (in ms)
     const intervalMs = options?.interval
       ? options.interval * 1000
-      : RANDOM_WALK_DEFAULT_INTERVAL;
-    const maxDistance = options?.distance || RANDOM_WALK_DEFAULT_MAX_DISTANCE;
+      : AGENT_CONFIG.RANDOM_WALK_INTERVAL_MS;
+    const maxDistance = options?.distance || AGENT_CONFIG.RANDOM_WALK_MAX_DISTANCE;
 
     if (command === "stop") {
       if (controls.getIsWalkingRandomly()) {
@@ -122,7 +119,10 @@ export const hyperscapeWalkRandomlyAction: Action = {
   },
   examples: [
     [
-      { name: "{{user}}", content: { text: "Wander around for a bit." } },
+      {
+        name: "{{user}}",
+        content: { text: "Wander around for a bit." },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -132,10 +132,13 @@ export const hyperscapeWalkRandomlyAction: Action = {
           actions: ["HYPERSCAPE_WALK_RANDOMLY"],
           source: "hyperscape",
         },
-      },
+      } as ActionExample,
     ],
     [
-      { name: "{{user}}", content: { text: "Just pace around here." } },
+      {
+        name: "{{user}}",
+        content: { text: "Just pace around here." },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -145,10 +148,13 @@ export const hyperscapeWalkRandomlyAction: Action = {
           actions: ["HYPERSCAPE_WALK_RANDOMLY"],
           source: "hyperscape",
         },
-      },
+      } as ActionExample,
     ],
     [
-      { name: "{{user}}", content: { text: "Stop wandering." } },
+      {
+        name: "{{user}}",
+        content: { text: "Stop wandering." },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -158,7 +164,7 @@ export const hyperscapeWalkRandomlyAction: Action = {
           actions: ["HYPERSCAPE_WALK_RANDOMLY"],
           source: "hyperscape",
         },
-      },
+      } as ActionExample,
     ],
   ],
 };

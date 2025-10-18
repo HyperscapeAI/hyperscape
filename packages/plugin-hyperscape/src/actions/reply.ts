@@ -9,6 +9,7 @@ import {
   type Memory,
   ModelType,
   type State,
+  logger,
 } from "@elizaos/core";
 import type { ActionHandlerOptions } from "../types/core-types";
 
@@ -84,7 +85,7 @@ function extractReplyContent(
  * @property {Function} handler - An asynchronous function for handling the action logic.
  * @property {ActionExample[][]} examples - An array of example scenarios for the action.
  */
-export const replyAction = {
+export const replyAction: Action = {
   name: "REPLY",
   similes: ["GREET", "REPLY_TO_MESSAGE", "SEND_REPLY", "RESPOND", "RESPONSE"],
   description:
@@ -100,6 +101,7 @@ export const replyAction = {
     callback: HandlerCallback,
     responses?: Memory[],
   ): Promise<ActionResult> => {
+    logger.info('[REPLY] Processing reply action');
     const replyFieldKeys = ["message", "text"];
 
     const existingReplies =
@@ -108,6 +110,7 @@ export const replyAction = {
         .filter((reply): reply is Content => reply !== null) ?? [];
 
     if (existingReplies.length > 0) {
+      logger.info(`[REPLY] Found ${existingReplies.length} existing replies in response chain`);
       for (const reply of existingReplies) {
         const result: ActionResult = {
           text: reply.text || "",
@@ -115,11 +118,13 @@ export const replyAction = {
           values: { replied: true, replyText: reply.text },
           data: { source: "hyperscape", action: "REPLY" },
         };
-        await callback({
-          text: result.text,
-          actions: ["HYPERSCAPE_REPLY"],
-          source: "hyperscape",
-        });
+        if (callback) {
+          await callback({
+            text: result.text,
+            actions: ["HYPERSCAPE_REPLY"],
+            source: "hyperscape",
+          });
+        }
       }
       return {
         text: existingReplies[0].text || "",
@@ -130,6 +135,7 @@ export const replyAction = {
     }
 
     // Only generate response using LLM if no suitable response was found
+    logger.info('[REPLY] No existing replies found, generating new response via LLM');
     state = await runtime.composeState(message);
 
     const prompt = composePromptFromState({
@@ -140,6 +146,8 @@ export const replyAction = {
     const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
       prompt,
     });
+
+    logger.info('[REPLY] LLM response generated successfully');
 
     const responseContent: ActionResult = {
       text: (response.message as string) || "",
@@ -153,12 +161,14 @@ export const replyAction = {
       },
     };
 
-    await callback({
-      text: (response.message as string) || "",
-      thought: response.thought,
-      actions: ["HYPERSCAPE_REPLY"],
-      source: "hyperscape",
-    });
+    if (callback) {
+      await callback({
+        text: (response.message as string) || "",
+        thought: response.thought,
+        actions: ["HYPERSCAPE_REPLY"],
+        source: "hyperscape",
+      });
+    }
 
     return {
       text: responseContent.text,
@@ -178,14 +188,14 @@ export const replyAction = {
         content: {
           text: "Hello there!",
         },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
           text: "Hi! How can I help you today?",
           actions: ["REPLY"],
         },
-      },
+      } as ActionExample,
     ],
     [
       {
@@ -193,14 +203,14 @@ export const replyAction = {
         content: {
           text: "What's your favorite color?",
         },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
           text: "I really like deep shades of blue. They remind me of the ocean and the night sky.",
           actions: ["REPLY"],
         },
-      },
+      } as ActionExample,
     ],
     [
       {
@@ -208,14 +218,14 @@ export const replyAction = {
         content: {
           text: "Can you explain how neural networks work?",
         },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
           text: "Let me break that down for you in simple terms...",
           actions: ["REPLY"],
         },
-      },
+      } as ActionExample,
     ],
     [
       {
@@ -223,7 +233,7 @@ export const replyAction = {
         content: {
           text: "Could you help me solve this math problem?",
         },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -232,7 +242,7 @@ export const replyAction = {
           text: "Of course! Let's work through it step by step.",
           actions: ["REPLY"],
         },
-      },
+      } as ActionExample,
     ],
-  ] as ActionExample[][],
-} as Action;
+  ],
+};

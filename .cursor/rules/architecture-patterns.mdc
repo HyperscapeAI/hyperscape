@@ -1,0 +1,331 @@
+---
+alwaysApply: true
+---
+# Hyperscape Architecture Patterns
+
+## Monorepo Structure
+
+### Package Organization
+9 packages in the Hyperscape monorepo:
+- **@hyperscape/shared** - Core ECS engine (50+ systems)
+- **@hyperscape/client** - React 18 + Three.js frontend
+- **@hyperscape/server** - Fastify backend with WebSocket
+- **@hyperscape/asset-forge** - Asset generation tools
+- **@hyperscape/plugin-hyperscape** - ElizaOS AI agent integration
+- **@hyperscape/plugin-vercel-ai-gateway** - AI routing
+- **@hyperscape/docs-site** - Docusaurus documentation
+- **@hyperscape/physx-js-webidl** - PhysX WASM bindings
+- **Additional utility packages**
+
+### Package Dependencies
+```typescript
+// ✅ Good - workspace imports
+import { World, System } from '@hyperscape/shared';
+import type { PlayerData } from '@hyperscape/shared/types';
+
+// ❌ Avoid - relative imports across packages
+import { World } from '../../../shared/src/World';
+```
+
+## Client-Server Architecture
+
+### Server Authority Pattern
+The server is the single source of truth for ALL game state:
+
+**Client Responsibilities:**
+- Render game state
+- Capture user input
+- Send requests to server
+- Display UI updates
+
+**Server Responsibilities:**
+- Validate all actions
+- Update game state
+- Broadcast changes
+- Persist data to database
+
+```typescript
+// ✅ Good - client sends request, server validates
+// CLIENT:
+this.world.network.send('moveRequest', {
+  target: [x, y, z],
+  runMode: true
+});
+
+// SERVER:
+onMoveRequest(playerId, data) {
+  // Validate distance, collision, etc.
+  if (this.isValidMove(playerId, data.target)) {
+    this.updatePlayerPosition(playerId, data.target);
+    this.broadcast('playerMoved', { playerId, position: data.target });
+  }
+}
+
+// ❌ Avoid - client modifying state
+// CLIENT:
+player.position.set(x, y, z); // Never do this!
+```
+
+### Network Protocol
+Binary protocol using msgpackr for efficiency:
+- WebSocket connection on port 5555
+- Server validates all incoming messages
+- State deltas broadcast to all clients
+- Client interpolates/predicts for smooth visuals
+
+## Entity Component System (ECS)
+
+### Core Concepts
+- **Entities**: Unique IDs (EntityID, PlayerID, ResourceID)
+- **Components**: Pure data containers
+- **Systems**: Logic processors
+
+```typescript
+// ✅ Good - ECS pattern
+class InventorySystem extends SystemBase {
+  private inventories = new Map<PlayerID, PlayerInventory>();
+
+  update(dt: number) {
+    // Process all entities with inventory component
+  }
+}
+
+// ❌ Avoid - OOP with behavior in entities
+class Player {
+  addItemToInventory(item: Item) {
+    // Don't put game logic in entities
+  }
+}
+```
+
+### System Communication
+Use events, not direct calls:
+
+```typescript
+// ✅ Good - event-driven
+this.emitTypedEvent(EventType.INVENTORY_UPDATED, {
+  playerId,
+  items
+});
+
+// Other system listens:
+this.subscribe(EventType.INVENTORY_UPDATED, (data) => {
+  this.updateUI(data);
+});
+
+// ❌ Avoid - tight coupling
+const uiSystem = world.getSystem('ui');
+uiSystem.updateInventory(playerId, items);
+```
+
+## Tech Stack Patterns
+
+### Frontend (Client)
+- **React 18**: UI components with styled-components
+- **Three.js 0.180**: 3D rendering (WebGL 2.0)
+- **Vite**: Dev server with HMR on port 3333
+- **Post-processing**: Bloom, SSAO effects
+- **VRM Avatars**: Character models via @pixiv/three-vrm
+- **Privy**: Authentication (wallet + social)
+- **LiveKit**: Spatial voice chat
+
+```typescript
+// Client entry point
+const world = createClientWorld();
+world.init({
+  wsUrl: 'ws://localhost:5555/ws',
+  cdnUrl: 'http://localhost:8080'
+});
+```
+
+### Backend (Server)
+- **Fastify 5.0**: HTTP + WebSocket server on port 5555
+- **PostgreSQL/SQLite**: Persistence via Drizzle ORM
+- **Binary protocol**: msgpackr for efficient serialization
+- **Docker**: Auto-start PostgreSQL for local dev
+
+```typescript
+// Server entry point
+const world = createServerWorld();
+await world.init();
+
+fastify.get('/websocket', { websocket: true }, (connection) => {
+  network.handleConnection(connection);
+});
+```
+
+### Shared (Core)
+- **TypeScript 5.9**: Strict mode, NO `any` types
+- **ECS Engine**: 50+ systems
+- **Event Bus**: Typed event system
+- **Network Protocol**: Binary serialization
+
+## Development Workflow
+
+### Starting Development
+```bash
+bun run dev  # Starts all packages with hot reload
+# - Shared: Rebuilds on changes
+# - Client: http://localhost:3333 (Vite HMR)
+# - Server: ws://localhost:5555/ws (auto-restart)
+```
+
+### Building
+```bash
+bun run build         # Build all packages (Turborepo)
+bun run build:shared  # Build core engine only
+bun run build:client  # Build frontend only
+bun run build:server  # Build backend only
+```
+
+### Testing
+```bash
+bun run test  # Run Playwright tests (real gameplay, NO mocks)
+```
+
+## Database Architecture
+
+### Persistence Layer
+- **DatabaseSystem**: Server-side system for persistence
+- **Drizzle ORM**: Type-safe database access
+- **Auto-save**: Systems schedule saves (e.g., InventorySystem every 30s)
+- **Migrations**: Automatic on server startup
+
+```typescript
+// ✅ Good - use DatabaseSystem
+const db = this.world.getSystem<DatabaseSystem>('database');
+db.savePlayerInventory(playerId, items);
+
+// ❌ Avoid - direct database access
+await db.query('UPDATE players SET ...');
+```
+
+### Data Models
+- **Characters**: Player avatars with stats, inventory, position
+- **Users**: Accounts with auth providers
+- **Sessions**: Login/logout tracking
+- **World Chunks**: Persistent terrain modifications
+- **Entities**: Buildings, NPCs that persist
+
+## File Organization
+
+### Type Definitions
+- Define types in `types.ts` files
+- Share types across packages from `@hyperscape/shared/types`
+- Use existing types before creating new ones
+
+```typescript
+// ✅ Good - centralized types
+// packages/shared/src/types/core.ts
+export type PlayerInventory = {
+  playerId: PlayerID;
+  items: InventoryItem[];
+  coins: number;
+};
+
+// ❌ Avoid - duplicate type definitions
+// packages/client/src/inventory-types.ts
+type PlayerInventory = { ... }; // Don't recreate!
+```
+
+### System Files
+- One system per file in `packages/shared/src/systems/`
+- Named `{SystemName}System.ts` (e.g., `InventorySystem.ts`)
+- Export system class and related types
+
+## Current Work Context
+
+### Active Branch
+- Branch: `woodcutting-fixes` (ahead of main)
+- Recent work: Combat fixes, inventory persistence, woodcutting improvements
+- Modified files: ServerNetwork.ts, schema.ts, InteractionSystem.ts, InventorySystem.ts
+
+### Recent Changes
+- Fixed character creation
+- Improved inventory persistence after resource gathering
+- Added new trees with proper scaling
+- Combat system improvements
+- Audio and LiveKit logging enhancements
+
+## Common Integration Patterns
+
+### Client ↔ Server
+```typescript
+// CLIENT sends action request
+this.world.network.send('pickupItem', { entityId });
+
+// SERVER handles and broadcasts
+onPickupItem(playerId, { entityId }) {
+  const success = inventorySystem.addItem(playerId, itemId, quantity);
+  if (success) {
+    entityManager.destroyEntity(entityId);
+    this.broadcast('entityDestroyed', { entityId });
+  }
+}
+```
+
+### System ↔ Database
+```typescript
+// SYSTEM saves data periodically
+private scheduleInventoryPersist(playerId: string): void {
+  const db = this.getDatabase();
+  if (!db) return;
+
+  // Debounce with timeout
+  const existing = this.persistTimers.get(playerId);
+  if (existing) clearTimeout(existing);
+
+  const timer = setTimeout(() => {
+    const inv = this.getInventory(playerId);
+    db.savePlayerInventory(playerId, inv.items);
+  }, 300);
+
+  this.persistTimers.set(playerId, timer);
+}
+```
+
+### ElizaOS AI Agents
+- Connect like regular players via plugin-hyperscape
+- Full access to game API
+- Can move, interact, chat, use items
+- Autonomous decision-making with LLM
+
+## Performance Guidelines
+
+### Server Optimization
+- Support 50-100 concurrent players
+- Use Map/Set for O(1) lookups
+- Batch database operations
+- Debounce frequent events
+
+### Client Optimization
+- Leverage Hyperscape's 3D abstractions
+- Use existing scene hierarchy patterns
+- Optimize for 60 FPS
+- Memory: 4GB+ recommended
+
+## Security Patterns
+
+### Authentication
+- Privy for wallet & social login
+- JWT tokens for sessions
+- Server validates all tokens
+- No passwords stored on server
+
+### Anti-Cheat
+- Server validates all actions
+- Rate limiting on requests
+- Distance checks for interactions
+- Sanity checks on all inputs
+
+## References
+
+Based on memories from /memorize command:
+- "Hyperscape monorepo with 9 packages using Turborepo"
+- "@hyperscape/shared is core ECS engine with 50+ systems"
+- "@hyperscape/client: React 18 + Three.js on port 3333"
+- "@hyperscape/server: Fastify on port 5555"
+- "Current branch: woodcutting-fixes with combat and inventory improvements"
+- "Server-authoritative architecture"
+- "TypeScript 5.9 strict mode with NO any types"
+- Date: October 16, 2025

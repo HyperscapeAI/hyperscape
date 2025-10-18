@@ -1,5 +1,4 @@
-import { MessagePayload, HandlerCallback } from "@elizaos/core";
-import { handleMessage } from "./handlers/native-message-handler";
+import { MessagePayload, logger } from "@elizaos/core";
 
 export enum hyperscapeEventType {
   MESSAGE_RECEIVED = "HYPERSCAPE_MESSAGE_RECEIVED",
@@ -11,31 +10,29 @@ export enum hyperscapeEventType {
 // Alias for backward compatibility
 export const EventType = hyperscapeEventType;
 
-const defaultCallback: HandlerCallback = async () => [];
-
 /**
- * Native event handlers - process messages internally without bootstrap
+ * Hyperscape event handlers
+ *
+ * Note: Message handling is done directly in MessageManager via WebSocket subscription.
+ * These event handlers are kept for compatibility and logging purposes.
  */
 export const hyperscapeEvents = {
   [hyperscapeEventType.MESSAGE_RECEIVED]: [
-    async (payload: MessagePayload) => {
-      await handleMessage({
-        runtime: payload.runtime,
-        message: payload.message,
-        callback: payload.callback || defaultCallback,
-        onComplete: payload.onComplete,
-      });
+    async (_payload: MessagePayload): Promise<void> => {
+      logger.debug(
+        "[Events] MESSAGE_RECEIVED event triggered (handled by MessageManager)"
+      );
+      // Message processing happens in MessageManager.handleMessage()
+      // via WebSocket subscription in HyperscapeService.startChatSubscription()
     },
   ],
 
   [hyperscapeEventType.VOICE_MESSAGE_RECEIVED]: [
-    async (payload: MessagePayload) => {
-        await handleMessage({
-        runtime: payload.runtime,
-        message: payload.message,
-        callback: payload.callback || defaultCallback,
-        onComplete: payload.onComplete,
-      });
+    async (_payload: MessagePayload): Promise<void> => {
+      logger.debug(
+        "[Events] VOICE_MESSAGE_RECEIVED event triggered (handled by MessageManager)"
+      );
+      // Voice message processing handled through standard message flow
     },
   ],
 

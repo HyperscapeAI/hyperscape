@@ -123,11 +123,16 @@ import fastifyWebSocket from '@fastify/websocket'
 import dotenv from 'dotenv'
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
 import fs from 'fs-extra'
+import rateLimit from '@fastify/rate-limit'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { createServerWorld } from '@hyperscape/shared'
 import { installThreeJSExtensions } from '@hyperscape/shared'
+import { World } from '@hyperscape/shared'
+import { Entity } from '@hyperscape/shared'
 import type pg from 'pg'
+import type { Pool } from 'pg'
+import type { NodePgDatabase as DrizzleDB } from 'drizzle-orm/node-postgres'
 
 import { hashFile } from './utils.js'
 
@@ -140,6 +145,11 @@ import { NodeStorage as Storage } from '@hyperscape/shared'
 import { ServerNetwork } from './ServerNetwork.js'
 import { DatabaseSystem } from './DatabaseSystem.js'
 import type { NodeWebSocket } from './types.js'
+
+// Security middleware imports
+import { registerRateLimiting, getRateLimitConfig } from './middleware/rate-limit'
+import { registerCookies, setAuthCookie, getAuthCookie, clearAllAuthCookies } from './middleware/cookies'
+import { registerCsrfProtection, issueCSRFToken } from './middleware/csrf'
 
 // JSON value type for proper typing
 type JSONValue = string | number | boolean | null | JSONValue[] | { [key: string]: JSONValue }
@@ -155,6 +165,216 @@ interface ActionRouteGenericInterface {
 // Global instances for cleanup
 let dockerManager: DockerManager | undefined
 let globalPgPool: pg.Pool | undefined
+
+// ============================================================================
+// INPUT VALIDATION HELPERS
+// ============================================================================
+
+/**
+ * Agent authentication request schema
+ */
+interface AgentAuthRequest {
+  agentName: string
+  runtimeId?: string
+  privyUserId?: string
+  requestedPermissions?: string[]
+  metadata?: Record<string, string | number>
+}
+
+/**
+ * Validate agent authentication request
+ */
+function validateAgentAuthRequest(body: unknown): { success: true; data: AgentAuthRequest } | { success: false; error: string } {
+  if (!body || typeof body !== 'object') {
+    return { success: false, error: 'Request body must be an object' }
+  }
+
+  const req = body as Record<string, unknown>
+
+  // Validate required fields
+  if (!req.agentName || typeof req.agentName !== 'string') {
+    return { success: false, error: 'agentName is required and must be a string' }
+  }
+
+  if (req.agentName.length === 0 || req.agentName.length > 100) {
+    return { success: false, error: 'agentName must be between 1 and 100 characters' }
+  }
+
+  // Validate optional fields
+  if (req.runtimeId !== undefined && typeof req.runtimeId !== 'string') {
+    return { success: false, error: 'runtimeId must be a string if provided' }
+  }
+
+  if (req.privyUserId !== undefined && typeof req.privyUserId !== 'string') {
+    return { success: false, error: 'privyUserId must be a string if provided' }
+  }
+
+  if (req.requestedPermissions !== undefined) {
+    if (!Array.isArray(req.requestedPermissions)) {
+      return { success: false, error: 'requestedPermissions must be an array if provided' }
+    }
+
+    const validPermissions = ['chat', 'move', 'perceive', 'interact', 'build']
+    for (const perm of req.requestedPermissions) {
+      if (typeof perm !== 'string' || !validPermissions.includes(perm)) {
+        return { success: false, error: `Invalid permission: ${perm}. Valid permissions are: ${validPermissions.join(', ')}` }
+      }
+    }
+  }
+
+  if (req.metadata !== undefined) {
+    if (typeof req.metadata !== 'object' || req.metadata === null || Array.isArray(req.metadata)) {
+      return { success: false, error: 'metadata must be an object if provided' }
+    }
+
+    // Validate metadata values are string or number
+    for (const [key, value] of Object.entries(req.metadata)) {
+      if (typeof value !== 'string' && typeof value !== 'number') {
+        return { success: false, error: `metadata.${key} must be a string or number` }
+      }
+    }
+  }
+
+  return {
+    success: true,
+    data: {
+      agentName: req.agentName,
+      runtimeId: req.runtimeId as string | undefined,
+      privyUserId: req.privyUserId as string | undefined,
+      requestedPermissions: req.requestedPermissions as string[] | undefined,
+      metadata: req.metadata as Record<string, string | number> | undefined,
+    }
+  }
+}
+
+/**
+ * Sanitize IP address - strip port and IPv6 prefix, validate format
+ */
+function sanitizeIpAddress(ip: string): string {
+  if (!ip) return 'unknown'
+
+  // Remove IPv6 prefix (::ffff:)
+  let cleaned = ip.replace(/^::ffff:/i, '')
+
+  // Remove port if present
+  cleaned = cleaned.split(':')[0]
+
+  // Validate IPv4 format (simple check)
+  if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(cleaned) && !/^[a-f0-9:]+$/i.test(cleaned)) {
+    return 'invalid'
+  }
+
+  return cleaned
+}
+
+/**
+ * Sanitize user agent - limit length and remove control characters
+ */
+function sanitizeUserAgent(userAgent: string | undefined): string {
+  if (!userAgent) return 'unknown'
+
+  // Remove control characters
+  let cleaned = userAgent.replace(/[\x00-\x1F\x7F]/g, '')
+
+  // Limit length to 200 characters
+  if (cleaned.length > 200) {
+    cleaned = cleaned.substring(0, 200)
+  }
+
+  return cleaned
+}
+
+/**
+ * Check if request is authorized (has Authorization header or admin API key)
+ */
+function isRequestAuthorized(req: FastifyRequest): boolean {
+  // Check for Authorization header
+  const authHeader = req.headers.authorization
+  if (authHeader && authHeader.length > 0) {
+    return true
+  }
+
+  // Check for admin API key in environment
+  const adminApiKey = process.env.ADMIN_API_KEY
+  if (adminApiKey && req.headers['x-api-key'] === adminApiKey) {
+    return true
+  }
+
+  return false
+}
+
+// ============================================================================
+// TYPE-SAFE WORLD HELPERS
+// ============================================================================
+
+/**
+ * Extended World interface with server-specific properties
+ * Used for type-safe access to dynamically added properties
+ */
+interface AugmentedWorld extends InstanceType<typeof World> {
+  pgPool: Pool
+  drizzleDb: DrizzleDB
+  settings: { model: string | { url: string } }
+  entities: {
+    add: (entity: InstanceType<typeof Entity> | Record<string, unknown>, persist: boolean) => void
+  }
+  actionRegistry: {
+    getAll: () => Array<{ name: string; [key: string]: unknown }>
+    getAvailable: (context: Record<string, unknown>) => Array<{ name: string; [key: string]: unknown }>
+    execute: (name: string, context: Record<string, unknown>, params: Record<string, unknown>) => Promise<unknown>
+  }
+  network: unknown
+}
+
+/**
+ * Safely cast world to AugmentedWorld with runtime validation
+ *
+ * @param world - The world instance to cast
+ * @returns AugmentedWorld with validated properties
+ * @throws Error if required properties are missing or invalid
+ */
+function getServerWorld(world: InstanceType<typeof World>): AugmentedWorld {
+  const augmented = world as unknown as AugmentedWorld
+
+  // Validate required server properties exist
+  if (!augmented.pgPool || typeof augmented.pgPool !== 'object') {
+    throw new Error('World is missing pgPool - server not properly initialized')
+  }
+
+  if (!augmented.drizzleDb || typeof augmented.drizzleDb !== 'object') {
+    throw new Error('World is missing drizzleDb - server not properly initialized')
+  }
+
+  if (!augmented.network) {
+    throw new Error('World is missing network system - server not properly initialized')
+  }
+
+  return augmented
+}
+
+/**
+ * Add entity to world with proper typing and validation
+ *
+ * @param world - The world instance
+ * @param entity - Entity data or instance to add
+ * @param persist - Whether to persist the entity to database
+ * @throws Error if entities system is not initialized or add method is missing
+ */
+function addWorldEntity(world: InstanceType<typeof World>, entity: InstanceType<typeof Entity> | Record<string, unknown>, persist: boolean): void {
+  const augmented = world as unknown as AugmentedWorld
+
+  // Runtime validation that entities system exists
+  if (!augmented.entities || typeof augmented.entities !== 'object') {
+    throw new Error('World entities system not initialized')
+  }
+
+  if (typeof augmented.entities.add !== 'function') {
+    throw new Error('World entities.add is not a function - entities system not properly initialized')
+  }
+
+  // Call the typed add method
+  augmented.entities.add(entity, persist)
+}
 
 /**
  * Starts the Hyperscape server
@@ -265,13 +485,19 @@ async function startServer() {
   const { DatabaseSystem: ServerDatabaseSystem } = await import('./DatabaseSystem.js');
   world.register('database', ServerDatabaseSystem);
   world.register('network', ServerNetwork);
-  
+
   // Make PostgreSQL pool and Drizzle DB available for DatabaseSystem to use
-  world.pgPool = pgPool
-  world.drizzleDb = drizzleDb
+  // These are dynamically added properties, not in the World type definition
+  const serverWorld = world as unknown as AugmentedWorld
+  serverWorld.pgPool = pgPool
+  serverWorld.drizzleDb = drizzleDb
 
   // Set up default environment model
-  world.settings.model = {
+  // Ensure settings object exists before assigning model
+  if (!serverWorld.settings) {
+    throw new Error('World settings system not initialized')
+  }
+  serverWorld.settings.model = {
     url: 'asset://world/base-environment.glb',
   }
 
@@ -327,8 +553,8 @@ async function startServer() {
           entityToAdd.quaternion = [0, Math.sin(halfY), 0, Math.cos(halfY)] 
         }
 
-        // Add entity
-        world.entities.add!(entityToAdd, true)
+        // Add entity using type-safe helper
+        addWorldEntity(world, entityToAdd, true)
       }
     }
   }
@@ -350,6 +576,41 @@ async function startServer() {
     credentials: true,
     methods: ['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS'],
   })
+
+  // ============================================================================
+  // SECURITY MIDDLEWARE REGISTRATION
+  // ============================================================================
+  // Register security middleware in the correct order:
+  // 1. Cookies (required for CSRF)
+  // 2. CSRF Protection
+  // 3. Rate Limiting
+
+  try {
+    // Register cookie handling (required for HttpOnly auth cookies and CSRF)
+    await registerCookies(fastify)
+    fastify.log.info('[Server] ✅ Cookie middleware registered')
+  } catch (error) {
+    fastify.log.error('[Server] ❌ Failed to register cookie middleware:', error)
+    throw error
+  }
+
+  try {
+    // Register CSRF protection (depends on cookies)
+    await registerCsrfProtection(fastify)
+    fastify.log.info('[Server] ✅ CSRF protection registered')
+  } catch (error) {
+    fastify.log.error('[Server] ❌ Failed to register CSRF protection:', error)
+    throw error
+  }
+
+  try {
+    // Register rate limiting
+    await registerRateLimiting(fastify)
+    fastify.log.info('[Server] ✅ Rate limiting registered')
+  } catch (error) {
+    fastify.log.error('[Server] ❌ Failed to register rate limiting:', error)
+    throw error
+  }
 
   // Temporarily disable compression to debug "premature close" errors
   // TODO: Re-enable compression after fixing the issue
@@ -583,10 +844,18 @@ async function startServer() {
         fastify.log.error('[Server] Invalid WebSocket object received')
         return
       }
-      
-      // Handle network connection
+
+      // Handle network connection with type safety
       const query = req.query as Record<string, JSONValue>
-      world.network.onConnection!(ws, query)
+      const serverWorld = getServerWorld(world)
+
+      // Guard to ensure network has onConnection method
+      if (serverWorld.network && typeof serverWorld.network === 'object' && 'onConnection' in serverWorld.network) {
+        const typedNetwork = serverWorld.network as { onConnection: (ws: unknown, query: unknown) => void }
+        if (typeof typedNetwork.onConnection === 'function') {
+          typedNetwork.onConnection(ws, query)
+        }
+      }
     })
   }
 
@@ -596,12 +865,211 @@ async function startServer() {
   fastify.post('/api/player/disconnect', async (req, reply) => {
     const body = req.body as { playerId: string; sessionId?: string; reason?: string }
     fastify.log.info({ body }, '[API] player/disconnect')
-    const network = world.network as unknown as import('./types.js').ServerNetworkWithSockets
+    const serverWorld = getServerWorld(world)
+    const network = serverWorld.network as unknown as import('./types.js').ServerNetworkWithSockets
     const socket = network.sockets.get(body.playerId)
     if (socket) {
       socket.close?.()
     }
     return reply.send({ ok: true })
+  })
+
+  // Agent authentication endpoint (with strict rate limiting)
+  fastify.post('/api/agent/auth', {
+    config: {
+      rateLimit: getRateLimitConfig('strict'), // 3 requests per hour per IP
+    },
+  }, async (req, reply) => {
+    try {
+      // Validate request body
+      const validation = validateAgentAuthRequest(req.body)
+      if (!validation.success) {
+        fastify.log.warn({ error: validation.error, ip: req.ip }, '[API] Agent auth validation failed')
+        return reply.code(400).send({
+          error: 'Invalid request data',
+          message: validation.error,
+        })
+      }
+
+      const validatedBody = validation.data
+
+      // Check authorization - anonymous callers cannot register agents
+      if (!isRequestAuthorized(req)) {
+        fastify.log.warn({ ip: req.ip, agentName: validatedBody.agentName }, '[API] Unauthorized agent registration attempt')
+        return reply.code(401).send({
+          error: 'Unauthorized',
+          message: 'Authentication required to register agents',
+        })
+      }
+
+      // Validate world network exists
+      const serverWorld = getServerWorld(world)
+      if (!serverWorld.network) {
+        throw new Error('Network system not initialized')
+      }
+
+      const network = serverWorld.network as unknown as import('./types').ServerNetworkWithSockets
+      if (!network.db) {
+        throw new Error('Database not available in network system')
+      }
+
+      const { registerAgent } = await import('./agent-auth')
+
+      // Sanitize metadata
+      const sanitizedMetadata = {
+        ...validatedBody.metadata,
+        ipAddress: sanitizeIpAddress(req.ip),
+        userAgent: sanitizeUserAgent(req.headers['user-agent']),
+      }
+
+      // Register agent and get credentials
+      const authResponse = await registerAgent(network.db, {
+        agentName: validatedBody.agentName,
+        runtimeId: validatedBody.runtimeId,
+        privyUserId: validatedBody.privyUserId,
+        requestedPermissions: validatedBody.requestedPermissions,
+        metadata: sanitizedMetadata,
+      })
+
+      fastify.log.info({
+        agentId: authResponse.agentInfo.agentId,
+        agentName: validatedBody.agentName,
+        ip: sanitizeIpAddress(req.ip)
+      }, '[API] Agent authenticated')
+
+      return reply.send(authResponse)
+    } catch (error) {
+      // Log full error server-side
+      fastify.log.error({
+        error,
+        ip: req.ip,
+        stack: error instanceof Error ? error.stack : undefined
+      }, '[API] Agent authentication failed')
+
+      // Return generic error to client
+      return reply.code(500).send({
+        error: 'Internal server error',
+        message: 'Failed to process agent authentication request',
+      })
+    }
+  })
+
+  // Privy authentication endpoint - exchanges identity token for HttpOnly cookie
+  fastify.post('/api/auth/privy', {
+    config: {
+      rateLimit: getRateLimitConfig('auth'), // 5 requests per 15 minutes per IP
+    },
+  }, async (req, reply) => {
+    try {
+      const { verifyPrivyToken } = await import('./privy-auth')
+      const body = req.body as {
+        identityToken: string
+        name?: string
+        avatar?: string
+      }
+
+      if (!body.identityToken) {
+        return reply.code(400).send({
+          error: 'Missing identity token',
+          message: 'identityToken is required in request body',
+        })
+      }
+
+      // Verify Privy identity token
+      const privyInfo = await verifyPrivyToken(body.identityToken)
+
+      if (!privyInfo) {
+        return reply.code(401).send({
+          error: 'Invalid token',
+          message: 'Failed to verify Privy identity token',
+        })
+      }
+
+      // Get database from world
+      const serverWorld = getServerWorld(world)
+      const network = serverWorld.network as unknown as import('./types').ServerNetworkWithSockets
+      const db = network.db
+
+      // Look up or create user in database
+      const { createJWT } = await import('./utils')
+      const existingUserResult = await db('users')
+        .where('privyUserId', privyInfo.privyUserId)
+        .first()
+
+      let userId: string
+
+      if (existingUserResult) {
+        // Existing user
+        userId = existingUserResult.id
+      } else {
+        // New user - create account
+        userId = privyInfo.privyUserId
+        const timestamp = new Date().toISOString()
+
+        const newUser: {
+          id: string
+          name: string
+          avatar: string | null
+          roles: string
+          createdAt: string
+          privyUserId?: string
+          farcasterFid?: string
+        } = {
+          id: userId,
+          name: body.name || 'Adventurer',
+          avatar: body.avatar || null,
+          roles: '',
+          createdAt: timestamp,
+        }
+
+        newUser.privyUserId = privyInfo.privyUserId
+        if (privyInfo.farcasterFid) {
+          newUser.farcasterFid = privyInfo.farcasterFid
+        }
+        await db('users').insert(newUser)
+      }
+
+      // Generate Hyperscape JWT token (1 hour expiry for humans)
+      const hyperscapeToken = await createJWT({ userId })
+
+      // Set HttpOnly cookie with the token
+      setAuthCookie(reply, hyperscapeToken)
+
+      // Issue CSRF token for state-changing requests
+      const csrfToken = await issueCSRFToken(req, reply)
+
+      fastify.log.info({
+        userId,
+        privyUserId: privyInfo.privyUserId,
+      }, '[API] Privy authentication successful - HttpOnly cookie set')
+
+      // Return success with CSRF token (cookie is set automatically)
+      return reply.send({
+        success: true,
+        userId,
+        csrfToken,
+        message: 'Authentication successful - credentials stored in HttpOnly cookie',
+      })
+    } catch (error) {
+      fastify.log.error({ error }, '[API] Privy authentication failed')
+      return reply.code(500).send({
+        error: 'Authentication failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      })
+    }
+  })
+
+  // Logout endpoint - clears authentication cookies
+  fastify.post('/api/auth/logout', {
+    config: {
+      rateLimit: getRateLimitConfig('auth'), // 5 requests per 15 minutes per IP
+    },
+  }, async (_req, reply) => {
+    clearAllAuthCookies(reply)
+    return reply.send({
+      success: true,
+      message: 'Logged out successfully',
+    })
   })
 
   const publicEnvs: Record<string, string> = {}
@@ -692,9 +1160,10 @@ async function startServer() {
       }>,
       commitHash: process.env['COMMIT_HASH'],
     }
-    
+
     // Import type from our local types
-    const network = world.network as unknown as import('./types.js').ServerNetworkWithSockets
+    const serverWorld = getServerWorld(world)
+    const network = serverWorld.network as unknown as import('./types.js').ServerNetworkWithSockets
     for (const socket of network.sockets.values()) {
       if (socket.player?.node?.position) {
         const pos = socket.player.node.position
@@ -711,7 +1180,14 @@ async function startServer() {
 
   // Action API endpoints
   fastify.get('/api/actions', async (_request: FastifyRequest, reply: FastifyReply) => {
-    const actions = world.actionRegistry!.getAll()
+    const serverWorld = getServerWorld(world)
+    if (!serverWorld.actionRegistry) {
+      return reply.code(500).send({
+        success: false,
+        error: 'Action registry not initialized',
+      })
+    }
+    const actions = serverWorld.actionRegistry.getAll()
     return reply.send({
       success: true,
       actions: actions.map((action: Record<string, unknown>) => ({
@@ -723,13 +1199,20 @@ async function startServer() {
   })
 
   fastify.get('/api/actions/available', async (request: FastifyRequest, reply: FastifyReply) => {
+    const serverWorld = getServerWorld(world)
+    if (!serverWorld.actionRegistry) {
+      return reply.code(500).send({
+        success: false,
+        error: 'Action registry not initialized',
+      })
+    }
     const query = request.query as Record<string, unknown>
     const context = {
       world,
       playerId: query?.playerId,
       ...query,
     }
-    const actions = world.actionRegistry!.getAvailable(context)
+    const actions = serverWorld.actionRegistry.getAvailable(context)
     return reply.send({
       success: true,
       actions: actions.map((action: { name: string }) => action.name),
@@ -737,6 +1220,13 @@ async function startServer() {
   })
 
   fastify.post<ActionRouteGenericInterface>('/api/actions/:name', async (request, reply) => {
+    const serverWorld = getServerWorld(world)
+    if (!serverWorld.actionRegistry) {
+      return reply.code(500).send({
+        success: false,
+        error: 'Action registry not initialized',
+      })
+    }
     const actionName = request.params.name
     const body = request.body as { params: Record<string, unknown> }
     const params = body.params
@@ -747,7 +1237,7 @@ async function startServer() {
       ...query,
     }
 
-    const result = await world.actionRegistry!.execute(actionName, context, params)
+    const result = await serverWorld.actionRegistry.execute(actionName, context, params)
     return reply.send({
       success: true,
       result,

@@ -2,8 +2,6 @@ import {
   type Action,
   type ActionResult,
   type ActionExample,
-
-
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -57,7 +55,7 @@ export const chopTreeAction: Action = {
       return false
     }
 
-    const nearbyTrees = allResources.filter((resource: { type?: string; position?: { x: number; y: number; z: number }; level?: number }) => {
+    const nearbyTrees = allResources.filter((resource: ResourceItem) => {
       if (!resource.type?.startsWith('tree_')) return false
       if (!resource.position) return false
 
@@ -148,16 +146,7 @@ export const chopTreeAction: Action = {
       })
 
       // Find nearby tree resources using ResourceSystem
-      const resourceSystem = world.getSystem?.('resource') as {
-        getResourcesByType?: (type: string) => Array<{
-          id: string
-          type: string
-          position: { x: number; y: number; z: number }
-          isAvailable: boolean
-          levelRequired?: number
-          skillRequired: string
-        }>
-      } | undefined
+      const resourceSystem = world.getSystem?.('resource') as ResourceSystem | undefined
 
       if (!resourceSystem?.getResourcesByType) {
         throw new Error('Resource system not available')
@@ -276,6 +265,7 @@ export const chopTreeAction: Action = {
         let totalXp = 0
         let didLevelUp = false
         let levelAfter: number | undefined
+        let cleanedUp = false
 
         // Listen for gathering completion
         const completionHandler = (data: { playerId: string; resourceId: string; successful: boolean }) => {
@@ -331,6 +321,8 @@ export const chopTreeAction: Action = {
         }
 
         const cleanup = () => {
+          if (cleanedUp) return
+          cleanedUp = true
           clearTimeout(timeout)
           world.off(RESOURCE_GATHERING_COMPLETED, completionHandler)
           world.off(INVENTORY_UPDATED, inventoryHandler)
@@ -365,18 +357,27 @@ export const chopTreeAction: Action = {
         // Also resolve after a short delay when gathering succeeds (don't wait full timeout)
         const checkCompletion = setInterval(() => {
           if (gatheringSuccess && (itemsReceived.length > 0 || totalXp > 0)) {
-            cleanup()
-            clearInterval(checkCompletion)
-            logger.info(`[CHOP_TREE] Gathering complete with items/XP received`)
-            resolve({
-              success: true,
-              items: itemsReceived,
-              xpGained: totalXp,
-              levelUp: didLevelUp,
-              newLevel: levelAfter
-            })
+            if (!cleanedUp) {
+              cleanup()
+              clearInterval(checkCompletion)
+              logger.info(`[CHOP_TREE] Gathering complete with items/XP received`)
+              resolve({
+                success: true,
+                items: itemsReceived,
+                xpGained: totalXp,
+                levelUp: didLevelUp,
+                newLevel: levelAfter
+              })
+            }
           }
         }, 500)
+
+        // Clean up interval on timeout
+        setTimeout(() => {
+          if (!cleanedUp) {
+            clearInterval(checkCompletion)
+          }
+        }, 15000)
 
         // Send gather packet via WebSocket
         world.network.send('gatherResource', {
@@ -462,7 +463,7 @@ export const chopTreeAction: Action = {
       {
         name: '{{user}}',
         content: { text: 'Chop down a tree' }
-      },
+      } as ActionExample,
       {
         name: '{{agent}}',
         content: {
@@ -471,13 +472,13 @@ export const chopTreeAction: Action = {
           actions: ['CHOP_TREE'],
           source: 'hyperscape',
         }
-      }
+      } as ActionExample,
     ],
     [
       {
         name: '{{user}}',
         content: { text: 'Get some wood' }
-      },
+      } as ActionExample,
       {
         name: '{{agent}}',
         content: {
@@ -486,7 +487,7 @@ export const chopTreeAction: Action = {
           actions: ['CHOP_TREE'],
           source: 'hyperscape',
         }
-      }
+      } as ActionExample,
     ],
-  ] as ActionExample[][]
+  ],
 }

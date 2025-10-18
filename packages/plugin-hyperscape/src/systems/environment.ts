@@ -5,6 +5,7 @@ import { THREE, System } from "@hyperscape/shared";
 import { PlaywrightManager } from "../managers/playwright-manager";
 import { resolveUrl } from "../utils";
 import type { World } from "@hyperscape/shared";
+import { GRAPHICS_CONFIG } from "../config/constants";
 
 // Helper to check if renderer is WebGLRenderer
 function isWebGLRenderer(renderer: THREE.Renderer | THREE.WebGLRenderer): renderer is THREE.WebGLRenderer {
@@ -231,7 +232,11 @@ export class EnvironmentSystem extends System {
 
   async updateSky() {
     if (!this.sky) {
-      const geometry = new THREE.SphereGeometry(1000, 60, 40);
+      const geometry = new THREE.SphereGeometry(
+        GRAPHICS_CONFIG.SPHERE_GEOMETRY_RADIUS,
+        GRAPHICS_CONFIG.SPHERE_WIDTH_SEGMENTS,
+        GRAPHICS_CONFIG.SPHERE_HEIGHT_SEGMENTS,
+      );
       const material = new THREE.MeshBasicMaterial({ side: THREE.BackSide });
       this.sky = new THREE.Mesh(geometry, material);
       // Note: computeBoundsTree is not available on standard BufferGeometry

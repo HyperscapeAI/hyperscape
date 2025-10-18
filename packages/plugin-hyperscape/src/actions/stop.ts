@@ -27,9 +27,13 @@ export const hyperscapeStopMovingAction: Action = {
       HyperscapeService.serviceName,
     );
     const controls = service?.getWorld()?.controls;
-    // Valid only if connected and controls are available
-    // Optional: Could check if getIsNavigating() or getIsPatrolling() is true
-    return !!service && service.isConnected() && !!controls;
+    const isValid = !!service && service.isConnected() && !!controls;
+
+    if (!isValid) {
+      logger.warn('[HYPERSCAPE_STOP_MOVING] Validation failed: service or controls unavailable');
+    }
+
+    return isValid;
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -38,6 +42,8 @@ export const hyperscapeStopMovingAction: Action = {
     options?: { reason?: string }, // Optional reason for stopping
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
+    logger.info('[HYPERSCAPE_STOP_MOVING] Starting stop movement action');
+
     const service = runtime.getService<HyperscapeService>(
       HyperscapeService.serviceName,
     )!;
@@ -45,9 +51,12 @@ export const hyperscapeStopMovingAction: Action = {
     const controls = world.controls!;
 
     const reason = options?.reason || "stop action called";
+    logger.info(`[HYPERSCAPE_STOP_MOVING] Stopping all actions. Reason: ${reason}`);
 
     // Call the stop navigation method
     controls.stopAllActions();
+
+    logger.info('[HYPERSCAPE_STOP_MOVING] Movement stopped successfully');
 
     if (callback) {
       const successResponse = {
@@ -74,14 +83,14 @@ export const hyperscapeStopMovingAction: Action = {
         content: {
           text: "Stop walking.",
         },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
           text: "Stopped current movement.",
           actions: ["HYPERSCAPE_STOP_MOVE"],
         },
-      },
+      } as ActionExample,
     ],
     [
       {
@@ -89,14 +98,14 @@ export const hyperscapeStopMovingAction: Action = {
         content: {
           text: "Stop moving",
         },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
           text: "I've stopped all movement.",
           actions: ["HYPERSCAPE_STOP_MOVE"],
         },
-      },
+      } as ActionExample,
     ],
-  ] as ActionExample[][],
+  ],
 };

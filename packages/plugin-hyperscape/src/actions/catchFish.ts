@@ -452,7 +452,7 @@ export const catchFishAction: Action = {
       {
         name: '{{user}}',
         content: { text: 'Go fishing' }
-      },
+      } as ActionExample,
       {
         name: '{{agent}}',
         content: {
@@ -461,13 +461,13 @@ export const catchFishAction: Action = {
           actions: ['CATCH_FISH'],
           source: 'hyperscape',
         }
-      }
+      } as ActionExample,
     ],
     [
       {
         name: '{{user}}',
         content: { text: 'Catch some fish for dinner' }
-      },
+      } as ActionExample,
       {
         name: '{{agent}}',
         content: {
@@ -476,7 +476,7 @@ export const catchFishAction: Action = {
           actions: ['CATCH_FISH'],
           source: 'hyperscape',
         }
-      }
-    ]
-  ] as ActionExample[][]
+      } as ActionExample,
+    ],
+  ],
 }

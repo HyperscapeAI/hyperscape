@@ -4,30 +4,65 @@
  */
 
 import type { User } from '@privy-io/react-auth'
+import { z } from 'zod'
+
+/**
+ * Zod schema for authentication response validation
+ */
+const AuthResponseSchema = z.object({
+  csrfToken: z.string().min(16, 'csrfToken must be at least 16 characters'),
+  userId: z.string().trim().min(1, 'userId must not be empty'),
+})
+
+/**
+ * Authentication error codes
+ */
+type AuthErrorCode = 'NETWORK_ERROR' | 'INVALID_TOKEN' | 'SERVER_ERROR' | 'CLIENT_ERROR' | 'VALIDATION_ERROR'
+
+/**
+ * Structured authentication error
+ */
+export class AuthenticationError extends Error {
+  constructor(
+    message: string,
+    public code: AuthErrorCode,
+    public retryable: boolean,
+    public originalError?: unknown
+  ) {
+    super(message)
+    this.name = 'AuthenticationError'
+  }
+}
 
 /**
  * Privy authentication state
- * 
+ *
  * Contains all authentication-related state including user data,
  * tokens, and Farcaster integration.
- * 
+ *
+ * NOTE: Tokens are now stored in HttpOnly cookies (not localStorage) for enhanced security.
+ * The privyToken field is kept for backward compatibility but is no longer used for auth.
+ *
  * @public
  */
 export interface PrivyAuthState {
   /** Whether the user is currently authenticated */
   isAuthenticated: boolean
-  
+
   /** Privy user ID (unique identifier from Privy) */
   privyUserId: string | null
-  
-  /** Privy access token for API calls */
+
+  /** Privy identity token (JWT with user claims) - stored in HttpOnly cookie, not in state */
   privyToken: string | null
-  
+
   /** Full Privy user object with profile data */
   user: User | null
-  
+
   /** Farcaster FID if the user has linked their Farcaster account */
   farcasterFid: string | null
+
+  /** CSRF token for state-changing requests (readable from client) */
+  csrfToken: string | null
 }
 
 /**
@@ -50,11 +85,43 @@ export class PrivyAuthManager {
     privyToken: null,
     user: null,
     farcasterFid: null,
+    csrfToken: null,
   }
-  
+
   private listeners: Set<(state: PrivyAuthState) => void> = new Set()
+  private csrfTokenPromise: Promise<void> | null = null
 
   private constructor() {}
+
+  /**
+   * Gets the server URL from environment or window location
+   *
+   * @returns The server URL to use for API requests
+   * @private
+   */
+  private getServerUrl(): string {
+    return import.meta.env.HYPERSCAPE_SERVER_URL || window.location.origin
+  }
+
+  /**
+   * Validates authentication response data using Zod schema
+   *
+   * @param rawData - The raw response data to validate
+   * @returns Validated response with csrfToken and userId
+   * @throws Error if parsing fails or csrfToken doesn't meet requirements
+   * @private
+   */
+  private validateAuthResponse(rawData: unknown): { csrfToken: string; userId: string } {
+    const parseResult = AuthResponseSchema.safeParse(rawData)
+
+    if (!parseResult.success) {
+      throw new Error(
+        `Invalid response format: ${parseResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`
+      )
+    }
+
+    return parseResult.data
+  }
 
   /**
    * Gets the singleton instance of PrivyAuthManager
@@ -87,57 +154,199 @@ export class PrivyAuthManager {
 
   /**
    * Sets the authenticated user from Privy
-   * 
-   * Called after successful Privy authentication. Stores the user object,
-   * access token, and Farcaster FID (if linked) in state and localStorage.
-   * 
+   *
+   * Called after successful Privy authentication. Exchanges the identity token
+   * for an HttpOnly cookie on the server, then updates local state.
+   *
+   * SECURITY: Identity tokens are now stored in HttpOnly cookies (not localStorage)
+   * to prevent XSS attacks. The token is sent to the server once and never stored client-side.
+   *
    * @param user - Privy user object with profile data
-   * @param token - Privy access token for API calls
-   * 
+   * @param identityToken - Privy identity token (JWT with user claims)
+   * @throws {AuthenticationError} Structured error with retry guidance
+   *
    * @public
    */
-  setAuthenticatedUser(user: User, token: string): void {
+  async setAuthenticatedUser(user: User, identityToken: string): Promise<void> {
     // Extract Farcaster FID if available
     const farcasterAccount = user.farcaster
     const farcasterFid = farcasterAccount?.fid ? String(farcasterAccount.fid) : null
 
-    this.updateState({
-      isAuthenticated: true,
-      privyUserId: user.id,
-      privyToken: token,
-      user,
-      farcasterFid,
-    })
+    try {
+      // Exchange identity token for HttpOnly cookie on server
+      const response = await fetch(`${this.getServerUrl()}/api/auth/privy`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Include cookies in request
+        body: JSON.stringify({
+          identityToken,
+          name: user.email?.address || user.wallet?.address || 'Adventurer',
+          avatar: null,
+        }),
+      })
 
-    // Store token for persistence
-    localStorage.setItem('privy_auth_token', token)
-    localStorage.setItem('privy_user_id', user.id)
-    if (farcasterFid) {
-      localStorage.setItem('farcaster_fid', farcasterFid)
+      // Categorize errors by HTTP status
+      if (!response.ok) {
+        let errorData: { message?: string } = {}
+
+        // Safely parse error response JSON
+        try {
+          errorData = await response.json()
+        } catch (jsonError) {
+          console.warn('[PrivyAuthManager] Failed to parse error response as JSON:', jsonError)
+          // Continue with empty errorData object
+        }
+
+        const errorMessage = errorData.message || `HTTP ${response.status}: Failed to authenticate with server`
+
+        // Categorize by status code
+        if (response.status === 401) {
+          throw new AuthenticationError(
+            errorMessage,
+            'INVALID_TOKEN',
+            false, // Non-retryable - token is invalid
+            response
+          )
+        } else if (response.status >= 500) {
+          throw new AuthenticationError(
+            errorMessage,
+            'SERVER_ERROR',
+            true, // Retryable - server is having issues
+            response
+          )
+        } else {
+          throw new AuthenticationError(
+            errorMessage,
+            'CLIENT_ERROR',
+            false, // Non-retryable - client error (4xx)
+            response
+          )
+        }
+      }
+
+      // Parse and validate response
+      let data: { csrfToken: string; userId: string }
+      try {
+        const rawData = await response.json()
+        data = this.validateAuthResponse(rawData)
+      } catch (validationError) {
+        throw new AuthenticationError(
+          'Server returned invalid authentication response',
+          'VALIDATION_ERROR',
+          false, // Non-retryable - response format is wrong
+          validationError
+        )
+      }
+
+      // Update state with user info and CSRF token
+      // NOTE: The actual auth token is now in an HttpOnly cookie, not in state
+      this.updateState({
+        isAuthenticated: true,
+        privyUserId: user.id,
+        privyToken: null, // No longer stored client-side
+        user,
+        farcasterFid,
+        csrfToken: data.csrfToken,
+      })
+
+      // Store minimal data in localStorage (no tokens!)
+      localStorage.setItem('privy_user_id', user.id)
+      if (farcasterFid) {
+        localStorage.setItem('farcaster_fid', farcasterFid)
+      }
+      // Store CSRF token (safe to store - it's not the auth token)
+      localStorage.setItem('csrf_token', data.csrfToken)
+
+      console.log('[PrivyAuthManager] Authentication successful - credentials stored in HttpOnly cookie')
+    } catch (error) {
+      // Handle network errors
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        const networkError = new AuthenticationError(
+          'Network error: Failed to connect to authentication server',
+          'NETWORK_ERROR',
+          true, // Retryable - network issues are temporary
+          error
+        )
+        console.error('[PrivyAuthManager] Network error during authentication:', {
+          code: networkError.code,
+          retryable: networkError.retryable,
+          message: networkError.message,
+          originalError: error
+        })
+        throw networkError
+      }
+
+      // Re-throw AuthenticationError with logging
+      if (error instanceof AuthenticationError) {
+        console.error('[PrivyAuthManager] Authentication failed:', {
+          code: error.code,
+          retryable: error.retryable,
+          message: error.message,
+          originalError: error.originalError
+        })
+
+        // Emit retry recommendation for retryable errors
+        if (error.retryable) {
+          console.warn('[PrivyAuthManager] This error is retryable. Consider implementing exponential backoff.')
+        }
+
+        throw error
+      }
+
+      // Unknown error - wrap it
+      const unknownError = new AuthenticationError(
+        error instanceof Error ? error.message : 'Unknown authentication error',
+        'SERVER_ERROR',
+        false,
+        error
+      )
+      console.error('[PrivyAuthManager] Unknown error during authentication:', {
+        code: unknownError.code,
+        retryable: unknownError.retryable,
+        originalError: error
+      })
+      throw unknownError
     }
   }
 
   /**
    * Clears all authentication state
-   * 
-   * Removes auth data from memory and localStorage. Called on logout.
-   * 
+   *
+   * Removes auth data from memory, localStorage, and server-side cookies.
+   * Called on logout.
+   *
    * @public
    */
-  clearAuth(): void {
+  async clearAuth(): Promise<void> {
+    // Call server logout endpoint to clear HttpOnly cookies
+    try {
+      await fetch(`${this.getServerUrl()}/api/auth/logout`, {
+        method: 'POST',
+        credentials: 'include', // Include cookies so they can be cleared
+      })
+    } catch (error) {
+      console.warn('[PrivyAuthManager] Failed to clear server-side cookies:', error)
+      // Continue with local cleanup even if server call fails
+    }
+
     this.updateState({
       isAuthenticated: false,
       privyUserId: null,
       privyToken: null,
       user: null,
       farcasterFid: null,
+      csrfToken: null,
     })
 
-    // Clear from localStorage
-    localStorage.removeItem('privy_auth_token')
+    // Clear from localStorage (no auth tokens stored anymore, just metadata)
+    localStorage.removeItem('privy_auth_token') // Legacy - already removed
     localStorage.removeItem('privy_user_id')
     localStorage.removeItem('farcaster_fid')
+    localStorage.removeItem('csrf_token')
 
+    console.log('[PrivyAuthManager] Logged out - all auth data cleared')
   }
 
   /**
@@ -152,14 +361,100 @@ export class PrivyAuthManager {
   }
 
   /**
-   * Gets the Privy access token for API calls
-   * 
-   * @returns The access token or null if not authenticated
-   * 
+   * Gets the Privy identity token for API calls
+   *
+   * @deprecated Identity tokens are now stored in HttpOnly cookies and are not accessible from JavaScript.
+   * Use the CSRF token for state-changing requests instead via getCsrfToken().
+   * Authentication is automatically handled via cookies in fetch requests with credentials: 'include'.
+   *
+   * @returns Always returns null (tokens are in HttpOnly cookies)
+   *
    * @public
    */
   getToken(): string | null {
-    return this.state.privyToken
+    return null // Tokens are in HttpOnly cookies, not accessible from JS
+  }
+
+  /**
+   * Gets the CSRF token for state-changing requests
+   *
+   * Include this token in the X-CSRF-Token header when making POST/PUT/DELETE requests.
+   *
+   * @returns The CSRF token or null if not authenticated
+   *
+   * @public
+   */
+  getCsrfToken(): string | null {
+    return this.state.csrfToken
+  }
+
+  /**
+   * Ensures a CSRF token exists by fetching from server if missing
+   *
+   * Called automatically during restoration if CSRF token is not in localStorage.
+   * Fetches a new CSRF token from the server using the HttpOnly cookie for auth.
+   * Prevents race conditions by ensuring only one fetch happens at a time.
+   *
+   * @returns Promise that resolves when CSRF token is fetched and updated
+   *
+   * @public
+   */
+  async ensureCsrfToken(): Promise<void> {
+    // If we already have a CSRF token, no need to fetch
+    if (this.state.csrfToken) {
+      return
+    }
+
+    // If a fetch is already in progress, return the existing promise
+    if (this.csrfTokenPromise) {
+      return this.csrfTokenPromise
+    }
+
+    // Check authentication before starting fetch
+    if (!this.state.privyUserId) {
+      throw new Error('Cannot fetch CSRF token: user not authenticated')
+    }
+
+    // Create a self-contained async IIFE that handles the fetch
+    this.csrfTokenPromise = (async () => {
+      try {
+        const response = await fetch(`${this.getServerUrl()}/api/auth/csrf`, {
+          method: 'GET',
+          credentials: 'include', // Include cookies for authentication
+        })
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch CSRF token: ${response.status}`)
+        }
+
+        // Validate response using helper
+        const csrfData = this.validateAuthResponse(await response.json())
+
+        // Re-check authentication after fetch completes (to detect logout during fetch)
+        if (!this.state.privyUserId) {
+          throw new Error('User logged out during CSRF token fetch')
+        }
+
+        // Update state with fetched CSRF token
+        this.updateState({
+          csrfToken: csrfData.csrfToken,
+        })
+
+        // Store in localStorage for next session
+        localStorage.setItem('csrf_token', csrfData.csrfToken)
+
+        console.log('[PrivyAuthManager] CSRF token fetched and updated')
+      } catch (error) {
+        console.error('[PrivyAuthManager] Failed to fetch CSRF token:', error)
+        // Don't clear auth state - the error is logged and can be retried
+        throw error
+      } finally {
+        // Clear the promise so future calls can retry
+        this.csrfTokenPromise = null
+      }
+    })()
+
+    return this.csrfTokenPromise
   }
 
   /**
@@ -235,29 +530,73 @@ export class PrivyAuthManager {
 
   /**
    * Restores authentication from localStorage
-   * 
+   *
    * Attempts to restore auth state from localStorage on page load.
    * This allows the user to stay logged in across page refreshes.
-   * 
-   * @returns Object with restored token and userId (or null if not found)
-   * 
+   *
+   * NOTE: Auth tokens are now in HttpOnly cookies (not localStorage).
+   * This method only restores user metadata (userId, fid, csrfToken).
+   * Actual authentication is validated server-side via cookies.
+   *
+   * @returns Promise that resolves with object containing restored userId and csrfToken (token is always null)
+   *
    * @public
    */
-  restoreFromStorage(): { token: string | null; userId: string | null } {
-    const token = localStorage.getItem('privy_auth_token')
+  async restoreFromStorage(): Promise<{ token: string | null; userId: string | null; csrfToken: string | null }> {
     const userId = localStorage.getItem('privy_user_id')
     const fid = localStorage.getItem('farcaster_fid')
+    const csrfToken = localStorage.getItem('csrf_token')
 
-    if (token && userId) {
-      this.updateState({
-        isAuthenticated: true,
-        privyUserId: userId,
-        privyToken: token,
-        farcasterFid: fid,
-      })
+    // Remove legacy token storage if it exists
+    const legacyToken = localStorage.getItem('privy_auth_token')
+    if (legacyToken) {
+      localStorage.removeItem('privy_auth_token')
+      console.warn('[PrivyAuthManager] Removed legacy token from localStorage - tokens are now in HttpOnly cookies')
     }
 
-    return { token, userId }
+    // Restore authentication if userId exists, even without CSRF token
+    if (userId) {
+      this.updateState({
+        isAuthenticated: true, // Tentative - will be verified server-side
+        privyUserId: userId,
+        privyToken: null, // Tokens are in HttpOnly cookies
+        farcasterFid: fid,
+        csrfToken: csrfToken || null, // May be null if cookie not yet returned
+      })
+
+      // If CSRF token is missing, try to fetch it with exponential backoff
+      if (!csrfToken) {
+        console.log('[PrivyAuthManager] Restoring without CSRF token - will fetch')
+
+        // Exponential backoff retry logic (3 attempts with delays)
+        const maxAttempts = 3
+        const baseDelay = 1000 // 1 second
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            await this.ensureCsrfToken()
+            break // Success - exit retry loop
+          } catch (error) {
+            console.warn(`[PrivyAuthManager] Failed to fetch CSRF token (attempt ${attempt}/${maxAttempts}):`, error)
+
+            if (attempt === maxAttempts) {
+              // Final failure - clear auth state
+              console.error('[PrivyAuthManager] All CSRF token fetch attempts failed - clearing auth state')
+              await this.clearAuth()
+              // Don't throw - just return with cleared state
+              return { token: null, userId: null, csrfToken: null }
+            } else {
+              // Wait before retry with exponential backoff
+              const delay = baseDelay * Math.pow(2, attempt - 1)
+              console.log(`[PrivyAuthManager] Retrying in ${delay}ms...`)
+              await new Promise(resolve => setTimeout(resolve, delay))
+            }
+          }
+        }
+      }
+    }
+
+    return { token: null, userId, csrfToken }
   }
 }
 

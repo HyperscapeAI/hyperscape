@@ -20,14 +20,39 @@
  * - `ignore`: Ignore specific messages or users
  *
  * **Providers** (context for agent decision-making):
- * - `world`: Current world state, entities, and environment info
+ * Core providers (always available):
+ * - `world-context`: Agent position and nearby entities (compact, optimized)
  * - `emote`: Available emotes and gestures
  * - `actions`: Available actions the agent can perform
+ * - `skills`: General skill system provider
+ *
+ * RPG providers (loaded via content packs):
  * - `character`: Agent's character state (health, inventory, etc.)
+ * - `banking`: Banking and inventory status
+ * - `woodcutting`, `fishing`, `firemaking`, `cooking`: Skill-specific providers
+ *
+ * **Evaluators** (post-conversation analysis):
+ * - `boredom`: Monitors engagement levels and detects boredom
+ * - `fact`: Extracts and stores factual information from conversations
+ * - `goal`: Tracks user goals and progress toward objectives
+ * - `skills`: Tracks skill training efficiency, XP rates, and level progression
+ * - `resources`: Monitors inventory management, banking efficiency, and resource gathering
+ * - `safety`: CRITICAL - Detects spam, harassment, and rule violations in multiplayer
  *
  * **Service**:
  * `HyperscapeService` manages the connection to Hyperscape worlds, handles
  * real-time state synchronization, and executes actions on behalf of the agent.
+ *
+ * **Content Packs**:
+ * Modular bundles that extend agent capabilities with custom actions, providers,
+ * evaluators, and game systems. The service automatically loads the Runescape RPG
+ * content pack on startup, which includes:
+ * - 6 RPG actions (chopTree, catchFish, cookFood, lightFire, bankItems, checkInventory)
+ * - 6 RPG providers (character, banking, woodcutting, fishing, firemaking, cooking)
+ * - 4 system bridges (skills, inventory, banking, resources)
+ *
+ * Additional content packs can be loaded via `service.loadContentPack(pack)`
+ * See `content-packs/content-pack.ts` for the complete Runescape RPG Pack implementation.
  *
  * **Events**:
  * Listens for world events (chat messages, entity spawns, etc.) and routes
@@ -53,6 +78,7 @@
  * - Service: Long-lived connection and state management
  * - Actions: Discrete tasks the agent can perform
  * - Providers: Context injection for agent prompts
+ * - Evaluators: Post-conversation analysis and memory building
  * - Events: React to world events
  *
  * **Referenced by**: ElizaOS agent configurations, character definitions
@@ -80,18 +106,26 @@ import { ignoreAction } from "./actions/ignore";
 // import { cookFoodAction } from "./actions/cookFood";
 // import { checkInventoryAction } from "./actions/checkInventory";
 // import { bankItemsAction } from "./actions/bankItems";
-import { hyperscapeProvider } from "./providers/world";
+import { worldContextProvider } from "./providers/world-context";
 import { hyperscapeEmoteProvider } from "./providers/emote";
 import { hyperscapeActionsProvider } from "./providers/actions";
-import { characterProvider } from "./providers/character";
-import { bankingProvider } from "./providers/banking";
 import { hyperscapeSkillProvider } from "./providers/skills";
+// Note: characterProvider, bankingProvider, and skill-specific providers
+// are loaded via the Runescape RPG content pack (see content-packs/content-pack.ts)
 // Dynamic skill providers are loaded when RPG systems detect specific skills are available
 // import { woodcuttingSkillProvider } from "./providers/skills/woodcutting";
 // import { fishingSkillProvider } from "./providers/skills/fishing";
 // import { cookingSkillProvider } from "./providers/skills/cooking";
 // import { firemakingSkillProvider } from "./providers/skills/firemaking";
 import { hyperscapeEvents } from "./events";
+import {
+  boredomEvaluator,
+  factEvaluator,
+  goalEvaluator,
+  skillProgressionEvaluator,
+  safetyEvaluator,
+  resourceManagementEvaluator,
+} from "./evaluators";
 
 import { NETWORK_CONFIG } from "./config/constants";
 
@@ -143,15 +177,30 @@ export const hyperscapePlugin: Plugin = {
     // RPG actions are loaded dynamically when RPG systems are available
   ],
   providers: [
-    // Standard providers - always loaded
-    hyperscapeProvider,
-    hyperscapeEmoteProvider,
-    hyperscapeActionsProvider,
-    characterProvider,
-    hyperscapeSkillProvider,
-    bankingProvider,
-    // Dynamic skill providers are loaded when their systems are detected
-    // (woodcuttingSkillProvider, fishingSkillProvider, etc.)
+    // Core providers - always loaded with plugin
+    worldContextProvider,         // Compact world context (position + nearby entities)
+    hyperscapeEmoteProvider,      // Available emotes and gestures
+    hyperscapeActionsProvider,    // Available actions the agent can perform
+    hyperscapeSkillProvider,      // General skill system provider
+
+    // RPG-specific providers are loaded via content packs:
+    // - characterProvider (from Runescape RPG Pack)
+    // - bankingProvider (from Runescape RPG Pack)
+    // - woodcuttingSkillProvider (from Runescape RPG Pack)
+    // - fishingSkillProvider (from Runescape RPG Pack)
+    // - firemakingSkillProvider (from Runescape RPG Pack)
+    // - cookingSkillProvider (from Runescape RPG Pack)
+  ],
+  evaluators: [
+    // Post-conversation analysis and memory building
+    boredomEvaluator,
+    factEvaluator,
+    goalEvaluator,
+    // Gameplay analytics
+    skillProgressionEvaluator,
+    resourceManagementEvaluator,
+    // Safety and compliance (critical for multiplayer)
+    safetyEvaluator,
   ],
   routes: [],
 };

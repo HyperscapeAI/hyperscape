@@ -1,0 +1,675 @@
+---
+description: ElizaOS provider system architecture and three-tiered provider pattern
+alwaysApply: false
+---
+
+# ElizaOS Provider System - Three-Tiered Architecture
+
+## Overview
+
+ElizaOS uses a **three-tiered provider system** to inject contextual information into agent decision-making. Providers are the mechanism by which agents understand their environment, state, and available capabilities.
+
+### Provider Tiers
+
+1. **Standard Providers** - Always loaded, core context (`dynamic: false`)
+2. **Dynamic Providers** - Loaded on-demand, contextual information (`dynamic: true`)
+3. **Private Providers** - Loaded via content packs/runtime, world-specific features
+
+## Provider Interface
+
+Every provider follows this structure:
+
+```typescript
+interface Provider {
+  name: string;              // Uppercase identifier (e.g., "WORLD_STATE")
+  description: string;       // What information this provides
+  dynamic?: boolean;         // false = standard, true = dynamic
+  position?: number;         // Loading order (lower = earlier)
+  get: (runtime, message, state?) => Promise<ProviderResult>;
+}
+
+interface ProviderResult {
+  text: string;      // Formatted markdown for LLM context
+  values: object;    // Template variables for substitution
+  data: object;      // Raw data for programmatic access
+}
+```
+
+## Tier 1: Standard Providers
+
+### Characteristics
+
+- Set `dynamic: false` or omit the property
+- Registered in plugin's `providers[]` array
+- Loaded immediately when plugin initializes
+- Always available regardless of context
+- Lightweight, minimal token usage
+
+### When to Use Standard Providers
+
+Use standard providers for:
+- Agent personality and character (CHARACTER)
+- Core capabilities list (ACTIONS)
+- Static reference data (EMOTE_LIST)
+- Overview information always needed (SKILLS_OVERVIEW)
+
+### Standard Provider Example
+
+```typescript
+export const hyperscapeSkillProvider: Provider = {
+  name: 'SKILLS_OVERVIEW',
+  description: 'Overview of all character skills and levels',
+  dynamic: false, // Standard provider - always available
+  position: 1,    // After world state, before contextual skills
+  
+  get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
+    const service = runtime.getService<HyperscapeService>(
+      HyperscapeService.serviceName
+    );
+    
+    // Lightweight query - just skill levels
+    const skills = playerData?.skills || {};
+    const skillsList = Object.entries(skills)
+      .map(([name, data]) => `- ${name}: Level ${data.level}`)
+      .join('\n');
+    
+    return {
+      text: `# Skills Overview\n${skillsList}`,
+      values: { 
+        total_level: totalLevel,
+        skill_count: skillCount 
+      },
+      data: { skills }
+    };
+  },
+};
+```
+
+### Standard Provider Registration
+
+```typescript
+export const hyperscapePlugin: Plugin = {
+  // ...
+  providers: [
+    // Standard providers - always loaded
+    characterProvider,        // Agent personality
+    hyperscapeEmoteProvider,  // Available animations
+    hyperscapeActionsProvider,// Available actions
+    hyperscapeSkillProvider,  // Skills overview
+  ],
+};
+```
+
+## Tier 2: Dynamic Providers
+
+### Characteristics
+
+- Set `dynamic: true` explicitly
+- Registered in plugin's `providers[]` array
+- Only invoked when context requires them
+- Reduces token usage for expensive queries
+- Typically use `position: 2`
+
+### When to Use Dynamic Providers
+
+Use dynamic providers for:
+- Real-time world state (entity positions, nearby objects)
+- Context-specific information (nearby trees for woodcutting)
+- Expensive queries (world entity scans)
+- Information that changes frequently
+
+### Dynamic Provider Example
+
+```typescript
+export const woodcuttingSkillProvider: Provider = {
+  name: 'WOODCUTTING_INFO',
+  description: 'Woodcutting skill level, nearby trees, axe availability',
+  dynamic: true, // Only loaded when explicitly requested
+  position: 2,   // Contextual skills after world state
+  
+  get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
+    const service = runtime.getService<HyperscapeService>(
+      HyperscapeService.serviceName
+    );
+    
+    // Check for connection first
+    if (!service || !service.isConnected()) {
+      return {
+        text: '# Woodcutting Skill\nStatus: Not connected to world',
+        values: { woodcutting_available: false },
+        data: {},
+      };
+    }
+    
+    // Expensive query - scan all resources for nearby trees
+    const resourceSystem = world?.systems?.['resource'];
+    const nearbyTrees = resourceSystem?.getAllResources()
+      .filter(r => r.type?.startsWith('tree_'))
+      .filter(r => distance(r.position, player.position) <= 15);
+    
+    const treeList = nearbyTrees
+      .map(tree => `- ${tree.type} (${distance}m away)`)
+      .join('\n');
+    
+    return {
+      text: `# Woodcutting Skill\n## Nearby Trees\n${treeList}`,
+      values: { 
+        woodcutting_level: level,
+        nearby_trees_count: nearbyTrees.length 
+      },
+      data: { nearbyTrees }
+    };
+  },
+};
+```
+
+### Dynamic Provider Registration
+
+```typescript
+export const hyperscapePlugin: Plugin = {
+  // ...
+  providers: [
+    // Dynamic providers - loaded on-demand
+    hyperscapeProvider,        // HYPERSCAPE_WORLD_STATE
+    bankingProvider,           // BANKING_INFO
+    // Note: Skill-specific providers loaded separately
+  ],
+};
+```
+
+### Dynamic Provider Invocation
+
+Actions can request specific providers by name:
+
+```typescript
+// In chopTree action - request woodcutting context
+const state = await runtime.composeState(message, [
+  'HYPERSCAPE_WORLD_STATE',  // World entities
+  'WOODCUTTING_INFO',        // Trees, axe, skill level
+  'ACTIONS'                  // Available actions
+]);
+```
+
+## Tier 3: Private Providers
+
+### Characteristics
+
+- NOT registered in plugin manifest
+- Loaded via `runtime.registerProvider()` during gameplay
+- Used for world-specific, game-specific features
+- Can be loaded/unloaded dynamically
+- Enables extensibility without modifying plugin
+
+### When to Use Private Providers
+
+Use private providers for:
+- Game mode-specific features (RPG skills when RPG system detected)
+- Content pack providers (custom UGC content)
+- World-specific context (only available in certain worlds)
+- Features that may not always be active
+
+### Private Provider Example
+
+```typescript
+// Loaded dynamically in HyperscapeService.loadRPGExtensions()
+if (this.world.getSystem?.('skills')) {
+  console.info('[HyperscapeService] Skills system detected - loading skill actions');
+  
+  // Dynamically import private providers
+  const { woodcuttingSkillProvider } = await import(
+    './providers/skills/woodcutting'
+  );
+  const { fishingSkillProvider } = await import(
+    './providers/skills/fishing'
+  );
+  
+  // Register with runtime - now they're available
+  await this.runtime.registerProvider(woodcuttingSkillProvider);
+  await this.runtime.registerProvider(fishingSkillProvider);
+  
+  console.info('[HyperscapeService] Loaded 2 private skill providers');
+}
+```
+
+### Private Provider via Content Packs
+
+```typescript
+// Content pack defines providers
+export const rpgContentPack: IContentPack = {
+  id: 'rpg-skills',
+  name: 'RPG Skills System',
+  version: '1.0.0',
+  
+  providers: [
+    // These are private - not in plugin manifest
+    questLogProvider,
+    achievementsProvider,
+    combatStatsProvider,
+  ],
+  
+  onLoad: async (runtime, world) => {
+    console.log('RPG providers loaded!');
+  },
+};
+
+// ContentPackLoader registers them
+async loadPack(pack: IContentPack, runtime?: IAgentRuntime): Promise<void> {
+  // Register providers from content pack
+  if (pack.providers) {
+    pack.providers.forEach((provider) => {
+      targetRuntime.registerProvider(provider);
+    });
+  }
+}
+```
+
+## Provider Properties
+
+### Position Property
+
+Controls invocation order during state composition. Lower numbers execute first.
+
+**Standard Pattern:**
+- `position: 0` - Core world state (dynamic)
+- `position: 1` - Overview providers (standard)
+- `position: 2` - Contextual/skill providers (dynamic)
+- `position: 3` - Actions list (standard)
+- `undefined` - Default ordering (after numbered positions)
+
+**Example:**
+
+```typescript
+// World state loads first
+export const hyperscapeProvider: Provider = {
+  name: "HYPERSCAPE_WORLD_STATE",
+  dynamic: true,
+  position: 0, // First!
+  // ...
+};
+
+// Skills overview loads second
+export const hyperscapeSkillProvider: Provider = {
+  name: 'SKILLS_OVERVIEW',
+  dynamic: false,
+  position: 1, // After world state
+  // ...
+};
+
+// Contextual skills load third
+export const woodcuttingSkillProvider: Provider = {
+  name: 'WOODCUTTING_INFO',
+  dynamic: true,
+  position: 2, // After overview
+  // ...
+};
+```
+
+### Dynamic Property
+
+```typescript
+// Standard provider - always loaded
+{
+  dynamic: false, // or omit entirely
+}
+
+// Dynamic provider - loaded on-demand
+{
+  dynamic: true,
+}
+```
+
+## Integration Flow
+
+### State Composition Pipeline
+
+```
+User Message
+  ↓
+NativeMessageHandler.handle()
+  ↓
+runtime.composeState(message, ['PROVIDER_1', 'PROVIDER_2'])
+  ↓
+For each provider (ordered by position):
+  1. runtime.getProvider(name)
+  2. provider.get(runtime, message, state)
+  3. Provider queries service.getWorld()
+  4. Provider returns { text, values, data }
+  ↓
+All provider outputs concatenated into unified state
+  ↓
+State passed to LLM for action selection
+  ↓
+Action executed with full context
+```
+
+### Accessing World State in Providers
+
+```typescript
+export const myProvider: Provider = {
+  name: 'MY_PROVIDER',
+  description: 'Example provider',
+  
+  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+    // 1. Get the service
+    const service = runtime.getService<HyperscapeService>(
+      HyperscapeService.serviceName
+    );
+    
+    // 2. Check connection
+    if (!service || !service.isConnected()) {
+      return {
+        text: 'Not connected to world',
+        values: { available: false },
+        data: {},
+      };
+    }
+    
+    // 3. Access world state
+    const world = service.getWorld();
+    const player = world?.entities?.player;
+    const playerData = player?.data as PlayerData;
+    
+    // 4. Query game systems
+    const systems = world?.systems;
+    const inventorySystem = systems?.['inventory'];
+    
+    // 5. Format for LLM
+    const text = `# My Context\n- Player: ${player?.name}\n`;
+    
+    return {
+      text,
+      values: { player_name: player?.name },
+      data: { player, systems }
+    };
+  },
+};
+```
+
+## Best Practices
+
+### 1. Choose the Right Tier
+
+```typescript
+// ❌ BAD - Standard provider doing expensive query
+export const badProvider: Provider = {
+  name: 'ALL_ENTITIES',
+  dynamic: false, // Always loaded!
+  get: async () => {
+    // Scans entire world every message - wasteful!
+    const allEntities = world.entities.items;
+    // 10,000 lines of entity data...
+    return { text: hugeEntityList }; // Kills token budget
+  }
+};
+
+// ✅ GOOD - Dynamic provider for expensive queries
+export const goodProvider: Provider = {
+  name: 'NEARBY_ENTITIES',
+  dynamic: true, // Only when needed
+  get: async () => {
+    // Only entities within 15m
+    const nearby = getNearbyEntities(player.position, 15);
+    return { text: conciseEntityList }; // Minimal tokens
+  }
+};
+```
+
+### 2. Format Text for LLM Clarity
+
+```typescript
+// ✅ GOOD - Clear markdown structure
+return {
+  text: `# Woodcutting Skill
+
+## Current Status
+- Level: ${level}
+- XP: ${xp}
+- Has Axe: ${hasAxe ? 'Yes' : 'No'}
+
+## Nearby Trees (${nearbyTrees.length})
+${treeList}
+
+## Tips
+- Walk near trees and use CHOP_TREE action
+- Higher level trees give more XP`,
+  values: { level, xp, has_axe: hasAxe },
+  data: { nearbyTrees }
+};
+```
+
+### 3. Handle Service Unavailability
+
+```typescript
+// ✅ GOOD - Graceful degradation
+get: async (runtime: IAgentRuntime) => {
+  const service = runtime.getService<HyperscapeService>(
+    HyperscapeService.serviceName
+  );
+  
+  // Check service exists and is connected
+  if (!service || !service.isConnected()) {
+    return {
+      text: '# My Provider\nStatus: Not connected to world',
+      values: { available: false },
+      data: {},
+    };
+  }
+  
+  // Safe to proceed
+  const world = service.getWorld();
+  // ...
+}
+```
+
+### 4. Use Strong Typing
+
+```typescript
+// ✅ GOOD - Type-safe provider
+import type { ResourceSystem, ResourceItem } from '../types/resource-types';
+
+get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
+  const systems = world?.systems as Record<string, unknown> | undefined;
+  const resourceSystem = systems?.['resource'] as ResourceSystem | undefined;
+  
+  const allResources: ResourceItem[] = resourceSystem?.getAllResources 
+    ? resourceSystem.getAllResources() 
+    : [];
+  
+  const nearbyTrees: ResourceItem[] = allResources.filter((resource: ResourceItem) => {
+    return resource.type?.startsWith('tree_') && isNearby(resource);
+  });
+  
+  // Type-safe all the way
+  return {
+    text: formatTrees(nearbyTrees),
+    values: { count: nearbyTrees.length },
+    data: { nearbyTrees }
+  };
+}
+```
+
+### 5. Optimize Token Usage
+
+```typescript
+// ❌ BAD - Includes everything
+return {
+  text: `All 500 entities:\n${allEntities.map(e => JSON.stringify(e))}`,
+  // 50,000 tokens!
+};
+
+// ✅ GOOD - Concise, relevant
+return {
+  text: `Nearby entities (${nearby.length}):\n${nearby.slice(0, 10).map(e => 
+    `- ${e.name} (${distance}m)`
+  ).join('\n')}${nearby.length > 10 ? `\n...and ${nearby.length - 10} more` : ''}`,
+  // ~500 tokens
+};
+```
+
+### 6. Position Providers Correctly
+
+```typescript
+// ✅ GOOD - Logical ordering
+const worldProvider: Provider = {
+  name: 'WORLD_STATE',
+  position: 0, // Foundation - loads first
+  dynamic: true,
+  get: async () => ({ text: 'World entities...' })
+};
+
+const skillsOverview: Provider = {
+  name: 'SKILLS_OVERVIEW',
+  position: 1, // Overview - after world state
+  dynamic: false,
+  get: async () => ({ text: 'All skills...' })
+};
+
+const woodcuttingDetails: Provider = {
+  name: 'WOODCUTTING_INFO',
+  position: 2, // Details - after overview
+  dynamic: true,
+  get: async () => ({ text: 'Nearby trees...' })
+};
+```
+
+## Common Patterns
+
+### Pattern 1: Conditional Private Provider Loading
+
+```typescript
+// In HyperscapeService
+private async loadRPGExtensions(): Promise<void> {
+  // Detect game systems
+  if (this.world.getSystem?.('skills')) {
+    // Dynamically import and register
+    const { woodcuttingSkillProvider } = await import(
+      './providers/skills/woodcutting'
+    );
+    await this.runtime.registerProvider(woodcuttingSkillProvider);
+  }
+  
+  if (this.world.getSystem?.('inventory')) {
+    const { inventoryProvider } = await import('./providers/inventory');
+    await this.runtime.registerProvider(inventoryProvider);
+  }
+}
+```
+
+### Pattern 2: Action-Specific Provider Request
+
+```typescript
+// Action requests specific providers
+export const chopTreeAction = {
+  name: 'CHOP_TREE',
+  
+  handler: async (runtime, message, state) => {
+    // Request woodcutting-specific context
+    const enrichedState = await runtime.composeState(message, [
+      'HYPERSCAPE_WORLD_STATE',  // World info
+      'WOODCUTTING_INFO',        // Trees, axe, skill
+      'ACTIONS'                  // Available actions
+    ]);
+    
+    // Now we have all woodcutting context
+    const trees = enrichedState.data.nearbyTrees;
+    // ...
+  }
+};
+```
+
+### Pattern 3: Content Pack Provider Bundle
+
+```typescript
+// Define content pack with providers
+export const questSystemPack: IContentPack = {
+  id: 'quest-system',
+  name: 'Quest System',
+  version: '1.0.0',
+  
+  providers: [
+    questLogProvider,      // Active quests
+    questGiversProvider,   // Nearby NPCs with quests
+    rewardsProvider,       // Quest completion rewards
+  ],
+  
+  actions: [
+    acceptQuestAction,
+    completeQuestAction,
+    abandonQuestAction,
+  ],
+};
+
+// Load the pack - all providers auto-register
+await contentPackLoader.loadPack(questSystemPack, runtime);
+```
+
+## Testing Providers
+
+### Manual Testing
+
+```typescript
+// Test provider in isolation
+const runtime = createTestRuntime();
+const message = createTestMessage();
+const state = createTestState();
+
+const result = await myProvider.get(runtime, message, state);
+
+console.assert(result.text.length > 0, 'Provider should return text');
+console.assert(result.values, 'Provider should return values');
+console.assert(result.data, 'Provider should return data');
+```
+
+### Integration Testing
+
+```typescript
+// Test provider in state composition
+const state = await runtime.composeState(message, [
+  'MY_PROVIDER'
+]);
+
+console.assert(state.text.includes('My Provider'), 'State should include provider text');
+```
+
+## Summary
+
+### Three-Tier System
+
+| Tier | Dynamic | Registration | Use Case | Examples |
+|------|---------|--------------|----------|----------|
+| **Standard** | `false` | Plugin manifest | Always-needed core context | CHARACTER, EMOTE_LIST, SKILLS_OVERVIEW |
+| **Dynamic** | `true` | Plugin manifest | On-demand expensive queries | WORLD_STATE, WOODCUTTING_INFO, BANKING_INFO |
+| **Private** | N/A | Runtime registration | World-specific features | Quest providers, game mode providers |
+
+### Key Principles
+
+1. ✅ Use **standard** for lightweight, always-needed context
+2. ✅ Use **dynamic** for expensive, context-specific queries
+3. ✅ Use **private** for extensible, world-specific features
+4. ✅ Set `position` to control loading order
+5. ✅ Format `text` with markdown for LLM clarity
+6. ✅ Keep token usage minimal
+7. ✅ Handle service unavailability gracefully
+8. ✅ Use strong typing - no `any` types
+9. ✅ Cache expensive computations in `data` field
+10. ✅ Test providers in isolation and integration
+
+### Provider Lifecycle
+
+```
+Plugin Init → Standard providers registered
+    ↓
+Message Received → composeState() called
+    ↓
+Providers invoked (ordered by position)
+    ↓
+Dynamic providers only if requested
+    ↓
+Private providers if registered
+    ↓
+All outputs concatenated → State
+    ↓
+State → LLM → Action Selection
+```
+
+This three-tiered system enables flexible, extensible agent context management while optimizing LLM token usage and maintaining clean separation of concerns.

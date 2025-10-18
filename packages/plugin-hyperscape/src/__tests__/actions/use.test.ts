@@ -7,8 +7,9 @@
 
 import { describe, it, expect } from "vitest";
 import { useAction } from "../../actions/use";
-import { createMockRuntime, toUUID } from "../test-utils";
 import type { Memory, State, Content } from "@elizaos/core";
+import { createMockRuntime } from "../setup";
+import { toUUID } from "../../types/test-mocks";
 
 describe("USE Action", () => {
   describe("validate", () => {
@@ -194,7 +195,7 @@ describe("USE Action", () => {
 
     it("should include examples with USE action", () => {
       const hasUseAction = useAction.examples!.some((example) =>
-        example.some((msg) => msg.content.actions?.includes("USE")),
+        example.some((msg) => msg.content.actions?.includes("HYPERSCAPE_USE_ITEM")),
       );
       expect(hasUseAction).toBe(true);
     });
@@ -210,7 +211,7 @@ describe("USE Action", () => {
     it("should include common use-related terms", () => {
       const similes = useAction.similes!;
       const hasRelevantTerms = similes.some((term) =>
-        ["EQUIP", "WIELD", "ACTIVATE", "CONSUME", "APPLY"].includes(term),
+        ["EQUIP_ITEM", "WIELD_ITEM", "ACTIVATE_ITEM", "USE_ITEM", "INTERACT_WITH_ITEM"].includes(term),
       );
       expect(hasRelevantTerms).toBe(true);
     });

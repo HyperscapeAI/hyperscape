@@ -22,7 +22,8 @@ coverage/
 *.log
 test-*.json
 test-*.png
-
+.eliza/
+ 
 # Environment
 .env
 .env.local
@@ -54,3 +55,6 @@ tmp/
 
 # Assets (generated/temporary)
 assets/
+
+.cursor/rules/kluster-code-verify.mdc
+.kluster

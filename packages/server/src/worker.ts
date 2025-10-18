@@ -50,6 +50,8 @@
  * **Referenced by**: wrangler.toml (Cloudflare deployment config)
  */
 
+// Cloudflare Containers types (optional package, used in Cloudflare deployments)
+// @ts-expect-error - Optional dependency, may not be installed in all environments
 import { Container, getRandom } from '@cloudflare/containers'
 
 // ============================================================================
@@ -107,6 +109,26 @@ type KVNamespace = {
 type ExecutionContext = {
   waitUntil(promise: Promise<unknown>): void
   passThroughOnException(): void
+}
+
+/**
+ * Cloudflare Request with cf property
+ *
+ * Extends the standard Request type with Cloudflare-specific metadata.
+ * The `cf` property contains information about the request's origin datacenter,
+ * country, and other edge-specific data.
+ *
+ * @see https://developers.cloudflare.com/workers/runtime-apis/request/#incomingrequestcfproperties
+ */
+type CloudflareRequest = Request & {
+  cf?: {
+    /** Cloudflare datacenter (colo) processing this request */
+    colo?: string
+    /** Country code (ISO 3166-1 alpha-2) */
+    country?: string
+    /** Request's IP address */
+    ip?: string
+  }
 }
 
 /**
@@ -176,11 +198,13 @@ export default {
     
     // ===== HEALTH CHECK (Edge level) =====
     if (url.pathname === '/health') {
+      // Cast to CloudflareRequest to access cf property
+      const cfRequest = request as CloudflareRequest
       return Response.json({
         status: 'healthy',
         layer: 'cloudflare-edge',
         timestamp: new Date().toISOString(),
-        region: request.cf?.colo || 'unknown'
+        region: cfRequest.cf?.colo || 'unknown'
       })
     }
     

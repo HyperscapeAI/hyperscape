@@ -9,6 +9,7 @@ import {
   type State,
   logger,
   composePromptFromState,
+  ModelType,
 } from '@elizaos/core'
 
 /**
@@ -111,7 +112,7 @@ export const continueAction: Action = {
       template: continueTemplate,
     })
 
-    const response = await runtime.useModel('object_large', {
+    const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
       prompt,
     })
 
@@ -141,7 +142,7 @@ export const continueAction: Action = {
       },
     }
   },
-  examples: [
+  examples: ([
     [
       {
         name: '{{user}}',
@@ -227,5 +228,5 @@ export const continueAction: Action = {
         },
       },
     ],
-  ] as ActionExample[][],
-}
+  ] as ActionExample[][]),
+} as Action

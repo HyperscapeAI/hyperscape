@@ -1,11 +1,12 @@
-import type {
-  Action,
-  ActionExample,
-  ActionResult,
-  IAgentRuntime,
-  Memory,
-  HandlerCallback,
-  State,
+import {
+  type Action,
+  type ActionExample,
+  type ActionResult,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  logger,
 } from "@elizaos/core";
 import type { ActionHandlerOptions } from "../types/core-types";
 
@@ -48,11 +49,16 @@ export const ignoreAction: Action = {
     callback: HandlerCallback,
     responses?: Memory[],
   ): Promise<ActionResult> => {
+    logger.info("[IGNORE] Executing IGNORE action - ending conversation");
+
     // If a callback and the agent's response content are available, call the callback
     if (callback && responses?.[0]?.content) {
+      logger.info("[IGNORE] Passing response content to callback");
       // Pass the agent's original response content (thought, IGNORE action, etc.)
       await callback(responses[0].content);
     }
+
+    logger.info("[IGNORE] Conversation ignored successfully");
 
     return {
       text: "",
@@ -63,7 +69,7 @@ export const ignoreAction: Action = {
   },
   examples: [
     [
-      { name: "{{user}}", content: { text: "Go screw yourself" } },
+      { name: "{{user}}", content: { text: "Go screw yourself" } } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -71,10 +77,10 @@ export const ignoreAction: Action = {
           actions: ["IGNORE"],
           thought: "User is being rude",
         },
-      },
+      } as ActionExample,
     ],
     [
-      { name: "{{user}}", content: { text: "Shut up, bot" } },
+      { name: "{{user}}", content: { text: "Shut up, bot" } } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -82,32 +88,32 @@ export const ignoreAction: Action = {
           actions: ["IGNORE"],
           thought: "User is being rude",
         },
-      },
+      } as ActionExample,
     ],
 
     [
       {
         name: "{{user}}",
         content: { text: "Got any investment advice" },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
-          text: "Uh, don’t let the volatility sway your long-term strategy",
+          text: "Uh, don't let the volatility sway your long-term strategy",
         },
-      },
+      } as ActionExample,
       {
         name: "{{user}}",
         content: { text: "Wise words I think" },
-      },
+      } as ActionExample,
       {
         name: "{{user}}",
         content: { text: "I gotta run, talk to you later" },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: { text: "See ya" },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -116,22 +122,22 @@ export const ignoreAction: Action = {
           text: "",
           actions: ["IGNORE"],
         },
-      },
+      } as ActionExample,
     ],
 
     [
       {
         name: "{{user}}",
         content: { text: "Gotta go" },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: { text: "Okay, talk to you later" },
-      },
+      } as ActionExample,
       {
         name: "{{user}}",
         content: { text: "Cya" },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -140,18 +146,18 @@ export const ignoreAction: Action = {
           text: "",
           actions: ["IGNORE"],
         },
-      },
+      } as ActionExample,
     ],
 
     [
       {
         name: "{{user}}",
         content: { text: "bye" },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: { text: "cya" },
-      },
+      } as ActionExample,
       {
         name: "{{user}}",
         content: {
@@ -160,7 +166,7 @@ export const ignoreAction: Action = {
           text: "",
           actions: ["IGNORE"],
         },
-      },
+      } as ActionExample,
     ],
     [
       {
@@ -168,19 +174,19 @@ export const ignoreAction: Action = {
         content: {
           text: "Who added this stupid bot to the chat",
         },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: { text: "Sorry, am I being annoying" },
-      },
+      } as ActionExample,
       {
         name: "{{user}}",
         content: { text: "Yeah" },
-      },
+      } as ActionExample,
       {
         name: "{{user}}",
         content: { text: "PLEASE shut up" },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -189,7 +195,7 @@ export const ignoreAction: Action = {
           text: "",
           actions: ["IGNORE"],
         },
-      },
+      } as ActionExample,
     ],
     [
       {
@@ -197,7 +203,7 @@ export const ignoreAction: Action = {
         content: {
           text: "ur so dumb",
         },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -206,7 +212,7 @@ export const ignoreAction: Action = {
           text: "",
           actions: ["IGNORE"],
         },
-      },
+      } as ActionExample,
     ],
     [
       {
@@ -214,19 +220,19 @@ export const ignoreAction: Action = {
         content: {
           text: "later nerd",
         },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
           text: "bye",
         },
-      },
+      } as ActionExample,
       {
         name: "{{user}}",
         content: {
           text: "",
         },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -235,7 +241,7 @@ export const ignoreAction: Action = {
           text: "",
           actions: ["IGNORE"],
         },
-      },
+      } as ActionExample,
     ],
     [
       {
@@ -243,7 +249,7 @@ export const ignoreAction: Action = {
         content: {
           text: "wanna cyber",
         },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -252,7 +258,7 @@ export const ignoreAction: Action = {
           text: "thats inappropriate",
           actions: ["IGNORE"],
         },
-      },
+      } as ActionExample,
     ],
     [
       {
@@ -260,13 +266,13 @@ export const ignoreAction: Action = {
         content: {
           text: "Im out ttyl",
         },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
           text: "cya",
         },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -274,7 +280,7 @@ export const ignoreAction: Action = {
           text: "",
           actions: ["IGNORE"],
         },
-      },
+      } as ActionExample,
     ],
     [
       {
@@ -282,19 +288,19 @@ export const ignoreAction: Action = {
         content: {
           text: "u there",
         },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
           text: "yes how can I help",
         },
-      },
+      } as ActionExample,
       {
         name: "{{user}}",
         content: {
           text: "k nvm figured it out",
         },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -303,7 +309,7 @@ export const ignoreAction: Action = {
           text: "",
           actions: ["IGNORE"],
         },
-      },
+      } as ActionExample,
     ],
     [
       {
@@ -311,14 +317,14 @@ export const ignoreAction: Action = {
         content: {
           text: "bad word",
         },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
           text: "",
           actions: ["IGNORE"],
         },
-      },
+      } as ActionExample,
     ],
-  ] as ActionExample[][],
-} as Action;
+  ],
+};

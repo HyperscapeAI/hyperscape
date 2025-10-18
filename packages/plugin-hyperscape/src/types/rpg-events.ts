@@ -2,6 +2,7 @@
  * RPG-specific event data types for skills, banking, cooking, etc.
  */
 
+import type { IAgentRuntime } from '@elizaos/core'
 import type { BaseEventData } from './event-types'
 
 /**
@@ -82,6 +83,60 @@ export interface SkillEventData extends BaseEventData {
 }
 
 /**
+ * Safety violation event data
+ */
+export interface SafetyViolationData extends BaseEventData {
+  roomId: string
+  violations: Array<{
+    type: string
+    severity: string
+    description: string
+  }>
+  severity: string
+  scores: {
+    messageSpam: number
+    actionSpam: number
+    contentSafety: number
+    harassment: number
+    griefing: number
+  }
+  recommendations: string
+}
+
+/**
+ * Engagement update event data
+ */
+export interface EngagementUpdateData extends BaseEventData {
+  roomId: string
+  entityId: string
+  level: string
+  score: number
+  recommendation: string
+  concerns: string
+}
+
+/**
+ * Resource inefficiency event data
+ */
+export interface ResourceInefficiencyData extends BaseEventData {
+  roomId: string
+  issue: string
+  severity: string
+  inventoryUsage: number
+  recommendations: string
+}
+
+/**
+ * Skill level up event data
+ */
+export interface SkillLevelUpData extends BaseEventData {
+  roomId: string
+  skill: string
+  newLevel: number
+  xpPerHour: number
+}
+
+/**
  * RPG event data union type
  */
 export type RPGEventData =
@@ -91,3 +146,7 @@ export type RPGEventData =
   | FiremakingCompleteData
   | CookingCompleteData
   | SkillEventData
+  | SafetyViolationData
+  | EngagementUpdateData
+  | ResourceInefficiencyData
+  | SkillLevelUpData

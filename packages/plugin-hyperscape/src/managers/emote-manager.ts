@@ -1,4 +1,4 @@
-import type { IAgentRuntime } from "@elizaos/core";
+import { elizaLogger, type IAgentRuntime } from "@elizaos/core";
 import { Player, ClientNetwork } from "@hyperscape/shared";
 import { promises as fsPromises } from "fs";
 import path from "path";
@@ -6,22 +6,20 @@ import { NETWORK_CONFIG } from "../config/constants";
 import { EMOTES_LIST } from "../constants";
 import { HyperscapeService } from "../service";
 import { getModuleDirectory, hashFileBuffer } from "../utils";
-// Unused imports removed per linter
-const _playerEmotes: Record<string, unknown> = {};
-const _emoteMap: Record<string, string> = {};
 
-const logger = {
-  info: console.info,
-  error: console.error,
-  warn: console.warn,
-  debug: console.debug,
-};
-
+/**
+ * EmoteManager - Manages agent emotes and animations
+ *
+ * Handles uploading, queueing, and playing emotes for agents in Hyperscape worlds.
+ * Emotes are automatically cancelled if the agent starts moving.
+ */
 export class EmoteManager {
   private emoteHashMap: Map<string, string>;
   private currentEmoteTimeout: NodeJS.Timeout | null;
   private movementCheckInterval: NodeJS.Timeout | null = null;
   private runtime: IAgentRuntime;
+  private emoteQueue: string[] = [];
+  private isPlayingEmote: boolean = false;
 
   constructor(runtime: IAgentRuntime) {
     this.runtime = runtime;
@@ -56,8 +54,14 @@ export class EmoteManager {
         },
       );
 
-      const service = this.getService()!;
-      const world = service.getWorld()!;
+      const service = this.getService();
+      if (!service) {
+        throw new Error("[EmoteManager] Service not available during emote upload");
+      }
+      const world = service.getWorld();
+      if (!world) {
+        throw new Error("[EmoteManager] World not available during emote upload");
+      }
       const network = world.network as ClientNetwork;
 
       const emoteUploadPromise = network.upload(emoteFile);
@@ -75,9 +79,41 @@ export class EmoteManager {
     }
   }
 
-  async playEmote(emoteName: string): Promise<void> {
-    const service = this.getService()!;
-    const world = service.getWorld()!;
+  /**
+   * Queue an emote for playback
+   * If no emote is currently playing, plays immediately
+   * Otherwise adds to queue for sequential playback
+   */
+  async queueEmote(emoteName: string): Promise<void> {
+    // Validate emote exists
+    const emoteExists = EMOTES_LIST.some(e => e.name === emoteName);
+    if (!emoteExists) {
+      elizaLogger.warn(`[EmoteManager] Emote '${emoteName}' not found in EMOTES_LIST`);
+      return;
+    }
+
+    if (!this.isPlayingEmote) {
+      await this.playEmote(emoteName);
+    } else {
+      this.emoteQueue.push(emoteName);
+      elizaLogger.info(`[EmoteManager] Queued emote '${emoteName}' (queue size: ${this.emoteQueue.length})`);
+    }
+  }
+
+  /**
+   * Play an emote immediately
+   * Private method - use queueEmote() for public API
+   * Throws errors instead of returning early to ensure proper error handling
+   */
+  private async playEmote(emoteName: string): Promise<void> {
+    const service = this.getService();
+    if (!service) {
+      throw new Error("[EmoteManager] Service not available for emote playback");
+    }
+    const world = service.getWorld();
+    if (!world) {
+      throw new Error("[EmoteManager] World not available for emote playback");
+    }
 
     const agentPlayer = world.entities.player as Player;
 
@@ -92,9 +128,10 @@ export class EmoteManager {
       playerData.effect = { emote: emoteName };
     }
 
-    console.info(`[Emote] Playing '${emoteName}'`);
+    elizaLogger.info(`[EmoteManager] Playing emote '${emoteName}'`);
 
     this.clearTimers();
+    this.isPlayingEmote = true;
 
     // Get duration from EMOTES_LIST
     const emoteMeta = EMOTES_LIST.find((e) => e.name === emoteName)!;
@@ -104,10 +141,11 @@ export class EmoteManager {
       // Check if player is moving (only PlayerLocal/PlayerRemote have moving property)
       const playerWithMovement = agentPlayer as Player & { moving?: boolean };
       if (playerWithMovement.moving) {
-        logger.info(
-          `[EmoteManager] '${emoteName}' cancelled early due to movement`,
+        elizaLogger.info(
+          `[EmoteManager] Emote '${emoteName}' cancelled early due to movement`,
         );
         this.clearEmote(agentPlayer);
+        this.processNextEmote();
       }
     }, 100);
 
@@ -118,12 +156,43 @@ export class EmoteManager {
         data.effect &&
         (data.effect as { emote?: string }).emote === emoteName
       ) {
-        logger.info(
-          `[EmoteManager] '${emoteName}' finished after ${duration}s`,
+        elizaLogger.info(
+          `[EmoteManager] Emote '${emoteName}' finished after ${duration}s`,
         );
         this.clearEmote(agentPlayer);
+        this.processNextEmote();
       }
     }, duration * 1000);
+  }
+
+  /**
+   * Process next emote in queue
+   * Wrapped in try/catch/finally to ensure proper cleanup on errors
+   */
+  private async processNextEmote(): Promise<void> {
+    const nextEmote = this.emoteQueue.shift();
+    if (nextEmote) {
+      elizaLogger.debug(`[EmoteManager] Playing next queued emote: ${nextEmote}`);
+      try {
+        await this.playEmote(nextEmote);
+      } catch (error) {
+        elizaLogger.error(`[EmoteManager] Error playing queued emote '${nextEmote}':`, error);
+        // Clear any partial state and continue to next emote
+        this.clearTimers();
+        this.isPlayingEmote = false;
+      } finally {
+        // Only set to false when queue is truly empty (terminal cleanup)
+        if (this.emoteQueue.length === 0) {
+          this.isPlayingEmote = false;
+        }
+      }
+      // Recursion happens AFTER finally block completes
+      if (this.emoteQueue.length > 0) {
+        await this.processNextEmote();
+      }
+    } else {
+      this.isPlayingEmote = false;
+    }
   }
 
   private clearEmote(player: Player) {

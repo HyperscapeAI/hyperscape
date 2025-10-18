@@ -3,6 +3,7 @@ import {
   type Memory,
   type Provider,
   type State,
+  logger,
 } from '@elizaos/core'
 import { HyperscapeService } from '../../service'
 
@@ -12,6 +13,8 @@ export const cookingSkillProvider: Provider = {
   dynamic: true, // Only loaded when explicitly requested by cooking actions
   position: 2, // Contextual skills come after world state, before actions
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
+    logger.debug('[COOKING] Checking cooking context')
+
     const service = runtime.getService<HyperscapeService>(HyperscapeService.serviceName)
 
     if (!service || !service.isConnected()) {
@@ -90,6 +93,8 @@ ${nearbyFires.length > 0 ? fireList : 'No fires nearby'}
 - Cooked food heals more than raw food
 - Higher level cooking reduces burn chance
 - Fish from fishing or meat from combat`
+
+    logger.debug(`[COOKING] Level ${cookingLevel}, ${nearbyFires.length} nearby fires, ${rawFood.length} raw food items`)
 
     return {
       text,

@@ -1,12 +1,13 @@
 import {
-  Content,
-  IAgentRuntime,
-  Memory,
-  State,
-  HandlerCallback,
-  Action,
-  ActionResult,
-  ActionExample,
+  type Action,
+  type ActionResult,
+  type ActionExample,
+  type Content,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  logger,
   ModelType,
 } from "@elizaos/core";
 import { HyperscapeService } from "../service";
@@ -19,6 +20,8 @@ export async function ambient(
   _options: ActionHandlerOptions,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
+  logger.debug('[AMBIENT] Starting ambient observation action');
+
   // Lazy evaluation via callback for immediate response
   if (callback) {
     const quickResult: ActionResult = {
@@ -97,19 +100,21 @@ export async function ambient(
   };
 
   // For ambient actions, use the full model for more thoughtful responses
+  logger.debug('[AMBIENT] Generating AI response for ambient observation');
   const response = await runtime.useModel(
     ModelType.LARGE, // Uses high-temp for creativity
     `You are observing your surroundings in a 3D virtual world.
       Current context: ${ambientText}
       Available actions: ${availableActions.join(", ")}
-      
+
       Respond with a brief, natural observation or thought about what you notice.
       Keep it conversational and in-character.
-      
+
       User input: ${thought || "What do you see?"}`,
   );
 
   actionResult.text = response as string;
+  logger.debug('[AMBIENT] Generated ambient response successfully');
 
   // Store the observation in memory for continuity
   await runtime.createMemory(
@@ -162,14 +167,14 @@ export const ambientAction: Action = {
         content: {
           text: "What do you see around you?",
         },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
           text: "I notice several players nearby and various objects scattered around. The area feels quite active.",
           actions: ["HYPERSCAPE_AMBIENT_SPEECH"],
         },
-      },
+      } as ActionExample,
     ],
     [
       {
@@ -177,19 +182,38 @@ export const ambientAction: Action = {
         content: {
           text: "Observe your surroundings",
         },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
           text: "I see alice and bob nearby. There are 3 objects around me including what appears to be a crafting station.",
           actions: ["HYPERSCAPE_AMBIENT_SPEECH"],
         },
-      },
+      } as ActionExample,
+    ],
+    [
+      {
+        name: "{{user}}",
+        content: {
+          text: "Tell me what's happening here",
+        },
+      } as ActionExample,
+      {
+        name: "{{agent}}",
+        content: {
+          text: "The area seems quiet at the moment. I don't notice much activity nearby.",
+          actions: ["HYPERSCAPE_AMBIENT_SPEECH"],
+        },
+      } as ActionExample,
     ],
   ],
   handler: ambient,
   validate: async (runtime: IAgentRuntime) => {
     const service = runtime.getService<HyperscapeService>("hyperscape");
-    return service?.isConnected() || false;
+    const isValid = service?.isConnected() || false;
+    if (!isValid) {
+      logger.warn('[AMBIENT] Validation failed: Hyperscape service not connected');
+    }
+    return isValid;
   },
 };

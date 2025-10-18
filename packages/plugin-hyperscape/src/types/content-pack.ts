@@ -17,11 +17,16 @@ export interface IContentPack {
 
   systems?: IGameSystem[];
 
-  // Visual configuration
-  visuals?: IVisualConfig;
-
   // State management
   stateManager?: IStateManager;
+
+  // Loading behavior
+  /**
+   * If true, allows this content pack to replace existing actions/providers with the same name.
+   * When false (default), loading will fail if any duplicate names are detected.
+   * Use with caution - overriding existing actions may break dependent functionality.
+   */
+  forceOverride?: boolean;
 
   // Lifecycle hooks
   onLoad?: (runtime: IAgentRuntime, world: World) => Promise<void>;
@@ -44,36 +49,6 @@ export interface IGameSystem {
 
   // System cleanup
   cleanup(): void;
-}
-
-/**
- * Visual configuration for content packs
- */
-export interface IVisualConfig {
-  // Entity color mappings for visual detection
-  entityColors: Record<
-    string,
-    {
-      color: number;
-      hex: string;
-      tolerance?: number;
-    }
-  >;
-
-  // UI theme overrides
-  uiTheme?: {
-    primaryColor?: string;
-    secondaryColor?: string;
-    fonts?: Record<string, string>;
-  };
-
-  // Asset manifests
-  assets?: {
-    models?: string[];
-    textures?: string[];
-    sounds?: string[];
-    animations?: string[];
-  };
 }
 
 /**
@@ -100,21 +75,4 @@ export interface IStateManager {
   // Serialize/deserialize for persistence
   serialize(playerId: string): string;
   deserialize(playerId: string, data: string): void;
-}
-
-/**
- * Content pack loader interface
- */
-export interface IContentPackLoader {
-  // Load a content pack
-  loadPack(pack: IContentPack, runtime: IAgentRuntime): Promise<void>;
-
-  // Unload a content pack
-  unloadPack(packId: string): Promise<void>;
-
-  // Get loaded packs
-  getLoadedPacks(): IContentPack[];
-
-  // Check if pack is loaded
-  isPackLoaded(packId: string): boolean;
 }

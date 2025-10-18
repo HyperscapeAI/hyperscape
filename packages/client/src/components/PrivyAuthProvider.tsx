@@ -15,27 +15,33 @@ interface PrivyAuthProviderProps {
  * Inner component that handles Privy hooks
  */
 function PrivyAuthHandler({ children }: { children: React.ReactNode }) {
-  const { ready, authenticated, user, getAccessToken, logout } = usePrivy()
+  const { ready, authenticated, user, logout, getIdentityToken } = usePrivy()
 
   useEffect(() => {
     const updateAuth = async () => {
       if (ready && authenticated && user) {
-        // Get Privy access token (returns string | null)
-        const token = await getAccessToken()
+        // Get Privy identity token (preferred over access token for 2025 security)
+        const identityToken = await getIdentityToken()
         // Only proceed if we have a valid token
-        if (!token) {
-          console.warn('[PrivyAuthProvider] getAccessToken returned null')
+        if (!identityToken) {
+          console.warn('[PrivyAuthProvider] getIdentityToken returned null')
           return
         }
-        privyAuthManager.setAuthenticatedUser(user, token)
+
+        try {
+          // Exchange identity token for HttpOnly cookie
+          await privyAuthManager.setAuthenticatedUser(user, identityToken)
+        } catch (error) {
+          console.error('[PrivyAuthProvider] Failed to authenticate:', error)
+        }
       } else if (ready && !authenticated) {
         // User is not authenticated
-        privyAuthManager.clearAuth()
+        await privyAuthManager.clearAuth()
       }
     }
 
     updateAuth()
-  }, [ready, authenticated, user, getAccessToken])
+  }, [ready, authenticated, user, getIdentityToken])
 
   // Handle logout
   useEffect(() => {

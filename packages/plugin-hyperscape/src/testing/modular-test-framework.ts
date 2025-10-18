@@ -1,6 +1,5 @@
 import { IAgentRuntime, logger } from "@elizaos/core";
 import { HyperscapeService } from "../service";
-import { ContentPackLoader } from "../managers/content-pack-loader";
 import { IContentPack } from "../types/content-pack";
 import {
   VisualTestFramework,
@@ -15,7 +14,6 @@ import {
 export class ModularTestFramework {
   private runtime: IAgentRuntime;
   private service: HyperscapeService;
-  private contentLoader: ContentPackLoader;
   private visualTest: VisualTestFramework;
 
   constructor(runtime: IAgentRuntime) {
@@ -23,7 +21,6 @@ export class ModularTestFramework {
     this.service = runtime.getService<HyperscapeService>(
       HyperscapeService.serviceName,
     )!;
-    this.contentLoader = new ContentPackLoader(runtime);
     this.visualTest = new VisualTestFramework(runtime);
   }
 
@@ -56,8 +53,8 @@ export class ModularTestFramework {
       },
     };
 
-    // Load the content pack
-    await this.contentLoader.loadPack(pack);
+    // Load the content pack using HyperscapeService
+    await this.service.loadContentPack(pack);
     logger.info(`[ModularTestFramework] Loaded pack: ${pack.id}`);
 
     // Run each test suite
@@ -77,7 +74,7 @@ export class ModularTestFramework {
     }
 
     // Unload the pack after testing
-    await this.contentLoader.unloadPack(pack.id);
+    await this.service.unloadContentPack(pack.id);
 
     // Generate report
     this.generateTestReport(result);

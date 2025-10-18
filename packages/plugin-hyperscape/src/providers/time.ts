@@ -17,6 +17,8 @@ export const timeProvider: Provider = {
   name: 'TIME',
   description:
     'Provides current time and date information in various formats for temporal context and time-aware responses.',
+  dynamic: false,
+  position: 6,
 
   get: async (_runtime: IAgentRuntime, _message: Memory, _state: State) => {
     logger.debug('[TIME_PROVIDER] Generating time context')

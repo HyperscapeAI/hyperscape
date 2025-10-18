@@ -49,6 +49,63 @@ import { PrivyClient } from "@privy-io/server-auth";
 let privyClient: PrivyClient | null = null;
 
 /**
+ * Categorize error types for better debugging
+ *
+ * Discriminates between network errors, HTTP status errors,
+ * validation errors, and expired token errors.
+ */
+function categorizeError(error: unknown): { type: string; message: string } {
+  if (!error) {
+    return { type: 'unknown', message: 'No error information available' };
+  }
+
+  const errorMessage = error instanceof Error ? error.message : String(error);
+
+  // Check for network errors (connection failures, timeouts, DNS)
+  if (errorMessage.includes('ECONNREFUSED') ||
+      errorMessage.includes('ETIMEDOUT') ||
+      errorMessage.includes('ENOTFOUND') ||
+      errorMessage.includes('network') ||
+      errorMessage.includes('fetch failed')) {
+    return { type: 'network', message: errorMessage };
+  }
+
+  // Check for HTTP status errors (401, 403, 404, 500, etc.)
+  if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
+    return { type: 'http_401_unauthorized', message: errorMessage };
+  }
+  if (errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
+    return { type: 'http_403_forbidden', message: errorMessage };
+  }
+  if (errorMessage.includes('404') || errorMessage.includes('Not Found')) {
+    return { type: 'http_404_not_found', message: errorMessage };
+  }
+  if (errorMessage.includes('500') || errorMessage.includes('Internal Server Error')) {
+    return { type: 'http_500_server_error', message: errorMessage };
+  }
+  if (errorMessage.match(/\b[45]\d{2}\b/)) {
+    return { type: 'http_error', message: errorMessage };
+  }
+
+  // Check for validation errors (invalid token format, missing fields)
+  if (errorMessage.includes('invalid') ||
+      errorMessage.includes('malformed') ||
+      errorMessage.includes('validation')) {
+    return { type: 'validation', message: errorMessage };
+  }
+
+  // Check for expired token errors
+  if (errorMessage.includes('expired') ||
+      errorMessage.includes('exp') ||
+      errorMessage.includes('TTL')) {
+    return { type: 'expired', message: errorMessage };
+  }
+
+  // Unknown error type
+  return { type: 'unknown', message: errorMessage };
+}
+
+/**
  * Get or create the Privy client instance
  *
  * Initializes the Privy SDK client with credentials from environment variables.
@@ -95,19 +152,20 @@ export interface PrivyUserInfo {
 }
 
 /**
- * Verify a Privy access token and extract user information
+ * Verify a Privy token (access or identity token) and extract user information
  *
  * This function:
- * 1. Verifies the token signature with Privy's servers
- * 2. Fetches full user profile from Privy API
- * 3. Extracts relevant identity fields (Farcaster, wallet, email)
+ * 1. Attempts to verify as identity token first (preferred for 2025)
+ * 2. Falls back to access token verification for backward compatibility
+ * 3. Fetches full user profile from Privy API
+ * 4. Extracts relevant identity fields (Farcaster, wallet, email)
  *
  * Returns null if:
  * - Privy is not configured (missing credentials)
  * - Token is invalid or expired
  * - User does not exist
  *
- * @param token - Privy access token from client
+ * @param token - Privy identity token or access token from client
  * @returns User information or null if verification fails
  */
 export async function verifyPrivyToken(
@@ -119,12 +177,54 @@ export async function verifyPrivyToken(
     return null;
   }
 
-  const verifiedClaims = await client.verifyAuthToken(token);
+  let verifiedClaims: { userId: string } | null = null;
+
+  // Try identity token verification first (preferred method for 2025)
+  try {
+    // Get user info directly from Privy API using the token
+    const userInfo = await client.users().get({ id_token: token });
+
+    if (userInfo && userInfo.id) {
+      verifiedClaims = { userId: userInfo.id };
+      console.log('[PrivyAuth] Verified identity token for user:', userInfo.id);
+    }
+  } catch (identityTokenErr) {
+    // Discriminate error types for identity token failure
+    const identityErrorType = categorizeError(identityTokenErr);
+    console.warn(`[PrivyAuth] Identity token verification failed (${identityErrorType.type}): ${identityErrorType.message}`);
+
+    try {
+      // Attempt to verify as access token instead
+      const accessTokenClaims = await client.verifyAuthToken(token);
+
+      if (accessTokenClaims && accessTokenClaims.userId) {
+        verifiedClaims = { userId: accessTokenClaims.userId };
+        console.log('[PrivyAuth] Verified access token for user:', accessTokenClaims.userId);
+      }
+    } catch (accessTokenErr) {
+      // Discriminate error types for access token failure
+      const accessErrorType = categorizeError(accessTokenErr);
+
+      // Both methods failed - log comprehensive error information
+      console.error('[PrivyAuth] Both identity token and access token verification failed:', {
+        identityToken: {
+          type: identityErrorType.type,
+          message: identityErrorType.message,
+        },
+        accessToken: {
+          type: accessErrorType.type,
+          message: accessErrorType.message,
+        },
+      });
+      return null;
+    }
+  }
 
   if (!verifiedClaims || !verifiedClaims.userId) {
     return null;
   }
 
+  // Fetch full user profile
   const user = await client.getUserById(verifiedClaims.userId);
 
   if (!user) {

@@ -1,24 +1,23 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { addHeader, ChannelType } from "@elizaos/core";
+import { addHeader, ChannelType, logger } from "@elizaos/core";
 
 /**
- * Character provider object.
- * @typedef {Object} Provider
- * @property {string} name - The name of the provider ("CHARACTER").
- * @property {string} description - Description of the character information.
- * @property {Function} get - Async function to get character information.
- */
-/**
- * Provides character information.
- * @param {IAgentRuntime} runtime - The agent runtime.
- * @param {Memory} message - The message memory.
- * @param {State} state - The state of the character.
- * @returns {Object} Object containing values, data, and text sections.
+ * Character Provider
+ *
+ * Provides agent character information including bio, personality, topics,
+ * and conversation examples to establish the agent's identity and voice.
+ *
+ * **Position**: -2 (loads first, establishes agent identity)
+ * **Dynamic Loading**: false (always available)
  */
 export const characterProvider: Provider = {
   name: "CHARACTER",
   description: "Character information",
+  dynamic: false,
+  position: -2,
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+    logger.debug('[CHARACTER] Loading character context')
+
     const character = runtime.character;
 
     // Character name
@@ -199,6 +198,8 @@ export const characterProvider: Provider = {
     const text = [bio, topicSentence, topics, directions, examples, system]
       .filter(Boolean)
       .join("\n\n");
+
+    logger.debug(`[CHARACTER] Character context length: ${text.length} chars`)
 
     return {
       values,

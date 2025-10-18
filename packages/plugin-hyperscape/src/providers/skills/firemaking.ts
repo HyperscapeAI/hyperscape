@@ -3,6 +3,7 @@ import {
   type Memory,
   type Provider,
   type State,
+  logger,
 } from '@elizaos/core'
 import { HyperscapeService } from '../../service'
 
@@ -12,6 +13,8 @@ export const firemakingSkillProvider: Provider = {
   dynamic: true, // Only loaded when explicitly requested by firemaking actions
   position: 2, // Contextual skills come after world state, before actions
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
+    logger.debug('[FIREMAKING] Checking firemaking context')
+
     const service = runtime.getService<HyperscapeService>(HyperscapeService.serviceName)
 
     if (!service || !service.isConnected()) {
@@ -93,6 +96,8 @@ ${nearbyFires.length > 0 ? fireList : 'No fires nearby'}
 - Fires are needed for cooking
 - Higher level logs give more XP
 - Chop trees to get logs`
+
+    logger.debug(`[FIREMAKING] Level ${firemakingLevel}, has tinderbox: ${hasTinderbox}, ${logCount} logs`)
 
     return {
       text,

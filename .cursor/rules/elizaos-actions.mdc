@@ -1,0 +1,371 @@
+---
+description: ElizaOS Action Development Patterns and Requirements
+alwaysApply: false
+---
+
+# ElizaOS Action Development Guide
+
+## Critical Requirements
+
+### 1. ⚠️ MANDATORY: ActionResult Returns
+
+**Every action handler MUST return an `ActionResult` object at EVERY exit point.**
+
+This is the #1 cause of broken actions. Missing returns cause:
+- Silent failures
+- Broken action chaining
+- Unable to determine success/failure
+- Difficult debugging
+
+```typescript
+import { type ActionResult } from "@elizaos/core";
+
+// ❌ WRONG - No return statements
+handler: async (runtime, message, state, options, callback) => {
+  try {
+    if (error) {
+      callback({ text: "Error" });
+      return; // ❌ Returns undefined!
+    }
+    
+    // do work
+    callback({ text: "Done" });
+    // ❌ Implicitly returns undefined!
+    
+  } catch (error) {
+    callback({ text: "Failed" });
+    // ❌ No return in catch block!
+  }
+}
+
+// ✅ CORRECT - Returns at every exit
+handler: async (runtime, message, state, options, callback) => {
+  try {
+    if (error) {
+      callback({ text: "Error" });
+      return {
+        text: "Error occurred",
+        success: false,
+        values: { error: "validation_failed" },
+        data: { source: "hyperscape", action: "MY_ACTION" }
+      };
+    }
+    
+    // do work
+    callback({ text: "Done" });
+    
+    return {
+      text: "Action completed successfully",
+      success: true,
+      values: { completed: true },
+      data: { source: "hyperscape", action: "MY_ACTION" }
+    };
+    
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    callback({ text: `Failed: ${errorMsg}` });
+    
+    return {
+      text: `Failed: ${errorMsg}`,
+      success: false,
+      values: { error: errorMsg },
+      data: { source: "hyperscape", action: "MY_ACTION" }
+    };
+  }
+}
+```
+
+### 2. ActionResult Structure
+
+```typescript
+interface ActionResult {
+  text: string;        // Human-readable result message
+  success: boolean;    // Whether the action succeeded (true/false)
+  values: object;      // Structured data for templates/variables
+  data: object;        // Raw/additional data for processing
+}
+```
+
+**Fields explained:**
+- `text`: User-facing message, shown in UI
+- `success`: REQUIRED - true for success, false for failures
+- `values`: Key-value pairs that can be used in templates or by other actions
+- `data`: Any additional metadata (source, action name, debug info)
+
+### 3. Common Patterns
+
+#### Pattern: Early Return on Validation Failure
+```typescript
+handler: async (runtime, message, state, options, callback) => {
+  const service = runtime.getService<HyperscapeService>("hyperscape");
+  
+  if (!service || !service.isConnected()) {
+    if (callback) {
+      callback({ text: "Not connected to world", type: "error" });
+    }
+    return {
+      text: "Not connected to world",
+      success: false,
+      values: { connected: false },
+      data: { action: "MY_ACTION", error: "not_connected" }
+    };
+  }
+  
+  // Continue with action...
+}
+```
+
+#### Pattern: Success with Data
+```typescript
+return {
+  text: `Successfully completed task for ${userId}`,
+  success: true,
+  values: { 
+    completed: true,
+    userId,
+    itemsProcessed: 5
+  },
+  data: {
+    source: "hyperscape",
+    action: "MY_ACTION",
+    timestamp: Date.now(),
+    details: { ... }
+  }
+};
+```
+
+#### Pattern: Error Handling
+```typescript
+try {
+  // ... action logic ...
+  
+  return {
+    text: "Success message",
+    success: true,
+    values: { ... },
+    data: { ... }
+  };
+  
+} catch (error) {
+  const errorMsg = error instanceof Error ? error.message : String(error);
+  console.error("[MY_ACTION] Error:", error);
+  
+  if (callback) {
+    callback({ text: `Failed: ${errorMsg}`, type: "error" });
+  }
+  
+  return {
+    text: `Failed: ${errorMsg}`,
+    success: false,
+    values: { error: errorMsg },
+    data: { action: "MY_ACTION", stack: error instanceof Error ? error.stack : undefined }
+  };
+}
+```
+
+## Action Handler Checklist
+
+Before submitting an action, verify:
+
+- [ ] `ActionResult` import added from `@elizaos/core`
+- [ ] **ALL code paths return ActionResult**
+- [ ] Success case returns with `success: true`
+- [ ] Error cases return with `success: false`
+- [ ] Early returns have ActionResult
+- [ ] Try-catch blocks return ActionResult in catch
+- [ ] Callback calls are paired with returns (callback is optional, return is not)
+- [ ] `text` field is user-friendly
+- [ ] `values` contains useful structured data
+- [ ] `data` includes action name and source
+
+## Debugging Missing Returns
+
+If your action isn't working:
+
+1. **Check return statements**: Search for bare `return;` or missing returns
+2. **Verify all paths**: if blocks, early returns, catch blocks
+3. **Compare to working actions**: `reply.ts`, `lightFire.ts`, `continue.ts`
+4. **Look for implicit returns**: Function ends without return statement
+
+```bash
+# Find actions with potential issues
+grep -n "return;" packages/plugin-hyperscape/src/actions/*.ts
+grep -A 5 "} catch" packages/plugin-hyperscape/src/actions/*.ts | grep -v "return {"
+```
+
+## Reference Implementations
+
+### Minimal Action Template
+```typescript
+import {
+  type Action,
+  type ActionResult,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  type HandlerCallback,
+} from "@elizaos/core";
+
+export const myAction: Action = {
+  name: "MY_ACTION",
+  similes: ["DO_THING", "PERFORM_TASK"],
+  description: "Does something useful",
+  
+  validate: async (runtime: IAgentRuntime, message: Memory) => {
+    // Check if action is possible
+    return true;
+  },
+  
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    options?: Record<string, string | number | boolean>,
+    callback?: HandlerCallback,
+  ): Promise<ActionResult> => {
+    try {
+      // Early validation
+      if (someCondition) {
+        return {
+          text: "Cannot perform action",
+          success: false,
+          values: { reason: "condition_not_met" },
+          data: { action: "MY_ACTION" }
+        };
+      }
+      
+      // Perform action
+      // ...
+      
+      // Success
+      return {
+        text: "Action completed successfully",
+        success: true,
+        values: { completed: true },
+        data: { action: "MY_ACTION" }
+      };
+      
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      return {
+        text: `Action failed: ${errorMsg}`,
+        success: false,
+        values: { error: errorMsg },
+        data: { action: "MY_ACTION" }
+      };
+    }
+  },
+  
+  examples: [
+    [
+      { name: "{{user}}", content: { text: "Do the thing" } },
+      { name: "{{agentName}}", content: { text: "Doing the thing..." } },
+    ],
+  ],
+};
+```
+
+### Examples in Codebase
+
+**packages/plugin-hyperscape/src/actions/**
+
+- ✅ `reply.ts` - Basic action with response generation
+- ✅ `lightFire.ts` - Complex action with event listening
+- ✅ `continue.ts` - Follow-up message generation
+- ✅ `ignore.ts` - Minimal action handler
+- ✅ `linkAgent.ts` - Authentication flow with multiple exit points (FIXED)
+
+**Before/After: linkAgent.ts Fix**
+
+This action was broken because it had 5 exit points without returns:
+1. Invalid challenge code (line 74)
+2. Token exchange failed (line 116)
+3. Service not found (line 148)
+4. Success case (after line 180)
+5. Catch block error (after line 190)
+
+All were fixed by adding proper ActionResult returns.
+
+## Common Mistakes
+
+### Mistake 1: Callback Without Return
+```typescript
+// ❌ WRONG
+if (error) {
+  callback({ text: "Error" });
+  return; // Just returns undefined
+}
+
+// ✅ CORRECT
+if (error) {
+  callback({ text: "Error" });
+  return { text: "Error", success: false, values: {}, data: {} };
+}
+```
+
+### Mistake 2: Missing Success Field
+```typescript
+// ❌ WRONG - No success field
+return {
+  text: "Done",
+  values: {},
+  data: {}
+};
+
+// ✅ CORRECT
+return {
+  text: "Done",
+  success: true,  // ✅ Required!
+  values: {},
+  data: {}
+};
+```
+
+### Mistake 3: No Return in Catch
+```typescript
+// ❌ WRONG
+try {
+  // ...
+  return { text: "OK", success: true, values: {}, data: {} };
+} catch (error) {
+  console.error(error);
+  // ❌ Missing return!
+}
+
+// ✅ CORRECT
+try {
+  // ...
+  return { text: "OK", success: true, values: {}, data: {} };
+} catch (error) {
+  console.error(error);
+  return { text: "Error", success: false, values: {}, data: {} };
+}
+```
+
+## TypeScript Enforcement
+
+Add explicit return type to handler:
+
+```typescript
+handler: async (
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
+  options?: Record<string, string | number | boolean>,
+  callback?: HandlerCallback,
+): Promise<ActionResult> => {  // ✅ Explicit return type
+  // TypeScript will now error if you don't return ActionResult
+}
+```
+
+## Summary
+
+**Golden Rule: Every action handler path must return an ActionResult object.**
+
+- Callbacks are optional (for UI feedback)
+- Returns are mandatory (for ElizaOS system)
+- Check all code paths: success, errors, early exits, catch blocks
+- Use reference implementations as templates
+- Add explicit `Promise<ActionResult>` return type to catch mistakes
+
+When in doubt, look at `packages/plugin-hyperscape/src/actions/reply.ts` or `lightFire.ts`.

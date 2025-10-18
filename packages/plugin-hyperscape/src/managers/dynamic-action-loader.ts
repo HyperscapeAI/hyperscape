@@ -5,6 +5,7 @@ import {
   type IAgentRuntime,
   type Memory,
   type State,
+  ModelType,
   logger,
 } from "@elizaos/core";
 import type {
@@ -13,6 +14,113 @@ import type {
 } from "../types/core-types";
 import { HyperscapeService } from "../service";
 import { World, Entity } from "../types/core-types";
+import { DYNAMIC_ACTION_CONFIG } from "../config/manager-config";
+
+/**
+ * Retry helper with exponential backoff for LLM calls
+ * Retries failed LLM calls with increasing delays between attempts
+ */
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxAttempts: number = DYNAMIC_ACTION_CONFIG.MAX_RETRY_ATTEMPTS,
+  baseDelay: number = DYNAMIC_ACTION_CONFIG.RETRY_DELAY_MS,
+): Promise<T> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error as Error;
+
+      if (attempt === maxAttempts) {
+        // Last attempt failed, throw the error
+        break;
+      }
+
+      // Calculate exponential backoff delay
+      const delay = baseDelay * Math.pow(2, attempt - 1);
+      logger.warn(
+        `[DynamicActionLoader] Attempt ${attempt}/${maxAttempts} failed: ${lastError.message}. Retrying in ${delay}ms...`
+      );
+
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  // All attempts failed - rethrow the last error
+  throw lastError!;
+}
+
+/**
+ * Timeout wrapper for promises
+ * Rejects if promise doesn't resolve within specified timeout
+ */
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  errorMessage: string = 'Operation timed out'
+): Promise<T> {
+  let timeoutId: NodeJS.Timeout;
+
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(errorMessage)), timeoutMs);
+  });
+
+  return Promise.race([
+    promise.finally(() => clearTimeout(timeoutId)),
+    timeoutPromise,
+  ]);
+}
+
+/**
+ * Robust JSON parsing that handles various response formats
+ * Extracts JSON from code blocks, text, and handles malformed responses
+ */
+function parseJSONFromResponse(response: string | unknown): Record<string, unknown> {
+  // Handle non-string responses
+  if (typeof response !== 'string') {
+    if (response && typeof response === 'object') {
+      return response as Record<string, unknown>;
+    }
+    logger.warn('[DynamicActionLoader] Response is not a string or object');
+    return {};
+  }
+
+  const text = response.trim();
+
+  // Try direct JSON parse first
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    // Direct parse failed, try extracting from various formats
+  }
+
+  // Try to extract JSON from code blocks (```json ... ```)
+  const codeBlockMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+  if (codeBlockMatch) {
+    try {
+      return JSON.parse(codeBlockMatch[1]);
+    } catch (e) {
+      logger.debug('[DynamicActionLoader] Failed to parse JSON from code block');
+    }
+  }
+
+  // Try to extract first JSON object from text
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      return JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      logger.debug('[DynamicActionLoader] Failed to parse extracted JSON object');
+    }
+  }
+
+  // All parsing attempts failed
+  logger.warn('[DynamicActionLoader] Could not parse JSON from LLM response');
+  return {};
+}
 
 /**
  * CLAUDE.md Compliance: Strong typing for dynamic action results
@@ -211,7 +319,8 @@ export class DynamicActionLoader {
   }
 
   /**
-   * Extracts parameters for an action from the message and state
+   * Extracts parameters for an action from the message and state using LLM
+   * Uses intelligent context-aware parsing instead of naive regex matching
    */
   private async extractParameters(
     descriptor: HyperscapeActionDescriptor,
@@ -221,37 +330,212 @@ export class DynamicActionLoader {
   ): Promise<Record<string, unknown>> {
     const params: Record<string, unknown> = {};
 
-    // Simple extraction from message text
-    const messageText = message.content?.text || "";
-
-    for (const param of descriptor.parameters) {
-      if (param.type === "string") {
-        // Extract quoted strings or specific patterns
-        const regex = new RegExp(`${param.name}[:\\s]+["']?([^"']+)["']?`, "i");
-        const match = messageText.match(regex);
-        if (match) {
-          params[param.name] = match[1];
-        }
-      } else if (param.type === "number") {
-        // Extract numbers
-        const regex = new RegExp(`${param.name}[:\\s]+(\\d+)`, "i");
-        const match = messageText.match(regex);
-        if (match) {
-          params[param.name] = parseInt(match[1]);
-        }
-      }
-
-      // Use default if not found and required
-      if (params[param.name] === undefined && param.default !== undefined) {
-        params[param.name] = param.default;
-      }
+    // If no parameters required, return early
+    if (!descriptor.parameters || descriptor.parameters.length === 0) {
+      return params;
     }
 
-    return params;
+    const messageText = message.content?.text || "";
+
+    // Build LLM prompt for intelligent parameter extraction
+    const paramDescriptions = descriptor.parameters
+      .map(p => `  - ${p.name} (${p.type}): ${p.description || 'No description'}${p.required ? ' [REQUIRED]' : ' [OPTIONAL]'}${p.default !== undefined ? ` [DEFAULT: ${p.default}]` : ''}`)
+      .join('\n');
+
+    const extractionPrompt = `Extract parameters for the action "${descriptor.name}" from the user's message.
+
+Action Description: ${descriptor.description}
+
+Parameters to extract:
+${paramDescriptions}
+
+User Message: "${messageText}"
+
+${state?.text ? `\nContext:\n${state.text}\n` : ''}
+
+Respond with a JSON object containing the extracted parameters. Only include parameters that you can confidently extract from the message or context. Use default values when specified and the parameter is not mentioned.
+
+Example response format:
+{
+  "paramName1": "value1",
+  "paramName2": 123
+}
+
+JSON Response:`;
+
+    try {
+      logger.debug(`[DynamicActionLoader] Extracting parameters using LLM for action: ${descriptor.name}`);
+
+      // Wrap LLM call with retry and timeout
+      const response = await retryWithBackoff(async () => {
+        return await withTimeout(
+          runtime.useModel(
+            ModelType.TEXT_LARGE,
+            {
+              prompt: extractionPrompt,
+              max_tokens: 500,
+              temperature: DYNAMIC_ACTION_CONFIG.PARAMETER_EXTRACTION_TEMPERATURE,
+              stop: [],
+            }
+          ),
+          DYNAMIC_ACTION_CONFIG.LLM_TIMEOUT_MS,
+          `LLM parameter extraction timed out after ${DYNAMIC_ACTION_CONFIG.LLM_TIMEOUT_MS}ms`
+        );
+      });
+
+      // Parse response using robust JSON parsing
+      const parsedParams = parseJSONFromResponse(response);
+
+      // Validate and assign parameters with hardened type coercion
+      for (const param of descriptor.parameters) {
+        if (param.name in parsedParams) {
+          // Type coercion based on parameter definition
+          let value = parsedParams[param.name];
+
+          if (param.type === 'number') {
+            // Harden number coercion - fail fast on invalid values
+            if (typeof value === 'string') {
+              // Strict validation: trim, match valid number format, then coerce
+              const trimmed = value.trim();
+              const validNumberRegex = /^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/;
+
+              if (!validNumberRegex.test(trimmed)) {
+                if (param.required) {
+                  throw new Error(
+                    `[DynamicActionLoader] Required parameter '${param.name}' has invalid number format: "${value}"`
+                  );
+                }
+                logger.warn(
+                  `[DynamicActionLoader] Invalid number format for parameter '${param.name}' in action ${descriptor.name}: "${value}"`
+                );
+                if (param.default !== undefined) {
+                  params[param.name] = param.default;
+                }
+                continue;
+              }
+
+              const coerced = Number(trimmed);
+              if (!Number.isFinite(coerced)) {
+                if (param.required) {
+                  throw new Error(
+                    `[DynamicActionLoader] Required parameter '${param.name}' has invalid number value: "${value}"`
+                  );
+                }
+                logger.warn(
+                  `[DynamicActionLoader] Invalid number for parameter '${param.name}' in action ${descriptor.name}: "${value}"`
+                );
+                if (param.default !== undefined) {
+                  params[param.name] = param.default;
+                }
+                continue;
+              }
+              value = coerced;
+            } else if (typeof value === 'number') {
+              if (!Number.isFinite(value)) {
+                if (param.required) {
+                  throw new Error(
+                    `[DynamicActionLoader] Required parameter '${param.name}' has invalid number value: ${value}`
+                  );
+                }
+                logger.warn(
+                  `[DynamicActionLoader] Invalid number for parameter '${param.name}' in action ${descriptor.name}: ${value}`
+                );
+                if (param.default !== undefined) {
+                  params[param.name] = param.default;
+                }
+                continue;
+              }
+            } else {
+              // Not a string or number - fail if required
+              if (param.required) {
+                throw new Error(
+                  `[DynamicActionLoader] Required parameter '${param.name}' must be a number, got: ${typeof value}`
+                );
+              }
+              logger.warn(
+                `[DynamicActionLoader] Parameter '${param.name}' expected number, got ${typeof value}`
+              );
+              if (param.default !== undefined) {
+                params[param.name] = param.default;
+              }
+              continue;
+            }
+          } else if (param.type === 'boolean') {
+            // Harden boolean coercion - fail fast on invalid values
+            if (typeof value === 'string') {
+              const normalized = value.toLowerCase().trim();
+              if (normalized !== 'true' && normalized !== 'false') {
+                if (param.required) {
+                  throw new Error(
+                    `[DynamicActionLoader] Required parameter '${param.name}' has invalid boolean value: "${value}"`
+                  );
+                }
+                logger.warn(
+                  `[DynamicActionLoader] Invalid boolean for parameter '${param.name}' in action ${descriptor.name}: "${value}"`
+                );
+                if (param.default !== undefined) {
+                  params[param.name] = param.default;
+                }
+                continue;
+              }
+              value = normalized === 'true';
+            } else if (typeof value !== 'boolean') {
+              // Not a string or boolean - fail if required
+              if (param.required) {
+                throw new Error(
+                  `[DynamicActionLoader] Required parameter '${param.name}' must be a boolean, got: ${typeof value}`
+                );
+              }
+              logger.warn(
+                `[DynamicActionLoader] Parameter '${param.name}' expected boolean, got ${typeof value}`
+              );
+              if (param.default !== undefined) {
+                params[param.name] = param.default;
+              }
+              continue;
+            }
+          }
+
+          params[param.name] = value;
+        } else if (param.default !== undefined) {
+          // Use default value
+          params[param.name] = param.default;
+        } else if (param.required) {
+          // Required parameter missing - fail fast
+          throw new Error(
+            `[DynamicActionLoader] Required parameter '${param.name}' not found for action ${descriptor.name}`
+          );
+        }
+      }
+
+      logger.debug(`[DynamicActionLoader] Extracted parameters: ${JSON.stringify(params)}`);
+      return params;
+
+    } catch (error) {
+      logger.error(`[DynamicActionLoader] Error extracting parameters with LLM:`, error);
+
+      // Check if any required parameters are missing - if so, re-throw
+      const missingRequired = descriptor.parameters.filter(p => p.required && !(p.name in params));
+      if (missingRequired.length > 0) {
+        throw new Error(
+          `[DynamicActionLoader] Failed to extract required parameters for ${descriptor.name}: ${missingRequired.map(p => p.name).join(', ')}`
+        );
+      }
+
+      // Fallback to default values for all parameters
+      for (const param of descriptor.parameters) {
+        if (param.default !== undefined && !(param.name in params)) {
+          params[param.name] = param.default;
+        }
+      }
+
+      return params;
+    }
   }
 
   /**
-   * Generates response text for an executed action
+   * Generates context-aware response text for an executed action using LLM
+   * Creates natural, character-consistent responses instead of generic templates
    */
   private async generateResponse(
     descriptor: HyperscapeActionDescriptor,
@@ -260,11 +544,106 @@ export class DynamicActionLoader {
     runtime: IAgentRuntime,
     state?: State,
   ): Promise<string> {
-    // Simple response generation
-    if (result.success) {
-      return `Successfully executed ${descriptor.name}${result.message ? ": " + result.message : ""}`;
-    } else {
-      return `Failed to execute ${descriptor.name}: ${result.error || "Unknown error"}`;
+    // Quick fallback for failures
+    if (!result.success) {
+      const errorMessage = result.error || "Unknown error";
+      logger.warn(`[DynamicActionLoader] Action ${descriptor.name} failed: ${errorMessage}`);
+
+      // Generate contextual error response
+      try {
+        const characterName = Array.isArray(runtime.character.name)
+          ? runtime.character.name[0]
+          : runtime.character.name;
+
+        const errorPrompt = `You are ${characterName}. You just tried to ${descriptor.description.toLowerCase()} but it failed with error: "${errorMessage}".
+
+Generate a brief, in-character response (1-2 sentences) explaining what went wrong. Be natural and stay in character.
+
+Response:`;
+
+        const response = await retryWithBackoff(async () => {
+          return await withTimeout(
+            runtime.useModel(
+              ModelType.TEXT_LARGE,
+              {
+                prompt: errorPrompt,
+                max_tokens: 100,
+                temperature: DYNAMIC_ACTION_CONFIG.RESPONSE_GENERATION_TEMPERATURE,
+                stop: [],
+              }
+            ),
+            DYNAMIC_ACTION_CONFIG.LLM_TIMEOUT_MS,
+            `LLM error response generation timed out after ${DYNAMIC_ACTION_CONFIG.LLM_TIMEOUT_MS}ms`
+          );
+        });
+
+        return typeof response === 'string' ? response.trim() : `Failed to ${descriptor.name}: ${errorMessage}`;
+      } catch (error) {
+        logger.error(`[DynamicActionLoader] Error generating failure response:`, error);
+        return `Failed to ${descriptor.name}: ${errorMessage}`;
+      }
+    }
+
+    // Generate contextual success response using LLM
+    try {
+      const characterName = Array.isArray(runtime.character.name)
+        ? runtime.character.name[0]
+        : runtime.character.name;
+
+      const characterBio = Array.isArray(runtime.character.bio)
+        ? runtime.character.bio.join(" ")
+        : runtime.character.bio;
+
+      const paramsDescription = Object.entries(params)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join(', ');
+
+      const responsePrompt = `You are ${characterName}. ${characterBio}
+
+You just successfully performed: ${descriptor.description}
+${paramsDescription ? `With parameters: ${paramsDescription}` : ''}
+${result.message ? `Result: ${result.message}` : ''}
+
+${state?.text ? `\nCurrent context:\n${state.text}\n` : ''}
+
+Generate a brief, in-character response (1-2 sentences) about completing this action. Be natural, stay in character, and reference the specific action you performed.
+
+Response:`;
+
+      logger.debug(`[DynamicActionLoader] Generating contextual response for ${descriptor.name}`);
+
+      const response = await retryWithBackoff(async () => {
+        return await withTimeout(
+          runtime.useModel(
+            ModelType.TEXT_LARGE,
+            {
+              prompt: responsePrompt,
+              max_tokens: 150,
+              temperature: DYNAMIC_ACTION_CONFIG.RESPONSE_GENERATION_TEMPERATURE,
+              stop: [],
+            }
+          ),
+          DYNAMIC_ACTION_CONFIG.LLM_TIMEOUT_MS,
+          `LLM success response generation timed out after ${DYNAMIC_ACTION_CONFIG.LLM_TIMEOUT_MS}ms`
+        );
+      });
+
+      const responseText = typeof response === 'string'
+        ? response.trim()
+        : (response && typeof response === 'object' && 'text' in response)
+          ? String((response as { text: unknown }).text)
+          : '';
+
+      // Fallback if LLM returns empty response
+      if (!responseText) {
+        return `Successfully ${descriptor.description.toLowerCase()}${result.message ? ": " + result.message : ""}`;
+      }
+
+      return responseText;
+
+    } catch (error) {
+      logger.error(`[DynamicActionLoader] Error generating success response:`, error);
+      return `Successfully ${descriptor.description.toLowerCase()}${result.message ? ": " + result.message : ""}`;
     }
   }
 

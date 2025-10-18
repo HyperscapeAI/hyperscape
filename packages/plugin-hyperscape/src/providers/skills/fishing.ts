@@ -8,6 +8,7 @@ import {
   type Memory,
   type Provider,
   type State,
+  logger,
 } from '@elizaos/core'
 import { HyperscapeService } from '../../service'
 import type { ResourceSystem, ResourceItem } from '../../types/resource-types'
@@ -18,6 +19,8 @@ export const fishingSkillProvider: Provider = {
   dynamic: true, // Only loaded when explicitly requested by fishing actions
   position: 2, // Contextual skills come after world state, before actions
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
+    logger.debug('[FISHING] Checking fishing context')
+
     const service = runtime.getService<HyperscapeService>(HyperscapeService.serviceName)
 
     if (!service || !service.isConnected()) {
@@ -95,6 +98,8 @@ ${nearbyFishingSpots.length > 0 ? fishingSpotList : 'No fishing spots nearby'}
 - Fishing rods work on most water
 - Small net for shrimp
 - Raw fish can be cooked for food`
+
+    logger.debug(`[FISHING] Level ${fishingLevel}, ${nearbyFishingSpots.length} nearby spots, has tool: ${hasFishingRod || hasNet}`)
 
     return {
       text,

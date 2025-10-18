@@ -122,9 +122,28 @@ import { EventType, Socket, System, THREE, addRole, dbHelpers, getItem, hasRole,
 import type { Vector3 } from 'three';
 import { isPrivyEnabled, verifyPrivyToken } from './privy-auth';
 import { createJWT, verifyJWT } from './utils';
+import { isAgentAuthEnabled, verifyAgentToken } from './agent-auth';
+
+// Agent user type extending User with agent-specific properties
+export interface AgentUser extends User {
+  isAgent: true;
+  runtimeId?: string;
+}
 
 // SocketInterface is the extended ServerSocket type
 type SocketInterface = ServerSocket;
+
+/**
+ * Interface for WebSocket with upgradeReq property
+ * Used to safely access HTTP headers from WebSocket upgrade request
+ */
+interface WebSocketWithUpgradeReq extends NodeWebSocket {
+  upgradeReq: {
+    headers: {
+      cookie?: string;
+    };
+  };
+}
 
 // Entity already has velocity property
 
@@ -237,7 +256,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
   // const qDelta = quatSubtract(currentQuaternion, last.q);
   // Quantize and send qDelta, update last
 
-  constructor(world: World) {
+  constructor(world: InstanceType<typeof World>) {
     super(world);
     this.id = 0;
     this.ids = -1;
@@ -512,9 +531,9 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       sessionAvatar: avatar || undefined,
       roles,
     }) : undefined;
-      socket.player = addedEntity as Entity || undefined;
+      socket.player = addedEntity || undefined;
     if (socket.player) {
-      this.world.emit(EventType.PLAYER_JOINED, { playerId: socket.player.data.id as string, player: socket.player as unknown as import('@hyperscape/shared').PlayerLocal });
+      this.world.emit(EventType.PLAYER_JOINED, { playerId: socket.player.data.id as string, player: socket.player });
       try {
         // Send to everyone else
         this.send('entityAdded', socket.player.serialize(), socket.id);
@@ -894,63 +913,61 @@ export class ServerNetwork extends System implements NetworkWithSocket {
 
   /**
    * Adds a message to the outgoing queue for batched sending
-   * 
+   *
    * Instead of sending messages immediately, they're queued and sent in batches
    * during flush(). This reduces network overhead and improves performance.
-   * 
+   *
    * @param socket - The socket to send the message to
    * @param method - The packet method name (e.g., 'snapshot', 'entityAdded')
    * @param data - The packet payload
-   * 
+   *
    * @public
    */
-  enqueue(socket: SocketInterface | Socket, method: string, data: unknown): void {
+  enqueue(socket: SocketInterface, method: string, data: unknown): void {
     if (method === 'onChatAdded') {
     }
-    this.queue.push([socket as SocketInterface, method, data]);
+    this.queue.push([socket, method, data]);
   }
 
   /**
    * Handles player disconnection and cleanup
-   * 
+   *
    * Performs cleanup when a player disconnects:
    * - Saves player data to database (position, stats, inventory, equipment)
    * - Ends the player session record
    * - Removes socket from tracking
    * - Destroys player entity
    * - Broadcasts entity removal to other clients
-   * 
+   *
    * @param socket - The socket that disconnected
    * @param code - WebSocket close code (optional, for logging)
-   * 
+   *
    * @public
    */
-  onDisconnect(socket: SocketInterface | Socket, code?: number | string): void {
-    // Cast to SocketInterface since we know it has the properties we need
-    const serverSocket = socket as SocketInterface
+  onDisconnect(socket: SocketInterface, code?: number | string): void {
     // Handle socket disconnection
-    console.log(`[ServerNetwork] 🔌 Socket ${serverSocket.id} disconnected with code:`, code, {
-      hadPlayer: !!serverSocket.player,
-      playerId: serverSocket.player?.id,
+    console.log(`[ServerNetwork] 🔌 Socket ${socket.id} disconnected with code:`, code, {
+      hadPlayer: !!socket.player,
+      playerId: socket.player?.id,
       stackTrace: new Error().stack?.split('\n').slice(1, 4).join('\n')
     });
-    
+
     // Remove socket from our tracking
-    this.sockets.delete(serverSocket.id);
-    
+    this.sockets.delete(socket.id);
+
     // Clean up any socket-specific resources
-    if (serverSocket.player) {
+    if (socket.player) {
     // Emit typed player left event
     this.world.emit(EventType.PLAYER_LEFT, {
-      playerId: serverSocket.player.id
+      playerId: socket.player.id
     });
-      
+
       // Remove player entity from world
       if (this.world.entities?.remove) {
-        this.world.entities.remove(serverSocket.player.id);
+        this.world.entities.remove(socket.player.id);
       }
       // Broadcast entity removal to all remaining clients
-      this.send('entityRemoved', serverSocket.player.id);
+      this.send('entityRemoved', socket.player.id);
     }
   }
 
@@ -1034,20 +1051,102 @@ export class ServerNetwork extends System implements NetworkWithSocket {
 
   /**
    * Checks if a player has builder role
-   * 
+   *
    * Builder role grants access to world editing abilities:
    * - Entity placement and modification
    * - Terrain editing
    * - Chat clearing
    * - Environmental controls
-   * 
+   *
    * @param player - The player entity or player data to check
    * @returns true if player has builder or admin role (admin implies builder)
-   * 
+   *
    * @public
    */
   isBuilder(player: InstanceType<typeof Entity> | { data?: { roles?: string[] } }): boolean {
     return this.world.settings.public || this.isAdmin(player);
+  }
+
+  /**
+   * Type guard to check if WebSocket has upgradeReq with headers
+   *
+   * @param ws - The WebSocket to check
+   * @returns true if ws has upgradeReq.headers property
+   */
+  private isWebSocketWithUpgradeReq(ws: NodeWebSocket): ws is WebSocketWithUpgradeReq {
+    return !!(ws as WebSocketWithUpgradeReq).upgradeReq?.headers;
+  }
+
+  /**
+   * Parse cookies from WebSocket connection headers
+   *
+   * WebSocket upgrade requests include cookies in the Cookie header,
+   * but they're not automatically parsed like in HTTP requests.
+   */
+  private parseCookiesFromWebSocket(ws: NodeWebSocket): Record<string, string> {
+    try {
+      // Access the raw HTTP request that was upgraded to WebSocket
+      // Type guard to check if ws has upgradeReq with headers
+      if (!this.isWebSocketWithUpgradeReq(ws)) {
+        return {};
+      }
+      const cookieHeader = ws.upgradeReq.headers.cookie;
+
+      if (!cookieHeader) {
+        return {};
+      }
+
+      // Security: Cap cookie header size to prevent memory exhaustion
+      const MAX_COOKIE_HEADER_SIZE = 8 * 1024; // 8KB
+      if (cookieHeader.length > MAX_COOKIE_HEADER_SIZE) {
+        console.warn('[ServerNetwork] Cookie header exceeds size limit, truncating');
+        return {};
+      }
+
+      // Parse cookie header into key-value pairs with validation
+      const cookies = cookieHeader.split(';');
+      const MAX_COOKIES = 50;
+      if (cookies.length > MAX_COOKIES) {
+        console.warn('[ServerNetwork] Too many cookies, limiting to first 50');
+      }
+
+      const result: Record<string, string> = {};
+      const COOKIE_KEY_REGEX = /^[a-zA-Z0-9_-]+$/;
+      const MAX_VALUE_LENGTH = 1024;
+
+      for (let i = 0; i < Math.min(cookies.length, MAX_COOKIES); i++) {
+        const cookie = cookies[i];
+        if (!cookie) continue;
+
+        const [key, value] = cookie.trim().split('=');
+        if (!key || !value) continue;
+
+        // Validate key format
+        if (!COOKIE_KEY_REGEX.test(key)) {
+          console.warn(`[ServerNetwork] Invalid cookie key: ${key}`);
+          continue;
+        }
+
+        // Limit value length
+        if (value.length > MAX_VALUE_LENGTH) {
+          console.warn(`[ServerNetwork] Cookie value too long: ${key}`);
+          continue;
+        }
+
+        // Safe decoding with error handling
+        try {
+          result[key] = decodeURIComponent(value);
+        } catch (decodeErr) {
+          console.warn(`[ServerNetwork] Failed to decode cookie value for ${key}:`, decodeErr);
+          continue;
+        }
+      }
+
+      return result;
+    } catch (err) {
+      console.error('[ServerNetwork] Failed to parse cookies from WebSocket:', err);
+      return {};
+    }
   }
 
   async onConnection(ws: NodeWebSocket, params: ConnectionParams): Promise<void> {
@@ -1068,8 +1167,17 @@ export class ServerNetwork extends System implements NetworkWithSocket {
         return;
       }
 
-      // check connection params
-      let authToken = params.authToken;
+      // Extract auth token from cookies first (preferred method), then fall back to query params
+      const cookies = this.parseCookiesFromWebSocket(ws);
+      let authToken = cookies['privy-id-token'] || params.authToken;
+
+      // Log authentication method for debugging
+      if (cookies['privy-id-token']) {
+        console.log('[ServerNetwork] Using HttpOnly cookie for authentication (secure)');
+      } else if (params.authToken) {
+        console.warn('[ServerNetwork] Using query param for authentication (legacy - will be deprecated)');
+      }
+
       const name = params.name;
       const avatar = params.avatar;
       const privyUserId = (params as { privyUserId?: string }).privyUserId;
@@ -1143,7 +1251,43 @@ export class ServerNetwork extends System implements NetworkWithSocket {
         }
       }
       
-      // Fall back to legacy JWT authentication if Privy didn't work
+      // Try agent authentication if enabled and Privy didn't work
+      if (!user && authToken && isAgentAuthEnabled()) {
+        try {
+          const agentInfo = await verifyAgentToken(authToken, this.db);
+          if (agentInfo) {
+            console.log('[ServerNetwork] Agent authenticated:', {
+              agentId: agentInfo.agentId,
+              agentName: agentInfo.agentName,
+              runtimeId: agentInfo.runtimeId,
+            });
+
+            // Load agent user from database
+            const dbResult = await this.db('users').where('id', agentInfo.agentId).first();
+            if (dbResult) {
+              const baseUser = (dbResult as unknown) as User;
+
+              // Construct properly typed AgentUser object
+              const agentUser: AgentUser = {
+                id: baseUser.id,
+                name: baseUser.name,
+                avatar: baseUser.avatar,
+                roles: baseUser.roles,
+                createdAt: baseUser.createdAt,
+                isAgent: true,
+                runtimeId: agentInfo.runtimeId
+              };
+
+              user = agentUser;
+            }
+          }
+        } catch (err) {
+          console.error('[ServerNetwork] Agent authentication error:', err);
+          // Fall through to legacy authentication
+        }
+      }
+
+      // Fall back to legacy JWT authentication if nothing else worked
       if (!user && authToken) {
         try {
           const jwtPayload = await verifyJWT(authToken);
@@ -1151,7 +1295,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
             const dbResult = await this.db('users').where('id', jwtPayload.userId as string).first();
             if (dbResult) {
               // Strong type assumption - dbResult has user properties
-              user = dbResult as User;
+              user = (dbResult as unknown) as User;
             }
           }
         } catch (err) {
@@ -1399,7 +1543,7 @@ export class ServerNetwork extends System implements NetworkWithSocket {
       if (socket.player) {
         const playerId = socket.player.data.id as string;
         const userId = socket.player.data.userId as string | undefined;
-        this.world.emit(EventType.PLAYER_JOINED, { playerId, player: socket.player as unknown as import('@hyperscape/shared').PlayerLocal });
+        this.world.emit(EventType.PLAYER_JOINED, { playerId, player: socket.player });
         
         // Broadcast new player entity to all existing clients except the new connection
         try {

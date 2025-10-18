@@ -87,6 +87,7 @@ import {
   ClientInput,
   Entity,
   loadPhysX,
+  createNodeClientWorld,
   type NetworkSystem,
   type World,
   type Player,
@@ -108,9 +109,12 @@ import { AgentLiveKit } from "./systems/liveKit";
 import { AgentLoader } from "./systems/loader";
 import type {
   EntityModificationData,
-  RPGStateManager,
   TeleportOptions,
 } from "./types/content-types";
+import type {
+  IContentPack,
+  IGameSystem,
+} from "./types/content-pack";
 import {
   CharacterController,
 } from "./types/core-types";
@@ -121,7 +125,6 @@ import type {
   ContentInstance,
   Position,
   RigidBody,
-  WorldConfig,
 } from "./types/core-types";
 
 /**
@@ -139,13 +142,12 @@ interface EntityData {
 }
 
 import type { NetworkEventData } from "./types/event-types";
-import type { MockWorldConfig } from "./types/hyperscape-types";
 import { getModuleDirectory, hashFileBuffer } from "./utils";
 
 const moduleDirPath = getModuleDirectory();
 const LOCAL_AVATAR_PATH = `${moduleDirPath}/avatars/avatar.vrm`;
 
-import { AGENT_CONFIG, NETWORK_CONFIG } from "./config/constants";
+import { AGENT_CONFIG, NETWORK_CONFIG, DEV_CONFIG, FILE_CONSTANTS } from "./config/constants";
 
 type ChatSystem = Chat;
 
@@ -216,6 +218,15 @@ Hyperscape world integration service that enables agents to:
 
   // UGC content support
   private loadedContent: Map<string, ContentInstance> = new Map();
+
+  // Content pack support
+  private loadedContentPacks: Map<string, IContentPack> = new Map();
+  private activeGameSystems: Map<string, IGameSystem[]> = new Map();
+
+  // Circuit breaker for failing systems
+  private systemErrors: Map<string, { count: number; lastError: Error; timestamp: number }> = new Map();
+  private static readonly MAX_SYSTEM_ERRORS = 5;
+  private static readonly ERROR_RESET_TIME_MS = 60000; // 1 minute
 
   public get currentWorldId(): UUID | null {
     return this._currentWorldId;
@@ -291,45 +302,35 @@ Hyperscape world integration service that enables agents to:
     this._currentWorldId = config.worldId;
     this.appearanceHash = null;
 
-    // Create real Hyperscape world connection
+    // Create real Hyperscape world connection with proper binary protocol
     console.info(
-      "[HyperscapeService] Creating real Hyperscape world connection",
+      "[HyperscapeService] Creating headless Node.js client world with binary protocol",
     );
 
-    // Create mock DOM elements for headless operation
-    const mockElement = {
-      appendChild: () => {},
-      removeChild: () => {},
-      offsetWidth: 1920,
-      offsetHeight: 1080,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      style: {},
-    };
+    // Performance monitoring: Track connection time (optional)
+    const perfStart = DEV_CONFIG.ENABLE_PERFORMANCE_MONITORING ? performance.now() : 0;
 
-    // Initialize the world with proper configuration
-    const hyperscapeConfig: WorldConfig = {
+    // Create headless client world with proper ClientNetwork system
+    this.world = createNodeClientWorld();
+
+    // Initialize world with server connection
+    await this.world.init({
       wsUrl: config.wsUrl,
-      viewport: mockElement,
-      ui: mockElement,
       initialAuthToken: config.authToken,
-      loadPhysX,
       assetsUrl:
         process.env.HYPERSCAPE_ASSETS_URL || "https://assets.hyperscape.io",
-      physics: true,
-      networkRate: 60,
-    };
+    });
 
-    // Create a minimal world with the basic structure we need
-    const mockConfig: MockWorldConfig = {
-      worldId: config.worldId,
-      name: `world-${config.worldId}`,
-      assets: ["https://assets.hyperscape.io"],
-      physics: hyperscapeConfig.physics,
-    };
-    this.world = this.createWorld(mockConfig);
+    // Log performance metrics if monitoring is enabled
+    if (DEV_CONFIG.ENABLE_PERFORMANCE_MONITORING) {
+      const perfEnd = performance.now();
+      const connectionDuration = perfEnd - perfStart;
+      console.info(
+        `[Performance] World connection took ${connectionDuration.toFixed(2)}ms`,
+      );
+    }
 
-    console.info("[HyperscapeService] Created real Hyperscape world instance");
+    console.info("[HyperscapeService] Headless client world initialized and connected");
 
     this.playwrightManager = new PlaywrightManager(this.runtime);
     this.emoteManager = new EmoteManager(this.runtime);
@@ -389,61 +390,490 @@ Hyperscape world integration service that enables agents to:
       );
     }
 
-    // Check for RPG systems and load RPG actions/providers dynamically
-    await this.loadRPGExtensions();
+    // Load default content packs (Runescape RPG pack)
+    // This provides all RPG actions, providers, and system bridges
+    await this.loadDefaultContentPacks();
 
-    // Access appearance data for validation
-    const appearance = this.world.entities.player.data.appearance;
-    console.debug("[Appearance] Current appearance data available");
+    // Check player entity availability (appearance polling will handle initialization)
+    if (this.world.entities?.player) {
+      const appearance = this.world.entities.player.data.appearance;
+      console.debug("[Appearance] Current appearance data available");
+    } else {
+      console.debug("[Appearance] Waiting for server to create player entity");
+    }
   }
 
   /**
-   * Detects RPG systems and dynamically loads corresponding actions and providers
+   * Load a content pack into the service
+   *
+   * Content packs are modular bundles that can include:
+   * - Actions: Custom agent actions (e.g., combat, trading)
+   * - Providers: State providers for agent context
+   * - Evaluators: Post-processing analysis components
+   * - Systems: Game systems (e.g., combat, inventory)
+   * - State managers: Per-player state tracking
+   *
+   * **Important Limitations:**
+   * - Actions, providers, and evaluators are managed by ElizaOS core and persist after unload
+   * - These components cannot be dynamically unregistered from the runtime
+   * - Repeated load/unload cycles will accumulate registrations in memory
+   * - Naming conflicts may occur if the same pack is loaded multiple times
+   *
+   * **Recommendations:**
+   * - Avoid repeated load/unload cycles; prefer loading once at startup
+   * - Use unique, versioned names for actions/providers/evaluators
+   * - Only unload content packs when absolutely necessary
+   *
+   * @param pack - The content pack to load
+   * @param runtime - Optional runtime override (defaults to service runtime)
    */
-  private async loadRPGExtensions(): Promise<void> {
-    const rpgSystems = this.world.rpgSystems || {};
-    console.info(`[HyperscapeService] Checking for RPG systems...`, Object.keys(rpgSystems));
+  async loadContentPack(pack: IContentPack, runtime?: IAgentRuntime): Promise<void> {
+    logger.info(
+      `[HyperscapeService] Loading content pack: ${pack.name} v${pack.version}`,
+    );
 
-    // Check for skills system - load skill-based actions
-    if (this.world.getSystem?.('skills')) {
-      console.info('[HyperscapeService] Skills system detected - loading skill actions');
-
-      // Dynamically import and register skill actions
-      const { chopTreeAction } = await import('./actions/chopTree');
-      const { catchFishAction } = await import('./actions/catchFish');
-      const { lightFireAction } = await import('./actions/lightFire');
-      const { cookFoodAction } = await import('./actions/cookFood');
-
-      await this.runtime.registerAction(chopTreeAction);
-      await this.runtime.registerAction(catchFishAction);
-      await this.runtime.registerAction(lightFireAction);
-      await this.runtime.registerAction(cookFoodAction);
-
-      // Load skill-specific providers
-      const { woodcuttingSkillProvider } = await import('./providers/skills/woodcutting');
-      const { fishingSkillProvider } = await import('./providers/skills/fishing');
-      const { firemakingSkillProvider } = await import('./providers/skills/firemaking');
-      const { cookingSkillProvider } = await import('./providers/skills/cooking');
-
-      await this.runtime.registerProvider(woodcuttingSkillProvider);
-      await this.runtime.registerProvider(fishingSkillProvider);
-      await this.runtime.registerProvider(firemakingSkillProvider);
-      await this.runtime.registerProvider(cookingSkillProvider);
-
-      console.info('[HyperscapeService] Loaded 4 skill actions and 4 skill providers');
+    // Check if already loaded
+    if (this.loadedContentPacks.has(pack.id)) {
+      logger.warn(`[HyperscapeService] Content pack already loaded: ${pack.id}`);
+      return;
     }
 
-    // Check for inventory/banking system - load inventory actions
-    if (this.world.getSystem?.('banking')) {
-      console.info('[HyperscapeService] Banking system detected - loading inventory actions');
+    const targetRuntime = runtime || this.runtime;
+    const world = this.getWorld();
 
-      const { bankItemsAction } = await import('./actions/bankItems');
-      const { checkInventoryAction } = await import('./actions/checkInventory');
+    if (!world) {
+      throw new Error(
+        `[HyperscapeService] Cannot load content pack: No world connected`,
+      );
+    }
 
-      await this.runtime.registerAction(bankItemsAction);
-      await this.runtime.registerAction(checkInventoryAction);
+    // ===== PHASE 1: PRE-VALIDATION =====
+    // Validate all prerequisites before making any changes
+    logger.debug(`[HyperscapeService] Phase 1: Validating content pack prerequisites`);
 
-      console.info('[HyperscapeService] Loaded 2 inventory actions');
+    // Validate pack structure
+    if (!pack.id || !pack.name || !pack.version) {
+      throw new Error(
+        `[HyperscapeService] Invalid content pack: Missing required fields (id, name, or version)`,
+      );
+    }
+
+    // Validate state manager requirements
+    if (pack.stateManager) {
+      const player = world.entities?.player;
+      if (!player || !player.data || !player.data.id) {
+        throw new Error(
+          `[HyperscapeService] Cannot load content pack with state manager: Player entity not available`,
+        );
+      }
+    }
+
+    // Validate action uniqueness - fail fast on duplicates unless forceOverride is enabled
+    if (pack.actions) {
+      const existingActionNames = targetRuntime.actions.map(a => a.name);
+      const duplicateActions = pack.actions.filter(a => existingActionNames.includes(a.name));
+      if (duplicateActions.length > 0) {
+        if (!pack.forceOverride) {
+          throw new Error(
+            `[HyperscapeService] Content pack contains ${duplicateActions.length} actions that already exist: ${duplicateActions.map(a => a.name).join(', ')}. Cannot load pack with duplicate actions (ElizaOS cannot unregister actions). Set pack.forceOverride=true to replace existing actions, or use unique names.`,
+          );
+        } else {
+          logger.info(
+            `[HyperscapeService] Content pack has forceOverride=true. Replacing ${duplicateActions.length} existing actions: ${duplicateActions.map(a => a.name).join(', ')}`,
+          );
+          // Remove duplicate actions from runtime
+          for (const duplicate of duplicateActions) {
+            const existingIndex = targetRuntime.actions.findIndex(a => a.name === duplicate.name);
+            if (existingIndex !== -1) {
+              targetRuntime.actions.splice(existingIndex, 1);
+            }
+          }
+        }
+      }
+    }
+
+    // Validate provider uniqueness - fail fast on duplicates
+    if (pack.providers) {
+      // Runtime guards: verify providers property exists and is an array
+      const runtimeProviders = (targetRuntime as { providers?: unknown }).providers;
+
+      // Filter runtime providers to only valid objects with name property
+      const existingProviderNames = (
+        Array.isArray(runtimeProviders)
+          ? (runtimeProviders as Array<unknown>)
+              .filter((p): p is { name: string } => {
+                return p !== null && typeof p === 'object' && typeof (p as { name?: unknown }).name === 'string';
+              })
+              .map(p => p.name)
+          : []
+      );
+
+      // Filter pack providers to only valid objects with name property
+      const validPackProviders = pack.providers.filter(p => {
+        return p !== null && typeof p === 'object' && typeof (p as { name?: unknown }).name === 'string';
+      });
+
+      const duplicateProviders = validPackProviders.filter(p => existingProviderNames.includes((p as { name: string }).name));
+      if (duplicateProviders.length > 0) {
+        throw new Error(
+          `[HyperscapeService] Content pack contains ${duplicateProviders.length} providers that already exist: ${duplicateProviders.map(p => (p as { name: string }).name).join(', ')}. Cannot load pack with duplicate providers (ElizaOS cannot unregister providers). Please use unique names or version your content pack.`,
+        );
+      }
+    }
+
+    logger.debug(`[HyperscapeService] Phase 1 complete: All prerequisites validated`);
+
+    // ===== PHASE 2: LOADING =====
+    // Now proceed with actual loading
+    logger.debug(`[HyperscapeService] Phase 2: Loading content pack components`);
+
+    // Track registered items for cleanup on failure
+    const registeredActions: string[] = [];
+    const registeredProviders: string[] = [];
+    const registeredEvaluators: string[] = [];
+
+    try {
+      // Execute onLoad hook if provided
+      if (pack.onLoad) {
+        await pack.onLoad(targetRuntime, world);
+      }
+
+      // Initialize game systems
+      if (pack.systems) {
+        const initializedSystems: IGameSystem[] = [];
+
+        for (const system of pack.systems) {
+          try {
+            await system.init(world);
+            initializedSystems.push(system);
+            logger.info(`[HyperscapeService] Initialized system: ${system.name}`);
+          } catch (error) {
+            logger.error(
+              `[HyperscapeService] Failed to initialize system ${system.name}:`,
+              error,
+            );
+            throw error;
+          }
+        }
+
+        this.activeGameSystems.set(pack.id, initializedSystems);
+      }
+
+      // Register actions dynamically
+      if (pack.actions) {
+        for (const action of pack.actions) {
+          try {
+            await targetRuntime.registerAction(action);
+            registeredActions.push(action.name);
+            logger.info(`[HyperscapeService] Registered action: ${action.name}`);
+          } catch (error) {
+            logger.error(
+              `[HyperscapeService] Failed to register action ${action.name}:`,
+              error,
+            );
+            throw error;
+          }
+        }
+      }
+
+      // Register providers
+      if (pack.providers) {
+        for (const provider of pack.providers) {
+          try {
+            targetRuntime.registerProvider(provider);
+            registeredProviders.push(provider.name);
+            logger.info(`[HyperscapeService] Registered provider: ${provider.name}`);
+          } catch (error) {
+            logger.error(
+              `[HyperscapeService] Failed to register provider ${provider.name}:`,
+              error,
+            );
+            throw error;
+          }
+        }
+      }
+
+      // Register evaluators
+      if (pack.evaluators) {
+        for (const evaluator of pack.evaluators) {
+          try {
+            targetRuntime.registerEvaluator(evaluator);
+            registeredEvaluators.push(evaluator.name);
+            logger.info(`[HyperscapeService] Registered evaluator: ${evaluator.name}`);
+          } catch (error) {
+            logger.error(
+              `[HyperscapeService] Failed to register evaluator ${evaluator.name}:`,
+              error,
+            );
+            throw error;
+          }
+        }
+      }
+
+      // Initialize state manager (verify player exists first)
+      if (pack.stateManager) {
+        const player = world.entities?.player;
+        if (!player || !player.data || !player.data.id) {
+          throw new Error(
+            `[HyperscapeService] Cannot initialize state manager: Player entity not available`,
+          );
+        }
+
+        const playerId = player.data.id as string;
+        pack.stateManager.initPlayerState(playerId);
+        logger.info(`[HyperscapeService] Initialized state manager for player: ${playerId}`);
+      }
+
+      // Store loaded pack
+      this.loadedContentPacks.set(pack.id, pack);
+      logger.info(`[HyperscapeService] Successfully loaded content pack: ${pack.id}`);
+    } catch (error) {
+      logger.error(
+        `[HyperscapeService] Failed to load content pack ${pack.id}:`,
+        error,
+      );
+
+      // Cleanup on failure - attempt to cleanup initialized systems
+      const systems = this.activeGameSystems.get(pack.id);
+      const failedCleanups: string[] = [];
+
+      if (systems) {
+        for (const system of systems) {
+          try {
+            system.cleanup();
+            logger.info(`[HyperscapeService] Cleaned up system: ${system.name} for pack ${pack.id}`);
+          } catch (cleanupError) {
+            logger.error(
+              `[HyperscapeService] Failed to cleanup system ${system.name} for pack ${pack.id}:`,
+              cleanupError,
+            );
+            failedCleanups.push(system.name);
+          }
+        }
+        this.activeGameSystems.delete(pack.id);
+      }
+
+      // Track all items that remain registered (cannot be unregistered by ElizaOS)
+      const remainingItems: string[] = [];
+
+      if (registeredActions.length > 0) {
+        remainingItems.push(`Actions: ${registeredActions.join(', ')}`);
+      }
+
+      if (registeredProviders.length > 0) {
+        remainingItems.push(`Providers: ${registeredProviders.join(', ')}`);
+      }
+
+      if (registeredEvaluators.length > 0) {
+        remainingItems.push(`Evaluators: ${registeredEvaluators.join(', ')}`);
+      }
+
+      // If any items remain registered, log detailed error with recovery steps
+      if (remainingItems.length > 0) {
+        const errorMessage = `[HyperscapeService] Content pack ${pack.id} failed to load with partial registration. The following items cannot be unregistered and remain in runtime:\n${remainingItems.join('\n')}\n\nOriginal error: ${error}\n\nRecovery steps:\n1. Fix the content pack to resolve the error\n2. Restart the agent to clear runtime state\n3. Reload the pack\n\nAgent restart is REQUIRED to fully clear these registered items.`;
+
+        logger.error(errorMessage);
+
+        throw new Error(
+          `Content pack ${pack.id} load failed with partial registration. ${remainingItems.length} item(s) remain registered and agent restart is required. See logs for details.`,
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Unload a content pack from the service
+   *
+   * **Important Limitations:**
+   * - Actions, providers, and evaluators are managed by ElizaOS core and **cannot** be unregistered
+   * - These components will persist in memory after unload
+   * - Only systems and state managers are properly cleaned up
+   * - Repeated unload/load cycles will accumulate actions/providers/evaluators in memory
+   *
+   * **Consequences:**
+   * - Memory accumulation: Each load adds more actions/providers/evaluators to the runtime
+   * - Naming conflicts: Reloading with same names may cause conflicts
+   * - Confusion: Active actions list will include unloaded pack actions
+   *
+   * **Mitigations:**
+   * - Avoid repeated load/unload cycles
+   * - Use unique, versioned names for components (e.g., "rpg_v1_attack")
+   * - Restart the agent runtime to fully clear unloaded packs
+   *
+   * @param packId - ID of the content pack to unload
+   */
+  async unloadContentPack(packId: string): Promise<void> {
+    const pack = this.loadedContentPacks.get(packId);
+
+    if (!pack) {
+      logger.warn(`[HyperscapeService] Content pack not loaded: ${packId}`);
+      return;
+    }
+
+    logger.info(`[HyperscapeService] Unloading content pack: ${pack.name}`);
+
+    // Note if pack has persistent registrations
+    const hasPersistentRegistrations =
+      (pack.actions && pack.actions.length > 0) ||
+      (pack.providers && pack.providers.length > 0) ||
+      (pack.evaluators && pack.evaluators.length > 0);
+
+    if (hasPersistentRegistrations) {
+      logger.debug(
+        `[HyperscapeService] Content pack "${pack.name}" has actions/providers/evaluators that cannot be unregistered. ` +
+        `These will persist in the runtime after unload. To fully remove, restart the agent.`
+      );
+    }
+
+    const world = this.getWorld();
+
+    try {
+      // Execute onUnload hook if provided
+      if (pack.onUnload && world) {
+        await pack.onUnload(this.runtime, world);
+      }
+
+      // Cleanup game systems
+      const systems = this.activeGameSystems.get(packId);
+      if (systems) {
+        for (const system of systems) {
+          try {
+            system.cleanup();
+            logger.info(`[HyperscapeService] Cleaned up system: ${system.name}`);
+          } catch (error) {
+            logger.error(
+              `[HyperscapeService] Failed to cleanup system ${system.name}:`,
+              error,
+            );
+          }
+        }
+        this.activeGameSystems.delete(packId);
+      }
+
+      // Note: Actions, providers, and evaluators are managed by ElizaOS core
+      // They cannot be unregistered dynamically, so they remain in the runtime
+
+      this.loadedContentPacks.delete(packId);
+      logger.info(`[HyperscapeService] Successfully unloaded content pack: ${packId}`);
+    } catch (error) {
+      logger.error(
+        `[HyperscapeService] Failed to unload content pack ${packId}:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Load default content packs during service initialization
+   *
+   * Currently loads the RunescapeRPG content pack which includes:
+   * - 6 RPG actions (chopTree, catchFish, cookFood, lightFire, bankItems, checkInventory)
+   * - 6 RPG providers (banking, character, woodcutting, fishing, firemaking, cooking)
+   * - 4 system bridges (skills, inventory, banking, resources)
+   *
+   * This is the single source of truth for all RPG functionality.
+   */
+  async loadDefaultContentPacks(): Promise<void> {
+    logger.info('[HyperscapeService] Loading default content packs...');
+
+    try {
+      // Import and load the Runescape RPG pack
+      const contentPackModule = await import('./content-packs/content-pack');
+
+      // Validate that the export exists
+      if (!contentPackModule.RunescapeRPGPack) {
+        throw new Error('[HyperscapeService] RunescapeRPGPack export not found in content-pack module');
+      }
+
+      await this.loadContentPack(contentPackModule.RunescapeRPGPack);
+
+      logger.info('[HyperscapeService] Default content packs loaded successfully');
+    } catch (error) {
+      logger.error(
+        '[HyperscapeService] Failed to load default content packs:',
+        error,
+      );
+      // Don't throw - allow service to continue without content packs
+    }
+  }
+
+  /**
+   * Get all loaded content packs
+   */
+  getLoadedContentPacks(): IContentPack[] {
+    return Array.from(this.loadedContentPacks.values());
+  }
+
+  /**
+   * Check if a content pack is loaded
+   */
+  isContentPackLoaded(packId: string): boolean {
+    return this.loadedContentPacks.has(packId);
+  }
+
+  /**
+   * Update all active game systems (called from game loop if needed)
+   * Implements circuit breaker pattern to disable failing systems
+   */
+  updateContentPackSystems(deltaTime: number): void {
+    for (const [packId, systems] of this.activeGameSystems) {
+      for (const system of systems) {
+        if (system.update) {
+          // Create unique key for this system
+          const systemKey = `${packId}:${system.name}`;
+          const errorState = this.systemErrors.get(systemKey);
+
+          // Check if system is disabled by circuit breaker
+          if (errorState && errorState.count >= HyperscapeService.MAX_SYSTEM_ERRORS) {
+            const now = Date.now();
+            const timeSinceLastError = now - errorState.timestamp;
+
+            // Check if timeout has expired
+            if (timeSinceLastError >= HyperscapeService.ERROR_RESET_TIME_MS) {
+              // Reset error count and try again
+              this.systemErrors.delete(systemKey);
+              logger.info(
+                `[HyperscapeService] Circuit breaker timeout expired for system ${system.name} in pack ${packId}. Retrying updates.`,
+              );
+            } else {
+              // Skip this system - still disabled
+              continue;
+            }
+          }
+
+          try {
+            system.update(deltaTime);
+          } catch (error) {
+            // Track error for circuit breaker
+            const currentState = this.systemErrors.get(systemKey) || { count: 0, lastError: error as Error, timestamp: Date.now() };
+            const previousCount = currentState.count;
+            currentState.count++;
+            currentState.lastError = error as Error;
+
+            // Only update timestamp when count crosses threshold
+            if (currentState.count >= HyperscapeService.MAX_SYSTEM_ERRORS && previousCount < HyperscapeService.MAX_SYSTEM_ERRORS) {
+              currentState.timestamp = Date.now();
+            }
+
+            this.systemErrors.set(systemKey, currentState);
+
+            logger.error(
+              `[HyperscapeService] Error updating system ${system.name} in pack ${packId} (error ${currentState.count}/${HyperscapeService.MAX_SYSTEM_ERRORS}):`,
+              error,
+            );
+
+            // Check if threshold reached
+            if (currentState.count >= HyperscapeService.MAX_SYSTEM_ERRORS) {
+              logger.error(
+                `[HyperscapeService] System ${system.name} in pack ${packId} has been disabled due to ${HyperscapeService.MAX_SYSTEM_ERRORS} consecutive errors. Will retry after ${HyperscapeService.ERROR_RESET_TIME_MS}ms timeout. Last error: ${currentState.lastError.message}`,
+              );
+            }
+          }
+        }
+      }
     }
   }
 
@@ -478,6 +908,19 @@ Hyperscape world integration service that enables agents to:
     const mimeType = fileName.endsWith(".vrm")
       ? "model/gltf-binary"
       : "application/octet-stream";
+
+    // Validate file size against configured maximum
+    const fileSizeMB = fileBuffer.length / FILE_CONSTANTS.BYTES_PER_MB;
+    const maxSizeMB = NETWORK_CONFIG.MAX_UPLOAD_SIZE_MB;
+
+    if (fileSizeMB > maxSizeMB) {
+      const error = `File size ${fileSizeMB.toFixed(2)}MB exceeds maximum upload size of ${maxSizeMB}MB`;
+      console.error(`[Appearance] ${error}`);
+      return {
+        success: false,
+        error,
+      };
+    }
 
     console.info(
       `[Appearance] Uploading ${fileName} (${(fileBuffer.length / 1024).toFixed(2)} KB, Type: ${mimeType})...`,
@@ -1030,409 +1473,17 @@ Hyperscape world integration service that enables agents to:
     logger.info("[HyperscapeService] Service initialized successfully");
   }
 
-  getRPGStateManager(): RPGStateManager | null {
-    // Return RPG state manager for testing
-    return null;
-  }
-
   /**
-   * Create a minimal world implementation with proper physics
+   * @deprecated Legacy method from state-classes.ts architecture (removed)
+   * This method has been removed and will throw an error when called.
+   * Callers should migrate to content pack state managers.
+   * Update tests to use the new content pack state manager API instead.
+   * @throws {Error} Always throws - method is removed and no longer supported
    */
-  private createWorld(config: MockWorldConfig): World {
-    console.info("[MinimalWorld] Creating minimal world with physics");
-
-    const minimalWorld: Partial<World> = {
-      // Core world properties
-      systems: [],
-
-      // Configuration
-      assetsUrl: config.assets?.[0] || "https://assets.hyperscape.io",
-
-      // Physics system - 'as any' cast acceptable here (test mock context)
-      // Note: This is a minimal mock world for testing only, not production code
-      physics: {
-        enabled: true,
-        gravity: { x: 0, y: -9.81, z: 0 },
-        timeStep: 1 / 60,
-        world: null, // Will be set after PhysX loads
-        controllers: new Map<string, CharacterController>(),
-        rigidBodies: new Map<string, any>(),
-
-        // Physics helper methods
-        createRigidBody: (
-          _type: "static" | "dynamic" | "kinematic",
-          _position?: Vector3,
-          _rotation?: Quaternion,
-        ): RigidBody => {
-          const _velocity = new Vector3();
-          const _angularVelocity = new Vector3();
-          return {
-            type: _type,
-            position: _position,
-            rotation: _rotation,
-            velocity: _velocity,
-            angularVelocity: _angularVelocity,
-            mass: 1,
-            applyForce: (force: Vector3) => {
-            },
-            applyImpulse: (impulse: Vector3) => {
-            },
-            setLinearVelocity: (velocity: Vector3) => {
-            },
-            setAngularVelocity: (velocity: Vector3) => {
-            },
-          };
-        },
-
-        createCharacterController: (
-          options: CharacterControllerOptions & {
-            id?: string;
-            position?: Position;
-            maxSpeed?: number;
-          },
-        ) => {
-          const controllerId = options.id || `controller-${Date.now()}`;
-
-          // Create simple position objects that satisfy the Vector3 interface
-          const createVector3 = (
-            x: number = 0,
-            y: number = 0,
-            z: number = 0,
-          ): Vector3 => {
-            return { x, y, z } as Vector3;
-          };
-
-          // Create controller instance with options
-          const controller = new CharacterController(controllerId, options);
-
-          // Override position if provided
-          if (options.position) {
-            controller.setPosition(options.position);
-          }
-          controller.isGrounded = true;
-
-          // Override move method with custom physics logic
-          const originalMove = controller.move.bind(controller);
-          controller.move = (displacement: Position) => {
-              const dt = minimalWorld.physics!.timeStep;
-
-              // Apply horizontal movement (velocity-based)
-              controller.velocity.x = displacement.x;
-              controller.velocity.z = displacement.z;
-
-              // Apply gravity if not grounded
-              if (!controller.isGrounded) {
-                controller.velocity.y += minimalWorld.physics!.gravity.y * dt;
-              }
-
-              // Update position based on velocity
-              controller.position.x += controller.velocity.x * dt;
-              controller.position.y += controller.velocity.y * dt;
-              controller.position.z += controller.velocity.z * dt;
-
-              // Ground check (simple)
-              if (controller.position.y <= 0) {
-                controller.position.y = 0;
-                controller.velocity.y = 0;
-                controller.isGrounded = true;
-              } else {
-                controller.isGrounded = false;
-              }
-            };
-
-          // Override jump method with custom logic
-          controller.jump = () => {
-            if (controller.isGrounded) {
-              controller.velocity.y = 10.0; // Jump velocity
-              controller.isGrounded = false;
-            }
-          };
-
-          // Store controller for physics updates
-          minimalWorld.physics!.controllers.set(controllerId, controller);
-
-          return controller;
-        },
-
-        // Physics simulation step
-        step: (deltaTime: number) => {
-          // Simple physics simulation
-          for (const [id, controller] of minimalWorld.physics!.controllers) {
-            // Update entity position based on physics
-            const entity =
-              minimalWorld.entities!.items.get(id) ||
-              minimalWorld.entities!.players.get(id);
-            if (entity && entity.position) {
-              entity.position.x = controller.position.x;
-              entity.position.y = controller.position.y;
-              entity.position.z = controller.position.z;
-
-              if (entity.base && entity.position) {
-                entity.position.x = controller.position.x;
-                entity.position.y = controller.position.y;
-                entity.position.z = controller.position.z;
-              }
-            }
-          }
-        },
-      } as any,
-
-      // Network system
-      network: {
-        id: `network-${Date.now()}`,
-        isClient: true,
-        isServer: false,
-        send: (type: string, data?: NetworkEventData) => {
-        },
-        upload: async (file: File) => {
-          return Promise.resolve(`uploaded-${Date.now()}`);
-        },
-        disconnect: async () => {
-          return Promise.resolve();
-        },
-        maxUploadSize: 10 * 1024 * 1024,
-      } as any,
-
-      // Chat system with proper typing
-      chat: {
-        msgs: [] as ChatMessage[],
-        listeners: [] as Array<(msgs: ChatMessage[]) => void>,
-        add: (msg: ChatMessage, broadcast?: boolean) => {
-          minimalWorld.chat!.msgs.push(msg);
-          // Notify listeners
-          const chatListeners = minimalWorld.chat!.listeners;
-          for (const listener of chatListeners) {
-            listener(minimalWorld.chat!.msgs);
-          }
-        },
-        subscribe: ((callback: (msgs: ChatMessage[]) => void) => {
-          const chatListeners = minimalWorld.chat!.listeners;
-          chatListeners.push(callback);
-          const subscription = {
-            unsubscribe: () => {
-              const index = chatListeners.indexOf(callback);
-              if (index >= 0) {
-                chatListeners.splice(index, 1);
-              }
-            },
-            get active() {
-              return chatListeners.indexOf(callback) >= 0;
-            },
-          };
-          return subscription;
-        }) as any,
-      } as any,
-
-      // Events system - 'as any' cast acceptable here (test mock context)
-      // Note: Real world has properly typed event system, this is minimal mock only
-      events: Object.assign(
-        function <T extends string | symbol>(event: T) {
-          // Default listener getter for compatibility
-          return (minimalWorld.events as any).__listeners?.get(event) || [];
-        },
-        {
-          listeners: new Map<string, ((data: unknown) => void)[]>() as any,
-          __listeners: new Map<
-            string | symbol,
-            Set<(...args: unknown[]) => void>
-          >(),
-          emit: function <T extends string | symbol>(
-            event: T,
-            ...args: unknown[]
-          ): boolean {
-            const listeners = this.__listeners.get(event);
-            if (listeners) {
-              for (const listener of listeners) {
-                listener(...args);
-              }
-            }
-            return true;
-          },
-          on: function <T extends string | symbol>(
-            event: T,
-            fn: (...args: unknown[]) => void,
-            _context?: unknown,
-          ) {
-            if (!this.__listeners.has(event)) {
-              this.__listeners.set(event, new Set());
-            }
-            this.__listeners.get(event)!.add(fn);
-            return this;
-          },
-          off: function <T extends string | symbol>(
-            event: T,
-            fn?: (...args: unknown[]) => void,
-            _context?: unknown,
-            _once?: boolean,
-          ) {
-            if (fn) {
-              const listeners = this.__listeners.get(event);
-              if (listeners) {
-                listeners.delete(fn);
-              }
-            } else {
-              this.__listeners.delete(event);
-            }
-            return this;
-          },
-        },
-      ) as any,
-
-      // Entities system - minimal mock for testing
-      // Note: Real world has full entity system with proper types, this is minimal mock
-      entities: {
-        player: null,
-        players: new Map(),
-        items: new Map(),
-        add: ((data: EntityData | Entity, local?: boolean) => {
-          // Handle both Entity objects and EntityData
-          let entity: Entity;
-          if (!(data instanceof Entity)) {
-            // Create a mock entity if data is EntityData
-            entity = {
-              id: data.id || `entity-${Date.now()}`,
-              type: data.type || "generic",
-              position: data.position || { x: 0, y: 0, z: 0 },
-              data: data,
-            } as Entity;
-          } else {
-            entity = data;
-          }
-          minimalWorld.entities!.items.set(entity.id, entity);
-          return entity;
-        }) as ((data: EntityData | Entity, local?: boolean) => Entity),
-        remove: (entityId: string) => {
-          minimalWorld.entities!.items.delete(entityId);
-          minimalWorld.entities!.players.delete(entityId);
-          return true;
-        },
-        getPlayer: () => {
-          return minimalWorld.entities!.player;
-        },
-        getLocalPlayer: () => minimalWorld.entities!.player,
-        getPlayers: () => Array.from(minimalWorld.entities!.players.values()),
-      } as any,
-
-      // Initialize method
-      init: async (initConfig?: Partial<MockWorldConfig>) => {
-
-        const playerId = `player-${Date.now()}`;
-
-        // Create physics character controller for player
-        const characterController =
-          minimalWorld.physics!.createCharacterController({
-            id: playerId,
-            position: { x: 0, y: 0, z: 0 } as Vector3,
-            radius: 0.5,
-            height: 1.8,
-            maxSpeed: 5.0,
-          });
-
-        minimalWorld.physics!.controllers.set(playerId, characterController);
-
-        // Create basic player entity - 'as any' cast acceptable (test mock context)
-        minimalWorld.entities!.player = {
-          id: playerId,
-          type: "player",
-          data: {
-            id: playerId,
-            type: "player",
-            name: "TestPlayer",
-            appearance: {},
-          },
-          base: {
-            position: { x: 0, y: 0, z: 0 } as Vector3,
-            quaternion: { x: 0, y: 0, z: 0, w: 1 } as Quaternion,
-            scale: { x: 1, y: 1, z: 1 } as Vector3,
-          },
-          position: { x: 0, y: 0, z: 0 },
-
-          // Physics-based movement methods
-          move: (displacement: Position) => {
-            const controller = minimalWorld.physics!.controllers.get(playerId);
-            if (controller && controller.move) {
-              controller.move(displacement);
-            }
-          },
-
-          // Walk toward a specific position
-          walkToward: (targetPosition: Position, speed: number = 5) => {
-            const currentPos = minimalWorld.entities!.player!.position!;
-            const controller = minimalWorld.physics!.controllers?.get(playerId) as ControllerInterface | undefined;
-            if (controller && controller.walkToward) {
-              const direction = {
-                x: targetPosition.x - currentPos.x,
-                y: 0,
-                z: targetPosition.z - currentPos.z,
-              };
-              return controller.walkToward(direction, speed);
-            }
-            return currentPos;
-          },
-
-          // Teleport (instant position change) - kept for compatibility
-          teleport: (options: TeleportOptions) => {
-            if (options.position) {
-              // Update both entity and physics controller
-              Object.assign(
-                minimalWorld.entities!.player!.position!,
-                options.position,
-              );
-              Object.assign(
-                minimalWorld.entities!.player!.position,
-                options.position,
-              );
-
-              const controller =
-                minimalWorld.physics!.controllers.get(playerId);
-              if (controller && controller.setPosition) {
-                controller.setPosition(options.position);
-              }
-            }
-          },
-
-          modify: (data: EntityModificationData) => {
-            Object.assign(minimalWorld.entities!.player!.data, data);
-          },
-
-          setSessionAvatar: (url: string) => {
-            const player = minimalWorld.entities!.player as { data?: { appearance?: PlayerAppearance } } | undefined;
-            if (player && player.data) {
-              player.data.appearance = player.data.appearance || {};
-              player.data.appearance.avatar = url;
-            }
-          },
-        } as Player; // Typed as Player instead of any
-
-        // Start physics simulation loop
-        if (minimalWorld.physics?.enabled) {
-          setInterval(() => {
-            minimalWorld.physics!.step(minimalWorld.physics!.timeStep);
-          }, minimalWorld.physics.timeStep * 1000); // Convert to milliseconds
-        }
-
-        return Promise.resolve();
-      },
-
-      // Disconnect network
-      disconnect: async () => {
-        if (minimalWorld.network && 'disconnect' in minimalWorld.network) {
-          const networkWithDisconnect = minimalWorld.network as NetworkSystem & { disconnect: () => Promise<void> };
-          await networkWithDisconnect.disconnect();
-        }
-      },
-
-      // Cleanup
-      destroy: () => {
-        minimalWorld.systems = [];
-        minimalWorld.entities!.players.clear();
-        minimalWorld.entities!.items.clear();
-        (minimalWorld.events as any).__listeners?.clear();
-        (minimalWorld.events as any).listeners?.clear();
-        (minimalWorld.chat as any).listeners = [];
-      },
-    };
-
-    return minimalWorld as World;
+  getRPGStateManager(): never {
+    throw new Error(
+      'getRPGStateManager() has been removed. Migrate to content pack state managers. ' +
+      'Update tests to access state managers via content packs instead of this deprecated method.'
+    );
   }
 }

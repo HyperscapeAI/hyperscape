@@ -1,4 +1,5 @@
 import { VOICE_CONFIG } from "../config/constants";
+import { VOICE_MANAGER_CONFIG } from "../config/manager-config";
 import {
   ChannelType,
   Content,
@@ -62,8 +63,14 @@ export class VoiceManager {
       transcriptionText: string;
     }
   > = new Map();
-  private processingVoice: boolean = false;
+  // Flag to prevent concurrent transcription processing
+  // Checked in debouncedProcessTranscription() method to ensure only one transcription processes at a time
+  private processingTranscription: boolean = false;
   private transcriptionTimeout: NodeJS.Timeout | null = null;
+  private audioQueue: Buffer[] = [];
+  // Flag to prevent concurrent audio queue processing
+  // Set atomically in playAudio before starting processAudioQueue
+  private processingQueue: boolean = false;
 
   constructor(runtime: IAgentRuntime) {
     this.runtime = runtime;
@@ -126,7 +133,7 @@ export class VoiceManager {
     const DEBOUNCE_TRANSCRIPTION_THRESHOLD =
       VOICE_CONFIG.TRANSCRIPTION_DEBOUNCE_MS;
 
-    if (this.processingVoice) {
+    if (this.processingTranscription) {
       const state = this.userStates.get(playerId);
       if (state) {
         state.buffers.length = 0;
@@ -141,7 +148,7 @@ export class VoiceManager {
 
     this.transcriptionTimeout = setTimeout(async () => {
       await agentActivityLock.run(async () => {
-        this.processingVoice = true;
+        this.processingTranscription = true;
         try {
           await this.processTranscription(playerId);
 
@@ -152,7 +159,7 @@ export class VoiceManager {
             state.transcriptionText = "";
           });
         } finally {
-          this.processingVoice = false;
+          this.processingTranscription = false;
         }
       });
     }, DEBOUNCE_TRANSCRIPTION_THRESHOLD) as NodeJS.Timeout;
@@ -288,9 +295,11 @@ export class VoiceManager {
           content.text,
         );
         const audioBuffer = await convertToAudioBuffer(responseStream);
-        const emoteManager = service.getEmoteManager()!;
-        const emote = (content.emote as string) || "TALK";
-        emoteManager.playEmote(emote);
+        const emoteManager = service.getEmoteManager();
+        if (emoteManager) {
+          const emote = (content.emote as string) || VOICE_MANAGER_CONFIG.DEFAULT_EMOTE;
+          await emoteManager.queueEmote(emote);
+        }
         await this.playAudio(audioBuffer);
       }
 
@@ -309,23 +318,80 @@ export class VoiceManager {
     });
   }
 
-  async playAudio(audioBuffer: Buffer) {
-    if (this.processingVoice) {
-      logger.info("[VOICE MANAER] Current voice is processing.....");
-      return;
+  /**
+   * Play audio through LiveKit voice system
+   * Integrates with AgentLiveKit system for real-time voice streaming
+   */
+  async playAudio(audioBuffer: Buffer): Promise<void> {
+    // Add audio to queue
+    this.audioQueue.push(audioBuffer);
+    logger.info(`[VoiceManager] Audio added to queue, queue length: ${this.audioQueue.length}`);
+
+    // Atomic test-and-set: only one caller wins the race to start processing
+    // If processingQueue is already true, the running loop will pick up the new item
+    // Otherwise, atomically set to true and start processing
+    if (!this.processingQueue) {
+      this.processingQueue = true;
+      // Start processing without awaiting to avoid blocking
+      this.processAudioQueue().catch(error => {
+        logger.error("[VoiceManager] Error in audio queue processing:", error);
+        // Ensure flag is cleared on error
+        this.processingQueue = false;
+      });
     }
+  }
 
-    const service = this.getService()!;
-    const world = service.getWorld()!;
+  /**
+   * Process audio queue sequentially
+   * Drains the queue and plays each audio buffer in order
+   * Null checks moved outside the loop for better performance
+   * Note: processingQueue flag is already set by playAudio before calling this method
+   */
+  private async processAudioQueue(): Promise<void> {
+    try {
+      // Get service and world once before loop
+      const service = this.getService();
+      if (!service) {
+        logger.error("[VoiceManager] Service not available");
+        throw new Error("HyperscapeService not available");
+      }
 
-    this.processingVoice = true;
+      const world = service.getWorld();
+      if (!world) {
+        logger.error("[VoiceManager] World not available");
+        throw new Error("World not available");
+      }
 
-    // Audio publishing requires LiveKit API integration (future enhancement)
-    logger.info(
-      "[VoiceManager] Audio playback requested but not implemented yet",
-    );
+      // Get LiveKit system once before loop
+      const livekit = world.livekit;
+      if (!livekit) {
+        logger.warn("[VoiceManager] LiveKit not available, cannot process audio queue");
+        // Clear queue since we can't process it
+        this.audioQueue.length = 0;
+        return;
+      }
 
-    this.processingVoice = false;
+      // Process all items in queue
+      while (this.audioQueue.length > 0) {
+        const audioBuffer = this.audioQueue.shift();
+        if (!audioBuffer) {
+          continue;
+        }
+
+        try {
+          // Publish audio stream through LiveKit
+          logger.debug("[VoiceManager] Publishing audio stream through LiveKit");
+          await livekit.publishAudioStream(audioBuffer);
+          logger.info("[VoiceManager] Audio playback complete");
+        } catch (error) {
+          logger.error("[VoiceManager] Failed to play audio:", error);
+          // Continue processing remaining items in queue even if one fails
+        }
+      }
+    } finally {
+      // Always clear the processing flag when queue is empty or on error
+      this.processingQueue = false;
+    }
   }
 
   private getService() {

@@ -3,6 +3,12 @@
  */
 
 import type { Position } from "./core-types";
+import type {
+  SafetyViolationData,
+  EngagementUpdateData,
+  ResourceInefficiencyData,
+  SkillLevelUpData,
+} from './rpg-events'
 
 // Base event data interface
 export interface BaseEventData {
@@ -123,5 +129,9 @@ export interface EventMap {
   "inventory:change": InventoryEventData;
   "world:event": WorldEventData;
   "network:message": NetworkEventData;
+  "SAFETY_VIOLATION": SafetyViolationData;
+  "ENGAGEMENT_UPDATE": EngagementUpdateData;
+  "RESOURCE_INEFFICIENCY": ResourceInefficiencyData;
+  "SKILL_LEVEL_UP": SkillLevelUpData;
   [key: string]: EventData; // Allow custom events
 }

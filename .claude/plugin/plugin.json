@@ -1,0 +1,37 @@
+{
+  "name": "hyperscape-dev",
+  "version": "1.0.0",
+  "description": "Complete development workflow plugin for Hyperscape monorepo with context awareness, memory integration, and rule validation",
+  "author": {
+    "name": "Hyperscape Team"
+  },
+  "repository": "https://github.com/HyperscapeAI/hyperscape",
+  "hooks": "./hooks/hooks.json",
+  "commands": "./commands/commands.md",
+  "features": {
+    "contextAwareness": {
+      "enabled": true,
+      "description": "Pre-edit memory retrieval and monorepo understanding"
+    },
+    "memoryIntegration": {
+      "enabled": true,
+      "description": "Persistent conversation memory via mem0.ai"
+    },
+    "ruleValidation": {
+      "enabled": true,
+      "description": "Automatic validation against .cursor/rules/"
+    }
+  },
+  "requirements": {
+    "claudeCodeVersion": ">=2.0.13",
+    "environment": {
+      "MEM0_API_KEY": {
+        "required": true,
+        "description": "mem0.ai API key for memory storage",
+        "location": ".env"
+      }
+    }
+  },
+  "tags": ["development", "workflow", "validation", "memory", "monorepo", "hyperscape"],
+  "license": "MIT"
+}

@@ -1,14 +1,13 @@
 import { describe, it, expect } from "vitest";
+import { parseHyperscapeWorldUrl, generateAvatarConfig } from "../utils";
 import {
   calculateDistance3D,
   isWithinRange,
   randomPositionInRadius,
-  parseHyperscapeWorldUrl,
   formatEntity,
   isInteractableEntity,
-  generateAvatarConfig,
   formatPhysicsData,
-} from "../utils";
+} from "./test-utils";
 
 describe("Hyperscape Utility Functions", () => {
   describe("calculateDistance3D", () => {

@@ -232,7 +232,25 @@ export const hyperscapeEditEntityAction: Action = {
       attempts++;
     }
 
-    for (const op of operationResults!.operations) {
+    // If all retries failed, return error
+    if (!operationResults || !Array.isArray(operationResults.operations)) {
+      logger.error('[EDIT_ENTITY Action] Failed to extract operations after all retries');
+      if (callback) {
+        await callback({
+          text: 'Sorry, I had trouble understanding the edit request.',
+          actions: ['HYPERSCAPE_EDIT_ENTITY'],
+          source: 'hyperscape',
+        });
+      }
+      return {
+        text: 'Failed to process edit request',
+        success: false,
+        values: { success: false, error: 'llm_parsing_failed' },
+        data: { action: 'HYPERSCAPE_EDIT_ENTITY' },
+      };
+    }
+
+    for (const op of operationResults.operations) {
       if (!op?.success) {
         logger.warn(
           "[EDIT_ENTITY Action] Skipping failed operation:",
@@ -299,7 +317,37 @@ export const hyperscapeEditEntityAction: Action = {
       prompt: agentResponsePrompt,
     });
 
-    const response = parseKeyValueXml(finalXml)!;
+    const response = parseKeyValueXml(finalXml);
+
+    // If parsing failed, return with defaults
+    if (!response) {
+      logger.warn('[EDIT_ENTITY Action] Failed to parse XML response, using defaults');
+      const defaultResponse = {
+        thought: "Finished with scene edits.",
+        text: "Scene updates complete!",
+        emote: "",
+      };
+
+      if (callback) {
+        await callback(defaultResponse);
+      }
+
+      return {
+        text: defaultResponse.text,
+        success: true,
+        values: {
+          success: true,
+          operationsCompleted: operationResults.operations.length,
+          summary: summaryText,
+        },
+        data: {
+          action: "HYPERSCAPE_EDIT_ENTITY",
+          operations: operationResults.operations,
+          thought: defaultResponse.thought,
+          emote: defaultResponse.emote,
+        },
+      };
+    }
 
     const finalResponse = {
       ...response,
@@ -331,7 +379,7 @@ export const hyperscapeEditEntityAction: Action = {
       {
         name: "{{user}}",
         content: { text: "Can you put another block on top of the water?" },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -341,13 +389,13 @@ export const hyperscapeEditEntityAction: Action = {
           actions: ["HYPERSCAPE_EDIT_ENTITY"],
           source: "hyperscape",
         },
-      },
+      } as ActionExample,
     ],
     [
       {
         name: "{{user}}",
         content: { text: "Move the tree next to the house." },
-      },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -357,10 +405,13 @@ export const hyperscapeEditEntityAction: Action = {
           actions: ["HYPERSCAPE_EDIT_ENTITY"],
           source: "hyperscape",
         },
-      },
+      } as ActionExample,
     ],
     [
-      { name: "{{user}}", content: { text: "Delete that floating cube." } },
+      {
+        name: "{{user}}",
+        content: { text: "Delete that floating cube." },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -370,7 +421,7 @@ export const hyperscapeEditEntityAction: Action = {
           actions: ["HYPERSCAPE_EDIT_ENTITY"],
           source: "hyperscape",
         },
-      },
+      } as ActionExample,
     ],
   ],
 };

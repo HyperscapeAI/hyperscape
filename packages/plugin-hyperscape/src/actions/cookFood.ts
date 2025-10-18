@@ -250,7 +250,7 @@ export const cookFoodAction: Action = {
       {
         name: '{{user}}',
         content: { text: 'Cook the fish' }
-      },
+      } as ActionExample,
       {
         name: '{{agent}}',
         content: {
@@ -259,13 +259,13 @@ export const cookFoodAction: Action = {
           actions: ['COOK_FOOD'],
           source: 'hyperscape',
         }
-      }
+      } as ActionExample,
     ],
     [
       {
         name: '{{user}}',
         content: { text: 'Cook the shrimp' }
-      },
+      } as ActionExample,
       {
         name: '{{agent}}',
         content: {
@@ -274,7 +274,7 @@ export const cookFoodAction: Action = {
           actions: ['COOK_FOOD'],
           source: 'hyperscape',
         }
-      }
-    ]
-  ] as ActionExample[][]
+      } as ActionExample,
+    ],
+  ],
 }

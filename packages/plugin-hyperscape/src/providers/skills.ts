@@ -3,6 +3,7 @@ import {
   type Memory,
   type Provider,
   type State,
+  logger,
 } from '@elizaos/core'
 import { HyperscapeService } from '../service'
 
@@ -17,6 +18,8 @@ export const hyperscapeSkillProvider: Provider = {
   dynamic: false, // Standard provider - always available
   position: 1, // After world state, before actions
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
+    logger.debug('[SKILLS] Retrieving skill overview')
+
     const service = runtime.getService<HyperscapeService>(HyperscapeService.serviceName)
 
     if (!service || !service.isConnected()) {
@@ -59,6 +62,8 @@ ${skillsList || 'No skills data available'}
 - **Combat**: Attack, Strength, Defense (coming soon)
 
 Use specific skill actions to train and level up your skills!`
+
+    logger.debug(`[SKILLS] Found ${skillCount} skills, total level: ${totalLevel}`)
 
     return {
       text,

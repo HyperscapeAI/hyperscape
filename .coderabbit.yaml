@@ -1,0 +1,377 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit Configuration for Hyperscape
+# Comprehensive AI-powered code review configuration
+# Last updated: 2025-10-18
+
+# =============================================================================
+# GLOBAL SETTINGS
+# =============================================================================
+
+language: "en-US"
+tone_instructions: "Be thorough and focus on TypeScript best practices, ECS architecture patterns, server-authoritative design, and real testing (no mocks). Enforce strict typing and highlight any use of 'any' types."
+early_access: false
+enable_free_tier: true
+
+# =============================================================================
+# REVIEWS
+# =============================================================================
+
+reviews:
+  # Assertive profile for thorough, detailed feedback
+  profile: "assertive"
+  
+  # Request changes workflow - require resolution before merge
+  request_changes_workflow: false
+  
+  # Summary and documentation
+  high_level_summary: true
+  high_level_summary_placeholder: "@coderabbitai summary"
+  high_level_summary_in_walkthrough: false
+  
+  # Auto-generate PR titles
+  auto_title_placeholder: "@coderabbitai"
+  auto_title_instructions: "Use conventional commit format (feat:, fix:, refactor:, docs:, test:, chore:)"
+  
+  # Review status and commit updates
+  review_status: true
+  commit_status: true
+  fail_commit_status: false
+  
+  # Walkthrough features
+  collapse_walkthrough: false
+  changed_files_summary: true
+  sequence_diagrams: true
+  estimate_code_review_effort: true
+  assess_linked_issues: true
+  related_issues: true
+  related_prs: true
+  
+  # Labels and reviewers
+  suggested_labels: true
+  auto_apply_labels: true
+  suggested_reviewers: true
+  auto_assign_reviewers: false
+  
+  # Progress indicators
+  in_progress_fortune: true
+  poem: false
+  
+  # Labeling instructions
+  labeling_instructions:
+    - label: "bug"
+      instructions: "Code defects, errors, or broken functionality"
+    - label: "feature"
+      instructions: "New capabilities or enhancements"
+    - label: "refactor"
+      instructions: "Code restructuring without functionality changes"
+    - label: "performance"
+      instructions: "Performance improvements or optimizations"
+    - label: "security"
+      instructions: "Security-related changes"
+    - label: "breaking"
+      instructions: "Breaking changes requiring version bump"
+    - label: "documentation"
+      instructions: "Documentation updates"
+    - label: "test"
+      instructions: "Test additions or modifications"
+    - label: "eliza"
+      instructions: "ElizaOS AI agent integration changes"
+    - label: "hyperscape"
+      instructions: "Core Hyperscape engine changes"
+    - label: "client"
+      instructions: "Frontend/client package changes"
+    - label: "server"
+      instructions: "Backend/server package changes"
+    - label: "shared"
+      instructions: "Shared package/ECS changes"
+  
+  # Path filters - focus on source code, exclude build artifacts
+  path_filters:
+    # Include source directories
+    - "packages/*/src/**"
+    - "packages/*/scripts/**"
+    - "*.ts"
+    - "*.tsx"
+    - "*.js"
+    - "*.jsx"
+    - "*.mjs"
+    - "*.json"
+    - "*.yaml"
+    - "*.yml"
+    - "*.md"
+    
+    # Exclude build artifacts and dependencies
+    - "!**/node_modules/**"
+    - "!**/dist/**"
+    - "!**/build/**"
+    - "!**/.next/**"
+    - "!**/coverage/**"
+    - "!**/.turbo/**"
+    - "!**/temp-images/**"
+    - "!**/*.min.js"
+    - "!**/*.bundle.js"
+    - "!bun.lock"
+    - "!package-lock.json"
+    - "!yarn.lock"
+    
+    # Exclude generated files
+    - "!**/*.d.ts.map"
+    - "!**/*.js.map"
+    - "!**/physx-js-webidl.wasm"
+  
+  # Path-specific instructions
+  path_instructions:
+    - path: "packages/shared/**"
+      instructions: "This is the core ECS engine. Ensure strict typing, no 'any' types, and proper system architecture. Verify event-driven patterns and system communication."
+    
+    - path: "packages/server/**"
+      instructions: "Server-authoritative architecture - validate that clients never directly modify state. All actions must be validated server-side. Check database persistence patterns."
+    
+    - path: "packages/client/**"
+      instructions: "Client should only render state and send requests. No direct state modifications. Verify React 18 patterns, Three.js integration, and proper component structure."
+    
+    - path: "packages/plugin-hyperscape/**"
+      instructions: "ElizaOS integration - verify action handlers return ActionResult objects, providers follow three-tiered architecture, and no breaking changes to the plugin API."
+    
+    - path: "**/*.test.ts"
+      instructions: "CRITICAL: Tests must use real Hyperscape instances with Playwright. NO MOCKS ALLOWED. Verify tests use real gameplay, real objects, and visual verification."
+    
+    - path: "**/*.spec.ts"
+      instructions: "CRITICAL: Tests must use real Hyperscape instances with Playwright. NO MOCKS ALLOWED. Verify tests use real gameplay, real objects, and visual verification."
+    
+    - path: "**/types.ts"
+      instructions: "Verify no 'any' or 'unknown' types. Prefer classes over interfaces. Ensure types are exported and reusable across packages."
+    
+    - path: "packages/asset-forge/**"
+      instructions: "Asset generation tooling - verify API integrations (OpenAI, Anthropic, MeshyAI) use environment variables and proper error handling."
+  
+  # Disable caching for fresh analysis
+  abort_on_close: true
+  disable_cache: false
+  
+  # Auto review configuration
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    
+    # Skip WIP and draft PRs
+    ignore_title_keywords:
+      - "wip"
+      - "draft"
+      - "do not merge"
+      - "dnm"
+    
+    # Review all branches
+    labels: []
+    drafts: false
+    base_branches: []
+    ignore_usernames: []
+  
+  # Finishing touches
+  finishing_touches:
+    docstrings:
+      enabled: true
+    unit_tests:
+      enabled: true
+  
+  # Pre-merge checks
+  pre_merge_checks:
+    # Docstring coverage
+    docstrings:
+      mode: "warning"
+      threshold: 70
+    
+    # PR title requirements
+    title:
+      mode: "warning"
+      requirements: "Title should follow conventional commit format (feat:, fix:, refactor:, docs:, test:, chore:) and be concise (under 72 characters)"
+    
+    # PR description requirements
+    description:
+      mode: "warning"
+    
+    # Issue assessment
+    issue_assessment:
+      mode: "warning"
+    
+    # Custom checks
+    custom_checks:
+      - name: "No Any Types"
+        instructions: "Verify there are no 'any' types in TypeScript files. All types must be explicit and strict."
+      
+      - name: "Real Tests Only"
+        instructions: "If test files are modified, verify they use real Hyperscape instances with Playwright. NO mocks, spies, or test framework abstractions allowed."
+      
+      - name: "Server Authority"
+        instructions: "For server changes, verify all game state modifications are validated server-side. Clients should never directly modify authoritative state."
+      
+      - name: "Action Result Returns"
+        instructions: "For ElizaOS action handlers in plugin-hyperscape, verify all exit points return ActionResult objects with {text, success, values, data} structure."
+      
+      - name: "Environment Variables"
+        instructions: "Verify API keys and credentials use environment variables from .env files, never hardcoded values."
+  
+  # Tools configuration
+  tools:
+    # Core linting tools
+    eslint:
+      enabled: true
+    
+    # Shell scripts
+    shellcheck:
+      enabled: true
+    
+    # YAML files
+    yamllint:
+      enabled: true
+    
+    # Markdown documentation
+    markdownlint:
+      enabled: true
+    
+    # GitHub Actions workflows
+    actionlint:
+      enabled: true
+    
+    # Docker files
+    hadolint:
+      enabled: true
+    
+    # Security scanning
+    gitleaks:
+      enabled: true
+    
+    # Infrastructure as code
+    checkov:
+      enabled: false
+    
+    # Additional linters
+    biome:
+      enabled: false
+    
+    ruff:
+      enabled: false
+    
+    # GitHub Checks integration
+    github-checks:
+      enabled: true
+      timeout_ms: 90000
+    
+    # Language and grammar
+    languagetool:
+      enabled: true
+      enabled_rules: []
+      disabled_rules: []
+      enabled_categories: []
+      disabled_categories: []
+      enabled_only: false
+      level: "default"
+
+# =============================================================================
+# CHAT
+# =============================================================================
+
+chat:
+  # Enable ASCII/Emoji art for personality
+  art: true
+  
+  # Auto-reply without requiring @mention
+  auto_reply: true
+  
+  # Integration configurations
+  integrations:
+    jira:
+      usage: "auto"
+    
+    linear:
+      usage: "auto"
+
+# =============================================================================
+# KNOWLEDGE BASE
+# =============================================================================
+
+knowledge_base:
+  # Enable knowledge base features
+  opt_out: false
+  
+  # Web search for external context
+  web_search:
+    enabled: true
+  
+  # Code guidelines - use existing documentation
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      # Cursor rules and guidelines
+      - "**/.cursor/rules/*.mdc"
+      - "**/.cursorrules"
+      
+      # Project documentation
+      - "**/CLAUDE.md"
+      - "**/README.md"
+      - "**/LORE.md"
+      
+      # Architecture and standards
+      - "**/eslint.config.js"
+      - "**/tsconfig.json"
+  
+  # Learnings scope
+  learnings:
+    scope: "global"
+  
+  # Issues scope
+  issues:
+    scope: "global"
+  
+  # Pull requests scope
+  pull_requests:
+    scope: "global"
+  
+  # Jira integration
+  jira:
+    usage: "auto"
+    project_keys: []
+  
+  # Linear integration
+  linear:
+    usage: "auto"
+    team_keys: []
+  
+  # MCP integration
+  mcp:
+    usage: "auto"
+    disabled_servers: []
+
+# =============================================================================
+# CODE GENERATION
+# =============================================================================
+
+code_generation:
+  # Docstring generation
+  docstrings:
+    language: "en-US"
+    path_instructions:
+      - path: "packages/shared/src/systems/**"
+        instructions: "Generate docstrings explaining the system's purpose, what components it operates on, and key methods. Follow TSDoc format."
+      
+      - path: "packages/plugin-hyperscape/src/actions/**"
+        instructions: "Generate docstrings for ElizaOS actions explaining what the action does, parameters, and return values. Include examples if complex."
+      
+      - path: "packages/plugin-hyperscape/src/providers/**"
+        instructions: "Generate docstrings for ElizaOS providers explaining what context they provide and when they're invoked."
+  
+  # Unit test generation
+  unit_tests:
+    path_instructions:
+      - path: "packages/shared/**"
+        instructions: "Generate Playwright tests using real Hyperscape world instances. NO MOCKS. Test with real data and verify using Three.js scene hierarchy and visual screenshots."
+      
+      - path: "packages/server/**"
+        instructions: "Generate integration tests with real database and WebSocket connections. Verify server-authoritative patterns and state validation."
+      
+      - path: "packages/client/**"
+        instructions: "Generate Playwright visual tests. Verify component rendering, Three.js scene structure, and UI interactions with real gameplay."
+      
+      - path: "packages/plugin-hyperscape/**"
+        instructions: "Generate tests that connect ElizaOS agents to real Hyperscape worlds. Verify action execution and provider context generation with actual game state."
+

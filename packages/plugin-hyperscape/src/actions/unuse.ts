@@ -52,35 +52,54 @@ export const hyperscapeUnuseItemAction: Action = {
     }
 
     logger.info("[UNUSE ITEM] Attempting to release current action.");
-    // AgentActions has releaseAction method - use it
-    if (
-      actions &&
-      "releaseAction" in actions &&
-      typeof actions.releaseAction === "function"
-    ) {
-      actions.releaseAction();
-    }
 
-    if (callback) {
-      const successResponse = {
+    // Use typed AgentActions system directly
+    try {
+      (actions as AgentActions).releaseAction();
+      logger.info("[UNUSE ITEM] Action released successfully");
+
+      if (callback) {
+        const successResponse = {
+          text: "Item released.",
+          actions: ["HYPERSCAPE_UNUSE_ITEM"],
+          source: "hyperscape",
+          metadata: { status: "released" },
+        };
+        await callback(successResponse);
+      }
+
+      return {
         text: "Item released.",
-        actions: ["HYPERSCAPE_UNUSE_ITEM"],
-        source: "hyperscape",
-        metadata: { status: "released" },
+        success: true,
+        values: { success: true, status: "released" },
+        data: { action: "HYPERSCAPE_UNUSE_ITEM" },
       };
-      await callback(successResponse);
-    }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error(`[UNUSE ITEM] Failed to release action: ${errorMsg}`);
 
-    return {
-      text: "Item released.",
-      success: true,
-      values: { success: true, status: "released" },
-      data: { action: "HYPERSCAPE_UNUSE_ITEM" },
-    };
+      if (callback) {
+        await callback({
+          text: `Failed to release item: ${errorMsg}`,
+          actions: ["HYPERSCAPE_UNUSE_ITEM"],
+          source: "hyperscape",
+        });
+      }
+
+      return {
+        text: `Failed to release item: ${errorMsg}`,
+        success: false,
+        values: { success: false, error: errorMsg },
+        data: { action: "HYPERSCAPE_UNUSE_ITEM" },
+      };
+    }
   },
   examples: [
     [
-      { name: "{{user}}", content: { text: "Drop it now." } },
+      {
+        name: "{{user}}",
+        content: { text: "Drop it now." },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -90,10 +109,13 @@ export const hyperscapeUnuseItemAction: Action = {
           actions: ["HYPERSCAPE_UNUSE_ITEM"],
           source: "hyperscape",
         },
-      },
+      } as ActionExample,
     ],
     [
-      { name: "{{user}}", content: { text: "Stop using that." } },
+      {
+        name: "{{user}}",
+        content: { text: "Stop using that." },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -103,7 +125,23 @@ export const hyperscapeUnuseItemAction: Action = {
           actions: ["HYPERSCAPE_UNUSE_ITEM"],
           source: "hyperscape",
         },
-      },
+      } as ActionExample,
+    ],
+    [
+      {
+        name: "{{user}}",
+        content: { text: "Put that down please" },
+      } as ActionExample,
+      {
+        name: "{{agent}}",
+        content: {
+          thought:
+            "User wants me to release the item I'm currently interacting with",
+          text: "Item released.",
+          actions: ["HYPERSCAPE_UNUSE_ITEM"],
+          source: "hyperscape",
+        },
+      } as ActionExample,
     ],
   ],
 };

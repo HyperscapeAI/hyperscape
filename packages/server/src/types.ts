@@ -30,15 +30,32 @@
  * **Referenced by**: Nearly all server files (ServerNetwork, DatabaseSystem, index.ts, etc.)
  */
 
-import type { Entity } from '@hyperscape/shared';
-
 // ============================================================================
 // RE-EXPORTS FROM SHARED
 // ============================================================================
 // Import commonly used shared types for convenience
 
-/** Database interface for legacy Knex-style queries */
-export type { SystemDatabase } from '@hyperscape/shared';
+import { Socket, Entity } from '@hyperscape/shared'
+
+/** Database interface for Knex-style queries */
+export type SystemDatabase<TRecord extends Record<string, unknown> = Record<string, unknown>> = (table: string) => {
+  where: (key: string, value: TRecord[keyof TRecord]) => {
+    first: () => Promise<TRecord | undefined>
+    update: (data: Partial<TRecord>) => Promise<number>
+    delete: () => Promise<number>
+  }
+  select: (columns?: string | string[]) => {
+    where: (key: string, value: TRecord[keyof TRecord]) => {
+      first: () => Promise<TRecord | undefined>
+    }
+  }
+  insert: (data: Partial<TRecord> | Partial<TRecord>[]) => Promise<void>
+  update: (data: Partial<TRecord>) => Promise<number>
+  delete: () => Promise<number>
+  first: () => Promise<TRecord | undefined>
+  then: <T>(onfulfilled: (value: TRecord[]) => T) => Promise<T>
+  catch: <T>(onrejected: (reason: unknown) => T) => Promise<T>
+}
 
 // ============================================================================
 // DATABASE ROW TYPES
@@ -149,21 +166,17 @@ export interface EquipmentSaveItem {
   quantity: number
 }
 
-// Database helpers - re-export from shared for convenience
-export { dbHelpers, isDatabaseInstance } from '@hyperscape/shared'
+// Database helpers and classes - re-export from shared for convenience
+export { dbHelpers, isDatabaseInstance, Socket, Entity } from '@hyperscape/shared'
 
 // ============================================================================
 // NETWORK TYPES
 // ============================================================================
 // Types for WebSocket connections and network handling
 
-// Socket base class - re-export from shared
-import { Socket } from '@hyperscape/shared'
-export type { Socket } from '@hyperscape/shared'
-
 /**
  * Node.js WebSocket type with server-specific methods
- * 
+ *
  * Extends the standard WebSocket interface with Node.js ws library methods
  * like ping(), terminate(), and event handlers.
  */
@@ -173,13 +186,25 @@ export type NodeWebSocket = WebSocket & {
   terminate: () => void
 }
 
+// Base Socket interface (defines what Socket class implements)
+export interface SocketLike {
+  id: string
+  ws: NodeWebSocket
+  player?: PlayerEntity | null
+  send: (name: string, data: unknown) => void
+  sendPacket: (packet: ArrayBuffer | Uint8Array) => void
+  disconnect: () => void
+  close: () => void
+  ping: () => void
+  alive: boolean
+}
+
 // Extended Socket type with server-specific properties
-export interface ServerSocket extends Socket {
-  player: any;
-  // Base Socket properties from Socket class
+export interface ServerSocket extends SocketLike {
+  player?: PlayerEntity | undefined
   ws: NodeWebSocket
   network: NetworkWithSocket
-  
+
   // Server-specific extensions
   accountId?: string
   selectedCharacterId?: string
@@ -260,8 +285,20 @@ export interface ChatMessage {
   channel?: string
 }
 
-// Re-export WorldOptions from shared
-export type { WorldOptions } from '@hyperscape/shared'
+// Define storage interface based on actual storage implementation
+export interface StorageSystem {
+  get<T>(key: string): Promise<T | undefined>;
+  set<T>(key: string, value: T): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
+// WorldOptions type - options for world initialization
+export interface WorldOptions {
+  db?: SystemDatabase
+  storage?: StorageSystem
+  assetsUrl?: string
+  assetsDir?: string
+}
 
 /**
  * Resource entity (tree, rock, etc.) for gathering systems
@@ -327,7 +364,8 @@ export type PlayerEntity = Entity & {
  * @public
  */
 export interface ServerNetworkWithSockets {
-  sockets: Map<string, ServerSocket & { 
+  sockets: Map<string, ServerSocket & {
     player: PlayerEntity
   }>
+  db: SystemDatabase
 }

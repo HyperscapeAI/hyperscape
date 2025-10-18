@@ -205,7 +205,7 @@ export const bankItemsAction: Action = {
       {
         name: '{{user}}',
         content: { text: 'Bank my logs' }
-      },
+      } as ActionExample,
       {
         name: '{{agent}}',
         content: {
@@ -214,13 +214,13 @@ export const bankItemsAction: Action = {
           actions: ['BANK_ITEMS'],
           source: 'hyperscape',
         }
-      }
+      } as ActionExample,
     ],
     [
       {
         name: '{{user}}',
         content: { text: 'My inventory is full, store these items' }
-      },
+      } as ActionExample,
       {
         name: '{{agent}}',
         content: {
@@ -229,7 +229,7 @@ export const bankItemsAction: Action = {
           actions: ['BANK_ITEMS'],
           source: 'hyperscape',
         }
-      }
+      } as ActionExample,
     ],
-  ] as ActionExample[][]
+  ],
 }

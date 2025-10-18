@@ -9,16 +9,118 @@ import {
   type Memory,
   type State,
   logger,
-  EventType,
-  type EventHandler,
 } from "@elizaos/core";
 import { HyperscapeService } from "../service";
-// Import THREE types if needed, e.g., for metadata typing
-// import type THREE from 'three';
+import type { World } from "../types/core-types";
+
+// Typed navigation event constants
+export const NAVIGATION_STARTED = 'rpg:navigation:started' as const;
+export const NAVIGATION_COMPLETED = 'rpg:navigation:completed' as const;
+export const NAVIGATION_FAILED = 'rpg:navigation:failed' as const;
+
+// Navigation event payload interfaces
+export interface NavigationStartedPayload {
+  playerId: string;
+  targetEntityId?: string;
+  targetPosition?: { x: number; z: number };
+  navigationType: NavigationType;
+}
+
+export interface NavigationCompletedPayload {
+  playerId: string;
+  success: boolean;
+}
+
+export interface NavigationFailedPayload {
+  playerId: string;
+  error?: string;
+}
+
+// Type map for event emissions
+export interface NavigationEventMap {
+  [NAVIGATION_STARTED]: NavigationStartedPayload;
+  [NAVIGATION_COMPLETED]: NavigationCompletedPayload;
+  [NAVIGATION_FAILED]: NavigationFailedPayload;
+}
 
 export enum NavigationType {
   ENTITY = "entity",
   POSITION = "position",
+}
+
+// Configurable navigation timeout
+const DEFAULT_NAVIGATION_TIMEOUT_MS = 10000;
+
+/**
+ * Helper function to execute navigation with typed events
+ */
+async function executeNavigationWithEvents(
+  world: World,
+  playerId: string,
+  navigationType: NavigationType,
+  options: {
+    targetEntityId?: string;
+    targetPosition?: { x: number; z: number };
+    timeout?: number;
+  },
+  startNavigation: () => void,
+): Promise<{ success: boolean; error?: string }> {
+  const timeoutMs = options.timeout || DEFAULT_NAVIGATION_TIMEOUT_MS;
+
+  // Wrap navigation in promise with event listeners
+  return new Promise<{ success: boolean; error?: string }>((resolve, reject) => {
+    const completionHandler = (data: NavigationCompletedPayload) => {
+      if (data.playerId === playerId) {
+        logger.info(`[GOTO] Navigation ${data.success ? 'completed' : 'failed'}`);
+        cleanup();
+        resolve({ success: data.success });
+      }
+    };
+
+    const failureHandler = (data: NavigationFailedPayload) => {
+      if (data.playerId === playerId) {
+        logger.error(`[GOTO] Navigation failed: ${data.error || 'Unknown error'}`);
+        cleanup();
+        resolve({ success: false, error: data.error });
+      }
+    };
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      world.off(NAVIGATION_COMPLETED, completionHandler);
+      world.off(NAVIGATION_FAILED, failureHandler);
+    };
+
+    const timeout = setTimeout(() => {
+      const errorMsg = `Navigation timeout after ${timeoutMs}ms`;
+      logger.error(`[GOTO] ${errorMsg}`);
+      cleanup();
+      resolve({ success: false, error: errorMsg });
+    }, timeoutMs);
+
+    // Start navigation BEFORE registering event listeners
+    try {
+      startNavigation();
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error(`[GOTO] Failed to start navigation: ${errorMsg}`);
+      cleanup();
+      resolve({ success: false, error: errorMsg });
+      return;
+    }
+
+    // Emit navigation started event
+    const startPayload: NavigationStartedPayload = {
+      playerId,
+      targetEntityId: options.targetEntityId,
+      targetPosition: options.targetPosition,
+      navigationType,
+    };
+    world.emit(NAVIGATION_STARTED, startPayload);
+
+    world.on(NAVIGATION_COMPLETED, completionHandler);
+    world.on(NAVIGATION_FAILED, failureHandler);
+  });
 }
 
 const navigationTargetExtractionTemplate = (thoughts?: string) => {
@@ -96,8 +198,8 @@ export const hyperscapeGotoEntityAction: Action = {
     const service = runtime.getService<HyperscapeService>(
       HyperscapeService.serviceName,
     )!;
-    const world = service.getWorld()!; // Use the getter
-    const controls = world.controls!; // Controls are typed correctly in World interface
+    const world = service.getWorld()!;
+    const controls = world.controls!;
     const player = world.entities.player;
 
     const extractionState = await runtime.composeState(message);
@@ -117,10 +219,69 @@ export const hyperscapeGotoEntityAction: Action = {
       case NavigationType.ENTITY: {
         const entityId = parameter.entityId;
 
-        logger.info(`Navigating to entity ${entityId}`);
-        await controls.followEntity(entityId);
+        logger.info(`[GOTO] Navigating to entity ${entityId}`);
 
-        const targetEntity = world.entities.items.get(parameter.entityId)!;
+        // Execute navigation with events
+        const navResult = await executeNavigationWithEvents(
+          world,
+          player.id,
+          NavigationType.ENTITY,
+          { targetEntityId: entityId },
+          () => {
+            controls.followEntity(entityId);
+            logger.info(`[GOTO] Started following entity ${entityId}`);
+          },
+        );
+
+        if (!navResult.success) {
+          if (callback) {
+            await callback({
+              text: `Failed to reach entity: ${navResult.error || 'Unknown error'}`,
+              actions: ["HYPERSCAPE_GOTO_ENTITY"],
+              source: "hyperscape",
+            });
+          }
+
+          return {
+            text: `Failed to reach entity: ${navResult.error || 'Unknown error'}`,
+            success: false,
+            values: { success: false, error: navResult.error },
+            data: { action: "HYPERSCAPE_GOTO_ENTITY" },
+          };
+        }
+
+        const targetEntity = world.entities.items.get(entityId);
+
+        // Handle case where entity was deleted/despawned after navigation started
+        if (!targetEntity) {
+          logger.warn(`[GOTO] Target entity ${entityId} not found after navigation - may have been deleted`);
+
+          const missingEntityResponse = {
+            text: `Reached the location, but the entity is no longer there.`,
+            actions: ["HYPERSCAPE_GOTO_ENTITY"],
+            source: "hyperscape",
+          };
+          if (callback) {
+            await callback(missingEntityResponse);
+          }
+
+          return {
+            text: missingEntityResponse.text,
+            success: true, // Navigation succeeded, entity just missing
+            values: {
+              success: true,
+              navigationType: "entity",
+              targetEntity: entityId,
+              entityMissing: true
+            },
+            data: {
+              action: "HYPERSCAPE_GOTO_ENTITY",
+              targetEntityId: entityId,
+              entityMissing: true
+            },
+          };
+        }
+
         const entityName =
           targetEntity.data.name ||
           (
@@ -135,7 +296,9 @@ export const hyperscapeGotoEntityAction: Action = {
           actions: ["HYPERSCAPE_GOTO_ENTITY"],
           source: "hyperscape",
         };
-        await callback!(successResponse);
+        if (callback) {
+          await callback(successResponse);
+        }
 
         return {
           text: successResponse.text,
@@ -156,15 +319,45 @@ export const hyperscapeGotoEntityAction: Action = {
       case NavigationType.POSITION: {
         const pos = parameter.position;
 
-        logger.info(`Navigating to position (${pos.x}, ${pos.z})`);
-        await controls.goto(pos.x, pos.z);
+        logger.info(`[GOTO] Navigating to position (${pos.x}, ${pos.z})`);
+
+        // Execute navigation with events
+        const navResult = await executeNavigationWithEvents(
+          world,
+          player.id,
+          NavigationType.POSITION,
+          { targetPosition: pos },
+          () => {
+            controls.goto(pos.x, pos.z);
+            logger.info(`[GOTO] Started navigation to position (${pos.x}, ${pos.z})`);
+          },
+        );
+
+        if (!navResult.success) {
+          if (callback) {
+            await callback({
+              text: `Failed to reach position: ${navResult.error || 'Unknown error'}`,
+              actions: ["HYPERSCAPE_GOTO_ENTITY"],
+              source: "hyperscape",
+            });
+          }
+
+          return {
+            text: `Failed to reach position: ${navResult.error || 'Unknown error'}`,
+            success: false,
+            values: { success: false, error: navResult.error },
+            data: { action: "HYPERSCAPE_GOTO_ENTITY" },
+          };
+        }
 
         const positionResponse = {
           text: `Reached position (${pos.x}, ${pos.z}).`,
           actions: ["HYPERSCAPE_GOTO_ENTITY"],
           source: "hyperscape",
         };
-        await callback!(positionResponse);
+        if (callback) {
+          await callback(positionResponse);
+        }
 
         return {
           text: positionResponse.text,
@@ -193,7 +386,7 @@ export const hyperscapeGotoEntityAction: Action = {
         content: {
           text: "Go to Bob",
         },
-      },
+      } as ActionExample,
       {
         name: "agent",
         content: {
@@ -202,7 +395,7 @@ export const hyperscapeGotoEntityAction: Action = {
           thought:
             "User wants me to go to Bob - I need to find Bob's entity in the world and navigate there",
         },
-      },
+      } as ActionExample,
     ],
     [
       {
@@ -210,7 +403,7 @@ export const hyperscapeGotoEntityAction: Action = {
         content: {
           text: "Find entity abcdef",
         },
-      },
+      } as ActionExample,
       {
         name: "agent",
         content: {
@@ -219,7 +412,24 @@ export const hyperscapeGotoEntityAction: Action = {
           thought:
             "User is asking me to navigate to a specific entity ID - I should move to that location",
         },
-      },
+      } as ActionExample,
     ],
-  ] as ActionExample[][],
+    [
+      {
+        name: "user",
+        content: {
+          text: "Move to position 10, 15",
+        },
+      } as ActionExample,
+      {
+        name: "agent",
+        content: {
+          text: "Navigating to position (10, 15)...",
+          actions: ["HYPERSCAPE_GOTO_ENTITY"],
+          thought:
+            "User specified a direct coordinate - I should navigate to that position",
+        },
+      } as ActionExample,
+    ],
+  ],
 };

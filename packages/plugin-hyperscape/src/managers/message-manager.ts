@@ -4,16 +4,29 @@ import {
   Memory,
   ModelType,
   UUID,
+  type Content,
+  type State,
 } from "@elizaos/core";
 import type { HyperscapeService } from "../service";
 import { World, Entity } from "../types/core-types";
 import { ChatMessage } from "../types";
-import {
-  composeContext,
-  generateMessageResponse,
-  shouldRespond,
-} from "../utils/ai-helpers";
-import { handleMessage } from "../handlers/native-message-handler";
+
+/**
+ * Chat metadata interface for message.metadata typing
+ */
+interface ChatMetadata {
+  type?: string;
+  hyperscape?: {
+    username?: string;
+    name?: string;
+    worldId?: string;
+  };
+  username?: string;
+  avatar?: string;
+  userId?: string;
+  isDirect?: boolean;
+  [key: string]: string | number | boolean | Record<string, unknown> | undefined;
+}
 
 type HyperscapePlayerData = Entity & {
   metadata?: {
@@ -111,28 +124,47 @@ export class MessageManager {
     // Save message to memory first
     await this.runtime.createMemory(memory, "messages");
 
-    // Process through native message handler (decoupled from bootstrap)
-    // This handles message processing internally within plugin-hyperscape
-    await handleMessage({
-      runtime: this.runtime,
-      message: memory,
-      callback: async (response) => {
-        if (response && response.text) {
-          // Send response back to Hyperscape world
-          await this.sendMessage(response.text);
+    // Compose state with providers (includes world context from worldContextProvider)
+    const state = await this.runtime.composeState(memory);
 
+    // Check if we should respond
+    const shouldRespond = await this.shouldRespondToMessage(memory, state);
+    if (!shouldRespond) {
+      console.debug("[MessageManager] Skipping message (should not respond)");
+      return;
+    }
+
+    // Track responses
+    const responses: Memory[] = [];
+
+    // Process actions using ElizaOS core
+    await this.runtime.processActions(
+      memory,
+      responses,
+      state,
+      async (content: Content) => {
+        if (content?.text) {
+          await this.sendMessage(content.text);
           console.info("[MessageManager] Response sent:", {
             originalMessage: msg.text?.substring(0, 50) + "...",
-            response: response.text?.substring(0, 50) + "...",
-            action: response.action || "none",
+            response: content.text?.substring(0, 50) + "...",
+            action: content.action || "none",
           });
         }
         return [];
-      },
-      onComplete: () => {
-        console.debug("[MessageManager] Message processing complete");
-      },
-    });
+      }
+    );
+
+    // If no action handled the message, generate conversational response
+    if (responses.length === 0) {
+      const response = await this.generateConversationalResponse(memory, state);
+      if (response) {
+        await this.sendMessage(response);
+        console.info("[MessageManager] Generated conversational response");
+      }
+    }
+
+    console.debug("[MessageManager] Message processing complete");
   }
 
   async sendMessage(text: string): Promise<void> {
@@ -277,5 +309,139 @@ export class MessageManager {
     ];
 
     return context.join(", ");
+  }
+
+  /**
+   * Determine if agent should respond to message
+   *
+   * By default, only responds when:
+   * - Agent is mentioned by name
+   * - Message is a direct message (metadata.isDirect === true)
+   *
+   * Can be overridden by setting alwaysRespond config option to true
+   */
+  private async shouldRespondToMessage(
+    message: Memory,
+    state: State
+  ): Promise<boolean> {
+    const text = message.content.text?.toLowerCase() || "";
+    const agentName = this.runtime.character.name;
+    const nameToCheck = Array.isArray(agentName)
+      ? agentName[0].toLowerCase()
+      : agentName.toLowerCase();
+
+    // Always respond if mentioned by name
+    if (text.includes(nameToCheck)) {
+      return true;
+    }
+
+    // Always respond to direct messages
+    // Check metadata.isDirect for explicit DM indication
+    const metadata = message.metadata as ChatMetadata | undefined;
+    if (metadata?.isDirect === true) {
+      return true;
+    }
+
+    // Check for configurable override to allow broadcast responses
+    // This can be set via runtime.character.settings.alwaysRespond = true
+    interface CharacterSettings {
+      alwaysRespond?: boolean;
+      [key: string]: unknown;
+    }
+    const settings = this.runtime.character.settings as CharacterSettings | undefined;
+    if (settings?.alwaysRespond === true) {
+      return true;
+    }
+
+    // Default to NOT responding (only respond when mentioned or in DMs)
+    return false;
+  }
+
+  /**
+   * Generate conversational response when no action matches
+   */
+  private async generateConversationalResponse(
+    message: Memory,
+    state: State
+  ): Promise<string | null> {
+    try {
+      const context = this.buildLLMContext(message, state);
+
+      const responseText = await this.runtime.useModel(
+        ModelType.TEXT_LARGE,
+        {
+          prompt: context,
+          max_tokens: 1000,
+          temperature: 0.8,
+          stop: ['</s>', '\n\nUser:', '\n\nHuman:'],
+          timeout: 30000,
+        }
+      );
+
+      // Parse response text using helper
+      const textContent = this.parseResponseText(responseText);
+
+      return textContent.trim();
+    } catch (error) {
+      console.error("[MessageManager] Failed to generate response:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Parse LLM response text with clear type guards
+   *
+   * @param responseText - Unknown response from LLM (could be string, object, or other type)
+   * @returns Parsed string content
+   */
+  private parseResponseText(responseText: unknown): string {
+    // Check if it's already a string
+    if (typeof responseText === 'string') {
+      return responseText;
+    }
+
+    // Check if it's an object with a 'text' property
+    if (responseText && typeof responseText === 'object' && 'text' in responseText) {
+      const textValue = (responseText as { text: unknown }).text;
+      // Check if the text property is a string
+      if (typeof textValue === 'string') {
+        return textValue;
+      }
+      // If text property exists but isn't a string, convert it
+      return String(textValue);
+    }
+
+    // Fallback: convert to string
+    return String(responseText);
+  }
+
+  /**
+   * Build LLM context from state
+   */
+  private buildLLMContext(message: Memory, state: State): string {
+    const characterName = Array.isArray(this.runtime.character.name)
+      ? this.runtime.character.name[0]
+      : this.runtime.character.name;
+
+    const characterBio = Array.isArray(this.runtime.character.bio)
+      ? this.runtime.character.bio.join(" ")
+      : this.runtime.character.bio;
+
+    let context = `You are ${characterName}. ${characterBio}\n\n`;
+
+    // Add state context (includes provider outputs like worldContextProvider)
+    if (state.text) {
+      context += `${state.text}\n\n`;
+    }
+
+    // Get username from metadata (with fallback for backward compatibility)
+    const metadata = message.metadata as ChatMetadata | undefined;
+    const userName = metadata?.username || message.content.userName || "User";
+
+    // Add current message
+    context += `Message from ${userName}:\n${message.content.text}\n\n`;
+    context += `Generate a response as ${characterName}. Keep it natural and in-character.\n`;
+
+    return context;
   }
 }
