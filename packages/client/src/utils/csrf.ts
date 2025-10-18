@@ -67,8 +67,13 @@ export function getCsrfTokenFromCookie(): string | null {
     return null;
   }
 
-  const value = csrfCookie.split('=')[1];
-  return value ? decodeURIComponent(value.trim()) : null;
+  const firstEqualIndex = csrfCookie.indexOf('=');
+  if (firstEqualIndex === -1) {
+    return null;
+  }
+
+  const value = csrfCookie.slice(firstEqualIndex + 1).trim();
+  return value ? decodeURIComponent(value) : null;
 }
 
 /**
@@ -159,7 +164,13 @@ export function parseCookies(): Record<string, string> {
   }
 
   return document.cookie.split(';').reduce((acc, cookie) => {
-    const [key, value] = cookie.trim().split('=');
+    const firstEqualIndex = cookie.indexOf('=');
+    if (firstEqualIndex === -1) {
+      return acc;
+    }
+
+    const key = cookie.slice(0, firstEqualIndex).trim();
+    const value = cookie.slice(firstEqualIndex + 1).trim();
     if (key && value) {
       acc[key] = decodeURIComponent(value);
     }

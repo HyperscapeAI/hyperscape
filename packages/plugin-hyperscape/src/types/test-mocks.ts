@@ -125,6 +125,9 @@ export function createMockWorld(overrides: Partial<World> = {}): World {
       id: "mock-network",
     },
 
+    // Map of available world action handlers (ActionName => handler function)
+    // Keys are action names, values are handler functions with signature (payload) => Promise<void>
+    // Empty object means no actions are registered for this mock world
     actions: {},
 
     // Mock system access methods

@@ -188,7 +188,7 @@ export type NodeWebSocket = WebSocket & {
 export interface SocketLike {
   id: string
   ws: NodeWebSocket
-  player: unknown
+  player: PlayerEntity | null
   send: (data: unknown) => void
   sendPacket: (type: string, data: unknown) => void
   disconnect: () => void
@@ -283,10 +283,17 @@ export interface ChatMessage {
   channel?: string
 }
 
+// Define storage interface based on actual storage implementation
+export interface StorageSystem {
+  get(key: string): Promise<unknown>;
+  set(key: string, value: unknown): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
 // WorldOptions type - options for world initialization
 export interface WorldOptions {
   db?: SystemDatabase
-  storage?: unknown
+  storage?: StorageSystem
   assetsUrl?: string
   assetsDir?: string
 }

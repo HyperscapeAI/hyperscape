@@ -293,9 +293,27 @@ JSON Response:`;
           let value = parsedParams[param.name];
 
           if (param.type === 'number' && typeof value === 'string') {
-            value = parseFloat(value);
+            const coerced = parseFloat(value);
+            if (!isFinite(coerced)) {
+              logger.warn(`[DynamicActionLoader] Invalid number for parameter '${param.name}' in action ${descriptor.name}: "${value}"`);
+              if (param.default !== undefined) {
+                params[param.name] = param.default;
+              }
+              // Skip assignment if invalid and no default
+              continue;
+            }
+            value = coerced;
           } else if (param.type === 'boolean' && typeof value === 'string') {
-            value = value.toLowerCase() === 'true';
+            const normalized = value.toLowerCase();
+            if (normalized !== 'true' && normalized !== 'false') {
+              logger.warn(`[DynamicActionLoader] Invalid boolean for parameter '${param.name}' in action ${descriptor.name}: "${value}"`);
+              if (param.default !== undefined) {
+                params[param.name] = param.default;
+              }
+              // Skip assignment if invalid and no default
+              continue;
+            }
+            value = normalized === 'true';
           }
 
           params[param.name] = value;

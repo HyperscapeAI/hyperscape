@@ -11,6 +11,17 @@ import {
 import { HyperscapeService } from '../service'
 
 /**
+ * Mapping of action keywords to skill names
+ */
+const ACTION_TO_SKILL_MAP: Record<string, string> = {
+  CHOP: 'woodcutting',
+  FISH: 'fishing',
+  COOK: 'cooking',
+  FIRE: 'firemaking',
+  LIGHT: 'firemaking',
+}
+
+/**
  * Template for analyzing skill training efficiency
  */
 const skillProgressionTemplate = `# Task: Analyze skill training efficiency
@@ -65,7 +76,20 @@ export const skillProgressionEvaluator: Evaluator = {
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     // Only evaluate if there's skill-related content
     const content = message.content
-    const action = content.action as string | undefined
+
+    // Guard: ensure content is a non-null object
+    if (!content || typeof content !== 'object') {
+      return false
+    }
+
+    // Safely narrow action type
+    const action = typeof content.action === 'string' ? content.action : undefined
+
+    // Check xpGained with type safety
+    const hasXpGained = typeof content.xpGained === 'number' || (content.xpGained !== undefined && typeof content.xpGained === 'number')
+
+    // Check levelUp with type safety
+    const hasLevelUp = content.levelUp === true
 
     // Check for skill actions
     const isSkillAction =
@@ -74,8 +98,8 @@ export const skillProgressionEvaluator: Evaluator = {
       action?.includes('COOK') ||
       action?.includes('FIRE') ||
       action?.includes('LIGHT') ||
-      content.xpGained !== undefined ||
-      content.levelUp === true
+      hasXpGained ||
+      hasLevelUp
 
     return isSkillAction
   },
@@ -107,17 +131,14 @@ export const skillProgressionEvaluator: Evaluator = {
       const action = actionContent.action as string | undefined
       let skillName = 'unknown'
 
-      if (action?.includes('CHOP')) {
-        skillName = 'woodcutting'
-      } else if (action?.includes('FISH')) {
-        skillName = 'fishing'
-      } else if (action?.includes('COOK')) {
-        skillName = 'cooking'
-      } else if (
-        action?.includes('FIRE') ||
-        action?.includes('LIGHT')
-      ) {
-        skillName = 'firemaking'
+      // Use data-driven mapping to detect skill from action
+      if (action) {
+        for (const [actionKey, skill] of Object.entries(ACTION_TO_SKILL_MAP)) {
+          if (action.includes(actionKey)) {
+            skillName = skill
+            break
+          }
+        }
       }
 
       if (skillName === 'unknown') {
@@ -274,7 +295,7 @@ export const skillProgressionEvaluator: Evaluator = {
           `[SKILL_EVALUATOR] LEVEL UP! ${skillName} reached level ${newLevel}`
         )
         try {
-          await runtime.emitEvent('SKILL_LEVEL_UP' as 'SKILL_LEVEL_UP', {
+          await runtime.emitEvent('SKILL_LEVEL_UP', {
             runtime,
             roomId: message.roomId,
             skill: skillName,

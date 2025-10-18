@@ -68,11 +68,15 @@ const rpgSystems: IGameSystem[] = [
     type: "skills",
     init: async (world: World) => {
       // Validate that skills system exists in world
-      const skillsSystem = world.getSystem?.('skills');
-      if (!skillsSystem) {
-        console.warn('[RPG Pack] Skills system not found in world');
+      if (typeof world.getSystem === 'function') {
+        const skillsSystem = world.getSystem('skills');
+        if (!skillsSystem) {
+          console.warn('[RPG Pack] Skills system not found in world');
+        } else {
+          console.info('[RPG Pack] ✓ Skills system connected');
+        }
       } else {
-        console.info('[RPG Pack] ✓ Skills system connected');
+        console.warn('[RPG Pack] world.getSystem API not available');
       }
     },
     cleanup: () => {
@@ -86,11 +90,15 @@ const rpgSystems: IGameSystem[] = [
     type: "inventory",
     init: async (world: World) => {
       // Validate that inventory system exists in world
-      const inventorySystem = world.getSystem?.('inventory');
-      if (!inventorySystem) {
-        console.warn('[RPG Pack] Inventory system not found in world');
+      if (typeof world.getSystem === 'function') {
+        const inventorySystem = world.getSystem('inventory');
+        if (!inventorySystem) {
+          console.warn('[RPG Pack] Inventory system not found in world');
+        } else {
+          console.info('[RPG Pack] ✓ Inventory system connected');
+        }
       } else {
-        console.info('[RPG Pack] ✓ Inventory system connected');
+        console.warn('[RPG Pack] world.getSystem API not available');
       }
     },
     cleanup: () => {
@@ -104,11 +112,15 @@ const rpgSystems: IGameSystem[] = [
     type: "custom",
     init: async (world: World) => {
       // Validate that banking system exists in world
-      const bankingSystem = world.getSystem?.('banking');
-      if (!bankingSystem) {
-        console.warn('[RPG Pack] Banking system not found in world');
+      if (typeof world.getSystem === 'function') {
+        const bankingSystem = world.getSystem('banking');
+        if (!bankingSystem) {
+          console.warn('[RPG Pack] Banking system not found in world');
+        } else {
+          console.info('[RPG Pack] ✓ Banking system connected');
+        }
       } else {
-        console.info('[RPG Pack] ✓ Banking system connected');
+        console.warn('[RPG Pack] world.getSystem API not available');
       }
     },
     cleanup: () => {
@@ -122,11 +134,15 @@ const rpgSystems: IGameSystem[] = [
     type: "custom",
     init: async (world: World) => {
       // Validate that resource system exists in world
-      const resourceSystem = world.getSystem?.('resources');
-      if (!resourceSystem) {
-        console.warn('[RPG Pack] Resource system not found in world');
+      if (typeof world.getSystem === 'function') {
+        const resourceSystem = world.getSystem('resources');
+        if (!resourceSystem) {
+          console.warn('[RPG Pack] Resource system not found in world');
+        } else {
+          console.info('[RPG Pack] ✓ Resource system connected');
+        }
       } else {
-        console.info('[RPG Pack] ✓ Resource system connected');
+        console.warn('[RPG Pack] world.getSystem API not available');
       }
     },
     cleanup: () => {

@@ -531,8 +531,8 @@ export async function verifyAgentToken(
       return null;
     }
 
-    // Check if agent is active (treat any non-truthy value as inactive)
-    if (!agentRecord.isActive) {
+    // Check if agent is active (handle both boolean and integer types)
+    if (agentRecord.isActive === false || agentRecord.isActive === 0 || agentRecord.isActive === null) {
       const entry = Object.assign(new AgentAuthAuditEntry(), {
         timestamp: new Date().toISOString(),
         eventType: 'agent_auth_failed' as const,
@@ -616,9 +616,7 @@ export async function deactivateAgent(
     agentId,
     success: true,
   });
-  // Note: db not passed here as we don't have access to it in this function signature
-  // Consider updating signature if persistent logging is needed for deactivation
-  await logAgentAuthEvent(entry);
+  await logAgentAuthEvent(entry, db);
 }
 
 /**

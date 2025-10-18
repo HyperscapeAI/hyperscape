@@ -118,5 +118,6 @@ export function getActionsInCategories(categories: ActionCategory[]): string[] {
  * Check if an action belongs to a specific category
  */
 export function isActionInCategory(actionName: string, category: ActionCategory): boolean {
-  return (ACTION_CATEGORIES[category] as readonly string[]).includes(actionName)
+  const actions = ACTION_CATEGORIES[category] as readonly string[]
+  return actions.includes(actionName)
 }

@@ -144,8 +144,12 @@ export function formatActions(actions: Action[]) {
  * **Benefits**:
  * - Reduces token usage by 50-70%
  * - Improves LLM decision quality (less noise in context)
- * - Still validates ALL actions (full availability maintained)
+ * - Validates only the filtered subset of actions (those matching includeList)
  * - Context-aware filtering (RPG actions only when RPG systems present)
+ *
+ * **Note**: Only actions in the filtered subset are validated and included.
+ * This filtering preserves relevant action availability while reducing tokens
+ * by validating only the actions that match the current context.
  *
  * @param runtime - The agent runtime
  * @param message - The message memory

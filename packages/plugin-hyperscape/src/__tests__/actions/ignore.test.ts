@@ -3,23 +3,53 @@
  *
  * Tests the IGNORE action handler's behavior without using mocks.
  * Verifies action metadata, validation, and handler logic.
+ *
+ * NOTE: The IGNORE action is a simple logic action that doesn't interact
+ * with Hyperscape, databases, or external systems. It only validates input
+ * and returns a result. We test the real action handler with minimal fixtures.
  */
 
 import { describe, it, expect } from "vitest";
 import { ignoreAction } from "../../actions/ignore";
-import { createMockRuntime, toUUID } from "../../types/test-mocks";
-import type { Memory, State, Content } from "@elizaos/core";
+import type { Memory, State, Content, IAgentRuntime, UUID } from "@elizaos/core";
+import { randomUUID } from "crypto";
+
+/**
+ * Generate a real UUID for testing
+ */
+function generateUUID(): UUID {
+  return randomUUID() as UUID;
+}
+
+/**
+ * Create minimal runtime fixture for testing simple actions
+ * This is not a mock - it's a minimal real object that satisfies the IAgentRuntime interface
+ * The IGNORE action doesn't use the runtime, so we only need the structure
+ */
+function createMinimalRuntime(): IAgentRuntime {
+  const runtime: Partial<IAgentRuntime> = {
+    agentId: generateUUID(),
+    character: {
+      id: generateUUID(),
+      name: "Test Agent",
+      modelProvider: "openai",
+      clients: [],
+      settings: { secrets: {}, voice: { model: "en_US-male-medium" } },
+    },
+  };
+  return runtime as IAgentRuntime;
+}
 
 describe("IGNORE Action", () => {
   describe("validate", () => {
     it("should always return true", async () => {
-      const runtime = createMockRuntime();
+      const runtime = createMinimalRuntime();
       const message: Memory = {
-        id: toUUID("msg-123"),
+        id: generateUUID(),
         content: { text: "test" },
-        entityId: toUUID("test-entity"),
-        agentId: toUUID("test-agent"),
-        roomId: toUUID("test-room"),
+        userId: generateUUID(),
+        agentId: generateUUID(),
+        roomId: generateUUID(),
         createdAt: Date.now(),
       };
       const result = await ignoreAction.validate(runtime, message);
@@ -29,13 +59,13 @@ describe("IGNORE Action", () => {
 
   describe("handler", () => {
     it("should return result with ignored flag and call callback with response content", async () => {
-      const runtime = createMockRuntime();
+      const runtime = createMinimalRuntime();
       const message: Memory = {
-        id: toUUID("msg-123"),
+        id: generateUUID(),
         content: { text: "Go away bot" },
-        entityId: toUUID("test-entity"),
-        agentId: toUUID("test-agent"),
-        roomId: toUUID("test-room"),
+        userId: generateUUID(),
+        agentId: generateUUID(),
+        roomId: generateUUID(),
         createdAt: Date.now(),
       };
       const state: State = {
@@ -53,11 +83,16 @@ describe("IGNORE Action", () => {
 
       const responses = [
         {
+          id: generateUUID(),
+          userId: generateUUID(),
+          agentId: generateUUID(),
+          roomId: generateUUID(),
           content: {
             text: "",
             thought: "User is being rude, I should ignore them",
             actions: ["IGNORE"],
           },
+          createdAt: Date.now(),
         },
       ];
 
@@ -86,13 +121,13 @@ describe("IGNORE Action", () => {
     });
 
     it("should return result without calling callback if no responses", async () => {
-      const runtime = createMockRuntime();
+      const runtime = createMinimalRuntime();
       const message: Memory = {
-        id: toUUID("msg-123"),
+        id: generateUUID(),
         content: { text: "Go away bot" },
-        entityId: toUUID("test-entity"),
-        agentId: toUUID("test-agent"),
-        roomId: toUUID("test-room"),
+        userId: generateUUID(),
+        agentId: generateUUID(),
+        roomId: generateUUID(),
         createdAt: Date.now(),
       };
       const state: State = {
@@ -129,13 +164,13 @@ describe("IGNORE Action", () => {
     });
 
     it("should handle null callback gracefully", async () => {
-      const runtime = createMockRuntime();
+      const runtime = createMinimalRuntime();
       const message: Memory = {
-        id: toUUID("msg-123"),
+        id: generateUUID(),
         content: { text: "Go away bot" },
-        entityId: toUUID("test-entity"),
-        agentId: toUUID("test-agent"),
-        roomId: toUUID("test-room"),
+        userId: generateUUID(),
+        agentId: generateUUID(),
+        roomId: generateUUID(),
         createdAt: Date.now(),
       };
       const state: State = {
@@ -146,10 +181,15 @@ describe("IGNORE Action", () => {
 
       const responses = [
         {
+          id: generateUUID(),
+          userId: generateUUID(),
+          agentId: generateUUID(),
+          roomId: generateUUID(),
           content: {
             text: "",
             actions: ["IGNORE"],
           },
+          createdAt: Date.now(),
         },
       ];
 
@@ -175,13 +215,13 @@ describe("IGNORE Action", () => {
     });
 
     it("should handle multiple responses by using the first one", async () => {
-      const runtime = createMockRuntime();
+      const runtime = createMinimalRuntime();
       const message: Memory = {
-        id: toUUID("msg-123"),
+        id: generateUUID(),
         content: { text: "Go away bot" },
-        entityId: toUUID("test-entity"),
-        agentId: toUUID("test-agent"),
-        roomId: toUUID("test-room"),
+        userId: generateUUID(),
+        agentId: generateUUID(),
+        roomId: generateUUID(),
         createdAt: Date.now(),
       };
       const state: State = {
@@ -197,18 +237,28 @@ describe("IGNORE Action", () => {
 
       const responses = [
         {
+          id: generateUUID(),
+          userId: generateUUID(),
+          agentId: generateUUID(),
+          roomId: generateUUID(),
           content: {
             text: "",
             thought: "First ignore response",
             actions: ["IGNORE"],
           },
+          createdAt: Date.now(),
         },
         {
+          id: generateUUID(),
+          userId: generateUUID(),
+          agentId: generateUUID(),
+          roomId: generateUUID(),
           content: {
             text: "",
             thought: "Second ignore response",
             actions: ["IGNORE"],
           },
+          createdAt: Date.now(),
         },
       ];
 

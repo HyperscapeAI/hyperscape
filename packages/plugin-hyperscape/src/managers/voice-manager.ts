@@ -64,6 +64,8 @@ export class VoiceManager {
   > = new Map();
   private processingVoice: boolean = false;
   private transcriptionTimeout: NodeJS.Timeout | null = null;
+  private audioQueue: Buffer[] = [];
+  private processingQueue: boolean = false;
 
   constructor(runtime: IAgentRuntime) {
     this.runtime = runtime;
@@ -316,42 +318,71 @@ export class VoiceManager {
    * Integrates with AgentLiveKit system for real-time voice streaming
    */
   async playAudio(audioBuffer: Buffer): Promise<void> {
-    if (this.processingVoice) {
-      logger.info("[VoiceManager] Current voice is processing, queueing audio");
+    // Add audio to queue
+    this.audioQueue.push(audioBuffer);
+    logger.info("[VoiceManager] Audio added to queue, queue length:", this.audioQueue.length);
+
+    // If not already processing queue, start processing
+    if (!this.processingQueue) {
+      await this.processAudioQueue();
+    }
+  }
+
+  /**
+   * Process audio queue sequentially
+   * Drains the queue and plays each audio buffer in order
+   */
+  private async processAudioQueue(): Promise<void> {
+    // Prevent concurrent queue processing
+    if (this.processingQueue) {
       return;
     }
 
-    const service = this.getService();
-    if (!service) {
-      logger.error("[VoiceManager] Service not available");
-      throw new Error("HyperscapeService not available");
-    }
-
-    const world = service.getWorld();
-    if (!world) {
-      logger.error("[VoiceManager] World not available");
-      throw new Error("World not available");
-    }
-
-    this.processingVoice = true;
+    this.processingQueue = true;
 
     try {
-      // Get LiveKit system from world
-      const livekit = world.livekit;
-      if (!livekit) {
-        logger.warn("[VoiceManager] LiveKit not available, skipping audio playback");
-        return;
-      }
+      while (this.audioQueue.length > 0) {
+        const audioBuffer = this.audioQueue.shift();
+        if (!audioBuffer) {
+          continue;
+        }
 
-      // Publish audio stream through LiveKit
-      logger.debug("[VoiceManager] Publishing audio stream through LiveKit");
-      await livekit.publishAudioStream(audioBuffer);
-      logger.info("[VoiceManager] Audio playback complete");
-    } catch (error) {
-      logger.error("[VoiceManager] Failed to play audio:", error);
-      throw error;
+        const service = this.getService();
+        if (!service) {
+          logger.error("[VoiceManager] Service not available");
+          throw new Error("HyperscapeService not available");
+        }
+
+        const world = service.getWorld();
+        if (!world) {
+          logger.error("[VoiceManager] World not available");
+          throw new Error("World not available");
+        }
+
+        this.processingVoice = true;
+
+        try {
+          // Get LiveKit system from world
+          const livekit = world.livekit;
+          if (!livekit) {
+            logger.warn("[VoiceManager] LiveKit not available, skipping audio playback");
+            continue;
+          }
+
+          // Publish audio stream through LiveKit
+          logger.debug("[VoiceManager] Publishing audio stream through LiveKit");
+          await livekit.publishAudioStream(audioBuffer);
+          logger.info("[VoiceManager] Audio playback complete");
+        } catch (error) {
+          logger.error("[VoiceManager] Failed to play audio:", error);
+          // Continue processing remaining items in queue even if one fails
+        } finally {
+          this.processingVoice = false;
+        }
+      }
     } finally {
-      this.processingVoice = false;
+      // Always clear the processing flag, even on errors
+      this.processingQueue = false;
     }
   }
 

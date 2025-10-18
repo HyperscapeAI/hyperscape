@@ -4,6 +4,15 @@
  */
 
 import type { User } from '@privy-io/react-auth'
+import { z } from 'zod'
+
+/**
+ * Zod schema for authentication response validation
+ */
+const AuthResponseSchema = z.object({
+  csrfToken: z.string(),
+  userId: z.string(),
+})
 
 /**
  * Privy authentication state
@@ -64,6 +73,16 @@ export class PrivyAuthManager {
   private constructor() {}
 
   /**
+   * Gets the server URL from environment or window location
+   *
+   * @returns The server URL to use for API requests
+   * @private
+   */
+  private getServerUrl(): string {
+    return import.meta.env.HYPERSCAPE_SERVER_URL || window.location.origin
+  }
+
+  /**
    * Gets the singleton instance of PrivyAuthManager
    * 
    * @returns The singleton instance
@@ -113,8 +132,7 @@ export class PrivyAuthManager {
 
     try {
       // Exchange identity token for HttpOnly cookie on server
-      const serverUrl = import.meta.env.HYPERSCAPE_SERVER_URL || window.location.origin
-      const response = await fetch(`${serverUrl}/api/auth/privy`, {
+      const response = await fetch(`${this.getServerUrl()}/api/auth/privy`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -132,26 +150,22 @@ export class PrivyAuthManager {
         throw new Error(errorData.message || 'Failed to authenticate with server')
       }
 
-      // Validate response before using
+      // Validate response using Zod schema
       const rawData: unknown = await response.json()
+      const parseResult = AuthResponseSchema.safeParse(rawData)
 
-      // Type guard to validate response structure
-      if (!rawData || typeof rawData !== 'object') {
-        throw new Error('Invalid response format from server')
+      if (!parseResult.success) {
+        throw new Error(
+          `Invalid response format: ${parseResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`
+        )
       }
 
-      const dataObj = rawData as Record<string, unknown>
+      const data = parseResult.data
 
-      if (
-        !Object.prototype.hasOwnProperty.call(dataObj, 'csrfToken') ||
-        !Object.prototype.hasOwnProperty.call(dataObj, 'userId') ||
-        typeof dataObj.csrfToken !== 'string' ||
-        typeof dataObj.userId !== 'string'
-      ) {
-        throw new Error('Response missing required fields: csrfToken and userId must be strings')
+      // Enforce minimum CSRF token length (server-side requirement)
+      if (data.csrfToken.length < 16) {
+        throw new Error('Invalid csrfToken: must be a string of length >= 16')
       }
-
-      const data = { csrfToken: dataObj.csrfToken, userId: dataObj.userId }
 
       // Update state with user info and CSRF token
       // NOTE: The actual auth token is now in an HttpOnly cookie, not in state
@@ -190,8 +204,7 @@ export class PrivyAuthManager {
   async clearAuth(): Promise<void> {
     // Call server logout endpoint to clear HttpOnly cookies
     try {
-      const serverUrl = import.meta.env.HYPERSCAPE_SERVER_URL || window.location.origin
-      await fetch(`${serverUrl}/api/auth/logout`, {
+      await fetch(`${this.getServerUrl()}/api/auth/logout`, {
         method: 'POST',
         credentials: 'include', // Include cookies so they can be cleared
       })
@@ -279,8 +292,7 @@ export class PrivyAuthManager {
     }
 
     try {
-      const serverUrl = import.meta.env.HYPERSCAPE_SERVER_URL || window.location.origin
-      const response = await fetch(`${serverUrl}/api/auth/csrf`, {
+      const response = await fetch(`${this.getServerUrl()}/api/auth/csrf`, {
         method: 'GET',
         credentials: 'include', // Include cookies for authentication
       })
@@ -290,28 +302,28 @@ export class PrivyAuthManager {
       }
 
       const rawData: unknown = await response.json()
+      const parseResult = AuthResponseSchema.safeParse(rawData)
 
-      // Validate response structure
-      if (!rawData || typeof rawData !== 'object') {
-        throw new Error('Invalid CSRF response format')
+      if (!parseResult.success) {
+        throw new Error(
+          `Invalid CSRF response format: ${parseResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`
+        )
       }
 
-      const dataObj = rawData as Record<string, unknown>
+      const csrfData = parseResult.data
 
-      if (
-        !Object.prototype.hasOwnProperty.call(dataObj, 'csrfToken') ||
-        typeof dataObj.csrfToken !== 'string'
-      ) {
-        throw new Error('CSRF response missing csrfToken field')
+      // Enforce minimum CSRF token length (server-side requirement)
+      if (csrfData.csrfToken.length < 16) {
+        throw new Error('Invalid csrfToken: must be a string of length >= 16')
       }
 
       // Update state with fetched CSRF token
       this.updateState({
-        csrfToken: dataObj.csrfToken,
+        csrfToken: csrfData.csrfToken,
       })
 
       // Store in localStorage for next session
-      localStorage.setItem('csrf_token', dataObj.csrfToken)
+      localStorage.setItem('csrf_token', csrfData.csrfToken)
 
       console.log('[PrivyAuthManager] CSRF token fetched and updated')
     } catch (error) {
@@ -402,11 +414,11 @@ export class PrivyAuthManager {
    * This method only restores user metadata (userId, fid, csrfToken).
    * Actual authentication is validated server-side via cookies.
    *
-   * @returns Object with restored userId and csrfToken (token is always null)
+   * @returns Promise that resolves with object containing restored userId and csrfToken (token is always null)
    *
    * @public
    */
-  restoreFromStorage(): { token: string | null; userId: string | null; csrfToken: string | null } {
+  async restoreFromStorage(): Promise<{ token: string | null; userId: string | null; csrfToken: string | null }> {
     const userId = localStorage.getItem('privy_user_id')
     const fid = localStorage.getItem('farcaster_fid')
     const csrfToken = localStorage.getItem('csrf_token')
@@ -431,7 +443,8 @@ export class PrivyAuthManager {
       // If CSRF token is missing, try to fetch it
       if (!csrfToken) {
         console.log('[PrivyAuthManager] Restoring without CSRF token - will fetch')
-        this.ensureCsrfToken().catch((error) => {
+        // Await the CSRF token fetch to ensure it completes before callers proceed
+        await this.ensureCsrfToken().catch((error) => {
           console.warn('[PrivyAuthManager] Failed to fetch CSRF token:', error)
           // Don't clear auth state - just log the error
         })

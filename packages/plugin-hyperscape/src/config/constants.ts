@@ -70,3 +70,9 @@ export const DEV_CONFIG = {
     process.env.ENABLE_PERFORMANCE_MONITORING === "true",
   USE_MOCK_WORLD: process.env.USE_MOCK_WORLD === "true",
 } as const;
+
+// File and Memory Constants
+export const FILE_CONSTANTS = {
+  /** Bytes per megabyte conversion factor (1024 * 1024) */
+  BYTES_PER_MB: 1024 * 1024,
+} as const;

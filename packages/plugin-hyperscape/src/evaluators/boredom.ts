@@ -164,7 +164,7 @@ export const boredomEvaluator: Evaluator = {
 
       // Emit engagement event for other systems to react
       try {
-        await runtime.emitEvent('ENGAGEMENT_UPDATE' as 'ENGAGEMENT_UPDATE', {
+        await runtime.emitEvent('ENGAGEMENT_UPDATE', {
           runtime,
           roomId: message.roomId,
           entityId: message.entityId,

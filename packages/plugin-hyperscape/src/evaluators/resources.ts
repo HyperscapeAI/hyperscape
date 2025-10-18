@@ -11,6 +11,82 @@ import {
 import { HyperscapeService } from '../service'
 
 /**
+ * Type guard for player inventory data
+ */
+interface PlayerInventoryData {
+  inventory?: {
+    items?: Array<{ itemId: string; quantity: number }>
+    maxSlots?: number
+  }
+  position?: { x: number; y: number; z: number }
+}
+
+function isPlayerInventoryData(data: unknown): data is PlayerInventoryData {
+  if (!data || typeof data !== 'object') {
+    return false
+  }
+
+  const obj = data as Record<string, unknown>
+
+  // Check optional inventory field
+  if (obj.inventory !== undefined) {
+    if (typeof obj.inventory !== 'object' || obj.inventory === null) {
+      return false
+    }
+    const inv = obj.inventory as Record<string, unknown>
+
+    // Check optional items array
+    if (inv.items !== undefined && !Array.isArray(inv.items)) {
+      return false
+    }
+
+    // Check optional maxSlots number
+    if (inv.maxSlots !== undefined && typeof inv.maxSlots !== 'number') {
+      return false
+    }
+  }
+
+  // Check optional position field
+  if (obj.position !== undefined) {
+    if (typeof obj.position !== 'object' || obj.position === null) {
+      return false
+    }
+    const pos = obj.position as Record<string, unknown>
+    if (
+      (pos.x !== undefined && typeof pos.x !== 'number') ||
+      (pos.y !== undefined && typeof pos.y !== 'number') ||
+      (pos.z !== undefined && typeof pos.z !== 'number')
+    ) {
+      return false
+    }
+  }
+
+  return true
+}
+
+/**
+ * Generic helper to safely extract and validate metadata from Memory objects
+ */
+function getActionMetadata<T extends Record<string, unknown>>(
+  memory: Memory,
+  expectedKeys: (keyof T)[]
+): Partial<T> | null {
+  if (!memory.metadata || typeof memory.metadata !== 'object') {
+    return null
+  }
+
+  const result: Partial<T> = {}
+  for (const key of expectedKeys) {
+    const value = (memory.metadata as Record<string, unknown>)[key as string]
+    if (value !== undefined) {
+      result[key] = value as T[keyof T]
+    }
+  }
+
+  return result
+}
+
+/**
  * Template for evaluating resource management efficiency
  */
 const resourceEvaluationTemplate = `# Task: Evaluate resource management efficiency
@@ -66,20 +142,23 @@ export const resourceManagementEvaluator: Evaluator = {
       return false
     }
 
-    const content = message.content as {
-      text?: string
-      action?: string
-    }
+    const content = message.content as Record<string, unknown>
+
+    // Extract and validate contentAction
+    const contentAction = content.action
+    const contentText = content.text
 
     // Run when inventory or banking actions occur
     const isRelevant =
-      content.action?.includes('bank') ||
-      content.action?.includes('chop') ||
-      content.action?.includes('fish') ||
-      content.action?.includes('cook') ||
-      content.action?.includes('mine') ||
-      content.text?.toLowerCase().includes('inventory') ||
-      content.text?.toLowerCase().includes('bank')
+      (typeof contentAction === 'string' &&
+        (contentAction.includes('bank') ||
+          contentAction.includes('chop') ||
+          contentAction.includes('fish') ||
+          contentAction.includes('cook') ||
+          contentAction.includes('mine'))) ||
+      (typeof contentText === 'string' &&
+        (contentText.toLowerCase().includes('inventory') ||
+          contentText.toLowerCase().includes('bank')))
 
     return isRelevant
   },
@@ -91,17 +170,25 @@ export const resourceManagementEvaluator: Evaluator = {
       const service = runtime.getService<HyperscapeService>('hyperscape')
       const world = service?.getWorld()
       const player = world?.entities?.player
-      const playerData = player?.data as {
-        inventory?: { items?: Array<{ itemId: string; quantity: number }>; maxSlots?: number }
-        position?: { x: number; y: number; z: number }
-      } | undefined
 
-      // 1. Get current inventory state
-      const inventory = playerData?.inventory?.items || []
-      const maxSlots = playerData?.inventory?.maxSlots || 28
-      const usedSlots = inventory.length
-      const freeSlots = maxSlots - usedSlots
-      const inventoryFullness = (usedSlots / maxSlots) * 100
+      // Validate player.data structure with runtime type guard
+      let inventory: Array<{ itemId: string; quantity: number }> = []
+      let maxSlots = 28
+      let usedSlots = 0
+      let freeSlots = 28
+      let inventoryFullness = 0
+
+      if (player?.data && isPlayerInventoryData(player.data)) {
+        const playerData = player.data
+        // 1. Get current inventory state
+        inventory = playerData.inventory?.items || []
+        maxSlots = playerData.inventory?.maxSlots || 28
+        usedSlots = inventory.length
+        freeSlots = maxSlots - usedSlots
+        inventoryFullness = (usedSlots / maxSlots) * 100
+      } else {
+        logger.debug('[RESOURCE_EVALUATOR] Player data not available or invalid structure, using defaults')
+      }
 
       // 2. Get recent banking events from memory
       const bankingHistory = await runtime.getMemories({
@@ -139,9 +226,8 @@ export const resourceManagementEvaluator: Evaluator = {
       // 4. Detect wasted actions (gathering with full inventory)
       let wastedActions = 0
       for (const action of gatheringActions) {
-        const metadata = action.metadata as { inventoryFullness?: number } | undefined
-        const actionInventoryFullness = metadata?.inventoryFullness
-        if (actionInventoryFullness && actionInventoryFullness >= 90) {
+        const metadata = getActionMetadata<{ inventoryFullness: number }>(action, ['inventoryFullness'])
+        if (metadata && metadata.inventoryFullness !== undefined && metadata.inventoryFullness >= 90) {
           wastedActions++
         }
       }
@@ -150,11 +236,14 @@ export const resourceManagementEvaluator: Evaluator = {
       let totalBankingDistance = 0
       let totalItemsDeposited = 0
       for (const bank of bankingEvents) {
-        const metadata = bank.metadata as { distance?: number; itemsDeposited?: number } | undefined
-        const distance = metadata?.distance
-        const itemCount = metadata?.itemsDeposited || 0
-        if (distance) totalBankingDistance += distance
-        if (itemCount) totalItemsDeposited += itemCount
+        const metadata = getActionMetadata<{ distance: number; itemsDeposited: number }>(
+          bank,
+          ['distance', 'itemsDeposited']
+        )
+        const distance = metadata?.distance ?? 0
+        const itemCount = metadata?.itemsDeposited ?? 0
+        totalBankingDistance += distance
+        totalItemsDeposited += itemCount
       }
       const avgDistancePerItem = totalItemsDeposited > 0
         ? totalBankingDistance / totalItemsDeposited
@@ -247,7 +336,7 @@ export const resourceManagementEvaluator: Evaluator = {
 
         // Emit event for other systems to react
         try {
-          await runtime.emitEvent('RESOURCE_INEFFICIENCY' as 'RESOURCE_INEFFICIENCY', {
+          await runtime.emitEvent('RESOURCE_INEFFICIENCY', {
             runtime,
             roomId: message.roomId,
             inventoryEfficiency,

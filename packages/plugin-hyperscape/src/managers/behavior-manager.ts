@@ -42,6 +42,25 @@ interface BehaviorResponse {
   context: string;
 }
 
+/**
+ * Interface describing the AgentActionsSystem shape
+ */
+interface AgentActionsSystem {
+  performAction: (entityId?: string) => void;
+}
+
+/**
+ * Type guard to check if a system is an AgentActionsSystem
+ */
+function isAgentActionsSystem(system: unknown): system is AgentActionsSystem {
+  return (
+    typeof system === 'object' &&
+    system !== null &&
+    'performAction' in system &&
+    typeof (system as AgentActionsSystem).performAction === 'function'
+  );
+}
+
 export class BehaviorManager {
   private isRunning: boolean = false;
   public runtime: IAgentRuntime;
@@ -398,12 +417,10 @@ Or for chat:
     console.info(`[BehaviorManager] Interacting with: ${target}`);
 
     // Use AgentActions system to perform action
-    const actionSystem = this.world!.systems.find((s) =>
-      s.constructor.name === "AgentActions"
-    );
+    const actionSystem = this.world!.systems.find(isAgentActionsSystem);
 
-    if (actionSystem && 'performAction' in actionSystem) {
-      (actionSystem as { performAction: (entityId?: string) => void }).performAction(target);
+    if (actionSystem) {
+      actionSystem.performAction(target);
       console.info(`[BehaviorManager] Performed action on ${target}`);
     } else {
       console.warn("[BehaviorManager] AgentActions system not available");

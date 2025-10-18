@@ -10,6 +10,19 @@ import {
 } from '@elizaos/core'
 
 /**
+ * Helper function to parse score values from various input types
+ * @param value - Unknown value to parse
+ * @param defaultValue - Default value if parsing fails (default: 0)
+ * @returns Numeric value or default
+ */
+function parseScoreValue(value: unknown, defaultValue = 0): number {
+  if (typeof value === 'number') {
+    return value
+  }
+  return parseInt(String(value || defaultValue))
+}
+
+/**
  * Template for evaluating content safety and compliance
  */
 const safetyEvaluationTemplate = `# Task: Evaluate agent behavior for safety violations and compliance issues
@@ -156,7 +169,14 @@ export const safetyEvaluator: Evaluator = {
       )
 
       // Analyze action patterns
-      const actionTypes = actionsLastMinute.map(a => a.content.action || a.content.type)
+      const actionTypes = actionsLastMinute
+        .map(a => {
+          if (!a.content) return undefined
+          const action = a.content.action
+          const type = a.content.type
+          return (typeof action === 'string' ? action : (typeof type === 'string' ? type : undefined))
+        })
+        .filter((a): a is string => a !== undefined)
       const mostCommonAction = getMostCommon(actionTypes)
       const actionRepetitionCount = actionTypes.filter(
         a => a === mostCommonAction
@@ -223,30 +243,11 @@ export const safetyEvaluator: Evaluator = {
       }
 
       // Extract safety scores
-      const messageSpamScore =
-        typeof parsed.messageSpamScore === 'number'
-          ? parsed.messageSpamScore
-          : parseInt(String(parsed.messageSpamScore || 0))
-
-      const actionSpamScore =
-        typeof parsed.actionSpamScore === 'number'
-          ? parsed.actionSpamScore
-          : parseInt(String(parsed.actionSpamScore || 0))
-
-      const contentSafetyScore =
-        typeof parsed.contentSafetyScore === 'number'
-          ? parsed.contentSafetyScore
-          : parseInt(String(parsed.contentSafetyScore || 100))
-
-      const harassmentScore =
-        typeof parsed.harassmentScore === 'number'
-          ? parsed.harassmentScore
-          : parseInt(String(parsed.harassmentScore || 0))
-
-      const griefingScore =
-        typeof parsed.griefingScore === 'number'
-          ? parsed.griefingScore
-          : parseInt(String(parsed.griefingScore || 0))
+      const messageSpamScore = parseScoreValue(parsed.messageSpamScore, 0)
+      const actionSpamScore = parseScoreValue(parsed.actionSpamScore, 0)
+      const contentSafetyScore = parseScoreValue(parsed.contentSafetyScore, 100)
+      const harassmentScore = parseScoreValue(parsed.harassmentScore, 0)
+      const griefingScore = parseScoreValue(parsed.griefingScore, 0)
 
       // Calculate frequency-based scores
       const messageFrequencyScore = calculateSpamScore(messagesLastMinute.length, 5)
@@ -404,7 +405,7 @@ export const safetyEvaluator: Evaluator = {
 
         // Emit safety violation event for other systems to react
         try {
-          await runtime.emitEvent('SAFETY_VIOLATION' as 'SAFETY_VIOLATION', {
+          await runtime.emitEvent('SAFETY_VIOLATION', {
             runtime,
             roomId: message.roomId,
             violations,

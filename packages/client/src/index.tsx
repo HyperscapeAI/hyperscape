@@ -120,8 +120,10 @@ function App() {
   // Subscribe to auth state changes
   React.useEffect(() => {
     const unsubscribe = privyAuthManager.subscribe(setAuthState)
-    // Restore auth from storage on mount
-    privyAuthManager.restoreFromStorage()
+    // Restore auth from storage on mount (async but fire-and-forget is safe here)
+    privyAuthManager.restoreFromStorage().catch((error) => {
+      console.error('[App] Failed to restore auth from storage:', error)
+    })
     // Inject Farcaster meta tags if enabled
     injectFarcasterMetaTags()
     return unsubscribe

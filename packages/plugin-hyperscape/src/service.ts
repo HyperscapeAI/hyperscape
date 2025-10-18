@@ -147,7 +147,7 @@ import { getModuleDirectory, hashFileBuffer } from "./utils";
 const moduleDirPath = getModuleDirectory();
 const LOCAL_AVATAR_PATH = `${moduleDirPath}/avatars/avatar.vrm`;
 
-import { AGENT_CONFIG, NETWORK_CONFIG, DEV_CONFIG } from "./config/constants";
+import { AGENT_CONFIG, NETWORK_CONFIG, DEV_CONFIG, FILE_CONSTANTS } from "./config/constants";
 
 type ChatSystem = Chat;
 
@@ -303,25 +303,36 @@ Hyperscape world integration service that enables agents to:
     );
 
     // Performance monitoring: Track connection time
-    const perfStart = DEV_CONFIG.ENABLE_PERFORMANCE_MONITORING ? performance.now() : 0;
-
-    // Create headless client world with proper ClientNetwork system
-    this.world = createNodeClientWorld();
-
-    // Initialize world with server connection
-    await this.world.init({
-      wsUrl: config.wsUrl,
-      initialAuthToken: config.authToken,
-      assetsUrl:
-        process.env.HYPERSCAPE_ASSETS_URL || "https://assets.hyperscape.io",
-    });
-
     if (DEV_CONFIG.ENABLE_PERFORMANCE_MONITORING) {
+      const perfStart = performance.now();
+
+      // Create headless client world with proper ClientNetwork system
+      this.world = createNodeClientWorld();
+
+      // Initialize world with server connection
+      await this.world.init({
+        wsUrl: config.wsUrl,
+        initialAuthToken: config.authToken,
+        assetsUrl:
+          process.env.HYPERSCAPE_ASSETS_URL || "https://assets.hyperscape.io",
+      });
+
       const perfEnd = performance.now();
       const connectionDuration = perfEnd - perfStart;
       console.info(
         `[Performance] World connection took ${connectionDuration.toFixed(2)}ms`,
       );
+    } else {
+      // Create headless client world with proper ClientNetwork system
+      this.world = createNodeClientWorld();
+
+      // Initialize world with server connection
+      await this.world.init({
+        wsUrl: config.wsUrl,
+        initialAuthToken: config.authToken,
+        assetsUrl:
+          process.env.HYPERSCAPE_ASSETS_URL || "https://assets.hyperscape.io",
+      });
     }
 
     console.info("[HyperscapeService] Headless client world initialized and connected");
@@ -766,7 +777,7 @@ Hyperscape world integration service that enables agents to:
       : "application/octet-stream";
 
     // Validate file size against configured maximum
-    const fileSizeMB = fileBuffer.length / (1024 * 1024);
+    const fileSizeMB = fileBuffer.length / FILE_CONSTANTS.BYTES_PER_MB;
     const maxSizeMB = NETWORK_CONFIG.MAX_UPLOAD_SIZE_MB;
 
     if (fileSizeMB > maxSizeMB) {
@@ -1331,10 +1342,15 @@ Hyperscape world integration service that enables agents to:
 
   /**
    * @deprecated Legacy method from state-classes.ts architecture (removed)
-   * Always returns null. Tests using this are broken and need refactoring to use content pack state managers.
-   * @returns null
+   * This method has been removed and will throw an error when called.
+   * Callers should migrate to content pack state managers.
+   * Update tests to use the new content pack state manager API instead.
+   * @throws {Error} Always throws - method is removed and no longer supported
    */
-  getRPGStateManager(): null {
-    return null;
+  getRPGStateManager(): never {
+    throw new Error(
+      'getRPGStateManager() has been removed. Migrate to content pack state managers. ' +
+      'Update tests to access state managers via content packs instead of this deprecated method.'
+    );
   }
 }
