@@ -9,47 +9,35 @@ import {
   addHeader,
   composeActionExamples,
   formatActionNames,
+  logger,
 } from "@elizaos/core";
 import { getHyperscapeActions, formatActions } from "../utils";
 
 /**
- * A provider object that fetches possible response actions based on the provided runtime, message, and state.
- * @type {Provider}
- * @property {string} name - The name of the provider ("ACTIONS").
- * @property {string} description - The description of the provider ("Possible response actions").
- * @property {number} position - The position of the provider (-1).
- * @property {Function} get - Asynchronous function that retrieves actions that validate for the given message.
- * @param {IAgentRuntime} runtime - The runtime object.
- * @param {Memory} message - The message memory.
- * @param {State} state - The state object.
- * @returns {Object} An object containing the actions data, values, and combined text sections.
- */
-/**
- * Provider for ACTIONS
+ * Actions Provider
  *
- * @typedef {import('./Provider').Provider} Provider
- * @typedef {import('./Runtime').IAgentRuntime} IAgentRuntime
- * @typedef {import('./Memory').Memory} Memory
- * @typedef {import('./State').State} State
- * @typedef {import('./Action').Action} Action
+ * Provides available response actions based on runtime validation.
+ * This provider validates all registered actions and supplies action names,
+ * descriptions, and examples to help the LLM choose appropriate actions.
  *
- * @type {Provider}
- * @property {string} name - The name of the provider
- * @property {string} description - Description of the provider
- * @property {number} position - The position of the provider
- * @property {Function} get - Asynchronous function to get actions that validate for a given message
- *
- * @param {IAgentRuntime} runtime - The agent runtime
- * @param {Memory} message - The message memory
- * @param {State} state - The state of the agent
- * @returns {Object} Object containing data, values, and text related to actions
+ * **Position**: -1 (executes before world state providers)
+ * **Dynamic Loading**: false (always available)
  */
 export const hyperscapeActionsProvider: Provider = {
   name: "ACTIONS",
   description: "Possible response actions",
+  dynamic: false,
   position: -1,
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
-    const actionsData = await getHyperscapeActions(runtime, message, state); // ← no includeList passed here
+    logger.debug('[ACTIONS] Retrieving available actions')
+
+    // Standard action loading (validates all actions)
+    const actionsData = await getHyperscapeActions(runtime, message, state);
+
+    // NOTE: Smart filtering is available via getHyperscapeActionsOptimized()
+    // This reduces context by 50-70% while maintaining full action availability.
+    // To enable, replace the above with:
+    // const actionsData = await getHyperscapeActionsOptimized(runtime, message, state);
 
     const actionNames = `Possible response actions: ${formatActionNames(actionsData)}`;
     const actions =
@@ -66,6 +54,8 @@ export const hyperscapeActionsProvider: Provider = {
     const text = [actionNames, actionExamples, actions]
       .filter(Boolean)
       .join("\n\n");
+
+    logger.debug(`[ACTIONS] Loaded ${actionsData.length} actions, context length: ${text.length} chars`)
 
     return { data, values, text };
   },

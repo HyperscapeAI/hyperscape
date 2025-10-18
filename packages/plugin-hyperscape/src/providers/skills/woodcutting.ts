@@ -8,6 +8,7 @@ import {
   type Memory,
   type Provider,
   type State,
+  logger,
 } from '@elizaos/core'
 import { HyperscapeService } from '../../service'
 import type { ResourceSystem, ResourceItem } from '../../types/resource-types'
@@ -18,6 +19,8 @@ export const woodcuttingSkillProvider: Provider = {
   dynamic: true, // Only loaded when explicitly requested by woodcutting actions
   position: 2, // Contextual skills come after world state, before actions
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
+    logger.debug('[WOODCUTTING] Checking woodcutting context')
+
     const service = runtime.getService<HyperscapeService>(HyperscapeService.serviceName)
 
     if (!service || !service.isConnected()) {
@@ -91,6 +94,8 @@ ${nearbyTrees.length > 0 ? treeList : 'No trees nearby'}
 - Higher level trees give more XP
 - Axes chop faster than bare hands
 - Logs can be used for firemaking`
+
+    logger.debug(`[WOODCUTTING] Level ${woodcuttingLevel}, ${nearbyTrees.length} nearby trees, has axe: ${hasAxe}`)
 
     return {
       text,

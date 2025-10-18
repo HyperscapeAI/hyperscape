@@ -17,6 +17,8 @@ export const factsProvider: Provider = {
   name: 'FACTS',
   description:
     'Provides relevant facts learned from previous conversations, including user preferences, goals, and world state information.',
+  dynamic: false,
+  position: 5,
 
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     logger.debug('[FACTS_PROVIDER] Retrieving relevant facts')

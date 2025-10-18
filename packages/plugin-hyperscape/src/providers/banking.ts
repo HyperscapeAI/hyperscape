@@ -3,6 +3,7 @@ import {
   type Memory,
   type Provider,
   type State,
+  logger,
 } from '@elizaos/core'
 import { HyperscapeService } from '../service'
 
@@ -12,6 +13,8 @@ export const bankingProvider: Provider = {
   dynamic: true, // Only loaded when explicitly requested by banking actions
   position: 2, // Contextual skills come after world state, before actions
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
+    logger.debug('[BANKING] Checking banking availability')
+
     const service = runtime.getService<HyperscapeService>(HyperscapeService.serviceName)
 
     if (!service || !service.isConnected()) {
@@ -91,6 +94,8 @@ ${nearbyBanks.length > 0 ? bankList : 'No banks nearby'}
 - Banks are located in towns
 - Each town has its own bank storage
 - Unlimited bank storage per town`
+
+    logger.debug(`[BANKING] Found ${nearbyBanks.length} nearby banks, ${usedSlots}/${maxSlots} inventory slots used`)
 
     return {
       text,

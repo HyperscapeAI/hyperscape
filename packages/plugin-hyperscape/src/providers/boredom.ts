@@ -17,6 +17,8 @@ export const boredomProvider: Provider = {
   name: 'BOREDOM',
   description:
     'Provides engagement level context from recent conversations, helping the agent adjust its behavior based on user interest levels.',
+  dynamic: false,
+  position: 4,
 
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     logger.debug('[BOREDOM_PROVIDER] Retrieving engagement context')
