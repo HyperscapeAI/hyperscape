@@ -65,14 +65,15 @@ export const skillProgressionEvaluator: Evaluator = {
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     // Only evaluate if there's skill-related content
     const content = message.content
+    const action = content.action as string | undefined
 
     // Check for skill actions
     const isSkillAction =
-      content.action?.includes('CHOP') ||
-      content.action?.includes('FISH') ||
-      content.action?.includes('COOK') ||
-      content.action?.includes('FIRE') ||
-      content.action?.includes('LIGHT') ||
+      action?.includes('CHOP') ||
+      action?.includes('FISH') ||
+      action?.includes('COOK') ||
+      action?.includes('FIRE') ||
+      action?.includes('LIGHT') ||
       content.xpGained !== undefined ||
       content.levelUp === true
 
@@ -103,17 +104,18 @@ export const skillProgressionEvaluator: Evaluator = {
 
       // 2. Determine which skill this action relates to
       const actionContent = message.content
+      const action = actionContent.action as string | undefined
       let skillName = 'unknown'
 
-      if (actionContent.action?.includes('CHOP')) {
+      if (action?.includes('CHOP')) {
         skillName = 'woodcutting'
-      } else if (actionContent.action?.includes('FISH')) {
+      } else if (action?.includes('FISH')) {
         skillName = 'fishing'
-      } else if (actionContent.action?.includes('COOK')) {
+      } else if (action?.includes('COOK')) {
         skillName = 'cooking'
       } else if (
-        actionContent.action?.includes('FIRE') ||
-        actionContent.action?.includes('LIGHT')
+        action?.includes('FIRE') ||
+        action?.includes('LIGHT')
       ) {
         skillName = 'firemaking'
       }

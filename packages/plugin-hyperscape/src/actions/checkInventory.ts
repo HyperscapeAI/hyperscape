@@ -158,7 +158,7 @@ export const checkInventoryAction: Action = {
       {
         name: '{{user}}',
         content: { text: 'What do you have?' }
-      },
+      } as ActionExample,
       {
         name: '{{agent}}',
         content: {
@@ -167,13 +167,13 @@ export const checkInventoryAction: Action = {
           actions: ['CHECK_INVENTORY'],
           source: 'hyperscape',
         }
-      }
+      } as ActionExample,
     ],
     [
       {
         name: '{{user}}',
         content: { text: 'Check your inventory' }
-      },
+      } as ActionExample,
       {
         name: '{{agent}}',
         content: {
@@ -182,7 +182,7 @@ export const checkInventoryAction: Action = {
           actions: ['CHECK_INVENTORY'],
           source: 'hyperscape',
         }
-      }
-    ]
-  ] as ActionExample[][]
+      } as ActionExample,
+    ],
+  ],
 }

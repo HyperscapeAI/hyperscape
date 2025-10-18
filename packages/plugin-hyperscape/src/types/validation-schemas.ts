@@ -50,27 +50,6 @@ export const EntityUpdateDataSchema = z.object({
   metadata: MetadataSchema.optional(),
 });
 
-// Visual config schemas
-export const EntityColorConfigSchema = z.object({
-  color: z.union([z.number().int().min(0).max(0xffffff), z.string().regex(/^#[0-9a-fA-F]{6}$/)]),
-  hex: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-  tolerance: z.number().min(0).max(1).optional(),
-});
-
-export const UIThemeSchema = z.object({
-  primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-  secondaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-  fonts: z.record(z.string().min(1)).optional(),
-});
-
-export const VisualConfigSchema = z.object({
-  entityColors: z.record(EntityColorConfigSchema).optional(),
-  uiTheme: UIThemeSchema.optional(),
-  assets: z.object({
-    models: z.array(z.string().min(1)).optional(),
-  }).optional(),
-});
-
 // Response content schema
 export const ResponseContentSchema = z.object({
   text: z.string().optional(),
@@ -193,7 +172,6 @@ export const NetworkPacketSchema = z.object({
 // Type exports inferred from schemas
 export type EntityCreationData = z.infer<typeof EntityCreationDataSchema>;
 export type EntityUpdateData = z.infer<typeof EntityUpdateDataSchema>;
-export type VisualConfig = z.infer<typeof VisualConfigSchema>;
 export type ResponseContent = z.infer<typeof ResponseContentSchema>;
 export type Metadata = z.infer<typeof MetadataSchema>;
 export type PlayerEffect = z.infer<typeof PlayerEffectSchema>;

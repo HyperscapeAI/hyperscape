@@ -1,10 +1,11 @@
-import { IAgentRuntime } from "@elizaos/core";
+import { IAgentRuntime, elizaLogger as logger } from "@elizaos/core";
 import { THREE, Player } from "@hyperscape/shared";
 import fs, { promises as fsPromises } from "fs";
 import path from "path";
 import { chromium, Browser, Page, PageScreenshotOptions } from "playwright";
 import { HyperscapeService } from "../service";
 import { getModuleDirectory, resolveUrl } from "../utils";
+import { GRAPHICS_CONFIG } from "../config/constants";
 
 interface AvatarLike {
   url?: string;
@@ -93,6 +94,11 @@ export class PlaywrightManager {
           `${moduleDirPath}/scripts/snapshotFacingDirection.js`,
           `${moduleDirPath}/scripts/snapshotViewToTarget.js`,
         ]);
+
+        // Inject graphics configuration into window object for use by scripts
+        await this.page.evaluate((config) => {
+          window.GRAPHICS_CONFIG = config;
+        }, GRAPHICS_CONFIG);
 
         await this.page.waitForFunction(
           () =>
@@ -463,6 +469,42 @@ export class PlaywrightManager {
       },
       { sceneJson, STRIP_SLOTS, players },
     );
+  }
+
+  /**
+   * Cleanup browser resources
+   * Call this when done with Playwright to free up memory
+   */
+  async dispose(): Promise<void> {
+    if (this.browser) {
+      await this.browser.close();
+      logger.info("[PlaywrightManager] Browser closed and resources cleaned up");
+    }
+    PlaywrightManager.instance = null;
+  }
+
+  /**
+   * Compare screenshots for visual regression testing
+   * Returns true if screenshots match within threshold
+   */
+  async compareScreenshots(
+    screenshot1: Buffer | string,
+    screenshot2: Buffer | string,
+    threshold = 0.1,
+  ): Promise<{ match: boolean; difference: number }> {
+    // TODO: Implement pixel-by-pixel comparison
+    // For now, return simple buffer comparison
+    const buffer1 = typeof screenshot1 === 'string'
+      ? Buffer.from(screenshot1, 'base64')
+      : screenshot1;
+    const buffer2 = typeof screenshot2 === 'string'
+      ? Buffer.from(screenshot2, 'base64')
+      : screenshot2;
+
+    const match = buffer1.equals(buffer2);
+    const difference = match ? 0 : 1;
+
+    return { match: difference <= threshold, difference };
   }
 
   private getService() {

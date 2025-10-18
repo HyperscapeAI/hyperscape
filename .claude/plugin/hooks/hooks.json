@@ -5,7 +5,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "../.claude/context-hook.sh"
+          "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/context-hook.sh"
         }
       ]
     }
@@ -16,7 +16,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "../.claude/validate-hook.sh"
+          "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/validate-hook.sh"
         }
       ]
     }
@@ -27,7 +27,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "../.claude/mem0-hook.sh"
+          "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/mem0-hook.sh"
         }
       ]
     }
@@ -38,7 +38,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "../.claude/mem0-hook.sh"
+          "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/mem0-hook.sh"
         }
       ]
     }
@@ -49,7 +49,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "../.claude/mem0-hook.sh"
+          "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/mem0-hook.sh"
         }
       ]
     }

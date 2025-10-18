@@ -63,6 +63,18 @@ declare global {
     texturesMap?: Map<string, THREE.Texture>;
     avatarMap?: Map<string, any>;
     activeVRMInstances?: any[];
+
+    // Graphics configuration (injected from plugin)
+    GRAPHICS_CONFIG?: {
+      SPHERE_GEOMETRY_RADIUS: number;
+      SPHERE_WIDTH_SEGMENTS: number;
+      SPHERE_HEIGHT_SEGMENTS: number;
+      CUBE_CAMERA_NEAR: number;
+      CUBE_CAMERA_FAR: number;
+      RENDER_TARGET_WIDTH: number;
+      RENDER_TARGET_HEIGHT: number;
+      TEXTURE_SIZE: number;
+    };
   }
 }
 

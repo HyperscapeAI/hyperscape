@@ -2,11 +2,8 @@ import {
   IAgentRuntime,
   Memory,
   State,
-  elizaLogger,
   addHeader,
-  ChannelType,
   ModelType,
-  Content,
 } from "@elizaos/core";
 import { hyperscapeShouldRespondTemplate } from "../templates";
 
@@ -125,61 +122,4 @@ export async function shouldRespond(
   );
 
   return !!result;
-}
-
-export async function generateDetailedResponse(
-  runtime: IAgentRuntime,
-  message: Memory,
-  state: State,
-  options: {
-    template?: string;
-    modelType?: (typeof ModelType)[keyof typeof ModelType];
-  } = {},
-): Promise<ActionResult> {
-  const context = composeContext({
-    state,
-    template: options.template,
-    runtime,
-    additionalContext: {
-      messageText: message.content?.text || "",
-      userName: String((message as { username?: string }).username || "User"),
-    },
-  });
-
-  // Call useModel with proper parameters
-  const response = (await runtime.useModel(
-    options.modelType || ModelType.TEXT_LARGE,
-    {
-      prompt: context,
-      max_tokens: 2000,
-      temperature: 0.8,
-    },
-  )) as string;
-
-  const text = response;
-
-  return { text, success: true };
-}
-
-// Channel context helper
-export function getChannelContext(channelId?: string): string {
-  const channelType = channelId || "DM";
-  const context = `You are in a ${channelType} channel.`;
-  return addHeader(context, channelType);
-}
-
-// Export helper functions
-export function formatContext(data: Record<string, string | number | boolean>): string {
-  const entries = Object.entries(data).filter(([_, value]) => value != null);
-  return entries
-    .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
-    .join("\n");
-}
-
-export function extractMemoryText(memory: Memory): string {
-  return memory.content?.text || "";
-}
-
-export function createChannelContext(channel: string = "DM"): string {
-  return addHeader(`Channel: ${channel}`, "");
 }

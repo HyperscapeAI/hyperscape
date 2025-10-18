@@ -3,7 +3,13 @@ window.snapshotEquirectangular = async function (playerData) {
   const renderer = window.renderer;
   const scene = window.scene;
 
-  const size = 1024;
+  // Use configurable graphics settings (fallback to hardcoded values if config not available)
+  const config = window.GRAPHICS_CONFIG || {};
+  const size = config.TEXTURE_SIZE || 1024;
+  const cameraNear = config.CUBE_CAMERA_NEAR || 0.1;
+  const cameraFar = config.CUBE_CAMERA_FAR || 1000;
+  const rtWidth = config.RENDER_TARGET_WIDTH || 2048;
+  const rtHeight = config.RENDER_TARGET_HEIGHT || 1024;
 
   const cubeRenderTarget = new THREE.WebGLCubeRenderTarget(size, {
     format: THREE.RGBAFormat,
@@ -13,13 +19,10 @@ window.snapshotEquirectangular = async function (playerData) {
   const eye = new THREE.Vector3().fromArray(playerData.position);
   eye.y += 2;
 
-  const cubeCamera = new THREE.CubeCamera(0.1, 1000, cubeRenderTarget);
+  const cubeCamera = new THREE.CubeCamera(cameraNear, cameraFar, cubeRenderTarget);
   cubeCamera.position.copy(eye);
   cubeCamera.quaternion.set(...playerData.quaternion);
   cubeCamera.update(renderer, scene);
-
-  const rtWidth = 2048;
-  const rtHeight = 1024;
 
   const renderTarget = new THREE.WebGLRenderTarget(rtWidth, rtHeight);
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);

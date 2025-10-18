@@ -288,9 +288,11 @@ export class VoiceManager {
           content.text,
         );
         const audioBuffer = await convertToAudioBuffer(responseStream);
-        const emoteManager = service.getEmoteManager()!;
-        const emote = (content.emote as string) || "TALK";
-        emoteManager.playEmote(emote);
+        const emoteManager = service.getEmoteManager();
+        if (emoteManager) {
+          const emote = (content.emote as string) || "waving both hands";
+          await emoteManager.queueEmote(emote);
+        }
         await this.playAudio(audioBuffer);
       }
 
@@ -309,23 +311,48 @@ export class VoiceManager {
     });
   }
 
-  async playAudio(audioBuffer: Buffer) {
+  /**
+   * Play audio through LiveKit voice system
+   * Integrates with AgentLiveKit system for real-time voice streaming
+   */
+  async playAudio(audioBuffer: Buffer): Promise<void> {
     if (this.processingVoice) {
-      logger.info("[VOICE MANAER] Current voice is processing.....");
+      logger.info("[VoiceManager] Current voice is processing, queueing audio");
       return;
     }
 
-    const service = this.getService()!;
-    const world = service.getWorld()!;
+    const service = this.getService();
+    if (!service) {
+      logger.error("[VoiceManager] Service not available");
+      throw new Error("HyperscapeService not available");
+    }
+
+    const world = service.getWorld();
+    if (!world) {
+      logger.error("[VoiceManager] World not available");
+      throw new Error("World not available");
+    }
 
     this.processingVoice = true;
 
-    // Audio publishing requires LiveKit API integration (future enhancement)
-    console.warn(
-      "[VoiceManager] Audio playback requested but not implemented yet",
-    );
+    try {
+      // Get LiveKit system from world
+      const livekit = world.livekit;
+      if (!livekit) {
+        logger.warn("[VoiceManager] LiveKit not available, skipping audio playback");
+        return;
+      }
 
-    this.processingVoice = false;
+      // Publish audio stream through LiveKit
+      logger.debug("[VoiceManager] Publishing audio stream through LiveKit");
+      await livekit.publishAudioStream(audioBuffer);
+      logger.info("[VoiceManager] Audio playback complete");
+    } catch (error) {
+      logger.error("[VoiceManager] Failed to play audio:", error);
+      throw error;
+    } finally {
+      this.processingVoice = false;
+    }
   }
 
   private getService() {

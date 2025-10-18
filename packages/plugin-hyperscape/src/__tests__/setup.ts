@@ -10,6 +10,7 @@ import {
 } from "../types/test-mocks";
 import { Entity, Player, World } from "@hyperscape/shared";
 import { IAgentRuntime, Memory } from "@elizaos/core";
+import { DEV_CONFIG, TEST_CONFIG } from "../config/constants";
 
 type MockWebSocket = Partial<WebSocket>;
 type MockFetch = typeof fetch;
@@ -138,7 +139,7 @@ beforeEach(() => {
 // Test utility functions
 export const waitForCondition = async (
   condition: () => boolean,
-  timeout = 5000,
+  timeout = TEST_CONFIG.DEFAULT_TIMEOUT_MS, // Configurable test timeout
   interval = 50,
 ): Promise<void> => {
   return TestHelper.waitFor(condition, timeout, interval);
@@ -242,7 +243,11 @@ export class TestScenario {
 
   constructor() {
     this.runtime = createMockRuntime();
+    // Use mock world when DEV_CONFIG.USE_MOCK_WORLD is enabled or in test environment
     this.world = createMockWorld();
+    if (DEV_CONFIG.USE_MOCK_WORLD) {
+      console.debug("[TestScenario] Using mock world (DEV_CONFIG.USE_MOCK_WORLD=true)");
+    }
   }
 
   getRuntimet(): IAgentRuntime {
@@ -296,7 +301,7 @@ export class TestScenario {
 
   async waitForCondition(
     condition: () => boolean,
-    timeout = 5000,
+    timeout = TEST_CONFIG.DEFAULT_TIMEOUT_MS,
   ): Promise<void> {
     return waitForCondition(condition, timeout);
   }

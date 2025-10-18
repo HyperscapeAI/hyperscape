@@ -17,9 +17,6 @@ export interface IContentPack {
 
   systems?: IGameSystem[];
 
-  // Visual configuration
-  visuals?: IVisualConfig;
-
   // State management
   stateManager?: IStateManager;
 
@@ -44,36 +41,6 @@ export interface IGameSystem {
 
   // System cleanup
   cleanup(): void;
-}
-
-/**
- * Visual configuration for content packs
- */
-export interface IVisualConfig {
-  // Entity color mappings for visual detection
-  entityColors: Record<
-    string,
-    {
-      color: number;
-      hex: string;
-      tolerance?: number;
-    }
-  >;
-
-  // UI theme overrides
-  uiTheme?: {
-    primaryColor?: string;
-    secondaryColor?: string;
-    fonts?: Record<string, string>;
-  };
-
-  // Asset manifests
-  assets?: {
-    models?: string[];
-    textures?: string[];
-    sounds?: string[];
-    animations?: string[];
-  };
 }
 
 /**

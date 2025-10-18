@@ -109,7 +109,6 @@ import { AgentLiveKit } from "./systems/liveKit";
 import { AgentLoader } from "./systems/loader";
 import type {
   EntityModificationData,
-  RPGStateManager,
   TeleportOptions,
 } from "./types/content-types";
 import type {
@@ -148,7 +147,7 @@ import { getModuleDirectory, hashFileBuffer } from "./utils";
 const moduleDirPath = getModuleDirectory();
 const LOCAL_AVATAR_PATH = `${moduleDirPath}/avatars/avatar.vrm`;
 
-import { AGENT_CONFIG, NETWORK_CONFIG } from "./config/constants";
+import { AGENT_CONFIG, NETWORK_CONFIG, DEV_CONFIG } from "./config/constants";
 
 type ChatSystem = Chat;
 
@@ -303,6 +302,9 @@ Hyperscape world integration service that enables agents to:
       "[HyperscapeService] Creating headless Node.js client world with binary protocol",
     );
 
+    // Performance monitoring: Track connection time
+    const perfStart = DEV_CONFIG.ENABLE_PERFORMANCE_MONITORING ? performance.now() : 0;
+
     // Create headless client world with proper ClientNetwork system
     this.world = createNodeClientWorld();
 
@@ -313,6 +315,14 @@ Hyperscape world integration service that enables agents to:
       assetsUrl:
         process.env.HYPERSCAPE_ASSETS_URL || "https://assets.hyperscape.io",
     });
+
+    if (DEV_CONFIG.ENABLE_PERFORMANCE_MONITORING) {
+      const perfEnd = performance.now();
+      const connectionDuration = perfEnd - perfStart;
+      console.info(
+        `[Performance] World connection took ${connectionDuration.toFixed(2)}ms`,
+      );
+    }
 
     console.info("[HyperscapeService] Headless client world initialized and connected");
 
@@ -374,10 +384,8 @@ Hyperscape world integration service that enables agents to:
       );
     }
 
-    // Check for RPG systems and load RPG actions/providers dynamically
-    await this.loadRPGExtensions();
-
     // Load default content packs (Runescape RPG pack)
+    // This provides all RPG actions, providers, and system bridges
     await this.loadDefaultContentPacks();
 
     // Check player entity availability (appearance polling will handle initialization)
@@ -390,56 +398,6 @@ Hyperscape world integration service that enables agents to:
   }
 
   /**
-   * Detects RPG systems and dynamically loads corresponding actions and providers
-   */
-  private async loadRPGExtensions(): Promise<void> {
-    const rpgSystems = this.world.rpgSystems || {};
-    console.info(`[HyperscapeService] Checking for RPG systems...`, Object.keys(rpgSystems));
-
-    // Check for skills system - load skill-based actions
-    if (this.world.getSystem?.('skills')) {
-      console.info('[HyperscapeService] Skills system detected - loading skill actions');
-
-      // Dynamically import and register skill actions
-      const { chopTreeAction } = await import('./actions/chopTree');
-      const { catchFishAction } = await import('./actions/catchFish');
-      const { lightFireAction } = await import('./actions/lightFire');
-      const { cookFoodAction } = await import('./actions/cookFood');
-
-      await this.runtime.registerAction(chopTreeAction);
-      await this.runtime.registerAction(catchFishAction);
-      await this.runtime.registerAction(lightFireAction);
-      await this.runtime.registerAction(cookFoodAction);
-
-      // Load skill-specific providers
-      const { woodcuttingSkillProvider } = await import('./providers/skills/woodcutting');
-      const { fishingSkillProvider } = await import('./providers/skills/fishing');
-      const { firemakingSkillProvider } = await import('./providers/skills/firemaking');
-      const { cookingSkillProvider } = await import('./providers/skills/cooking');
-
-      await this.runtime.registerProvider(woodcuttingSkillProvider);
-      await this.runtime.registerProvider(fishingSkillProvider);
-      await this.runtime.registerProvider(firemakingSkillProvider);
-      await this.runtime.registerProvider(cookingSkillProvider);
-
-      console.info('[HyperscapeService] Loaded 4 skill actions and 4 skill providers');
-    }
-
-    // Check for inventory/banking system - load inventory actions
-    if (this.world.getSystem?.('banking')) {
-      console.info('[HyperscapeService] Banking system detected - loading inventory actions');
-
-      const { bankItemsAction } = await import('./actions/bankItems');
-      const { checkInventoryAction } = await import('./actions/checkInventory');
-
-      await this.runtime.registerAction(bankItemsAction);
-      await this.runtime.registerAction(checkInventoryAction);
-
-      console.info('[HyperscapeService] Loaded 2 inventory actions');
-    }
-  }
-
-  /**
    * Load a content pack into the service
    *
    * Content packs are modular bundles that can include:
@@ -447,7 +405,6 @@ Hyperscape world integration service that enables agents to:
    * - Providers: State providers for agent context
    * - Evaluators: Post-processing analysis components
    * - Systems: Game systems (e.g., combat, inventory)
-   * - Visual config: Entity colors, UI themes, assets
    * - State managers: Per-player state tracking
    *
    * **Important Limitations:**
@@ -716,7 +673,13 @@ Hyperscape world integration service that enables agents to:
 
   /**
    * Load default content packs during service initialization
-   * Currently loads the RunescapeRPG content pack
+   *
+   * Currently loads the RunescapeRPG content pack which includes:
+   * - 6 RPG actions (chopTree, catchFish, cookFood, lightFire, bankItems, checkInventory)
+   * - 6 RPG providers (banking, character, woodcutting, fishing, firemaking, cooking)
+   * - 4 system bridges (skills, inventory, banking, resources)
+   *
+   * This is the single source of truth for all RPG functionality.
    */
   async loadDefaultContentPacks(): Promise<void> {
     logger.info('[HyperscapeService] Loading default content packs...');
@@ -801,6 +764,19 @@ Hyperscape world integration service that enables agents to:
     const mimeType = fileName.endsWith(".vrm")
       ? "model/gltf-binary"
       : "application/octet-stream";
+
+    // Validate file size against configured maximum
+    const fileSizeMB = fileBuffer.length / (1024 * 1024);
+    const maxSizeMB = NETWORK_CONFIG.MAX_UPLOAD_SIZE_MB;
+
+    if (fileSizeMB > maxSizeMB) {
+      const error = `File size ${fileSizeMB.toFixed(2)}MB exceeds maximum upload size of ${maxSizeMB}MB`;
+      console.error(`[Appearance] ${error}`);
+      return {
+        success: false,
+        error,
+      };
+    }
 
     console.info(
       `[Appearance] Uploading ${fileName} (${(fileBuffer.length / 1024).toFixed(2)} KB, Type: ${mimeType})...`,
@@ -1353,8 +1329,12 @@ Hyperscape world integration service that enables agents to:
     logger.info("[HyperscapeService] Service initialized successfully");
   }
 
-  getRPGStateManager(): RPGStateManager | null {
-    // Return RPG state manager for testing
+  /**
+   * @deprecated Legacy method from state-classes.ts architecture (removed)
+   * Always returns null. Tests using this are broken and need refactoring to use content pack state managers.
+   * @returns null
+   */
+  getRPGStateManager(): null {
     return null;
   }
 }

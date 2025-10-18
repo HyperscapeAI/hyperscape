@@ -11,5 +11,4 @@ export { default as RunescapeRPGPack } from "./content-pack";
 export type {
   IContentPack,
   IGameSystem,
-  IVisualConfig,
 } from "../types/content-pack";

@@ -9,22 +9,6 @@ import { Action, Provider } from "@elizaos/core";
 import { World, Vector3 } from "./core-types";
 import { Position, ContentInstance } from "./core-types";
 
-// Re-export state management classes (CLAUDE.md: prefer classes over interfaces)
-export {
-  RPGStateManager,
-  PlayerState,
-  RPGPlayerStats,
-  SkillInfo,
-  InventoryState,
-  InventoryItem,
-  CombatState,
-  CombatStats,
-} from "../classes/state-classes";
-
-// Note: All state management types converted to classes per CLAUDE.md
-// Classes provide better encapsulation and behavior management
-// See ../classes/state-classes.ts for implementations
-
 // World state (keeping as interface - no behavior)
 export interface WorldState {
   id: string;

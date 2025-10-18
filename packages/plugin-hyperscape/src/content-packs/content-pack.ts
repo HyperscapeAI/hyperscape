@@ -9,7 +9,6 @@ import { IAgentRuntime, Provider } from "@elizaos/core";
 import {
   IContentPack,
   IGameSystem,
-  IVisualConfig,
 } from "../types/content-pack";
 import type { World } from "../types/core-types";
 
@@ -24,6 +23,10 @@ import { checkInventoryAction } from "../actions/checkInventory";
 // Import real RPG providers
 import { bankingProvider } from "../providers/banking";
 import { characterProvider } from "../providers/character";
+import { woodcuttingSkillProvider } from "../providers/skills/woodcutting";
+import { fishingSkillProvider } from "../providers/skills/fishing";
+import { firemakingSkillProvider } from "../providers/skills/firemaking";
+import { cookingSkillProvider } from "../providers/skills/cooking";
 
 /**
  * RPG Actions for AI Agents
@@ -43,41 +46,16 @@ const rpgActions = [
  * Using real, production-ready providers from the providers directory
  */
 const rpgProviders: Provider[] = [
-  bankingProvider,    // Banking system state
-  characterProvider,  // Character stats and skills
+  // Core RPG providers
+  bankingProvider,              // Banking system state
+  characterProvider,            // Character stats and skills
+
+  // Skill-specific providers
+  woodcuttingSkillProvider,     // Woodcutting skill state
+  fishingSkillProvider,         // Fishing skill state
+  firemakingSkillProvider,      // Firemaking skill state
+  cookingSkillProvider,         // Cooking skill state
 ];
-
-/**
- * Visual Configuration for RPG Entities
- * Matches our testing framework with colored cubes
- */
-const rpgVisuals: IVisualConfig = {
-  entityColors: {
-    // Players and NPCs
-    "rpg.player": { color: 0x0099ff, hex: "#0099FF" }, // Blue
-    "rpg.npc.merchant": { color: 0x00ff00, hex: "#00FF00" }, // Green
-    "rpg.npc.trainer": { color: 0xffff00, hex: "#FFFF00" }, // Yellow
-
-    // Mobs
-    "rpg.mob.goblin": { color: 0xff0000, hex: "#FF0000" }, // Red
-    "rpg.mob.skeleton": { color: 0x888888, hex: "#888888" }, // Gray
-
-    // Items
-    "rpg.item.weapon": { color: 0xff6600, hex: "#FF6600" }, // Orange
-    "rpg.item.armor": { color: 0x6666ff, hex: "#6666FF" }, // Purple
-    "rpg.item.resource": { color: 0x996633, hex: "#996633" }, // Brown
-
-    // Interactive Objects
-    "rpg.object.chest": { color: 0xffd700, hex: "#FFD700" }, // Gold
-    "rpg.object.bank": { color: 0x00ffff, hex: "#00FFFF" }, // Cyan
-    "rpg.object.shop": { color: 0xff00ff, hex: "#FF00FF" }, // Magenta
-
-    // Effects
-    "rpg.effect.damage": { color: 0xff0000, hex: "#FF0000" }, // Red
-    "rpg.effect.heal": { color: 0x00ff00, hex: "#00FF00" }, // Green
-    "rpg.effect.xp": { color: 0xffff00, hex: "#FFFF00" }, // Yellow
-  },
-};
 
 /**
  * RPG Game Systems Bridge
@@ -162,12 +140,17 @@ const rpgSystems: IGameSystem[] = [
  *
  * This content pack connects ElizaOS agents to our polished RPG systems,
  * enabling AI agents to play in our RPG world with full system integration.
+ *
+ * **Contents:**
+ * - 6 RPG actions: chopTree, catchFish, cookFood, lightFire, bankItems, checkInventory
+ * - 6 RPG providers: banking, character, woodcutting, fishing, firemaking, cooking
+ * - 4 system bridges: skills, inventory, banking, resources
  */
 export const RunescapeRPGPack: IContentPack = {
   id: "runescape-rpg",
   name: "Runescape RPG Pack",
   description:
-    "Complete RPG experience with real actions, providers, and system bridges for AI agents",
+    "Complete RPG experience with 6 actions, 6 providers, and 4 system bridges for AI agents",
   version: "1.0.0",
 
   // Actions available to AI agents
@@ -178,9 +161,6 @@ export const RunescapeRPGPack: IContentPack = {
 
   // Game systems integration
   systems: rpgSystems,
-
-  // Visual configuration for testing
-  visuals: rpgVisuals,
 
   // Lifecycle hooks
   onLoad: async (runtime: IAgentRuntime, world: World) => {

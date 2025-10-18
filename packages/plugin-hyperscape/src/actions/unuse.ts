@@ -52,14 +52,11 @@ export const hyperscapeUnuseItemAction: Action = {
     }
 
     logger.info("[UNUSE ITEM] Attempting to release current action.");
-    // AgentActions has releaseAction method - use it
-    if (
-      actions &&
-      "releaseAction" in actions &&
-      typeof actions.releaseAction === "function"
-    ) {
-      actions.releaseAction();
-    }
+
+    // Use typed AgentActions system directly
+    (actions as AgentActions).releaseAction();
+
+    logger.info("[UNUSE ITEM] Action released successfully");
 
     if (callback) {
       const successResponse = {
@@ -80,7 +77,10 @@ export const hyperscapeUnuseItemAction: Action = {
   },
   examples: [
     [
-      { name: "{{user}}", content: { text: "Drop it now." } },
+      {
+        name: "{{user}}",
+        content: { text: "Drop it now." },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -90,10 +90,13 @@ export const hyperscapeUnuseItemAction: Action = {
           actions: ["HYPERSCAPE_UNUSE_ITEM"],
           source: "hyperscape",
         },
-      },
+      } as ActionExample,
     ],
     [
-      { name: "{{user}}", content: { text: "Stop using that." } },
+      {
+        name: "{{user}}",
+        content: { text: "Stop using that." },
+      } as ActionExample,
       {
         name: "{{agent}}",
         content: {
@@ -103,7 +106,23 @@ export const hyperscapeUnuseItemAction: Action = {
           actions: ["HYPERSCAPE_UNUSE_ITEM"],
           source: "hyperscape",
         },
-      },
+      } as ActionExample,
+    ],
+    [
+      {
+        name: "{{user}}",
+        content: { text: "Put that down please" },
+      } as ActionExample,
+      {
+        name: "{{agent}}",
+        content: {
+          thought:
+            "User wants me to release the item I'm currently interacting with",
+          text: "Item released.",
+          actions: ["HYPERSCAPE_UNUSE_ITEM"],
+          source: "hyperscape",
+        },
+      } as ActionExample,
     ],
   ],
 };

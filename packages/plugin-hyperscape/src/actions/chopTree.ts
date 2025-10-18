@@ -2,8 +2,6 @@ import {
   type Action,
   type ActionResult,
   type ActionExample,
-
-
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -57,7 +55,7 @@ export const chopTreeAction: Action = {
       return false
     }
 
-    const nearbyTrees = allResources.filter((resource: { type?: string; position?: { x: number; y: number; z: number }; level?: number }) => {
+    const nearbyTrees = allResources.filter((resource: ResourceItem) => {
       if (!resource.type?.startsWith('tree_')) return false
       if (!resource.position) return false
 
@@ -148,16 +146,7 @@ export const chopTreeAction: Action = {
       })
 
       // Find nearby tree resources using ResourceSystem
-      const resourceSystem = world.getSystem?.('resource') as {
-        getResourcesByType?: (type: string) => Array<{
-          id: string
-          type: string
-          position: { x: number; y: number; z: number }
-          isAvailable: boolean
-          levelRequired?: number
-          skillRequired: string
-        }>
-      } | undefined
+      const resourceSystem = world.getSystem?.('resource') as ResourceSystem | undefined
 
       if (!resourceSystem?.getResourcesByType) {
         throw new Error('Resource system not available')
@@ -378,6 +367,11 @@ export const chopTreeAction: Action = {
           }
         }, 500)
 
+        // Clean up interval on timeout
+        setTimeout(() => {
+          clearInterval(checkCompletion)
+        }, 15000)
+
         // Send gather packet via WebSocket
         world.network.send('gatherResource', {
           resourceId: suitableTree.id,
@@ -462,7 +456,7 @@ export const chopTreeAction: Action = {
       {
         name: '{{user}}',
         content: { text: 'Chop down a tree' }
-      },
+      } as ActionExample,
       {
         name: '{{agent}}',
         content: {
@@ -471,13 +465,13 @@ export const chopTreeAction: Action = {
           actions: ['CHOP_TREE'],
           source: 'hyperscape',
         }
-      }
+      } as ActionExample,
     ],
     [
       {
         name: '{{user}}',
         content: { text: 'Get some wood' }
-      },
+      } as ActionExample,
       {
         name: '{{agent}}',
         content: {
@@ -486,7 +480,7 @@ export const chopTreeAction: Action = {
           actions: ['CHOP_TREE'],
           source: 'hyperscape',
         }
-      }
+      } as ActionExample,
     ],
-  ] as ActionExample[][]
+  ],
 }
